@@ -1,0 +1,647 @@
+//go:build windows
+
+package main
+
+import (
+	"./internal/cleanup"
+	"embed"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"unsafe"
+)
+
+//go:embed payload/GatewayClient.exe payload/GatewayOnDemand.exe payload/GatewayNativeHost.exe payload/browser-companion/*
+var payload embed.FS
+
+const (
+	WS_OVERLAPPEDWINDOW = 0x00CF0000
+	WS_VISIBLE          = 0x10000000
+	WS_CHILD            = 0x40000000
+	WS_TABSTOP          = 0x00010000
+	ES_AUTOHSCROLL      = 0x0080
+	BS_AUTOCHECKBOX     = 0x00000003
+	BS_DEFPUSHBUTTON    = 0x00000001
+	CW_USEDEFAULT       = ^uintptr(0x7fffffff)
+	WM_DESTROY          = 0x0002
+	WM_COMMAND          = 0x0111
+	WM_SETFONT          = 0x0030
+	BM_GETCHECK         = 0x00F0
+	BM_SETCHECK         = 0x00F1
+	BST_CHECKED         = 1
+	IDC_ARROW           = 32512
+	COLOR_WINDOW        = 5
+	SW_SHOW             = 5
+	MB_OK               = 0x00000000
+	MB_YESNO            = 0x00000004
+	MB_ICONQUESTION     = 0x00000020
+	MB_ICONINFORMATION  = 0x00000040
+	IDYES               = 6
+	BN_CLICKED          = 0
+	ID_INSTALL          = 1001
+	ID_CANCEL           = 1002
+	ID_PATH             = 1101
+	ID_STARTUP          = 1102
+	ID_GOD              = 1103
+	ID_BITCOIN          = 1104
+	ID_LAUNCH           = 1105
+	ID_BROWSER          = 1106
+)
+
+type WNDCLASS struct {
+	Style      uint32
+	WndProc    uintptr
+	ClsExtra   int32
+	WndExtra   int32
+	Instance   uintptr
+	Icon       uintptr
+	Cursor     uintptr
+	Background uintptr
+	MenuName   *uint16
+	ClassName  *uint16
+}
+type POINT struct{ X, Y int32 }
+type MSG struct {
+	Hwnd           uintptr
+	Message        uint32
+	WParam, LParam uintptr
+	Time           uint32
+	Pt             POINT
+	Private        uint32
+}
+
+var (
+	user32                                                                                           = syscall.NewLazyDLL("user32.dll")
+	kernel32                                                                                         = syscall.NewLazyDLL("kernel32.dll")
+	gdi32                                                                                            = syscall.NewLazyDLL("gdi32.dll")
+	procRegisterClass                                                                                = user32.NewProc("RegisterClassW")
+	procCreateWindowEx                                                                               = user32.NewProc("CreateWindowExW")
+	procDefWindowProc                                                                                = user32.NewProc("DefWindowProcW")
+	procShowWindow                                                                                   = user32.NewProc("ShowWindow")
+	procUpdateWindow                                                                                 = user32.NewProc("UpdateWindow")
+	procGetMessage                                                                                   = user32.NewProc("GetMessageW")
+	procTranslateMessage                                                                             = user32.NewProc("TranslateMessage")
+	procDispatchMessage                                                                              = user32.NewProc("DispatchMessageW")
+	procPostQuitMessage                                                                              = user32.NewProc("PostQuitMessage")
+	procDestroyWindow                                                                                = user32.NewProc("DestroyWindow")
+	procSendMessage                                                                                  = user32.NewProc("SendMessageW")
+	procSetWindowText                                                                                = user32.NewProc("SetWindowTextW")
+	procGetWindowText                                                                                = user32.NewProc("GetWindowTextW")
+	procMessageBox                                                                                   = user32.NewProc("MessageBoxW")
+	procLoadIcon                                                                                     = user32.NewProc("LoadIconW")
+	procLoadCursor                                                                                   = user32.NewProc("LoadCursorW")
+	procGetModuleHandle                                                                              = kernel32.NewProc("GetModuleHandleW")
+	procGetStockObject                                                                               = gdi32.NewProc("GetStockObject")
+	mainHWND, pathEdit, startupCheck, godCheck, bitcoinCheck, browserCheck, launchCheck, statusLabel uintptr
+)
+
+func u16(s string) *uint16 { p, _ := syscall.UTF16PtrFromString(s); return p }
+func messageBox(text, title string, flags uintptr) int {
+	r, _, _ := procMessageBox.Call(mainHWND, uintptr(unsafe.Pointer(u16(text))), uintptr(unsafe.Pointer(u16(title))), flags)
+	return int(r)
+}
+func hiddenCommand(name string, args ...string) *exec.Cmd {
+	c := exec.Command(name, args...)
+	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	return c
+}
+func setText(hwnd uintptr, s string) { procSetWindowText.Call(hwnd, uintptr(unsafe.Pointer(u16(s)))) }
+func getText(hwnd uintptr) string {
+	buf := make([]uint16, 1024)
+	procGetWindowText.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
+	return syscall.UTF16ToString(buf)
+}
+func checked(hwnd uintptr) bool {
+	r, _, _ := procSendMessage.Call(hwnd, BM_GETCHECK, 0, 0)
+	return r == BST_CHECKED
+}
+func setChecked(hwnd uintptr, v bool) {
+	x := uintptr(0)
+	if v {
+		x = BST_CHECKED
+	}
+	procSendMessage.Call(hwnd, BM_SETCHECK, x, 0)
+}
+func regAdd(key, value, typ, data string) error {
+	args := []string{"add", key}
+	if value == "" {
+		args = append(args, "/ve")
+	} else {
+		args = append(args, "/v", value)
+	}
+	args = append(args, "/t", typ, "/d", data, "/f")
+	out, err := hiddenCommand("reg.exe", args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("registry %s: %v %s", key, err, out)
+	}
+	return nil
+}
+func regDeleteKey(key string) { _ = hiddenCommand("reg.exe", "delete", key, "/f").Run() }
+func regDeleteValue(key, value string) {
+	_ = hiddenCommand("reg.exe", "delete", key, "/v", value, "/f").Run()
+}
+
+func writePayload(installDir string) error {
+	for _, name := range []string{"GatewayClient.exe", "GatewayOnDemand.exe", "GatewayNativeHost.exe"} {
+		b, err := payload.ReadFile("payload/" + name)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(installDir, name), b, 0755); err != nil {
+			return err
+		}
+	}
+	companionDir := filepath.Join(installDir, "browser-companion")
+	if err := os.MkdirAll(companionDir, 0755); err != nil {
+		return err
+	}
+	entries, err := payload.ReadDir("payload/browser-companion")
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		b, err := payload.ReadFile("payload/browser-companion/" + e.Name())
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(companionDir, e.Name()), b, 0644); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(filepath.Join(installDir, "installed.marker"), []byte("Gateway Client installed build\r\n"), 0644)
+}
+func createShortcut(exePath string) {
+	ps := `$w=New-Object -ComObject WScript.Shell; $p=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Gateway Client.lnk'; $s=$w.CreateShortcut($p); $s.TargetPath='` + strings.ReplaceAll(exePath, "'", "''") + `'; $s.WorkingDirectory='` + strings.ReplaceAll(filepath.Dir(exePath), "'", "''") + `'; $s.Save()`
+	_ = hiddenCommand("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", ps).Run()
+}
+func deleteShortcut() {
+	ps := `Remove-Item (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Gateway Client.lnk') -Force -ErrorAction SilentlyContinue`
+	_ = hiddenCommand("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps).Run()
+}
+func registerUninstall(installDir, uninstaller string) error {
+	key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\GatewayClient`
+	rows := [][3]string{{"DisplayName", "REG_SZ", "Gateway Client"}, {"DisplayVersion", "REG_SZ", "0.5.4"}, {"Publisher", "REG_SZ", "Gateway Client"}, {"InstallLocation", "REG_SZ", installDir}, {"DisplayIcon", "REG_SZ", filepath.Join(installDir, "GatewayClient.exe")}, {"UninstallString", "REG_SZ", fmt.Sprintf("\"%s\" --uninstall", uninstaller)}, {"QuietUninstallString", "REG_SZ", fmt.Sprintf("\"%s\" --uninstall --quiet", uninstaller)}, {"NoModify", "REG_DWORD", "1"}, {"NoRepair", "REG_DWORD", "1"}}
+	for _, r := range rows {
+		if err := regAdd(key, r[0], r[1], r[2]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func detectedInstallDirectory() string {
+	out, err := hiddenCommand("reg.exe", "query", `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\GatewayClient`, "/v", "InstallLocation").Output()
+	if err == nil {
+		for _, line := range strings.Split(string(out), "\n") {
+			if at := strings.Index(line, "REG_SZ"); at >= 0 {
+				path := strings.TrimSpace(line[at+len("REG_SZ"):])
+				if filepath.IsAbs(path) {
+					if _, err := os.Stat(filepath.Join(path, "installed.marker")); err == nil {
+						return path
+					}
+				}
+			}
+		}
+	}
+	return filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "GatewayClient")
+}
+
+// Copy only Gateway-owned payload paths. Startup, namespaces and browser
+// approval are configured in the shared resumable setup, not silently here.
+func install(installDir string, startup, god, bitcoin, browserSetup, launch bool) error {
+	if !filepath.IsAbs(installDir) || filepath.Clean(installDir) == filepath.VolumeName(installDir)+string(os.PathSeparator) {
+		return fmt.Errorf("choose an absolute application directory, not a drive root")
+	}
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		return err
+	}
+	staging, err := os.MkdirTemp(installDir, ".gateway-staging-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	if err = writePayload(staging); err != nil {
+		return err
+	}
+	// Stage each file before replacing it. Existing processes can refuse the rename;
+	// in that case keep their binary and ask the user to close Gateway and retry.
+	files := []string{"GatewayClient.exe", "GatewayOnDemand.exe", "GatewayNativeHost.exe", "installed.marker"}
+	entries, err := os.ReadDir(filepath.Join(staging, "browser-companion"))
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			files = append(files, filepath.Join("browser-companion", e.Name()))
+		}
+	}
+	type moved struct{ dst, backup string }
+	done := []moved{}
+	rollback := func() {
+		for i := len(done) - 1; i >= 0; i-- {
+			_ = os.Remove(done[i].dst)
+			if done[i].backup != "" {
+				_ = os.Rename(done[i].backup, done[i].dst)
+			}
+		}
+	}
+	for _, name := range files {
+		dst := filepath.Join(installDir, name)
+		if err = os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+			rollback()
+			return err
+		}
+		backup := ""
+		if _, e := os.Stat(dst); e == nil {
+			backup = filepath.Join(staging, fmt.Sprintf("previous-%d", len(done)))
+			if err = os.Rename(dst, backup); err != nil {
+				rollback()
+				return fmt.Errorf("close Gateway Client before upgrading, then retry: %w", err)
+			}
+		}
+		done = append(done, moved{dst, backup})
+		if err = os.Rename(filepath.Join(staging, name), dst); err != nil {
+			rollback()
+			return err
+		}
+	}
+	self, _ := os.Executable()
+	uninstaller := filepath.Join(installDir, "Uninstall Gateway Client.exe")
+	if b, e := os.ReadFile(self); e == nil {
+		if err = os.WriteFile(uninstaller, b, 0755); err != nil {
+			return err
+		}
+	} else {
+		return e
+	}
+	client := filepath.Join(installDir, "GatewayClient.exe")
+	createShortcut(filepath.Join(installDir, "GatewayOnDemand.exe"))
+	if err = registerUninstall(installDir, uninstaller); err != nil {
+		return err
+	}
+	// CLI integrations are explicitly requested; the graphical bootstrap passes false.
+	if startup || god {
+		if out, e := hiddenCommand(client, "-install-user").CombinedOutput(); e != nil {
+			return fmt.Errorf("integration: %v %s", e, out)
+		}
+		if !startup {
+			regDeleteValue(`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, "GatewayClient")
+		}
+		if !god {
+			regDeleteKey(`HKCU\Software\Classes\god`)
+		}
+	}
+	if bitcoin {
+		if out, e := hiddenCommand(client, "-enable-bitcoin-domain").CombinedOutput(); e != nil {
+			return fmt.Errorf("namespace registration: %v %s", e, out)
+		}
+	}
+	if launch {
+		return hiddenCommand(client, "-setup").Start()
+	}
+	return nil
+}
+
+func openBrowserCompanionSetup(installDir string) {
+	manifest := filepath.Join(installDir, "browser-companion", "manifest.json")
+	_ = hiddenCommand("explorer.exe", "/select,"+manifest).Start()
+	pf, pfx, local := os.Getenv("PROGRAMFILES"), os.Getenv("PROGRAMFILES(X86)"), os.Getenv("LOCALAPPDATA")
+	type browserCandidate struct{ exe, page string }
+	candidates := []browserCandidate{
+		{filepath.Join(pf, "Google", "Chrome", "Application", "chrome.exe"), "chrome://extensions"},
+		{filepath.Join(pfx, "Google", "Chrome", "Application", "chrome.exe"), "chrome://extensions"},
+		{filepath.Join(local, "Google", "Chrome", "Application", "chrome.exe"), "chrome://extensions"},
+		{filepath.Join(pf, "Microsoft", "Edge", "Application", "msedge.exe"), "edge://extensions"},
+		{filepath.Join(pfx, "Microsoft", "Edge", "Application", "msedge.exe"), "edge://extensions"},
+		{filepath.Join(pf, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"), "brave://extensions"},
+		{filepath.Join(local, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"), "brave://extensions"},
+	}
+	for _, c := range candidates {
+		if st, err := os.Stat(c.exe); err == nil && !st.IsDir() {
+			_ = exec.Command(c.exe, c.page).Start()
+			break
+		}
+	}
+}
+
+type repeatedProfile []string
+
+func (p *repeatedProfile) String() string     { return strings.Join(*p, "; ") }
+func (p *repeatedProfile) Set(s string) error { *p = append(*p, s); return nil }
+
+func uninstall(quiet, purge, confirmed bool, extra []string) error {
+	self, e := os.Executable()
+	if e != nil {
+		return e
+	}
+	installDir := filepath.Dir(self)
+	if !quiet && messageBox("Remove Gateway Client application files and owned integrations?\n\nYou can choose whether to keep or delete Gateway data in the next step. Close other Gateway copies before continuing.", "Uninstall Gateway Client", MB_YESNO|MB_ICONQUESTION|0x100) != IDYES {
+		return nil
+	}
+	if !quiet && !purge {
+		answer := messageBox("Also delete Gateway's data and settings for a fresh installation?\n\nYES: review and remove Gateway indexes, peers, caches, jobs and settings.\nNO (default): keep your data.\nCANCEL: stop uninstall.\n\nBitcoin Core/Ord databases and wallets are never selected for removal.", "Choose what happens to your data", 0x3|MB_ICONQUESTION|0x100)
+		if answer == 2 {
+			return nil
+		}
+		purge = answer == IDYES
+	}
+	if quiet && purge && !confirmed {
+		return fmt.Errorf("silent data removal requires both -purge-data and -confirm-purge")
+	}
+	if purge {
+		if unknown := cleanup.UnrecognizedDefaultData(os.Getenv("LOCALAPPDATA"), installDir); len(unknown) > 0 {
+			return fmt.Errorf("fresh data removal cannot be confirmed. No data was deleted. These existing locations need ownership review:\n%s", strings.Join(unknown, "\n"))
+		}
+	}
+	profiles := cleanup.Discover(os.Getenv("LOCALAPPDATA"), installDir)
+	selected := []cleanup.Profile{}
+	for _, p := range profiles {
+		standard := p.Source == "installed data" || p.Source == "recognized legacy data" || p.Source == "installation-local legacy/portable data"
+		include := false
+		for _, path := range extra {
+			if a, e := filepath.Abs(path); e == nil && strings.EqualFold(a, p.Path) {
+				include = true
+			}
+		}
+		if purge && !standard && !include && !quiet {
+			include = messageBox("Also remove this separate Gateway profile?\n\n"+p.Path+"\n\nSource: "+p.Source+"\n\nNO leaves this profile intact. It is not part of the normal installed profile.", "Optional profile", MB_YESNO|MB_ICONQUESTION|0x100) == IDYES
+		}
+		if purge && (standard || include) {
+			selected = append(selected, p)
+		}
+	}
+	// Explicit paths still require a Gateway ownership marker or legacy schema.
+	for _, path := range extra {
+		absolute, e := filepath.Abs(path)
+		if e != nil {
+			return e
+		}
+		found := false
+		for _, p := range selected {
+			if strings.EqualFold(p.Path, absolute) {
+				found = true
+			}
+		}
+		if !found && purge {
+			selected = append(selected, cleanup.Profile{Path: absolute, Kind: "profile", Source: "explicit command-line profile"})
+		}
+	}
+	// Stop known runtimes cleanly even when preserving their data. We never kill
+	// arbitrary processes by name. An active/locked writer stops removal.
+	for _, p := range profiles {
+		if p.Source == "installed data" || p.Source == "installation-local legacy/portable data" {
+			if e := cleanup.Stop(p.Path); e != nil {
+				return e
+			}
+		}
+	}
+	plans := []cleanup.Plan{}
+	locks := []*cleanup.Lock{}
+	defer func() {
+		for _, l := range locks {
+			_ = l.Close()
+		}
+	}()
+	for _, p := range selected {
+		if e := cleanup.Stop(p.Path); e != nil {
+			return e
+		}
+		l, e := cleanup.Acquire(p.Path)
+		if e != nil {
+			return e
+		}
+		locks = append(locks, l)
+		protected := []string{}
+		for _, other := range profiles {
+			if other.Kind == "profile" {
+				protected = append(protected, cleanup.ProtectedPaths(other.Path)...)
+			}
+		}
+		plan, e := cleanup.Preview(p.Path, p.Kind, protected)
+		if e != nil {
+			return e
+		}
+		plans = append(plans, plan)
+	}
+	if purge && !quiet {
+		text := "Permanently remove the following Gateway-owned data?\n\n"
+		var total int64
+		for _, plan := range plans {
+			text += fmt.Sprintf("%s\n  %d files, %.1f MiB\n", plan.Root, len(plan.Items), float64(plan.Bytes)/(1024*1024))
+			total += plan.Bytes
+			if len(plan.Excluded) > 0 {
+				text += fmt.Sprintf("  %d excluded paths retained (links, user files or external data).\n", len(plan.Excluded))
+				for i, path := range plan.Excluded {
+					if i >= 5 {
+						text += "    Additional exclusions are listed in the report.\n"
+						break
+					}
+					text += "    KEEP: " + path + "\n"
+				}
+			}
+		}
+		text += fmt.Sprintf("\nTotal: %.1f MiB. This includes peer history, Bitcoin indexes/cache, Satline/Ord work, saved settings and credentials. This cannot be undone.\n\nCore/Ord source files and wallets are excluded. Unknown portable copies and unselected QA profiles are not removed.", float64(total)/(1024*1024))
+		if messageBox(text, "Confirm deletion of Gateway data", MB_YESNO|MB_ICONQUESTION|0x100) != IDYES {
+			return nil
+		}
+	}
+	client := filepath.Join(installDir, "GatewayClient.exe")
+	if _, e := os.Stat(client); e == nil {
+		if out, e := hiddenCommand(client, "-uninstall-user").CombinedOutput(); e != nil {
+			return fmt.Errorf("integration removal: %v %s", e, out)
+		}
+		if !quiet {
+			if out, e := hiddenCommand(client, "-disable-bitcoin-domain").CombinedOutput(); e != nil {
+				return fmt.Errorf("namespace removal not completed: %v %s", e, out)
+			}
+		}
+	}
+	// Removing binaries before profile data prevents the installed launcher or
+	// companion from starting another writer during the destructive phase.
+	for _, name := range []string{"GatewayClient.exe", "GatewayOnDemand.exe", "GatewayNativeHost.exe", "installed.marker", "gateway-native-host.json"} {
+		if e := os.Remove(filepath.Join(installDir, name)); e != nil && !os.IsNotExist(e) {
+			return fmt.Errorf("application file still in use; no data purge completed: %w", e)
+		}
+	}
+	results := []cleanup.Result{}
+	for i, plan := range plans {
+		result := cleanup.Execute(plan, locks[i])
+		results = append(results, result)
+		if len(result.Errors) > 0 {
+			b, _ := json.MarshalIndent(results, "", "  ")
+			_ = os.WriteFile(filepath.Join(installDir, "uninstall-data-report.json"), b, 0600)
+			return fmt.Errorf("partial data removal; retained details in uninstall-data-report.json: %s", strings.Join(result.Errors, "; "))
+		}
+		cleanup.Unregister(os.Getenv("LOCALAPPDATA"), plan.Root)
+		_ = locks[i].Close()
+		// Lock files contain no index/history. Unknown files keep their directories.
+		_ = os.Remove(filepath.Join(plan.Root, cleanup.LockName))
+		_ = os.Remove(plan.Root)
+	}
+	entries, _ := payload.ReadDir("payload/browser-companion")
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			_ = os.Remove(filepath.Join(installDir, "browser-companion", entry.Name()))
+		}
+	}
+	_ = os.Remove(filepath.Join(installDir, "browser-companion"))
+	deleteShortcut()
+	regDeleteKey(`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\GatewayClient`)
+	// Preserve a private local report outside application/profile directories.
+	if purge {
+		report := struct {
+			Plans   []cleanup.Plan   `json:"plans"`
+			Results []cleanup.Result `json:"results"`
+		}{plans, results}
+		if f, e := os.CreateTemp("", "gateway-uninstall-report-*.json"); e == nil {
+			_ = f.Chmod(0600)
+			_ = json.NewEncoder(f).Encode(report)
+			path := f.Name()
+			_ = f.Close()
+			if !quiet {
+				messageBox("Selected Gateway data removed. Excluded and unselected paths were retained.\n\nRemoval report: "+path, "Gateway data removed", MB_OK|MB_ICONINFORMATION)
+			}
+		}
+	}
+	command := fmt.Sprintf(`timeout /t 2 /nobreak >nul & del /f /q "%s" >nul 2>nul & rmdir "%s" >nul 2>nul`, self, installDir)
+	_ = hiddenCommand("cmd.exe", "/C", command).Start()
+	if !quiet && !purge {
+		messageBox("Gateway application removed. Your data is preserved. Browser extension approval is managed separately by your browser.", "Gateway removed", MB_OK|MB_ICONINFORMATION)
+	}
+	return nil
+}
+
+func createControl(class, text string, style uint32, x, y, w, h int, id uintptr) uintptr {
+	inst, _, _ := procGetModuleHandle.Call(0)
+	hw, _, _ := procCreateWindowEx.Call(0, uintptr(unsafe.Pointer(u16(class))), uintptr(unsafe.Pointer(u16(text))), uintptr(style), uintptr(x), uintptr(y), uintptr(w), uintptr(h), mainHWND, id, inst, 0)
+	font, _, _ := procGetStockObject.Call(17)
+	procSendMessage.Call(hw, WM_SETFONT, font, 1)
+	return hw
+}
+
+var bootstrapStage int
+var nextButton, backButton, titleLabel, detailLabel uintptr
+
+func showBootstrapStage(stage int) {
+	bootstrapStage = stage
+	if stage == 0 {
+		setText(titleLabel, "Welcome to Gateway Client 0.5.4")
+		setText(detailLabel, "Bitcoin Core is optional. Gateway can connect to Bitcoin peers itself.\r\n\r\nThis installer copies the application and opens the same seven-stage setup available from Settings. Your existing data and privacy decisions stay in place.\r\n\r\nThis is a testing candidate, not a Windows-accepted release.")
+		setText(nextButton, "Next")
+	} else {
+		setText(titleLabel, "Install the application, then enter Gateway")
+		setText(detailLabel, "Close any running Gateway Client before upgrading.\r\n\r\nThe next step copies Gateway-owned application files, creates its shortcut and registers uninstall support. Startup, namespace routing and Browser Companion approval are chosen in the shared setup.\r\n\r\nNo Core data is installed, moved or deleted.")
+		setText(nextButton, "Install and set up")
+	}
+}
+func wndProc(hwnd uintptr, msg uint32, wparam, lparam uintptr) uintptr {
+	switch msg {
+	case WM_COMMAND:
+		if (wparam>>16)&0xffff == BN_CLICKED {
+			switch wparam & 0xffff {
+			case ID_INSTALL:
+				if bootstrapStage == 0 {
+					showBootstrapStage(1)
+					return 0
+				}
+				setText(statusLabel, "Copying application files. No network success is assumed.")
+				procUpdateWindow.Call(hwnd)
+				if err := install(strings.TrimSpace(getText(pathEdit)), false, false, false, false, true); err != nil {
+					messageBox(err.Error(), "Installation needs attention", MB_OK)
+					setText(statusLabel, "Your existing data has been retained. Correct the issue and retry.")
+					return 0
+				}
+				messageBox("Application files are installed. Continue in Gateway's guided setup. Network readiness and browser approval are checked there, not inferred from this installation.", "Continue in Gateway", MB_OK|MB_ICONINFORMATION)
+				procDestroyWindow.Call(hwnd)
+				return 0
+			case ID_STARTUP:
+				showBootstrapStage(0)
+				return 0
+			case ID_CANCEL:
+				procDestroyWindow.Call(hwnd)
+				return 0
+			}
+		}
+	case WM_DESTROY:
+		procPostQuitMessage.Call(0)
+		return 0
+	}
+	ret, _, _ := procDefWindowProc.Call(hwnd, uintptr(msg), wparam, lparam)
+	return ret
+}
+func runGUI() {
+	installDir := detectedInstallDirectory()
+	inst, _, _ := procGetModuleHandle.Call(0)
+	cursor, _, _ := procLoadCursor.Call(0, IDC_ARROW)
+	icon, _, _ := procLoadIcon.Call(inst, 101)
+	class := u16("GatewayClientInstaller052")
+	wc := WNDCLASS{WndProc: syscall.NewCallback(wndProc), Instance: inst, Icon: icon, Cursor: cursor, Background: COLOR_WINDOW + 1, ClassName: class}
+	procRegisterClass.Call(uintptr(unsafe.Pointer(&wc)))
+	hwnd, _, _ := procCreateWindowEx.Call(0, uintptr(unsafe.Pointer(class)), uintptr(unsafe.Pointer(u16("Gateway Client 0.5.4 Setup"))), WS_OVERLAPPEDWINDOW&^0x00040000&^0x00010000, CW_USEDEFAULT, CW_USEDEFAULT, 720, 590, 0, 0, inst, 0)
+	mainHWND = hwnd
+	titleLabel = createControl("STATIC", "", WS_CHILD|WS_VISIBLE, 28, 25, 640, 38, 0)
+	detailLabel = createControl("STATIC", "", WS_CHILD|WS_VISIBLE, 28, 77, 640, 210, 0)
+	createControl("STATIC", "Application directory (existing Gateway data is kept separately)", WS_CHILD|WS_VISIBLE, 28, 300, 640, 24, 0)
+	pathEdit = createControl("EDIT", installDir, WS_CHILD|WS_VISIBLE|WS_TABSTOP|ES_AUTOHSCROLL|0x00800000, 28, 330, 640, 30, ID_PATH)
+	statusLabel = createControl("STATIC", "Your Core and Ord installations are not modified.", WS_CHILD|WS_VISIBLE, 28, 378, 640, 46, 0)
+	backButton = createControl("BUTTON", "Back", WS_CHILD|WS_VISIBLE|WS_TABSTOP, 28, 458, 90, 35, ID_STARTUP)
+	createControl("BUTTON", "Cancel", WS_CHILD|WS_VISIBLE|WS_TABSTOP, 390, 458, 95, 35, ID_CANCEL)
+	nextButton = createControl("BUTTON", "Next", WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_DEFPUSHBUTTON, 495, 458, 170, 35, ID_INSTALL)
+	showBootstrapStage(0)
+	procShowWindow.Call(hwnd, SW_SHOW)
+	procUpdateWindow.Call(hwnd)
+	var message MSG
+	for {
+		ret, _, _ := procGetMessage.Call(uintptr(unsafe.Pointer(&message)), 0, 0, 0)
+		if int32(ret) <= 0 {
+			break
+		}
+		procTranslateMessage.Call(uintptr(unsafe.Pointer(&message)))
+		procDispatchMessage.Call(uintptr(unsafe.Pointer(&message)))
+	}
+}
+
+func main() {
+	un := flag.Bool("uninstall", false, "uninstall Gateway Client")
+	purge := flag.Bool("purge-data", false, "delete approved Gateway data, never external Core/Ord data")
+	confirmed := flag.Bool("confirm-purge", false, "confirm irreversible data deletion in quiet mode")
+	var extra repeatedProfile
+	flag.Var(&extra, "purge-profile", "additional exact Gateway-owned profile path to remove (repeatable)")
+	quiet := flag.Bool("quiet", false, "unattended installation/removal: no browser launch or namespace elevation")
+	cli := flag.Bool("cli", false, "install with command-line defaults instead of GUI")
+	noStartup := flag.Bool("no-startup", false, "")
+	noGod := flag.Bool("no-god", false, "")
+	_ = flag.Bool("no-bitcoin", false, "")
+	noLaunch := flag.Bool("no-launch", false, "")
+	noBrowserSetup := flag.Bool("no-browser-companion-setup", false, "")
+	dir := flag.String("dir", "", "")
+	flag.Parse()
+	if *un {
+		if e := uninstall(*quiet, *purge, *confirmed, extra); e != nil {
+			if !*quiet {
+				messageBox(e.Error(), "Removal needs attention", MB_OK)
+			}
+			fmt.Fprintln(os.Stderr, e)
+			os.Exit(1)
+		}
+		return
+	}
+	if *cli {
+		d := *dir
+		if d == "" {
+			d = detectedInstallDirectory()
+		}
+		if err := install(d, !*noStartup, !*noGod, false, !*noBrowserSetup && !*quiet, !*noLaunch && !*quiet); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
+	runGUI()
+}

@@ -1,0 +1,3 @@
+Stable alpha extension ID: fonpkbapmlolngjhacngopmlpbhopekb
+Native host: com.gateway.client
+The manifest contains a public key only. No private signing key is distributed.

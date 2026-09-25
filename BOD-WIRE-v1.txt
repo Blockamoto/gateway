@@ -1,0 +1,90 @@
+BITCOIN ON DEMAND — BOD WIRE v1
+Application: Gateway Client 0.4.8; BOD wire unchanged from 0.3.9
+
+TRANSPORT
+  Ordinary Bitcoin P2P framing.
+
+DISCOVERY
+  Gateway handles discovery. Experimental Bitcoin service bit 25 (mask 1<<25) means POSSIBLE GATEWAY PEER; BIP 434 confirms Gateway; Gateway then advertises the BOD protocol ID/version.
+  The hint is unauthenticated and MUST be confirmed with BIP 434.
+
+BIP 434 FEATURE ID
+  9f944881b78ac02e6fc82fe4582ec97c3dc0c3473897be8758a648c896af20cb
+
+  Digest reference:
+  Bitcoin on Demand protocol | experimental BIP434 feature identity | protocol family | pre-1.0
+
+FEATURE DATA
+  {"wire":[1]}
+
+POST-HANDSHAKE COMMAND
+  bodmsg
+
+MAXIMUM BODMSG PAYLOAD
+  65536 bytes
+
+ENVELOPE
+  request:
+    {"wire":1,"kind":"request","type":"status","id":"...","payload":{...}}
+
+  response:
+    {"wire":1,"kind":"response","type":"status","id":"...","status":"ok","payload":{...}}
+
+RESPONSE STATES
+  ok | unknown | unsupported | invalid | busy | error
+
+  unknown means "this peer cannot establish the requested fact".
+  It MUST NOT be interpreted as "does not exist" or "unspent".
+
+QUERY TYPES
+  status
+  block_location       (height -> block hash)
+  hash_location        (block hash -> height when known)
+  tx_location          (txid -> block hash / height / tx index when known)
+  spender_location     (outpoint -> spending tx / block / vin when positively known,
+                         or an authoritative negative only with complete index coverage)
+  address_utxos        (Core-backed current-state convenience; not address history)
+
+RAW BLOCK DATA
+  Use ordinary Bitcoin getdata -> block once a block hash is known.
+  A BOD sparse peer may answer standard getdata from its validated sparse store,
+  even when the requesting peer never negotiates Gateway or BOD.
+
+  MSG_BLOCK returns legacy/non-witness block serialization.
+  MSG_WITNESS_BLOCK returns witness-inclusive block serialization (BIP144).
+  Gateway Client 0.4.8 advertises NODE_WITNESS for this capability, but does NOT
+  advertise NODE_NETWORK or NODE_NETWORK_LIMITED merely for sparse block serving.
+
+STATUS
+  Status binds claims to a chain snapshot and keeps these independent:
+    block possession ranges
+    tx-location coverage
+    spender coverage
+    capabilities
+    derived profiles
+    extension IDs / versions
+
+  Status describes what the peer intentionally offers. The reference client may
+  keep incidental/private cache objects and derived lookup knowledge out of
+  advertisements entirely. Privacy mode is local policy, not a wire primitive.
+
+PROFILES
+  partial | history | graph
+  Derived from state, never user-selected.
+
+VALIDATION
+  structurally_checked
+  pending_header_validation
+  header_anchored
+  consensus_validated
+
+SECURITY / LIMITS
+  BOD payload <= 64 KiB
+  up to 64 BOD requests per inbound experimental connection
+  up to 128 getdata inventory vectors handled by the BOD listener
+  up to 256 range intervals in a status response
+  duplicate request IDs rejected
+  request timeout 18 seconds
+  malformed messages fail closed
+
+See spec/bod-protocol.md for the implementation-independent specification.

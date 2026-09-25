@@ -1,0 +1,41 @@
+GATEWAY ON DEMAND PROTOCOL v1 — Gateway Client 0.4.9 experiment (wire unchanged from 0.3.9)
+
+PURPOSE
+Gateway is the generic service-discovery layer used over a normal Bitcoin P2P
+connection. It does not carry Bitcoin truth and it does not replace Bitcoin P2P.
+
+DISCOVERY
+1. Discover ordinary Bitcoin peers/addresses.
+2. Experimental service bit 25 (mask 1<<25) means POSSIBLE GATEWAY PEER.
+3. Connect using normal Bitcoin version exchange.
+4. BIP 434 negotiates Gateway feature identity:
+   8f01b6e7d640f7543b44c1d8a5f5d626559d512ff6d37d60d069761460250a7c
+5. After verack, peers exchange one bounded gwmsg hello/hello_ack.
+
+GATEWAY HELLO
+{
+  "wire": 1,
+  "kind": "hello",
+  "id": "<request-id>",
+  "protocols": [
+    {"id":"<protocol-id>","versions":[1],"name":"optional UI label"}
+  ]
+}
+
+The response uses kind "hello_ack" and the same id.
+Maximum gwmsg payload: 16 KiB.
+
+BITCOIN ON DEMAND PROTOCOL ID
+53e14b718ca5ba11bff160a78e6528b890f7be5d20060e411ddaec3c1f23bdfe
+
+Human names are not identities. The protocol ID is the stable machine-readable
+family identity; versions are advertised separately. 0.4.1 does not use a
+signed protocol manifest yet. Support remains a claim until the service
+protocol itself is successfully spoken.
+
+IMPORTANT
+- Bit 25 hints Gateway, not BOD specifically.
+- BIP 434 confirms Gateway, not every service behind Gateway.
+- There is no second BIP 434 handshake for BOD.
+- Gateway only lists directly supported protocol families/versions.
+- It does not gossip third-party capability inventories.

@@ -1,0 +1,27 @@
+GATEWAY CLIENT BUNDLED MODULE API v1
+
+The local module manifest exposed by /api/modules and /api/v1/modules includes:
+- id
+- name
+- version
+- host_api
+- description
+- protocol_id (may be reserved and not advertised)
+- protocol_version
+- required_capabilities
+- optional_capabilities
+- cli_namespace
+- api_prefix
+- frontend_entrypoint
+- storage_schema
+- network_advertised
+- status
+
+Bundled modules in v0.4.9:
+- Bitcoin on Demand
+- Satline
+
+Satline required capabilities:
+block_retrieval, transaction_retrieval, prevout_value_resolution, spender_lookup, chain_authority.
+
+External remote-code module execution remains out of scope.

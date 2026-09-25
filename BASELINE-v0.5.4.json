@@ -1,0 +1,27 @@
+{
+  "base_version": "0.5.3",
+  "target_version": "0.5.4",
+  "inputs": [
+    {
+      "file": "gateway-client-v0.5.3-candidate.zip",
+      "bytes": 21669850,
+      "sha256": "8b5db865b2c183637352b04f2f0c615ad4c2593d79b55c9e81a8ca9910bdeb47"
+    },
+    {
+      "file": "baseline-source.zip",
+      "bytes": 647442,
+      "sha256": "613d36930a0373505e3be466717845f5793dfa76d931c57a9f8a418531fa21ce"
+    },
+    {
+      "file": "gateway-discovery-diagnostics(1).json",
+      "bytes": 347547,
+      "sha256": "bff761caa659a6cb33f27171d06e2487b21f83b2f55b88c79be6ce97c407e443"
+    },
+    {
+      "file": "gateway-discovery-diagnostics(2).json",
+      "bytes": 359272,
+      "sha256": "5ef53877d982764380b63af31ac34fcb2c014f02321641763a526410e090baff"
+    }
+  ],
+  "note": "Input diagnostic files contain private endpoints and are deliberately NOT bundled. Tests use synthetic/local fixtures."
+}

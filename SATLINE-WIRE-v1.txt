@@ -1,0 +1,80 @@
+SATLINE WIRE v1 / GATEWAY CLIENT v0.4.9
+Experimental pre-1.0 specification
+
+IDENTITY AND NEGOTIATION
+Reuse the Satline protocol family reserved in 0.4.8:
+5be4701fa8d0b9cc6d5dcd2e17b55e74228fddeae2474eb923960b789ccf2b69
+Wire version: 1. Network: mainnet.
+Gateway and BOD wire versions remain 1. Satline appears in the local protocol
+listing only while its module is enabled and either peer opt-in is enabled.
+Exchange runs after the existing experimental Gateway negotiation on the shared
+Bitcoin-framed TCP connection, normally port 48333. Command: satmsg.
+
+REQUEST
+JSON envelope: wire, network, kind=request, id, request.
+id is 12 random bytes encoded as 24 hexadecimal characters.
+request fields:
+  query: {kind: sat|satpoint, input: normalized original query}
+  after: number of already checked hops in the shared query's prefix
+  start: {txid,vout,offset,height,block_hash,tx_index}
+  limit: 1..32
+Queries are normalized by the same local Satline parser. The server does not
+resolve raw global sat numbers, fetch Bitcoin blocks, build graph ranges or
+perform remote traversal as a consequence of this request. It reads only an
+explicit immutable publication. Start/after must match that snapshot exactly.
+
+RESPONSE
+JSON envelope: wire, network, kind=response, matching id, status, segment.
+segment: query, after, start, hops, next, more.
+Each hop includes the existing local mathematical fields (source/destination,
+spending txid/vin, height/hash, input stream position and any fee offsets).
+Local provider names, freeform notes and evidence labels are cleared in normal
+publication. The receiver ignores any supplied verification label regardless.
+No terminal unspent state, terminal snapshot, query time or user cache inventory
+is part of the response. Non-ok statuses include disabled, not_cached, invalid,
+incompatible, busy. not_cached says nothing about whether an outpoint is spent.
+
+BOUNDS
+2,048 request bytes; 131,072 Satline message bytes; 32 hops per segment.
+Up to 16 Satline requests on a connection. Repeated request IDs are rejected.
+8-request source-address burst with 0.2 request/second refill; 32-request global
+burst with 1 request/second refill. At most 256 tracked source buckets and four
+simultaneous publication reads/responses. Shared inbound TCP connections are
+capped at 64. Serving writes time out after 8 seconds.
+Client connection timeout: 4 seconds. Post-negotiation request exchange: 12
+seconds, no more than 8 unrelated frames, and bounded allocation before reading
+any response body. Remote full-lineage requests and cache-list operations do not
+exist. No unbounded responses are reassembled.
+
+INDEPENDENT VERIFICATION
+Establish the starting satpoint locally. A global sat query must be connected to
+its locally established birth or an already checked local prefix. Stage the
+received response in memory; do not load it as a trusted local cache record.
+
+Pin local chain authority. For every hop fetch the referenced Bitcoin block,
+confirm canonical hash, transaction membership, spending vin and source
+continuity. Resolve required prevout values from Bitcoin on Demand. Recompute
+the movement with the same local Satline FIFO/fee engine. Compare all claimed
+mathematical fields, including earlier transaction fees and coinbase offset.
+
+The verifier imposes 4,096 evidence operations and a cooperative 30-second
+budget. It rechecks the pinned block hash after the segment and the local prefix
+anchors before commit. Insufficient evidence, a changed chain, false offsets or
+other mismatches reject the entire received segment. Existing valid cache data
+is not replaced by a partial/failed verification. An accepted segment endpoint
+is UNRESOLVED, not a peer-derived unspent conclusion. Loss may be reported only
+when the local engine itself derives it. Local refresh can establish endpoint
+status using local spender coverage. Header anchoring is not consensus validation.
+
+PUBLICATION
+Local-only satline/published-v1 metadata, schema 1, is distinct from existing
+Satline record schema 1. Publish explicitly copies the checked eligible record
+at that moment. Local refresh and peer acceptance do not extend its publication.
+Older caches have no publication file and remain private. Unpublishing removes
+only this client's serving copy. Existing private records are never enumerated
+remotely, and peers cannot command local publication or cache changes.
+
+PRIVACY LIMITATION
+The requested sat/satpoint is visible to the selected peer. This release uses
+an unencrypted transport, so network observers may also see it. The protocol
+does not promise anonymity, identity authentication or deletion of remote copies.

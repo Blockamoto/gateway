@@ -1,0 +1,7 @@
+=== RUN   TestAuditWindowsHeaderRollbackCause
+    zz_audit_network_floor_test.go:162: production appendCheckedHeaders: before_bytes=80 after_bytes=160 returned_count=1 batch_error=header does not link to the candidate chain
+    zz_audit_network_floor_test.go:177: minimal native handle: O_APPEND=true truncate_error=truncate <TEMP>\TestAuditWindowsHeaderRollbackCause3983673199\002\rollback.bin: Access is denied. final_bytes=160
+    zz_audit_network_floor_test.go:177: minimal native handle: O_APPEND=false truncate_error=<nil> final_bytes=80
+--- PASS: TestAuditWindowsHeaderRollbackCause (0.03s)
+PASS
+ok  	gateway (local checkout)	0.208s

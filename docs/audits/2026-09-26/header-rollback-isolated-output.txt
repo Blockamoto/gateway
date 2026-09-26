@@ -1,0 +1,6 @@
+=== RUN   Test051HeaderBadBatchRollsBack
+    standalone_051_test.go:481: rejected batch altered the selected header chain
+--- FAIL: Test051HeaderBadBatchRollsBack (0.04s)
+FAIL
+FAIL	gateway (local checkout)	0.198s
+FAIL

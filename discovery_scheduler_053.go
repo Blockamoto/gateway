@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"strings"
 	"time"
 )
@@ -68,18 +69,39 @@ func (n *bitcoinNetwork) refillWorkLocked(now time.Time) {
 // continuous specific-hint flood. Each evidence class gives due retries one
 // in four of its own turns. Empty classes lend their turns; caps do not grow.
 func (n *bitcoinNetwork) planDiscoveryLocked(now time.Time, seek bool) []bitcoinAddress {
+	return n.planDiscoveryWithRecoveryLocked(now, seek, seek)
+}
+
+// New-address intake can stop at its storage limit without stranding a known
+// member. Recovery still shares every dial, cooldown and diversity budget.
+func (n *bitcoinNetwork) planDiscoveryWithRecoveryLocked(now time.Time, seek, recoverKnown bool) []bitcoinAddress {
+	return n.planDiscoveryWithRefreshLocked(now, seek, recoverKnown, false)
+}
+
+func (n *bitcoinNetwork) planDiscoveryWithRefreshLocked(now time.Time, seek, recoverKnown, refreshPublicIP bool) []bitcoinAddress {
 	n.refillWorkLocked(now)
 	if n.ledgerError != "" {
 		return nil
 	}
 	roles := []string{"bitcoin_transport", "gateway_candidate", "gateway_search"}
 	counts := map[string]int{}
+	outbound := 0
+	memberCount := 0
 	groups := map[string]map[string]bool{}
-	for _, r := range append(roles, "gateway_service", "gateway_member") {
+	for _, r := range append(roles, "gateway_service", "gateway_member", "gateway_provider") {
 		groups[r] = map[string]bool{}
 	}
 	for _, s := range n.sessions {
-		counts[s.view.Role]++
+		if s.view.Direction == "inbound" {
+			continue
+		}
+		outbound++
+		if s.view.Gateway && !s.retired {
+			memberCount++
+		}
+		if !(s.view.Role == "bitcoin_transport" && s.headerUnavailable) {
+			counts[s.view.Role]++
+		}
 		if groups[s.view.Role] == nil {
 			groups[s.view.Role] = map[string]bool{}
 		}
@@ -93,7 +115,7 @@ func (n *bitcoinNetwork) planDiscoveryLocked(now time.Time, seek bool) []bitcoin
 		groups[v.Role][peerNetworkGroup(v.Address)] = true
 	}
 	plans := []bitcoinAddress{}
-	for n.tokens >= 1 && len(n.dialing) < n.policy.DialMax && len(n.sessions)+len(n.dialing) < n.policy.BitcoinSlots+n.policy.GatewaySlots+n.policy.ScoutSlots {
+	for n.tokens >= 1 && len(n.dialing) < n.policy.DialMax && outbound+len(n.dialing) < n.policy.BitcoinSlots+n.policy.GatewaySlots+n.policy.ScoutSlots {
 		scheduled := false
 		for tries := 0; tries < 3; tries++ {
 			r := (n.roleCursor + tries) % 3
@@ -105,7 +127,9 @@ func (n *bitcoinNetwork) planDiscoveryLocked(now time.Time, seek bool) []bitcoin
 			if r == 2 {
 				capacity = n.policy.ScoutSlots
 			}
-			if counts[role] >= capacity || r != 0 && !seek {
+			knownTurn := r == 1 && recoverKnown && memberCount+counts[role] < n.policy.GatewaySlots
+			refreshTurn := r == 2 && !seek && refreshPublicIP && !n.intakeBlockedLocked() && n.publicIPRefreshDueLocked(now)
+			if counts[role] >= capacity || r != 0 && !seek && !knownTurn && !refreshTurn {
 				continue
 			}
 			buckets := []int{0, 1}
@@ -130,7 +154,40 @@ func (n *bitcoinNetwork) planDiscoveryLocked(now time.Time, seek bool) []bitcoin
 			}
 			var chosen *bitcoinAddress
 			chosenBucket := 0
+			// Alternate known-member priority with the existing hint schedule.
+			// Odd turns preserve both specific-hint and weak-hint opportunities.
+			chooseKnown := func(standbyOnly bool) {
+				for _, address := range n.ledgerOrder {
+					x := n.ledger[address]
+					if x == nil || !x.GatewayVerified || x.Exclusion != "" || now.Before(x.RetryAfter) || now.Before(n.gatewayRecheckAfterLocked(x)) || n.sessions[address] != nil {
+						continue
+					}
+					if standbyOnly && x.LastOutcome != "gateway_standby_recovery" {
+						continue
+					}
+					if _, ok := n.dialing[address]; ok {
+						continue
+					}
+					explicit := strings.HasPrefix(x.Source, "manual") || x.Source == "local_core_bitcoin"
+					group := peerNetworkGroup(address)
+					if !n.allowPrivate && !explicit && (groups[role][group] || groups["gateway_service"][group] || groups["gateway_member"][group] || groups["gateway_provider"][group]) {
+						continue
+					}
+					if chosen == nil || x.LastAttempt.Before(chosen.LastAttempt) {
+						chosen, chosenBucket = x, n.workBucketAtLocked(x, now)
+					}
+				}
+			}
+			if r == 1 && seek && recoverKnown && n.policy.ScoutSlots > 0 && counts["gateway_provider"] == 0 && counts[role] == 0 {
+				chooseKnown(true)
+			}
+			if chosen == nil && knownTurn && (!seek || n.roleTurns[r]%2 == 0) {
+				chooseKnown(false)
+			}
 			for _, b := range buckets {
+				if chosen != nil || r != 0 && !seek && !refreshTurn {
+					break
+				}
 				for _, address := range n.workQueues[b] {
 					x := n.ledger[address]
 					if x == nil || x.Exclusion != "" || now.Before(x.RetryAfter) || n.sessions[address] != nil {
@@ -149,7 +206,23 @@ func (n *bitcoinNetwork) planDiscoveryLocked(now time.Time, seek bool) []bitcoin
 					}
 					explicit := strings.HasPrefix(x.Source, "manual") || x.Source == "local_core_bitcoin"
 					group := peerNetworkGroup(address)
-					if !n.allowPrivate && !explicit && (groups[role][group] || r == 1 && (groups["gateway_service"][group] || groups["gateway_member"][group])) {
+					if refreshTurn {
+						host, _, _ := net.SplitHostPort(address)
+						if !publicBitcoinIP(net.ParseIP(host)) || n.freshPublicIPObservationLocked(group, now) {
+							continue
+						}
+						pendingGroup := false
+						for _, dial := range n.dialing {
+							if peerNetworkGroup(dial.Address) == group {
+								pendingGroup = true
+								break
+							}
+						}
+						if pendingGroup {
+							continue
+						}
+					}
+					if !n.allowPrivate && !explicit && (groups[role][group] || r == 1 && (groups["gateway_service"][group] || groups["gateway_member"][group] || groups["gateway_provider"][group])) {
 						continue
 					}
 					chosen = x
@@ -160,10 +233,17 @@ func (n *bitcoinNetwork) planDiscoveryLocked(now time.Time, seek bool) []bitcoin
 					break
 				}
 			}
+			if chosen == nil && knownTurn {
+				chooseKnown(false)
+			}
 			if chosen == nil {
 				continue
 			}
 			x := chosen
+			if refreshTurn {
+				n.publicIPRefreshAt = now
+				n.eventLocked("public_ip_refresh", x.Address, "Opening a bounded address probe for a fresh outbound public-IP observation")
+			}
 			n.workCursor[chosenBucket] = x.Ordinal
 			n.roleTurns[r]++
 			n.roleCursor = (r + 1) % 3

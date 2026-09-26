@@ -131,7 +131,7 @@ func Test054RebuiltRuntimeCleanProfile(t *testing.T) {
 		t.Fatalf("not a fresh session: %+v", second)
 	}
 	info, e := readRuntimeInfo(root)
-	if e != nil || info.Version != "0.5.4" {
+	if e != nil || info.Version != appVersion {
 		t.Fatal("wrong runtime version", info, e)
 	}
 	if e := cleanup.Stop(root); e != nil {

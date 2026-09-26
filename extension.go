@@ -120,6 +120,14 @@ func (a *app) discoverModuleManifests() []moduleManifest {
 	return out
 }
 
+func (a *app) extensionCapabilities() []extensionCapability {
+	// External manifests describe local installations; no external provider
+	// dispatch/lease exists yet. Neither network_advertised nor a compatible
+	// host API alone establishes an active remotely usable handler. Bundled
+	// protocols already have their own explicit Gateway negotiation path.
+	return nil
+}
+
 func (a *app) handleMeta(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(metaView{

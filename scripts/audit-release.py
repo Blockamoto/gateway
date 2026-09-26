@@ -60,6 +60,8 @@ def inspect_pe(data: bytes) -> dict:
 def main() -> None:
     ap=argparse.ArgumentParser();ap.add_argument('--build',type=Path,required=True);ap.add_argument('--out',type=Path,required=True);args=ap.parse_args()
     root=Path(__file__).resolve().parents[1]
+    version=(root/'VERSION.txt').read_text().strip()
+    installer_name=f'gateway-client-v{version}-installer.exe'
     ico=(root/'ui/shell/gateway.ico').read_bytes()
     _,kind,count=struct.unpack_from('<HHH',ico);assert kind==1 and count==7
     images={}
@@ -67,7 +69,7 @@ def main() -> None:
         w,h,colors,reserved,planes,bits,size,at=struct.unpack_from('<BBBBHHII',ico,6+16*i)
         images[i+1]=ico[at:at+size]
     results=[]
-    for name,expected_subsystem in [('GatewayClient.exe',3),('GatewayOnDemand.exe',2),('GatewayNativeHost.exe',3),('gateway-client-v0.5.4-installer.exe',2)]:
+    for name,expected_subsystem in [('GatewayClient.exe',3),('GatewayOnDemand.exe',2),('GatewayNativeHost.exe',3),(installer_name,2)]:
         raw=(args.build/name).read_bytes();pe=inspect_pe(raw);leaves=pe.pop('leaves')
         assert pe['subsystem']==expected_subsystem,(name,'subsystem')
         for identifier,payload in images.items():assert leaves[(3,identifier,1033)]==payload,(name,identifier,'icon mismatch')
@@ -75,7 +77,7 @@ def main() -> None:
         assert struct.unpack_from('<HHH',group)==(0,1,count)
         assert not pe['authenticode_present']
         results.append({'file':name,'bytes':len(raw),'sha256':sha(raw),**pe,'icon_images':7,'icon_group':101,'icon_pixels_equal_checked_in_assets':True})
-    installer=(args.build/'gateway-client-v0.5.4-installer.exe').read_bytes()
+    installer=(args.build/installer_name).read_bytes()
     exact=[]
     for name in ('GatewayClient.exe','GatewayOnDemand.exe','GatewayNativeHost.exe'):
         payload=(args.build/name).read_bytes();position=installer.find(payload)

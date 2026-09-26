@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	appVersion              = "0.5.4"
+	appVersion              = "0.5.4-repair.1"
 	bodWireVersion          = 1
 	minBODWireVersion       = 1
 	overlayProtocolVersion  = bodWireVersion
@@ -38,6 +38,7 @@ type compatibilityView struct {
 	CacheMetadataRebuild   bool   `json:"cache_metadata_rebuild_required"`
 	CoreMountSchema        int    `json:"core_mount_schema"`
 	GraphSchema            int    `json:"graph_schema"`
+	GraphRebuild           bool   `json:"public_graph_rebuild_required"`
 	SatlineStorageSchema   int    `json:"satline_storage_schema"`
 	LocalAPI               int    `json:"local_api"`
 	SkinAPI                int    `json:"skin_api"`
@@ -75,6 +76,7 @@ func currentCompatibility() compatibilityView {
 		CacheMetadataRebuild:   false,
 		CoreMountSchema:        coreMountSchemaVersion,
 		GraphSchema:            graphSchemaVersion,
+		GraphRebuild:           true,
 		SatlineStorageSchema:   satlineStorageSchema,
 		LocalAPI:               localAPIVersion,
 		SkinAPI:                skinAPIVersion,
@@ -85,7 +87,7 @@ func currentCompatibility() compatibilityView {
 		MinimumOverlayProtocol: minBODWireVersion,
 		StorageIndexRebuild:    false,
 		BlockVerifier:          blockVerifierVersion, DerivedRecheck: true, OrdStorage: 1, ArchiveStorage: 1,
-		Note: "v0.5.4 repairs stable advertisement, evidence-ranked discovery, independent compatibility cooldowns and bounded Gateway membership. Existing data and wire/verifier schemas are preserved. Explicit cleanup is opt-in and excludes external providers.",
+		Note: "Repair candidate for discovery, managed sessions, header rollback recovery and public-data boundaries. Public graph schema 2 is rebuilt from explicitly public blocks; legacy graph files are preserved. Bitcoin/BOD/Gateway wire formats, header records and raw blocks are unchanged. Public propagation remains to be measured.",
 	}
 }
 

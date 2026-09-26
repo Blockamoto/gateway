@@ -270,6 +270,20 @@ func strictSatlineJSON(b []byte, v any) error {
 	return nil
 }
 func (a *app) handleSatlineWire(c net.Conn, payload []byte, seen map[string]bool) {
+	if len(payload) > maxSatlineRequestBytes {
+		return
+	}
+	var env satlineEnvelope
+	if strictSatlineJSON(payload, &env) != nil || env.Kind != "request" || !validSatlineRequestID(env.ID) {
+		return
+	}
+	a.settingsMu.RLock()
+	serving := a.settings.SatlineEnabled && a.settings.SatlineServePublished
+	a.settingsMu.RUnlock()
+	if !serving {
+		writeSatlineUnavailable(c, env.ID, "unsupported")
+		return
+	}
 	a.satlineNetMu.Lock()
 	if a.satlineNetworkSlots == nil {
 		a.satlineNetworkSlots = make(chan struct{}, 4)
@@ -280,14 +294,7 @@ func (a *app) handleSatlineWire(c net.Conn, payload []byte, seen map[string]bool
 	case slots <- struct{}{}:
 		defer func() { <-slots }()
 	default:
-		return
-	}
-
-	if len(payload) > maxSatlineRequestBytes {
-		return
-	}
-	var env satlineEnvelope
-	if strictSatlineJSON(payload, &env) != nil || env.Kind != "request" || !validSatlineRequestID(env.ID) {
+		writeSatlineUnavailable(c, env.ID, "busy")
 		return
 	}
 	out := satlineEnvelope{Wire: 1, Network: "mainnet", Kind: "response", ID: env.ID}

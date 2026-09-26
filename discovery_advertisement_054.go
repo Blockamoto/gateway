@@ -3,10 +3,64 @@ package main
 import (
 	"net"
 	"sort"
+	"strings"
 	"time"
 )
 
 const publicObservationTTL054 = 30 * time.Minute
+const publicObservationRefresh054 = 20 * time.Minute
+
+// Called before taking n.mu. Endpoint sources with their own authority do not
+// need extra outbound observations, and pausing discovery also pauses probes.
+func (a *app) needsPublicIPObservations054() bool {
+	a.settingsMu.RLock()
+	s := a.settings
+	a.settingsMu.RUnlock()
+	if s.NetworkDisabled || s.DiscoveryPaused || !(s.ServeData || s.SatlineServePublished) || strings.TrimSpace(s.AdvertiseAddr) != "" {
+		return false
+	}
+	listen := a.gatewayListenerAddress()
+	host, _, e := net.SplitHostPort(listen)
+	if e != nil || publicBitcoinIP(net.ParseIP(host)) {
+		return false
+	}
+	for _, host := range a.currentBitcoinServing().LocalAddresses {
+		if publicBitcoinIP(net.ParseIP(host)) {
+			return false
+		}
+	}
+	return true
+}
+
+func (n *bitcoinNetwork) recordPublicIPObservationLocked(address string, observed net.IP, now time.Time) {
+	if !publicBitcoinIP(observed) {
+		return
+	}
+	group := peerNetworkGroup(address)
+	n.observedIPs[group] = observed.String()
+	n.observedAt[group] = now
+}
+
+func (n *bitcoinNetwork) freshPublicIPObservationLocked(group string, now time.Time) bool {
+	at, known := n.observedAt[group]
+	return known && !at.IsZero() && !at.After(now.Add(time.Minute)) && now.Sub(at) < publicObservationRefresh054 && publicBitcoinIP(net.ParseIP(n.observedIPs[group]))
+}
+
+func (n *bitcoinNetwork) publicIPRefreshDueLocked(now time.Time) bool {
+	if !n.publicIPRefreshAt.IsZero() && now.Sub(n.publicIPRefreshAt) < time.Minute {
+		return false
+	}
+	votes := map[string]int{}
+	for group, host := range n.observedIPs {
+		if n.freshPublicIPObservationLocked(group, now) {
+			votes[host]++
+			if votes[host] >= 2 {
+				return false
+			}
+		}
+	}
+	return true
+}
 
 func (n *bitcoinNetwork) publicIPVotesLocked(now time.Time) map[string]int {
 	votes := map[string]int{}

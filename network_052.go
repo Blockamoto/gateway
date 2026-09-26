@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net"
@@ -133,6 +134,13 @@ func (n *bitcoinNetwork) receiveAddresses(s *bitcoinSession, rows []advertisedPe
 	n.ledgerMeta.AddressMessages++
 	first := !s.addrReceived
 	s.addrReceived = true
+	// addr/addrv2 have no request ID: a singleton can be an unsolicited
+	// self-announcement before the getaddr response. As with Core's AddrFetch,
+	// only a multi-record message permits early completion. Genuine singleton
+	// or empty replies are still learned, with the original probe deadline.
+	if len(rows) > 1 {
+		s.addrSampleReceived = true
+	}
 	if first {
 		n.discovery.AddressResponses++
 		n.discovery.LastProgress = time.Now().UTC()
@@ -177,7 +185,9 @@ func (n *bitcoinNetwork) maintainDiscovery() {
 		}
 		n.mu.Unlock()
 		for _, s := range n.listSessions() {
-			s.close("Outbound networking disabled")
+			if s.view.Direction != "inbound" {
+				s.close("Outbound networking disabled")
+			}
 		}
 		return
 	}
@@ -197,9 +207,16 @@ func (n *bitcoinNetwork) maintainDiscovery() {
 			n.ensureConfiguredAddress(p, "local_core_bitcoin", 0)
 		}
 	}
+	refreshPublicIP := !settings.DiscoveryPaused && n.app.needsPublicIPObservations054()
 	n.mu.Lock()
 	now := n.now()
-	if !settings.DiscoveryPaused && !n.intakeBlockedLocked() && !n.noBootstrap && !n.bootstrapBusy && len(n.sessions) < 2 && (n.bootstrapAt.IsZero() || now.Sub(n.bootstrapAt) > 5*time.Minute) {
+	outbound := 0
+	for _, s := range n.sessions {
+		if s.view.Direction != "inbound" {
+			outbound++
+		}
+	}
+	if !settings.DiscoveryPaused && !n.intakeBlockedLocked() && !n.noBootstrap && !n.bootstrapBusy && outbound < 2 && (n.bootstrapAt.IsZero() || now.Sub(n.bootstrapAt) > 5*time.Minute) {
 		n.bootstrapBusy = true
 		n.bootstrapAt = now
 		n.eventLocked("bootstrap", "", "Asking Bitcoin DNS seeds for ordinary Bitcoin introductions")
@@ -229,9 +246,9 @@ func (n *bitcoinNetwork) maintainDiscovery() {
 		n.discovery.Mode = mode
 		n.eventLocked("mode", "", mode)
 	}
-	// Close scouts only after address processing/timeout, and never while a data
-	// request owns their slot. A negotiated peer is promoted before maintenance.
-	retire := []*bitcoinSession{}
+	// Close scouts after a multi-address sample or timeout, and never while a
+	// data request owns their slot. A negotiated peer is promoted first.
+	retire := n.retireHeaderTransportsLocked(now)
 	health := []*bitcoinSession{}
 	n.retainGatewaySessionsLocked()
 	for _, s := range n.sessions {
@@ -240,7 +257,7 @@ func (n *bitcoinNetwork) maintainDiscovery() {
 			s.lastServiceCheck = now
 			health = append(health, s)
 		}
-		if s.scout && !s.healthChecking && len(s.slot) == 0 && (!seek || now.Sub(s.view.Connected) > n.policy.ProbeWindow || (s.addrReceived && !s.peer.gateway)) {
+		if s.scout && !s.healthChecking && len(s.slot) == 0 && (!seek || now.Sub(s.view.Connected) > n.policy.ProbeWindow || (s.addrSampleReceived && !s.peer.gateway)) {
 			s.retired = true
 			if x := n.ledger[s.peer.addr]; x != nil {
 				x.RetryAfter = now.Add(n.policy.RevisitAfter)
@@ -252,6 +269,9 @@ func (n *bitcoinNetwork) maintainDiscovery() {
 				}
 				if x.LastNegotiation == "no_gateway" {
 					x.LastOutcome = "bitcoin_without_gateway"
+				}
+				if s.peer.gateway && s.requestSuccess && s.view.BOD {
+					x.LastOutcome = "gateway_standby"
 				}
 				x.OutcomeAt = now
 				x.InFlight = false
@@ -267,7 +287,7 @@ func (n *bitcoinNetwork) maintainDiscovery() {
 		}
 		n.tokenAt = now
 	}
-	plans := n.planDiscoveryLocked(now, seek)
+	plans := n.planDiscoveryWithRefreshLocked(now, seek, !settings.DiscoveryPaused && n.ledgerError == "", refreshPublicIP)
 	n.mu.Unlock()
 	for _, s := range retire {
 		s.close("Discovery visit complete; address retained for a later search")
@@ -321,7 +341,7 @@ func (n *bitcoinNetwork) dialDiscoveryPeer(x bitcoinAddress) {
 		return
 	}
 	now := time.Now().UTC()
-	s := &bitcoinSession{n: n, peer: p, done: make(chan struct{}), slot: make(chan struct{}, 1), replies: make(chan message, 8), serveQueue: make(chan message, 4), satIDs: map[string]bool{}}
+	s := &bitcoinSession{n: n, peer: p, done: make(chan struct{}), slot: make(chan struct{}, 1), serveQueue: make(chan message, 4), satIDs: map[string]bool{}}
 	n.mu.Lock()
 	v := n.dialing[x.Address]
 	delete(n.dialing, x.Address)
@@ -340,6 +360,10 @@ func (n *bitcoinNetwork) dialDiscoveryPeer(x bitcoinAddress) {
 		v.Role = "gateway_candidate"
 		n.discovery.GatewayNegotiations++
 		n.eventLocked("gateway_negotiated", x.Address, "BIP 434 and Gateway protocol exchange completed")
+	} else if p.services&(nodeNetworkService|nodeNetworkLimitedService) == 0 {
+		// A successful Bitcoin handshake alone does not make a header provider.
+		// Keep its bounded address visit, without occupying a transport slot.
+		v.Role = "gateway_search"
 	}
 	s.view = v
 	s.scout = v.Role == "gateway_search" || v.Role == "gateway_candidate"
@@ -373,11 +397,7 @@ func (n *bitcoinNetwork) dialDiscoveryPeer(x bitcoinAddress) {
 		}
 		n.touchLocked(a)
 	}
-	if publicBitcoinIP(p.observedIP) {
-		group := peerNetworkGroup(x.Address)
-		n.observedIPs[group] = p.observedIP.String()
-		n.observedAt[group] = n.now()
-	}
+	n.recordPublicIPObservationLocked(x.Address, p.observedIP, now)
 	n.eventLocked("bitcoin_connected", x.Address, "Bitcoin handshake completed; inspecting addresses and negotiated capabilities")
 	canAsk := !n.intakeBlockedLocked()
 	s.addrAsked = canAsk
@@ -522,7 +542,6 @@ func (n *bitcoinNetwork) checkGatewayService(s *bitcoinSession) {
 	s.scout = false
 	s.requestSuccess = true
 	s.lastServiceCheck = time.Now().UTC()
-	s.view.Role = "gateway_service"
 	n.retainGatewaySessionsLocked()
 	s.view.LastWork = "Useful block-location request completed"
 	s.view.LastError = ""
@@ -560,14 +579,19 @@ func (n *bitcoinNetwork) discoverySnapshot() map[string]any {
 	n.app.settingsMu.RUnlock()
 	n.mu.Lock()
 	rows := []networkPeerView{}
-	gateway, bod, stable, scouts := 0, 0, 0, 0
+	gateway, bod, stable, scouts, managedIncoming := 0, 0, 0, 0, 0
+	managedAddresses := make(map[string]bool)
 	for _, s := range n.sessions {
 		v := s.view
+		managedAddresses[v.Address] = true
 		v.Protocols = append([]string(nil), v.Protocols...)
 		v.Negotiated = append([]gatewayProtocolSupport(nil), v.Negotiated...)
 		rows = append(rows, v)
 		if v.Gateway {
 			gateway++
+			if v.Direction == "inbound" {
+				managedIncoming++
+			}
 		}
 		if v.BOD {
 			bod++
@@ -611,14 +635,14 @@ func (n *bitcoinNetwork) discoverySnapshot() map[string]any {
 	if n.app.source != nil {
 		n.app.source.mu.Lock()
 		for _, p := range n.app.source.live {
-			if p.Gateway {
+			if p.Gateway && !managedAddresses[p.Address] {
 				incoming++
 			}
 		}
 		n.app.source.mu.Unlock()
 	}
-	snapshot["gateway_inbound"] = incoming
-	snapshot["gateway_outbound"] = gateway
+	snapshot["gateway_inbound"] = incoming + managedIncoming
+	snapshot["gateway_outbound"] = gateway - managedIncoming
 	snapshot["gateway_connected"] = gateway + incoming
 	snapshot["advertisement"] = n.app.bitcoinAdvertisementStatus()
 	return snapshot
@@ -661,40 +685,75 @@ func (s *bitcoinSession) serveMessage(m message) {
 	allowed := a.settings.ServeData
 	sat := a.settings.SatlineEnabled && a.settings.SatlineServePublished
 	a.settingsMu.RUnlock()
-	if m.command == "satmsg" && (!sat || !s.peer.gateway) {
-		return
-	}
-	if m.command != "satmsg" && !allowed {
-		return
-	}
-	// These existing handlers serialize complete replies while holding the one
-	// connection writer. The read loop remains free to receive our own responses.
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	_ = s.peer.conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
-	defer s.peer.conn.SetWriteDeadline(time.Time{})
+	// Provider work never owns the writer. The wrapper serializes each complete
+	// Bitcoin frame, leaving ping and opposite-direction replies independent.
+	c := &sessionWriteConn{Conn: s.peer.conn, s: s}
+	defer func() {
+		if c.err != nil {
+			s.close(c.err.Error())
+		}
+	}()
 	switch m.command {
+	case "gwmsg":
+		// Inventory exchange is control traffic, including receive-only nodes.
+		// A new hello gets an acknowledgement without mutating the immutable
+		// protocol list negotiated before the managed reader started.
+		p := *s.peer
+		handleGatewayMessage(c, m.payload, &p)
 	case "getdata":
-		a.source.handleGetData(s.peer.conn, m.payload)
+		if allowed {
+			a.source.handleGetData(c, m.payload)
+		} else {
+			writeBitcoinUnavailable(c, m)
+		}
 	case "getheaders", "getblocks":
-		a.source.handleChainRequest(s.peer.conn, m.command, m.payload)
+		if allowed {
+			a.source.handleChainRequest(c, m.command, m.payload)
+		} else {
+			writeBitcoinUnavailable(c, m)
+		}
 	case "bodmsg":
 		if s.peer.gateway && s.peer.bod {
-			s.serviceRequests++
-			if s.serviceRequests > 64 {
-				s.close("BOD session request limit reached")
+			var env bodEnvelope
+			if json.Unmarshal(m.payload, &env) != nil || env.Kind != "request" || env.ID == "" || len(env.ID) > 128 {
+				a.source.handleBODMsg(c, m.payload)
 				return
 			}
-			a.source.handleBODMsg(s.peer.conn, m.payload)
+			status := s.bodBudget.take(s.n.now(), 64, env.ID)
+			if !allowed {
+				status = "unsupported"
+			}
+			if status != "" {
+				a.source.writeBODResponse(c, bodEnvelope{Wire: bodWireVersion, Kind: "response", Type: env.Type, ID: env.ID, Status: status, Error: "Serving unavailable, request budget exhausted, or duplicate request ID", Payload: json.RawMessage(`{}`)})
+				return
+			}
+			a.source.handleBODMsg(c, m.payload)
 		}
 	// Satline keeps its own rate limits and explicit publication controls.
 	case "satmsg":
-		s.satRequests++
-		if s.satRequests > 16 {
-			s.close("Satline session request limit reached")
+		if !s.peer.gateway {
 			return
 		}
-		a.handleSatlineWire(s.peer.conn, m.payload, s.satIDs)
+		if _, ok := protocolVersionSupported(s.peer.gatewayProtocols, satlineProtocolID, 1, 1); !ok {
+			return
+		}
+		var env satlineEnvelope
+		if strictSatlineJSON(m.payload, &env) != nil || env.Kind != "request" || !validSatlineRequestID(env.ID) {
+			return
+		}
+		previous := s.satBudget.started
+		status := s.satBudget.take(s.n.now(), 16, env.ID)
+		if previous != s.satBudget.started {
+			s.satIDs = make(map[string]bool)
+		}
+		if !sat {
+			status = "unsupported"
+		}
+		if status != "" {
+			writeSatlineUnavailable(c, env.ID, status)
+			return
+		}
+		a.handleSatlineWire(c, m.payload, s.satIDs)
 	}
 }
 func (n *bitcoinNetwork) addressReply() []byte { return encodeAddressList(n.addressReplyRows()) }
@@ -738,11 +797,15 @@ func (n *bitcoinNetwork) checkServiceHealth(s *bitcoinSession) {
 		}
 		n.mu.Lock()
 		n.eventLocked("service_lost", s.peer.addr, reason)
+		wasUseful := s.requestSuccess
 		s.requestSuccess = false
 		s.view.BOD = false
 		s.view.LastWork = "Gateway connected; BOD service unavailable"
 		n.serviceOutcomeLocked(s, "service_unavailable", reason)
 		n.retainGatewaySessionsLocked()
+		if wasUseful {
+			n.wakeStandbyProviderLocked(n.now())
+		}
 		n.mu.Unlock()
 		return
 	}

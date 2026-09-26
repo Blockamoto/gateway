@@ -104,14 +104,14 @@ func saveOrdFixture050(t *testing.T, a *app, id, delegate string, body []byte) {
 	}
 }
 func Test050OrdContentOriginIsReadOnlySandboxed(t *testing.T) {
-	a := &app{dataDir: t.TempDir()}
+	a := ordContentSecurityApp(t)
 	id := strings.Repeat("ab", 32) + "i0"
 	body := []byte(`<script>window.parent.postMessage('test','*')</script>`)
 	saveOrdFixture050(t, a, id, "", body)
-	r := httptest.NewRequest("GET", "http://127.0.0.1:1234/content/"+id, nil)
+	r := ordContentSameOriginRequest(a, "GET", "/content/"+id)
 	w := httptest.NewRecorder()
 	a.serveOrdContent(w, r)
-	if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), body) || !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox allow-scripts") || strings.Contains(w.Header().Get("Content-Security-Policy"), "allow-same-origin") {
+	if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), body) || !strings.Contains(w.Header().Get("Content-Security-Policy"), "sandbox allow-scripts allow-same-origin") || w.Header().Get("Access-Control-Allow-Origin") != a.contentURL {
 		t.Fatal("unsafe content preview", w.Code, w.Header())
 	}
 	for _, path := range []string{"/api/v1/settings", "/content/../../settings.json", "/api/v1/migration"} {
@@ -128,13 +128,13 @@ func Test050OrdContentOriginIsReadOnlySandboxed(t *testing.T) {
 	}
 }
 func Test050OrdDelegateCycleAndCorruptBody(t *testing.T) {
-	a := &app{dataDir: t.TempDir()}
+	a := ordContentSecurityApp(t)
 	one := strings.Repeat("aa", 32) + "i0"
 	two := strings.Repeat("bb", 32) + "i0"
 	saveOrdFixture050(t, a, one, two, []byte("a"))
 	saveOrdFixture050(t, a, two, one, []byte("b"))
 	w := httptest.NewRecorder()
-	a.serveOrdContent(w, httptest.NewRequest("GET", "http://127.0.0.1/content/"+one, nil))
+	a.serveOrdContent(w, ordContentSameOriginRequest(a, "GET", "/content/"+one))
 	if w.Code != 409 {
 		t.Fatal("cycle not bounded", w.Code)
 	}

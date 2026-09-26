@@ -1,19 +1,19 @@
-# Gateway Client v0.5.4
-## Stable Discovery and Clean Reset test candidate
+# Gateway Client v0.5.4-repair.1
+## Discovery and session repair candidate
 
-This release repairs the issues identified in the two v0.5.3 live reports: unstable public-endpoint selection, indiscriminate service-bit hints, ineffective negative checks after disconnect, and negotiated Gateway connections being retired for lacking a block sample. It retains the exact discovery ledger and adds explicit, protected data removal to the Windows uninstaller. No libp2p, Gateway bootstrap service or bundled Gateway endpoint list is added.
+This candidate repairs the known discovery and session defects found in the v0.5.4 audit: premature scout completion, failed-announcement cooldowns, stale automatic public-address evidence, request-timeout disconnects, inbound session asymmetry and blocked peer recovery. It also repairs Windows header rollback and public-data boundary defects. See [repair notes](docs/discovery-repair-candidate.md) for scope, data compatibility and validation. No Gateway bootstrap service or bundled Gateway endpoint list is added.
 
-This is an unsigned test candidate, not a certified public release. Windows binaries are cross-compiled. Native Windows installation, stock-Core address propagation and unrestricted public Gateway discovery remain separate acceptance gates. Read `VERIFICATION-v0.5.4.md` for executed results and limitations.
+This is an unsigned test candidate. Native Windows installation, stock-Core address propagation and unrestricted public Gateway discovery remain separate acceptance gates. The [repair test record](docs/audits/2026-09-26/discovery-repair-tests.json) supersedes the historical v0.5.4 verification for these repairs.
 
 ## Start on Windows
 
-Extract the outer release ZIP. For an isolated receiving-client test, extract `gateway-client-v0.5.4-windows-portable.zip` and run `TestStandalone.cmd`. It uses `%LOCALAPPDATA%\GatewayClient-054-QA`, without borrowing your ordinary Gateway profile. Its initial settings disable Core RPC, mounted Core files, inbound serving, public sharing and Satline publication. No manual peer or Gateway endpoint is preloaded. Ordinary Bitcoin bootstrap remains enabled.
+Extract `gateway-client-v0.5.4-repair.1-windows-amd64.zip`. On the Core-backed publishing laptop, run `GatewayOnDemand.exe` and configure Core and deliberate serving. For an isolated receiving-client test, run `TestStandalone.cmd`. It uses `%LOCALAPPDATA%\GatewayClient-054-QA`, without borrowing your ordinary Gateway profile. Its initial settings disable Core RPC, mounted Core files, inbound serving, public sharing and Satline publication. No manual peer or Gateway endpoint is preloaded. Ordinary Bitcoin bootstrap remains enabled.
 
 Running the same launcher again resumes that profile and its discovery ledger. It does not reset your checks. Existing settings in that QA profile are preserved, so inspect them before claiming a clean standalone test.
 
 `TestFreshStandalone.cmd` creates an additional uniquely named QA profile without deleting or renaming any previous one. It prints the new directory and writes a `ResumeTest.cmd` there. That resume launcher uses this extracted executable's full path, so keep the portable directory in place. PowerShell is used only to generate the fresh session identifier. Neither launcher installs persistent Windows/browser integrations by itself. Actions explicitly selected in guided setup remain your choice.
 
-For ordinary use, `GatewayOnDemand.exe` opens the client. The outer ZIP also includes `gateway-client-v0.5.4-installer.exe`. Close the old Gateway process and back up application data before upgrading. Keep all three Windows executables and the Browser Companion folder together.
+For ordinary use, `GatewayOnDemand.exe` opens the client. The ZIP also includes `gateway-client-v0.5.4-repair.1-installer.exe`. Close the old Gateway process and keep a separate test profile when upgrading. Keep all three Windows executables and the Browser Companion folder together. Legacy graph files are preserved; public graph schema 2 requires rebuilding from public blocks.
 
 ## What to watch
 

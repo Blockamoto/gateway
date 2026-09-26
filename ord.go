@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -67,7 +68,7 @@ func (a *app) loadOrdRecord(id string) (ordRecord, []byte, error) {
 	if hex.EncodeToString(h[:]) != rec.SHA256 {
 		return rec, nil, fmt.Errorf("inscription cache checksum mismatch")
 	}
-	rec.ContentURL = a.contentURL + "/content/" + id
+	rec.ContentURL = a.ordContentURL(id)
 	return rec, body, nil
 }
 func (a *app) saveOrdRecord(rec ordRecord, body []byte) error {
@@ -151,7 +152,7 @@ func (a *app) resolveInscription(ctx context.Context, id, blockHint string) (ord
 	}
 	env := envelopes[index]
 	digest := sha256.Sum256(env.Body)
-	rec := ordRecord{Schema: 1, VerifierVersion: blockVerifierVersion, ID: id, TxID: txid, Index: index, BlockHash: block.Hash, Height: block.Height, Envelope: env, Size: len(env.Body), SHA256: hex.EncodeToString(digest[:]), Evidence: block.VerificationState, Provider: "bitcoin_on_demand_witness", Profile: ordInterpretationProfile, Interpretation: "envelope_extracted", InitialState: "not_resolved", ContentURL: a.contentURL + "/content/" + id, Updated: time.Now().UTC(), Note: "Content bytes are witness-authenticated. Global number, curse/vindication history, and complete provenance are not inferred from one reveal. Parent fields are claims."}
+	rec := ordRecord{Schema: 1, VerifierVersion: blockVerifierVersion, ID: id, TxID: txid, Index: index, BlockHash: block.Hash, Height: block.Height, Envelope: env, Size: len(env.Body), SHA256: hex.EncodeToString(digest[:]), Evidence: block.VerificationState, Provider: "bitcoin_on_demand_witness", Profile: ordInterpretationProfile, Interpretation: "envelope_extracted", InitialState: "not_resolved", ContentURL: a.ordContentURL(id), Updated: time.Now().UTC(), Note: "Content bytes are witness-authenticated. Global number, curse/vindication history, and complete provenance are not inferred from one reveal. Parent fields are claims."}
 	if env.Unbound {
 		rec.InitialState = "unbound_even_field"
 	}
@@ -286,7 +287,7 @@ func (a *app) resolveOrdAdapter(ctx context.Context, id string, nativeErr error)
 	}
 	tx, index, _ := inscriptionParts(id)
 	h := sha256.Sum256(body)
-	rec := ordRecord{Schema: 1, VerifierVersion: blockVerifierVersion, ID: id, TxID: tx, Index: index, Height: -1, Envelope: ordEnvelope{ContentType: ct, HasBody: true}, Size: len(body), SHA256: hex.EncodeToString(h[:]), Evidence: "provider_reported", Provider: "local_ord_adapter", Profile: ordInterpretationProfile, Interpretation: "provider_derived", InitialState: "provider_context", ContentURL: a.contentURL + "/content/" + id, AdapterMetadata: meta, Note: "Local ord supplied this answer; the witness could not be independently authenticated here. Native lookup: " + nativeErr.Error(), Updated: time.Now().UTC()}
+	rec := ordRecord{Schema: 1, VerifierVersion: blockVerifierVersion, ID: id, TxID: tx, Index: index, Height: -1, Envelope: ordEnvelope{ContentType: ct, HasBody: true}, Size: len(body), SHA256: hex.EncodeToString(h[:]), Evidence: "provider_reported", Provider: "local_ord_adapter", Profile: ordInterpretationProfile, Interpretation: "provider_derived", InitialState: "provider_context", ContentURL: a.ordContentURL(id), AdapterMetadata: meta, Note: "Local ord supplied this answer; the witness could not be independently authenticated here. Native lookup: " + nativeErr.Error(), Updated: time.Now().UTC()}
 	e = a.saveOrdRecord(rec, body)
 	return rec, e
 }
@@ -364,6 +365,64 @@ func (a *app) startOrdContent() error {
 	go srv.Serve(ln)
 	return nil
 }
+
+// Initial iframe navigations have neither Origin nor Referer. A scoped grant
+// lets the local UI open one inscription without exposing the management token
+// or making a known inscription ID sufficient to probe this node's cache.
+func (a *app) ordContentGrant(id string) string {
+	info, err := readRuntimeInfo(a.dataDir)
+	if err != nil || info.PID != os.Getpid() || info.Token == "" || info.URL != a.runtimeURL || a.contentURL == "" {
+		return ""
+	}
+	mac := hmac.New(sha256.New, []byte(info.Token))
+	_, _ = mac.Write([]byte("gateway/ord-content/v1\x00" + a.contentURL + "\x00" + id))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func (a *app) ordContentURL(id string) string {
+	grant := a.ordContentGrant(id)
+	if grant == "" {
+		return ""
+	}
+	return a.contentURL + "/content/" + id + "?view=" + grant
+}
+
+func (a *app) allowOrdContentRequest(r *http.Request, id string) bool {
+	a.settingsMu.RLock()
+	enabled := a.settings.OrdEnabled
+	a.settingsMu.RUnlock()
+	if !enabled {
+		return false
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	ip := net.ParseIP(host)
+	content, parseErr := url.Parse(a.contentURL)
+	if err != nil || ip == nil || !ip.IsLoopback() || parseErr != nil || content.Scheme != "http" || content.Host == "" || r.Host != content.Host {
+		return false
+	}
+	origin := r.Header.Get("Origin")
+	if len(r.Header.Values("Origin")) > 1 || origin == "null" {
+		return false
+	}
+	if origin != "" {
+		// The content origin is separate from Gateway. Never accept arbitrary
+		// localhost ports or opaque sandbox origins as the same principal.
+		return (origin == a.contentURL || a.runtimeURL != "" && origin == a.runtimeURL) && r.Header.Get("Sec-Fetch-Site") != "cross-site"
+	}
+	if r.Header.Get("Sec-Fetch-Site") == "same-origin" {
+		return true // same-origin images/scripts and cached recursive requests
+	}
+	grant := a.ordContentGrant(id)
+	if grant == "" || !hmac.Equal([]byte(r.URL.Query().Get("view")), []byte(grant)) {
+		return false
+	}
+	// Browser grants are navigation-only; direct native clients may also use
+	// the explicitly supplied scoped URL. A cross-origin subresource probe
+	// cannot borrow a grant for an image, script, or fetch.
+	mode, dest := r.Header.Get("Sec-Fetch-Mode"), r.Header.Get("Sec-Fetch-Dest")
+	return mode == "" && dest == "" || mode == "navigate" && (dest == "document" || dest == "iframe")
+}
+
 func (a *app) serveOrdContent(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" && r.Method != "HEAD" {
 		http.Error(w, "read-only content service", 405)
@@ -373,8 +432,8 @@ func (a *app) serveOrdContent(w http.ResponseWriter, r *http.Request) {
 	// trigger arbitrary network work, publish a record, or access local files.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'none'; sandbox allow-scripts")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'none'; sandbox allow-scripts allow-same-origin")
 	prefix := "/content/"
 	metadata := false
 	if strings.HasPrefix(r.URL.Path, "/r/inscription/") {
@@ -389,6 +448,14 @@ func (a *app) serveOrdContent(w http.ResponseWriter, r *http.Request) {
 	if !isInscriptionID(id) {
 		http.NotFound(w, r)
 		return
+	}
+	if !a.allowOrdContentRequest(r, id) {
+		http.Error(w, "Content access requires an intended local viewer", http.StatusForbidden)
+		return
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
 	}
 	rec, body, e := a.loadOrdRecord(id)
 	if e != nil {

@@ -155,13 +155,17 @@ func (a *app) handlePeers(w http.ResponseWriter, r *http.Request) {
 		network = a.network.snapshot()
 	}
 	rows := []any{}
+	managed := make(map[string]bool)
 	if outbound, ok := network["connections"].([]networkPeerView); ok {
 		for _, p := range outbound {
 			rows = append(rows, p)
+			managed[p.Address] = true
 		}
 	}
 	for _, p := range live {
-		rows = append(rows, p)
+		if !managed[p.Address] {
+			rows = append(rows, p)
+		}
 	}
 	var listener any
 	if a.source != nil {

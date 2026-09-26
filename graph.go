@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	graphSchemaVersion   = 1
+	graphSchemaVersion   = 2
 	graphSpendRecordSize = 117
 	graphTxRecordSize    = 85
 )
@@ -100,7 +100,9 @@ type graphStatusView struct {
 	Build                 graphBuildState  `json:"build"`
 }
 
-func (a *app) graphDir() string        { return filepath.Join(a.dataDir, "graph") }
+// The v1 graph did not record publication provenance. Preserve it on disk, but
+// never inherit its records or coverage into the public graph.
+func (a *app) graphDir() string        { return filepath.Join(a.dataDir, "graph", "public-v2") }
 func (a *app) graphMetaPath() string   { return filepath.Join(a.graphDir(), "meta.json") }
 func (a *app) graphBlocksPath() string { return filepath.Join(a.graphDir(), "blocks.dat") }
 func (a *app) graphBuildPath() string  { return filepath.Join(a.graphDir(), "build-state.json") }
@@ -119,16 +121,25 @@ func (a *app) initGraphStore() {
 	var meta graphMeta
 	b, err := os.ReadFile(a.graphMetaPath())
 	fresh := err != nil || json.Unmarshal(b, &meta) != nil || meta.Schema != graphSchemaVersion || meta.VerifierVersion != blockVerifierVersion
+	a.coverageMu.Lock()
+	legacyCoverage := a.coverage.GraphSchema != graphSchemaVersion
+	if fresh || legacyCoverage {
+		a.coverage.Spender = nil
+		a.coverage.GraphSchema = graphSchemaVersion
+	}
+	a.coverageMu.Unlock()
+	if fresh || legacyCoverage {
+		_ = a.saveCoverage()
+	}
 	if fresh {
 		// Pre-0.4.5 coverage.Spender described preliminary cache-derived spend
 		// sightings. It was useful positive knowledge but was not the durable
 		// graph store introduced here, so never inherit it as negative-proof
 		// coverage.
-		a.coverageMu.Lock()
-		a.coverage.Spender = nil
-		a.coverageMu.Unlock()
-		_ = a.saveCoverage()
 		_ = os.Rename(a.graphBlocksPath(), a.graphBlocksPath()+".needs-recheck")
+		if err := a.initGraphShardReceipts(); err != nil {
+			return // no valid receipts means reads and writes fail closed
+		}
 		meta = graphMeta{VerifierVersion: blockVerifierVersion, Schema: graphSchemaVersion, CreatedAt: time.Now().UTC().Format(time.RFC3339)}
 		if out, e := json.MarshalIndent(meta, "", "  "); e == nil {
 			_ = os.WriteFile(a.graphMetaPath(), out, 0644)
@@ -364,6 +375,10 @@ func (a *app) truncateGraphCoverageFrom(from int64) {
 
 func (a *app) markGraphHeight(height int64) {
 	a.coverageMu.Lock()
+	if a.coverage.GraphSchema != graphSchemaVersion {
+		a.coverage.Spender = nil
+		a.coverage.GraphSchema = graphSchemaVersion
+	}
 	a.coverage.Spender = mergeHeight(a.coverage.Spender, height)
 	a.coverage.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	a.coverageMu.Unlock()
@@ -401,6 +416,10 @@ func graphCompleteThrough(in []heightInterval) int64 {
 	return r[0].To
 }
 
+func blockKnowledgeIsPublic(v blockView) bool {
+	return strings.EqualFold(v.CacheVisibility, "public") || v.CacheVisibility == "" && (v.SourceNetwork == "core" || v.SourceNetwork == "core_mount" || v.SourceNetwork == "archive")
+}
+
 func (a *app) graphIndexBlock(v blockView, force bool) error {
 	if !integrityVerified(v) {
 		return fmt.Errorf("block integrity receipt missing or outdated; recheck required")
@@ -410,6 +429,12 @@ func (a *app) graphIndexBlock(v blockView, force bool) error {
 	}
 	if !v.Verification.HeaderChainMatch && !v.Verification.ConsensusValidated {
 		return fmt.Errorf("block %d is not chain anchored", v.Height)
+	}
+	if !blockKnowledgeIsPublic(v) {
+		if force {
+			return fmt.Errorf("private or unclassified block knowledge cannot enter the public graph")
+		}
+		return nil
 	}
 	if !force {
 		a.settingsMu.RLock()
@@ -458,13 +483,13 @@ func (a *app) graphIndexBlock(v blockView, force bool) error {
 	}
 	a.graphStoreMu.Lock()
 	for path, recs := range txGroups {
-		if err := appendRecords(path, recs); err != nil {
+		if err := a.appendGraphRecords(path, "txloc", recs); err != nil {
 			a.graphStoreMu.Unlock()
 			return err
 		}
 	}
 	for path, recs := range spendGroups {
-		if err := appendRecords(path, recs); err != nil {
+		if err := a.appendGraphRecords(path, "spends", recs); err != nil {
 			a.graphStoreMu.Unlock()
 			return err
 		}
@@ -481,41 +506,67 @@ func (a *app) graphIndexBlock(v blockView, force bool) error {
 }
 
 func (a *app) graphFindSpend(txid string, vout uint32) (graphSpend, bool) {
+	spend, found, err := a.graphReadSpend(txid, vout)
+	return spend, found && err == nil
+}
+
+func (a *app) graphReadSpend(txid string, vout uint32) (graphSpend, bool, error) {
 	path, err := graphShardPath(a.graphDir(), "spends", txid)
 	if err != nil {
-		return graphSpend{}, false
+		return graphSpend{}, false, err
 	}
 	a.graphStoreMu.RLock()
 	defer a.graphStoreMu.RUnlock()
+	if err := a.checkGraphShard(path, "spends"); err != nil {
+		return graphSpend{}, false, err
+	}
+	expected, err := a.graphExpectedShardSize(path, "spends")
+	if err != nil {
+		return graphSpend{}, false, err
+	}
 	f, err := os.Open(path)
 	if err != nil {
-		return graphSpend{}, false
+		if os.IsNotExist(err) && expected == 0 {
+			return graphSpend{}, false, nil // receipt proves this shard is empty
+		}
+		return graphSpend{}, false, err
 	}
 	defer f.Close()
 	buf := make([]byte, graphSpendRecordSize)
 	var best graphSpend
 	found := false
+	readBytes := uint64(0)
 	for {
 		_, err := io.ReadFull(f, buf)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			break
+			return graphSpend{}, false, err
 		}
+		readBytes += graphSpendRecordSize
 		rec, prev, vv, ok := decodeGraphSpend(buf)
-		if !ok || !strings.EqualFold(prev, txid) || vv != vout {
+		if !ok {
+			return graphSpend{}, false, fmt.Errorf("damaged spend shard; rebuild required")
+		}
+		if !strings.EqualFold(prev, txid) || vv != vout {
 			continue
 		}
 		canon, e := a.canonicalHashAtHeight(rec.Height)
-		if e != nil || !strings.EqualFold(canon, rec.BlockHash) {
+		if e != nil {
+			return graphSpend{}, false, fmt.Errorf("cannot anchor indexed spend: %w", e)
+		}
+		if !strings.EqualFold(canon, rec.BlockHash) {
 			continue
 		}
 		if !found || rec.Height >= best.Height {
 			best, found = rec, true
 		}
 	}
-	return best, found
+	if readBytes != expected {
+		return graphSpend{}, false, fmt.Errorf("spend shard changed while being read")
+	}
+	return best, found, nil
 }
 
 func (a *app) graphFindTx(txid string) ([]graphTxLocation, error) {
@@ -525,9 +576,16 @@ func (a *app) graphFindTx(txid string) ([]graphTxLocation, error) {
 	}
 	a.graphStoreMu.RLock()
 	defer a.graphStoreMu.RUnlock()
+	if err := a.checkGraphShard(path, "txloc"); err != nil {
+		return nil, err
+	}
+	expected, err := a.graphExpectedShardSize(path, "txloc")
+	if err != nil {
+		return nil, err
+	}
 	f, err := os.Open(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if os.IsNotExist(err) && expected == 0 {
 			return nil, nil
 		}
 		return nil, err
@@ -536,20 +594,28 @@ func (a *app) graphFindTx(txid string) ([]graphTxLocation, error) {
 	buf := make([]byte, graphTxRecordSize)
 	out := []graphTxLocation{}
 	seen := map[string]bool{}
+	readBytes := uint64(0)
 	for {
 		_, err := io.ReadFull(f, buf)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return nil, err
 		}
+		readBytes += graphTxRecordSize
 		rec, ok := decodeGraphTx(buf)
-		if !ok || !strings.EqualFold(rec.TxID, txid) {
+		if !ok {
+			return nil, fmt.Errorf("damaged transaction shard; rebuild required")
+		}
+		if !strings.EqualFold(rec.TxID, txid) {
 			continue
 		}
 		canon, e := a.canonicalHashAtHeight(rec.Height)
-		if e != nil || !strings.EqualFold(canon, rec.BlockHash) {
+		if e != nil {
+			return nil, fmt.Errorf("cannot anchor indexed transaction: %w", e)
+		}
+		if !strings.EqualFold(canon, rec.BlockHash) {
 			continue
 		}
 		key := fmt.Sprintf("%d:%s:%d", rec.Height, rec.BlockHash, rec.TxIndex)
@@ -558,12 +624,18 @@ func (a *app) graphFindTx(txid string) ([]graphTxLocation, error) {
 			out = append(out, rec)
 		}
 	}
+	if readBytes != expected {
+		return nil, fmt.Errorf("transaction shard changed while being read")
+	}
 	return out, nil
 }
 
 func (a *app) graphCoverage() []heightInterval {
 	a.coverageMu.RLock()
 	defer a.coverageMu.RUnlock()
+	if a.coverage.GraphSchema != graphSchemaVersion {
+		return nil
+	}
 	return append([]heightInterval(nil), a.coverage.Spender...)
 }
 
@@ -589,6 +661,11 @@ func (a *app) graphCanProveUnspent(txid string, vout uint32) (*chainSnapshot, st
 	marked := a.graphBlockHash(auth.Height)
 	if !strings.EqualFold(marked, auth.Hash) {
 		return nil, "native graph snapshot is not anchored to the current chain tip"
+	}
+	if _, found, err := a.graphReadSpend(txid, vout); err != nil {
+		return nil, "native spend data is unavailable or damaged; rebuild required"
+	} else if found {
+		return nil, "native graph contains a spend of this output"
 	}
 	return &chainSnapshot{Network: "mainnet", Height: auth.Height, Hash: strings.ToLower(auth.Hash), Source: "bod_native_graph"}, ""
 }
@@ -899,6 +976,25 @@ func (a *app) graphBlockForHeight(height int64) (blockView, error) {
 	}
 	v.SourceNetwork = sourceNetwork
 	v.LocatorPeer = target.LocatorPeer
+	if sourceNetwork == "cache" {
+		a.cacheMu.RLock()
+		entry, ok := a.cacheIndex.Blocks[strings.ToLower(target.HashDisplay)]
+		a.cacheMu.RUnlock()
+		if !ok || entry.Private {
+			v.CacheVisibility = "private"
+		} else {
+			v.CacheVisibility = "public"
+		}
+	} else if sourceNetwork != "core" && sourceNetwork != "core_mount" && sourceNetwork != "archive" {
+		a.settingsMu.RLock()
+		private := a.settings.PrivacyMode
+		a.settingsMu.RUnlock()
+		if private {
+			v.CacheVisibility = "private"
+		} else {
+			v.CacheVisibility = "public"
+		}
+	}
 	if target.ConsensusAuthority {
 		v.VerificationState = "consensus_validated"
 		v.Verification.ConsensusValidated = true

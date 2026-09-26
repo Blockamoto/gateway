@@ -240,7 +240,7 @@ func (n *bitcoinNetwork) recordFailureLocked(x *bitcoinAddress, outcome, reason 
 	if delay > time.Hour {
 		delay = time.Hour
 	}
-	if x.GatewayVerified && !x.LastBODSuccess.IsZero() {
+	if x.GatewayVerified {
 		delay = 10 * time.Second * time.Duration(1<<uint(shift))
 		if delay > 10*time.Minute {
 			delay = 10 * time.Minute

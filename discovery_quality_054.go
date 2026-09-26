@@ -89,16 +89,21 @@ func (n *bitcoinNetwork) gatewayCountLocked() int {
 	return count
 }
 
-// A negotiated member is not required to serve our blocks. Retain a bounded
-// set; useful providers take precedence, while excess links remain probes.
+// Membership survives loss of a particular service. One additional provider
+// may use a scout slot, leaving another scout available at the default limits.
 func (n *bitcoinNetwork) retainGatewaySessionsLocked() {
 	rows := []*bitcoinSession{}
 	for _, s := range n.sessions {
-		if s.view.Gateway && !s.retired {
+		if s.view.Gateway && !s.retired && s.view.Direction != "inbound" {
 			rows = append(rows, s)
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool {
+		memberI := rows[i].view.Role == "gateway_member" || rows[i].view.Role == "gateway_service"
+		memberJ := rows[j].view.Role == "gateway_member" || rows[j].view.Role == "gateway_service"
+		if memberI != memberJ {
+			return memberI
+		}
 		if rows[i].requestSuccess != rows[j].requestSuccess {
 			return rows[i].requestSuccess
 		}
@@ -110,6 +115,13 @@ func (n *bitcoinNetwork) retainGatewaySessionsLocked() {
 		}
 		return rows[i].peer.addr < rows[j].peer.addr
 	})
+	usefulMembers := 0
+	for i, s := range rows {
+		if i < n.policy.GatewaySlots && s.requestSuccess && s.view.BOD {
+			usefulMembers++
+		}
+	}
+	providerSpare := n.policy.ScoutSlots > 0 && usefulMembers < n.policy.GatewaySlots
 	for i, s := range rows {
 		if i < n.policy.GatewaySlots {
 			s.scout = false
@@ -117,11 +129,79 @@ func (n *bitcoinNetwork) retainGatewaySessionsLocked() {
 			if s.requestSuccess {
 				s.view.Role = "gateway_service"
 			}
+		} else if providerSpare && s.requestSuccess && s.view.BOD {
+			s.scout = false
+			s.view.Role = "gateway_provider"
+			providerSpare = false
 		} else {
 			s.scout = true
 			s.view.Role = "gateway_candidate"
 		}
 	}
+}
+
+// Only our own graceful standby cooldown may be shortened after a useful
+// service is lost. Failed dials and direct-negative negotiation remain gated.
+func (n *bitcoinNetwork) wakeStandbyProviderLocked(now time.Time) {
+	if n.policy.ScoutSlots < 1 || n.usefulCountLocked() >= n.policy.GatewaySlots {
+		return
+	}
+	for _, s := range n.sessions {
+		if s.view.Direction != "inbound" && s.view.Role == "gateway_provider" && !s.retired {
+			return
+		}
+	}
+	for _, address := range n.ledgerOrder {
+		x := n.ledger[address]
+		if x == nil || x.LastOutcome != "gateway_standby" || !x.GatewayVerified || x.LastBODSuccess.IsZero() || x.Failures != 0 || x.Exclusion != "" || now.Before(n.gatewayRecheckAfterLocked(x)) || n.sessions[address] != nil {
+			continue
+		}
+		if _, pending := n.dialing[address]; pending {
+			continue
+		}
+		x.RetryAfter, x.OutcomeAt, x.LastOutcome = now, now, "gateway_standby_recovery"
+		n.touchLocked(x)
+		n.eventLocked("provider_recovery", address, "A useful service was lost; one gracefully retired provider is eligible within normal dial budgets")
+		return
+	}
+}
+
+// A timed-out uncorrelated headers request disqualifies only that socket's
+// header service. Release an ordinary socket once a replacement is available;
+// retain Gateway members and any socket still completing a correlated request.
+func (n *bitcoinNetwork) retireHeaderTransportsLocked(now time.Time) []*bitcoinSession {
+	ready := false
+	outbound := len(n.dialing)
+	for _, s := range n.sessions {
+		if s.view.Direction != "inbound" {
+			outbound++
+		}
+		if !s.retired && s.transportEligibleLocked(false) {
+			ready = true
+		}
+	}
+	// If every source is unavailable and the pool is full, make exactly one
+	// idle ordinary slot available. Otherwise wait for the replacement first.
+	if !ready && outbound < n.policy.BitcoinSlots+n.policy.GatewaySlots+n.policy.ScoutSlots {
+		return nil
+	}
+	var retired []*bitcoinSession
+	for _, s := range n.sessions {
+		if s.retired || s.view.Direction == "inbound" || s.view.Gateway || s.view.Role != "bitcoin_transport" || !s.headerUnavailable || len(s.slot) != 0 {
+			continue
+		}
+		s.retired = true
+		if x := n.ledger[s.peer.addr]; x != nil {
+			x.RetryAfter = now.Add(n.policy.RevisitAfter)
+			x.LastOutcome, x.OutcomeAt, x.InFlight = "header_transport_replaced", now, false
+			n.touchLocked(x)
+		}
+		retired = append(retired, s)
+		if !ready {
+			break
+		}
+	}
+	return retired
 }
 
 // Look through every valid advertised range. A leading [0,0] is not evidence

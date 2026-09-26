@@ -142,24 +142,6 @@ func (a *app) blockPossessionRanges() []heightInterval {
 	return mergeIntervals(ranges)
 }
 
-func (a *app) extensionCapabilities() []extensionCapability {
-	mods := a.discoverModuleManifests()
-	out := []extensionCapability{}
-	for _, m := range mods {
-		if strings.TrimSpace(m.ProtocolID) == "" || strings.TrimSpace(m.ProtocolVersion) == "" {
-			continue
-		}
-		out = append(out, extensionCapability{ID: m.ProtocolID, Version: m.ProtocolVersion, Name: m.Name})
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].ID == out[j].ID {
-			return out[i].Version < out[j].Version
-		}
-		return out[i].ID < out[j].ID
-	})
-	return out
-}
-
 func (a *app) buildBODStatus() bodStatus {
 	caps, _, _, _ := a.peerCapabilitiesLegacy()
 	cacheBlocks := a.publicCacheBlockCount()
@@ -170,8 +152,10 @@ func (a *app) buildBODStatus() bodStatus {
 	a.coverageMu.RLock()
 	coverage := a.coverage
 	a.coverageMu.RUnlock()
-	txCov, txTrunc := limitRanges(coverage.TxLocation)
-	spenderCov, spTrunc := limitRanges(coverage.Spender)
+	// Local materialization coverage may include private queries. Publish only
+	// the subset still backed by explicitly public, chain-anchored cache blocks.
+	txCov, txTrunc := limitRanges(a.publicTxLocationCoverage(coverage.TxLocation))
+	spenderCov, spTrunc := limitRanges(a.graphCoverage())
 	truncated = truncated || txTrunc || spTrunc
 
 	a.settingsMu.RLock()
@@ -192,26 +176,9 @@ func (a *app) buildBODStatus() bodStatus {
 		spenderSnapshot = &x
 	} else if len(spenderCov) > 0 {
 		spenderLookup = true
-		// BOD-native spender coverage is positive-spend knowledge by default. It
-		// becomes authoritative for negatives only when continuous from genesis.
-		last := spenderCov[len(spenderCov)-1].To
-		if rangesCoverFromGenesis(spenderCov, last) && last <= snapshot.Height {
-			x := chainSnapshot{Network: "mainnet", Height: last, Source: "bod_headers"}
-			if a.headerMatches(last, func() string {
-				if last == snapshot.Height {
-					return snapshot.Hash
-				}
-				h, err := a.readSelectedHeader(last)
-				if err != nil {
-					return ""
-				}
-				d := hash256(h)
-				return reverseHex(d[:])
-			}()) {
-				spenderLookup = true
-			}
-			spenderSnapshot = &x
-		}
+		// BOD v1 serves native positive locator hints only. Native negatives
+		// require per-outpoint shard integrity checks and are local results;
+		// range coverage alone must not advertise an authoritative negative.
 	}
 
 	profiles := []string{}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -116,6 +117,12 @@ func verifyConnectedHeader(path string, height int64, h []byte) error {
 func (a *app) syncIndependentHeaders(ctx context.Context) error {
 	a.headerSyncMu.Lock()
 	defer a.headerSyncMu.Unlock()
+	a.headerChainMu.Lock()
+	_, e := ensureHeaderFile(a.headersPath)
+	a.headerChainMu.Unlock()
+	if e != nil {
+		return e
+	}
 	s, e := a.network.headerSession(ctx)
 	if e != nil {
 		return e
@@ -125,6 +132,7 @@ func (a *app) syncIndependentHeaders(ctx context.Context) error {
 	forkStart := int64(-1)
 	candidatePath := canonical + ".candidate"
 	defer os.Remove(candidatePath)
+	defer os.Remove(headerAppendMarkerPath051(candidatePath))
 	started := time.Now()
 	initial := a.getStatus().HeaderHeight
 	for batch := 0; batch < 512; batch++ {
@@ -402,39 +410,223 @@ func (a *app) appendCheckedHeaders(ctx context.Context, path string, count int64
 		a.headerChainMu.Lock()
 		defer a.headerChainMu.Unlock()
 	}
-	original := count
-	f, e := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0600)
+	if e := recoverHeaderAppend051(path); e != nil {
+		return count, e
+	}
+	// O_APPEND grants append-only access on Windows, which cannot truncate a
+	// rejected batch. Check and seek the expected end on a normal write handle.
+	f, e := os.OpenFile(path, os.O_WRONLY, 0600)
 	if e != nil {
 		return count, e
 	}
 	defer f.Close()
+	return appendCheckedHeaderBatch051(ctx, path, count, headers, f)
+}
+
+type checkedHeaderAppendFile051 interface {
+	Stat() (os.FileInfo, error)
+	Seek(int64, int) (int64, error)
+	Write([]byte) (int, error)
+	Truncate(int64) error
+	Sync() error
+}
+
+func appendCheckedHeaderBatch051(ctx context.Context, path string, count int64, headers [][]byte, f checkedHeaderAppendFile051) (int64, error) {
+	original := count
+	if count < 1 || count > (1<<63-1)/80 {
+		return original, fmt.Errorf("invalid starting header count %d", count)
+	}
+	originalBytes := count * 80
+	info, e := f.Stat()
+	if e != nil {
+		return original, e
+	}
+	if !info.Mode().IsRegular() || info.Size() != originalBytes {
+		return original, fmt.Errorf("header file size %d does not match starting count %d", info.Size(), count)
+	}
+	if _, e = f.Seek(originalBytes, io.SeekStart); e != nil {
+		return original, e
+	}
+	if e = beginHeaderAppend051(path, original); e != nil {
+		return original, e
+	}
+	rollback := func(cause error) (int64, error) {
+		if err := f.Truncate(originalBytes); err != nil {
+			return original, errors.Join(cause, fmt.Errorf("header rollback truncate failed; file requires recovery: %w", err))
+		}
+		if err := f.Sync(); err != nil {
+			return original, errors.Join(cause, fmt.Errorf("header rollback sync failed; rollback durability is uncertain: %w", err))
+		}
+		if err := os.Remove(headerAppendMarkerPath051(path)); err != nil {
+			return original, errors.Join(cause, fmt.Errorf("header rollback marker cleanup failed: %w", err))
+		}
+		return original, cause
+	}
 	for _, h := range headers {
 		if e = ctx.Err(); e == nil {
 			e = verifyConnectedHeader(path, count, h)
 		}
 		if e == nil {
-			_, e = f.Write(h)
+			var written int
+			written, e = f.Write(h)
+			if e == nil && written != len(h) {
+				e = io.ErrShortWrite
+			}
 		}
 		if e != nil {
-			_ = f.Truncate(original * 80)
-			_ = f.Sync()
-			return original, e
+			return rollback(e)
 		}
 		count++
 	}
+	if e = ctx.Err(); e != nil {
+		return rollback(e)
+	}
 	if e = f.Sync(); e != nil {
-		_ = f.Truncate(original * 80)
-		return original, e
+		return rollback(e)
+	}
+	if e = os.Remove(headerAppendMarkerPath051(path)); e != nil {
+		return rollback(fmt.Errorf("header commit marker cleanup failed: %w", e))
 	}
 	return count, nil
 }
+
+func headerAppendMarkerPath051(path string) string { return path + ".append-pending" }
+
+// The synced marker records the previously selected boundary before any append.
+// It stays present until the new batch or a rollback has been synced. Recovery
+// discards an unfinished batch instead of inferring commitment from file length.
+func beginHeaderAppend051(path string, count int64) error {
+	tip, e := readHeaderAt(path, count-1)
+	if e != nil {
+		return e
+	}
+	record := make([]byte, 48)
+	copy(record[:8], "GWHD051\n")
+	binary.LittleEndian.PutUint64(record[8:16], uint64(count))
+	hash := hash256(tip)
+	copy(record[16:], hash[:])
+	marker := headerAppendMarkerPath051(path)
+	f, e := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if e != nil {
+		return fmt.Errorf("create header append marker: %w", e)
+	}
+	n, e := f.Write(record)
+	if e == nil && n != len(record) {
+		e = io.ErrShortWrite
+	}
+	if e == nil {
+		e = f.Sync()
+	}
+	e = errors.Join(e, f.Close())
+	if e == nil {
+		e = syncDirectory(filepath.Dir(path))
+	}
+	if e != nil {
+		return errors.Join(fmt.Errorf("persist header append marker: %w", e), os.Remove(marker))
+	}
+	return nil
+}
+
+func readHeaderAppendBoundary051(path string) (int64, [32]byte, error) {
+	var hash [32]byte
+	f, e := os.Open(headerAppendMarkerPath051(path))
+	if e != nil {
+		return 0, hash, e
+	}
+	defer f.Close()
+	record, e := io.ReadAll(io.LimitReader(f, 49))
+	if e != nil {
+		return 0, hash, e
+	}
+	if len(record) != 48 || string(record[:8]) != "GWHD051\n" {
+		return 0, hash, fmt.Errorf("invalid header append recovery marker")
+	}
+	count := binary.LittleEndian.Uint64(record[8:16])
+	if count < 1 || count > (1<<63-1)/80 {
+		return 0, hash, fmt.Errorf("invalid header append recovery boundary")
+	}
+	copy(hash[:], record[16:])
+	return int64(count), hash, nil
+}
+
+func recoverHeaderAppend051(path string) error {
+	if _, e := os.Stat(headerAppendMarkerPath051(path)); errors.Is(e, os.ErrNotExist) {
+		return nil
+	} else if e != nil {
+		return e
+	}
+	f, e := os.OpenFile(path, os.O_WRONLY, 0600)
+	if e != nil {
+		return fmt.Errorf("open headers for append recovery: %w", e)
+	}
+	defer f.Close()
+	return recoverHeaderAppendFile051(path, f)
+}
+
+func recoverHeaderAppendFile051(path string, f checkedHeaderAppendFile051) error {
+	count, expectedTip, e := readHeaderAppendBoundary051(path)
+	if e != nil {
+		return e
+	}
+	info, e := f.Stat()
+	if e != nil {
+		return e
+	}
+	if !info.Mode().IsRegular() || info.Size() < count*80 {
+		return fmt.Errorf("header append recovery boundary exceeds the saved chain")
+	}
+	tip, e := readHeaderAt(path, count-1)
+	if e != nil {
+		return e
+	}
+	if hash256(tip) != expectedTip {
+		return fmt.Errorf("header append recovery boundary does not match the saved chain")
+	}
+	if e = f.Truncate(count * 80); e != nil {
+		return fmt.Errorf("recover header append boundary: %w", e)
+	}
+	if e = f.Sync(); e != nil {
+		return fmt.Errorf("sync recovered header append boundary: %w", e)
+	}
+	if e = os.Remove(headerAppendMarkerPath051(path)); e != nil {
+		return fmt.Errorf("remove recovered header append marker: %w", e)
+	}
+	return nil
+}
+
+// Return with the read lock held only after any interrupted append has been
+// rolled back. Recovery takes the exclusive lock, just like a normal append.
+func (a *app) lockSelectedHeaders051() error {
+	for {
+		a.headerChainMu.RLock()
+		_, e := os.Stat(headerAppendMarkerPath051(a.headersPath))
+		if errors.Is(e, os.ErrNotExist) {
+			return nil
+		}
+		a.headerChainMu.RUnlock()
+		if e != nil {
+			return e
+		}
+		a.headerChainMu.Lock()
+		e = recoverHeaderAppend051(a.headersPath)
+		a.headerChainMu.Unlock()
+		if e != nil {
+			return e
+		}
+	}
+}
+
 func (a *app) readSelectedHeader(height int64) ([]byte, error) {
-	a.headerChainMu.RLock()
+	if e := a.lockSelectedHeaders051(); e != nil {
+		return nil, e
+	}
 	defer a.headerChainMu.RUnlock()
 	return readHeaderAt(a.headersPath, height)
 }
 func (a *app) findSelectedHeader(hash string) (int64, []byte, error) {
-	a.headerChainMu.RLock()
+	if e := a.lockSelectedHeaders051(); e != nil {
+		return -1, nil, e
+	}
 	defer a.headerChainMu.RUnlock()
 	return findHeaderHeightByHash(a.headersPath, hash)
 }

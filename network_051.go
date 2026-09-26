@@ -139,6 +139,7 @@ type bitcoinNetwork struct {
 	selectedPublicIP    string
 	pendingPublicIP     string
 	pendingPublicAt     time.Time
+	publicIPRefreshAt   time.Time
 	lastAnnounceAttempt time.Time
 	announcementHistory map[string]announcementRecord054
 	observedIPs         map[string]string
@@ -153,17 +154,19 @@ type bitcoinSession struct {
 	lastAnnouncementKey string
 	scout               bool // protected by n.mu
 	addrReceived        bool // protected by n.mu
+	addrSampleReceived  bool // protected by n.mu; a multi-record address message
 	addrAsked           bool // protected by n.mu
 	inboundAddrAsked    bool // protected by n.mu
 	serveQueue          chan message
-	retired             bool            // protected by n.mu; planned scout retirement is not a peer failure
-	addressBudget       int             // protected by n.mu
-	serviceRequests     int             // used only by serviceLoop
-	satRequests         int             // used only by serviceLoop
-	satIDs              map[string]bool // used only by serviceLoop
-	requestSuccess      bool            // protected by n.mu
-	lastServiceCheck    time.Time       // protected by n.mu
-	healthChecking      bool            // protected by n.mu
+	retired             bool                 // protected by n.mu; planned scout retirement is not a peer failure
+	addressBudget       int                  // protected by n.mu
+	headerUnavailable   bool                 // protected by n.mu; uncorrelated headers timed out
+	bodBudget           sessionServiceBudget // used only by serviceLoop
+	satBudget           sessionServiceBudget // used only by serviceLoop
+	satIDs              map[string]bool      // used only by serviceLoop
+	requestSuccess      bool                 // protected by n.mu
+	lastServiceCheck    time.Time            // protected by n.mu
+	healthChecking      bool                 // protected by n.mu
 	n                   *bitcoinNetwork
 	peer                *peerConn
 	view                networkPeerView  // protected by n.mu
@@ -171,8 +174,9 @@ type bitcoinSession struct {
 	done                chan struct{}
 	once                sync.Once
 	writeMu             sync.Mutex
+	replyMu             sync.Mutex
+	pendingReply        *sessionPendingReply // protected by replyMu
 	slot                chan struct{}
-	replies             chan message
 }
 
 func newBitcoinNetwork(a *app) *bitcoinNetwork {
@@ -345,12 +349,14 @@ func (s *bitcoinSession) close(reason string) {
 		s.peer.conn.Close()
 		s.n.mu.Lock()
 		defer s.n.mu.Unlock()
-		delete(s.n.sessions, s.peer.addr)
+		if s.n.sessions[s.peer.addr] == s {
+			delete(s.n.sessions, s.peer.addr)
+		}
 		s.view.State = "disconnected"
 		s.view.LastError = reason
 		s.view.Updated = time.Now().UTC()
 		s.n.appendRecent(s.view)
-		if !s.retired {
+		if !s.retired && s.view.Direction != "inbound" {
 			s.n.backoff(s.peer.addr, reason)
 		}
 		s.n.eventLocked("disconnected", s.peer.addr, reason)
@@ -359,7 +365,34 @@ func (s *bitcoinSession) close(reason string) {
 func (s *bitcoinSession) send(command string, payload []byte) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	_ = s.peer.conn.SetWriteDeadline(time.Now().Add(8 * time.Second))
+	return s.sendLocked(command, payload, time.Now().Add(8*time.Second))
+}
+func (s *bitcoinSession) sendRequest(ctx context.Context, command string, payload []byte) error {
+	// A serving handler can own the writer while this direction waits. Do not
+	// emit a request whose caller has already cancelled during that wait.
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for !s.writeMu.TryLock() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-s.done:
+			return fmt.Errorf("peer disconnected")
+		case <-tick.C:
+		}
+	}
+	defer s.writeMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(8 * time.Second)
+	if end, ok := ctx.Deadline(); ok && end.Before(deadline) {
+		deadline = end
+	}
+	return s.sendLocked(command, payload, deadline)
+}
+func (s *bitcoinSession) sendLocked(command string, payload []byte, deadline time.Time) error {
+	_ = s.peer.conn.SetWriteDeadline(deadline)
 	e := writeMessage(s.peer.conn, command, payload)
 	_ = s.peer.conn.SetWriteDeadline(time.Time{})
 	s.n.mu.Lock()
@@ -410,30 +443,24 @@ func (s *bitcoinSession) readLoop() {
 				s.queueService(m)
 				continue
 			}
-			select {
-			case s.replies <- m:
-			default:
-			}
+			s.deliverReply(m)
 		case "satmsg":
 			var envelope satlineEnvelope
 			if json.Unmarshal(m.payload, &envelope) == nil && envelope.Kind == "request" {
 				s.queueService(m)
 				continue
 			}
-			select {
-			case s.replies <- m:
-			default:
-			}
+			s.deliverReply(m)
 		case "headers", "block", "notfound":
-			select {
-			case s.replies <- m:
-			default:
-			}
+			s.deliverReply(m)
 		case "inv": // A new tip is discovered by the periodic header request.
 		}
 	}
 }
 func (s *bitcoinSession) request(ctx context.Context, command string, payload []byte, accept func(message) bool) (message, error) {
+	if e := ctx.Err(); e != nil {
+		return message{}, e
+	}
 	select {
 	case s.slot <- struct{}{}:
 	case <-ctx.Done():
@@ -442,15 +469,30 @@ func (s *bitcoinSession) request(ctx context.Context, command string, payload []
 		return message{}, fmt.Errorf("peer disconnected")
 	}
 	defer func() { <-s.slot }()
-	for {
-		select {
-		case <-s.replies:
-			continue
-		default:
-			goto drained
-		}
+	if e := ctx.Err(); e != nil {
+		return message{}, e
 	}
-drained:
+	s.n.mu.Lock()
+	headersUnavailable := command == "getheaders" && s.headerUnavailable
+	s.n.mu.Unlock()
+	if headersUnavailable {
+		return message{}, fmt.Errorf("headers unavailable on this session after an uncorrelated request timed out")
+	}
+	match, e := sessionReplyMatcher(command, payload)
+	if e != nil {
+		return message{}, e
+	}
+	pending := &sessionPendingReply{match: func(m message) bool { return match(m) && accept(m) }, reply: make(chan message, 1)}
+	s.replyMu.Lock()
+	s.pendingReply = pending
+	s.replyMu.Unlock()
+	defer func() {
+		s.replyMu.Lock()
+		if s.pendingReply == pending {
+			s.pendingReply = nil
+		}
+		s.replyMu.Unlock()
+	}()
 	s.n.mu.Lock()
 	s.view.State = "fetching"
 	s.view.LastWork = command
@@ -462,20 +504,26 @@ drained:
 		}
 		s.n.mu.Unlock()
 	}()
-	if e := s.send(command, payload); e != nil {
+	if e := s.sendRequest(ctx, command, payload); e != nil {
 		return message{}, e
 	}
 	for {
 		select {
 		case <-ctx.Done():
-			s.close("Request stopped: " + ctx.Err().Error())
+			// Cancellation is a request outcome, not evidence of dead transport.
+			// Headers have no wire request ID: quarantine that role so a late
+			// batch cannot satisfy a future locator request on this socket.
+			if command == "getheaders" {
+				s.n.mu.Lock()
+				s.headerUnavailable = true
+				s.n.eventLocked("headers_unavailable", s.peer.addr, "Header request stopped; this socket remains available for correlated requests")
+				s.n.mu.Unlock()
+			}
 			return message{}, ctx.Err()
 		case <-s.done:
 			return message{}, fmt.Errorf("peer disconnected")
-		case m := <-s.replies:
-			if accept(m) {
-				return m, nil
-			}
+		case m := <-pending.reply:
+			return m, nil
 		}
 	}
 }
@@ -497,8 +545,10 @@ func (s *bitcoinSession) bodRequest(ctx context.Context, req overlayRequest) (ov
 		return overlayResponse{}, fmt.Errorf("incompatible BOD response")
 	}
 	var resp overlayResponse
-	if e = json.Unmarshal(out.Payload, &resp); e != nil {
-		return resp, e
+	if len(out.Payload) > 0 {
+		if e = json.Unmarshal(out.Payload, &resp); e != nil {
+			return resp, e
+		}
 	}
 	resp.Version = out.Wire
 	if out.Status == "unknown" {
@@ -528,7 +578,7 @@ func (n *bitcoinNetwork) waitSession(ctx context.Context, archive bool) (*bitcoi
 			return nil, fmt.Errorf("WAITING_FOR_PEERS: outbound networking is disabled")
 		}
 		for _, s := range n.listSessions() {
-			if !s.isScout() && (!archive || s.peer.services&nodeNetworkService != 0) {
+			if s.transportEligible(archive) {
 				return s, nil
 			}
 		}
@@ -553,7 +603,7 @@ func (n *bitcoinNetwork) fetchBlock(hash [32]byte, header []byte) ([]byte, strin
 		}
 		sessions := n.listSessions()
 		for _, x := range sessions {
-			if !x.isScout() && !tried[x.peer.addr] && x.peer.services&nodeNetworkService != 0 {
+			if x.transportEligible(true) && !tried[x.peer.addr] {
 				s = x
 				break
 			}
@@ -596,10 +646,13 @@ func (n *bitcoinNetwork) gatewayPeers() []overlayPeer {
 	defer n.mu.Unlock()
 	out := []overlayPeer{}
 	for _, s := range n.sessions {
-		if s.status == nil {
+		if !s.peer.gateway || (s.status == nil && s.healthChecking) {
 			continue
 		}
 		r := s.status
+		if r == nil || !s.view.BOD {
+			r = &overlayResponse{HeaderHeight: -1}
+		}
 		p := overlayPeer{Addr: s.peer.addr, ID: r.PeerID, Protocol: bodWireVersion, Gateway: true, BIP434: true, GatewayWire: s.peer.gatewayWire, ServiceHint: s.peer.services&gatewayExperimentalServiceBit != 0, Protocols: append([]gatewayProtocolSupport(nil), s.peer.gatewayProtocols...), Capabilities: append([]string(nil), r.Capabilities...), HeaderHeight: r.HeaderHeight, TipHash: r.TipHash, CacheBlocks: r.CacheBlocks, LastSeen: s.view.Updated, DiscoverySource: s.view.Source}
 		if r.Status != nil {
 			p.Snapshot = &r.Status.Snapshot
@@ -612,6 +665,9 @@ func (n *bitcoinNetwork) gatewayPeers() []overlayPeer {
 	return out
 }
 func (n *bitcoinNetwork) query(peer overlayPeer, req overlayRequest) (overlayResponse, error) {
+	if !n.enabled() {
+		return overlayResponse{}, fmt.Errorf("outbound networking is disabled")
+	}
 	n.mu.Lock()
 	s := n.sessions[peer.Addr]
 	n.mu.Unlock()
@@ -645,7 +701,7 @@ func (n *bitcoinNetwork) headerSession(ctx context.Context) (*bitcoinSession, er
 	defer n.mu.Unlock()
 	rows := make([]*bitcoinSession, 0, len(n.sessions))
 	for _, s := range n.sessions {
-		if !s.scout {
+		if s.transportEligibleLocked(false) {
 			rows = append(rows, s)
 		}
 	}
@@ -729,8 +785,14 @@ func (a *app) queryManagedSatline(ctx context.Context, addr string, req satlineS
 	if !n.enabled() {
 		return satlineSegment{}, fmt.Errorf("outbound networking disabled")
 	}
-	n.add(addr, "manual_satline", gatewayExperimentalServiceBit)
-	n.maintain()
+	n.mu.Lock()
+	connected := n.sessions[addr] != nil
+	n.mu.Unlock()
+	// An inbound peer's source port identifies a live socket, not a listener.
+	if !connected {
+		n.add(addr, "manual_satline", gatewayExperimentalServiceBit)
+		n.maintain()
+	}
 	wait, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	var s *bitcoinSession

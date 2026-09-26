@@ -179,7 +179,7 @@ func (a *app) saveSatlineRecord(kind, key, input string, result satlineResult) e
 	a.satlineMu.Lock()
 	defer a.satlineMu.Unlock()
 	if a.satlineInitErr != "" {
-		return fmt.Errorf(a.satlineInitErr)
+		return fmt.Errorf("%s", a.satlineInitErr)
 	}
 	rec := satlineRecord{VerifierVersion: blockVerifierVersion, Schema: satlineStorageSchema, Kind: kind, Key: key, OriginalInput: input, Result: result, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
 	if old, ok := a.loadSatlineRecord(kind, key); ok && !old.CreatedAt.IsZero() {

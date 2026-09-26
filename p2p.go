@@ -19,8 +19,10 @@ const (
 	// BIP 434 requires implementing nodes to advertise >= 70017.
 	protocolVersion = int32(70017)
 	mainnetPort     = 8333
-	maxMessageSize  = 32 * 1024 * 1024
-	headersPerMsg   = 2000
+	// Bitcoin mainnet protocol ceiling, also bounding unknown post-handshake
+	// commands. The unauthenticated handshake has a much smaller budget.
+	maxMessageSize = 4 * 1000 * 1000
+	headersPerMsg  = 2000
 
 	// Bitcoin Core reserves service bits 24-31 for temporary experiments. v0.3.9
 	// uses bit 25 only as an unauthenticated Gateway discovery hint. BIP 434
@@ -351,7 +353,7 @@ func handshakeOutboundState(c net.Conn, addr string, protocols []gatewayProtocol
 	peerFeature := false
 	peerWire := 0
 	for !(gotVersion && gotVerack && sentVerack) {
-		m, err := readMessage(c)
+		m, err := readHandshakeMessage(c)
 		if err != nil {
 			c.Close()
 			return nil, err
@@ -511,6 +513,11 @@ func waitForCommand(p *peerConn, command string, timeout time.Duration) (message
 }
 
 func writeMessage(w io.Writer, command string, payload []byte) error {
+	// Managed serving serializes complete frames, without holding the socket
+	// writer while a provider reads disk or answers an RPC request.
+	if framed, ok := w.(interface{ WriteBitcoinMessage(string, []byte) error }); ok {
+		return framed.WriteBitcoinMessage(command, payload)
+	}
 	if len(command) > 12 {
 		return fmt.Errorf("command too long")
 	}
@@ -520,17 +527,23 @@ func writeMessage(w io.Writer, command string, payload []byte) error {
 	binary.LittleEndian.PutUint32(h[16:20], uint32(len(payload)))
 	sum := hash256(payload)
 	copy(h[20:24], sum[0:4])
-	if _, err := w.Write(h[:]); err != nil {
+	if n, err := w.Write(h[:]); err != nil {
 		return err
+	} else if n != len(h) {
+		return io.ErrShortWrite
 	}
 	if len(payload) > 0 {
-		_, err := w.Write(payload)
+		n, err := w.Write(payload)
+		if err == nil && n != len(payload) {
+			return io.ErrShortWrite
+		}
 		return err
 	}
 	return nil
 }
 
-func readMessage(r io.Reader) (message, error) { return readMessageBounded(r, maxMessageSize) }
+func readMessage(r io.Reader) (message, error)          { return readMessageBounded(r, maxMessageSize) }
+func readHandshakeMessage(r io.Reader) (message, error) { return readMessageBounded(r, 16*1024) }
 func readMessageBounded(r io.Reader, limit uint32) (message, error) {
 	var h [24]byte
 	if _, err := io.ReadFull(r, h[:]); err != nil {
@@ -541,6 +554,20 @@ func readMessageBounded(r io.Reader, limit uint32) (message, error) {
 	}
 	cmd := strings.TrimRight(string(h[4:16]), "\x00")
 	n := binary.LittleEndian.Uint32(h[16:20])
+	commandLimit := uint32(maxMessageSize)
+	switch cmd {
+	case "version":
+		commandLimit = 1024
+	case "verack", "sendaddrv2", "getaddr", "sendheaders":
+		commandLimit = 0
+	case "ping", "pong":
+		commandLimit = 8
+	case "inv", "getdata", "notfound":
+		commandLimit = 9 + 50000*36
+	}
+	if n > commandLimit {
+		return message{}, fmt.Errorf("%s message too large: %d", cmd, n)
+	}
 	if (cmd == "addr" && n > 30003) || (cmd == "addrv2" && n > 600000) || (cmd == "getaddr" && n != 0) || ((cmd == "getheaders" || cmd == "getblocks") && n > 3273) || (cmd == "headers" && n > 162003) || (cmd == "feature" && n > 600) || (cmd == "satmsg" && n > maxSatlineWireBytes) || (cmd == "gwmsg" && n > maxGatewayMsgPayload) || (cmd == "bodmsg" && n > maxBODMsgPayload) || n > maxMessageSize || n > limit {
 		return message{}, fmt.Errorf("message too large: %d", n)
 	}

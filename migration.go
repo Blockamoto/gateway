@@ -100,6 +100,9 @@ func (a *app) archivePut(raw []byte, v blockView) error {
 	if !integrityVerified(v) || len(raw) < 81 {
 		return fmt.Errorf("archive requires a current integrity receipt")
 	}
+	if !blockKnowledgeIsPublic(v) {
+		return fmt.Errorf("private or unclassified block knowledge cannot enter the shared archive")
+	}
 	// Parse the supplied bytes again: a caller cannot attach a receipt for other bytes.
 	checked, e := parseBlockDetailed(v.Height, v.Hash, nil, raw, "migration-readback", false)
 	if e != nil || !integrityVerified(checked) {
@@ -360,6 +363,19 @@ func (a *app) runMigration(ctx context.Context, j migrationJob) {
 		if e != nil {
 			fail(e)
 			return
+		}
+		// Preserve the actual local source classification. A Core migration may
+		// hit the cache first; that does not grant private cache data publication
+		// consent merely because Core also has a block at this height.
+		v.SourceNetwork = hit.Network
+		if hit.FromCache || hit.Network == "cache" {
+			a.cacheMu.RLock()
+			entry, ok := a.cacheIndex.Blocks[strings.ToLower(target.HashDisplay)]
+			a.cacheMu.RUnlock()
+			v.CacheVisibility = "private"
+			if ok && !entry.Private {
+				v.CacheVisibility = "public"
+			}
 		}
 		if target.ConsensusAuthority {
 			v.Verification.ConsensusValidated = true

@@ -1,0 +1,74 @@
+{
+  "version": "0.5.4-repair.1",
+  "platform": "Windows amd64",
+  "toolchain": "go1.27.1",
+  "environment": {
+    "GO111MODULE": "off",
+    "CGO_ENABLED": "0",
+    "GATEWAY_TEST_BINARY": "freshly built native Windows repair-runtime-test.exe"
+  },
+  "full_command": "go test -count=1 -json -timeout=600s . ./internal/cleanup ./packaging/native-host ./packaging/gateway-launcher",
+  "test_and_subtest_events": {
+    "pass": 372,
+    "fail": 3,
+    "skip": 6
+  },
+  "failing_tests": [
+    "Test054PurgeKeepsExternalAndUserFiles",
+    "Test054PurgeRejectsOverlapAndRoot",
+    "Test054MetadataLinksCannotGrantOwnership"
+  ],
+  "failure_explanation": "Same three baseline cleanup fixtures cannot create Windows symlinks with this account. No OS privileges changed and tests were not weakened. Original header rollback test now passes.",
+  "skipped_tests": [
+    "Test050ArchivePathCannotEnterCoreThroughSymlink",
+    "TestCoreLookupAndOverlay",
+    "TestLightPeerServesVerifiedCacheAndHeaderLocation",
+    "TestSatlineProcessHelper",
+    "TestBIP434NegotiationBetweenBODPeers",
+    "TestUnknownIsNotNegative"
+  ],
+  "package_outcomes": [
+    {
+      "Package": "./packaging/gateway-launcher",
+      "Action": "skip",
+      "Elapsed": 0.001
+    },
+    {
+      "Package": "./internal/cleanup",
+      "Action": "fail",
+      "Elapsed": 1.411
+    },
+    {
+      "Package": "./packaging/native-host",
+      "Action": "pass",
+      "Elapsed": 1.453
+    },
+    {
+      "Package": ".",
+      "Action": "pass",
+      "Elapsed": 66.029
+    }
+  ],
+  "full_log_sha256": "a7e73b764b2cb81be6eb28806e974a8debd7d5d9df566f61f505e0042e1f09a2",
+  "static_analysis": "Default Go vet enabled in this full run; previous nonconstant fmt.Errorf diagnostic repaired.",
+  "test_scope": "Isolated local fixtures, real loopback TCP and in-memory wire exchanges, fault injection, simulated time. No public discovery or remote user node tested.",
+  "limitations": [
+    "Three cleanup fixtures need symlink privilege to execute their intended scenarios.",
+    "Skipped tests are recorded by name; skip is not pass.",
+    "CGO disabled; race instrumentation not run.",
+    "Ninety-minute address-refresh case uses simulated time and real in-memory handshakes, not a live ninety-minute soak.",
+    "Native installer execution and real browser Ord preview acceptance remain unverified.",
+    "Public Bitcoin address admission, sampling and propagation remain external trial questions."
+  ],
+  "additional_checks": {
+    "ui_syntax": "node --check ui/shell/app.js: PASS",
+    "browser_companion": "node browser-companion/test.js: PASS",
+    "provider_recovery_repeat": "Test052RecoveryFindsAnotherLearnedGateway: 20 consecutive passes after the deterministic repair",
+    "skip_reasons": {
+      "symlink_fixture": 1,
+      "occupied_legacy_fixed_port_48333": 4,
+      "subprocess_helper_not_a_standalone_test": 1
+    },
+    "final_source_frozen": true
+  }
+}

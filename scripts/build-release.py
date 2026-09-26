@@ -11,6 +11,7 @@ def main() -> None:
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
+    version = (root/'VERSION.txt').read_text().strip()
     out = args.out.resolve(); out.mkdir(parents=True, exist_ok=True)
     subprocess.run([sys.executable,str(root/'scripts/build-icon-resources.py')],check=True)
     base = dict(os.environ, GO111MODULE='off', CGO_ENABLED='0', GOARCH='amd64')
@@ -29,7 +30,7 @@ def main() -> None:
         shutil.copy2(root/'packaging/windows-installer/main.go.txt', temp/'main.go')
         shutil.copytree(root/'internal', temp/'internal')
         shutil.copy2(root/'gateway_windows_amd64.syso',temp/'gateway_windows_amd64.syso')
-        build(temp, 'windows', 'gateway-client-v0.5.4-installer.exe', True)
+        build(temp, 'windows', f'gateway-client-v{version}-installer.exe', True)
     print('Built Linux, Windows, native launcher and embedded-payload installer:', out)
 
 if __name__ == '__main__':

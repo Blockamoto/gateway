@@ -315,8 +315,9 @@ func (n *bitcoinNetwork) announcementSnapshot054() (advertisedPeer, bool) {
 }
 
 type announcementRecord054 struct {
-	At  time.Time
-	Key string
+	At       time.Time
+	Key      string
+	InFlight *bitcoinSession
 }
 
 func (n *bitcoinNetwork) sendAnnouncement054(s *bitcoinSession, row advertisedPeer) bool {
@@ -330,7 +331,7 @@ func (n *bitcoinNetwork) sendAnnouncement054(s *bitcoinSession, row advertisedPe
 		n.announcementHistory = map[string]announcementRecord054{}
 	}
 	for addr, record := range n.announcementHistory {
-		if now.Sub(record.At) >= 30*time.Minute {
+		if record.InFlight == nil && now.Sub(record.At) >= 30*time.Minute {
 			delete(n.announcementHistory, addr)
 		}
 	}
@@ -339,23 +340,34 @@ func (n *bitcoinNetwork) sendAnnouncement054(s *bitcoinSession, row advertisedPe
 	if prior.Key != key {
 		wait = 5 * time.Minute
 	}
-	if n.sessions[s.peer.addr] != s || s.scout || (!prior.At.IsZero() && now.Sub(prior.At) < wait) {
+	if n.sessions[s.peer.addr] != s || s.scout || prior.InFlight != nil || (!prior.At.IsZero() && now.Sub(prior.At) < wait) {
 		n.mu.Unlock()
 		return false
 	}
-	// Reserve before I/O so concurrent status/maintenance calls cannot duplicate.
-	s.lastAnnouncement, s.lastAnnouncementKey = now, key
-	n.announcementHistory[s.peer.addr] = announcementRecord054{now, key}
+	// Reserve the recipient across reconnects without consuming the successful
+	// write cooldown. The previous success remains authoritative on failure.
+	prior.InFlight = s
+	n.announcementHistory[s.peer.addr] = prior
 	n.mu.Unlock()
 	command, payload := addressMessage([]advertisedPeer{row}, s.peer.wantsAddrV2)
-	if e := s.send(command, payload); e != nil {
-		return false
-	}
+	err := s.send(command, payload)
 	n.mu.Lock()
-	n.lastAnnounce = now
-	n.lastAnnounceKey = key
-	n.mu.Unlock()
-	return true
+	defer n.mu.Unlock()
+	record := n.announcementHistory[s.peer.addr]
+	if record.InFlight == s {
+		record.InFlight = nil
+		if err == nil {
+			record.At, record.Key = n.now(), key
+			s.lastAnnouncement, s.lastAnnouncementKey = record.At, key
+			n.lastAnnounce, n.lastAnnounceKey = record.At, key
+		}
+		if record.At.IsZero() {
+			delete(n.announcementHistory, s.peer.addr)
+		} else {
+			n.announcementHistory[s.peer.addr] = record
+		}
+	}
+	return err == nil
 }
 func (n *bitcoinNetwork) announceToSession(s *bitcoinSession) {
 	// Short-lived scouts do not broadcast our address. Stable Bitcoin and

@@ -32,6 +32,7 @@ func initGraphTestApp(t *testing.T) (*app, blockView) {
 	}
 	v.Verification.HeaderChainMatch = true
 	v.VerificationState = "header_anchored"
+	v.CacheVisibility = "public"
 	return a, v
 }
 
@@ -73,7 +74,7 @@ func TestNativeGraphPositiveSpendPersists(t *testing.T) {
 	prev := genesis.Transactions[0].TxID
 	spender := "2222222222222222222222222222222222222222222222222222222222222222"
 	v := blockView{
-		Height: 1, Hash: hash1, VerificationState: "header_anchored",
+		Height: 1, Hash: hash1, CacheVisibility: "public", VerificationState: "header_anchored",
 		Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, HeaderChainMatch: true},
 		Transactions: []transactionView{{Index: 0, TxID: spender, Inputs: []inputView{{N: 0, PrevTxID: prev, PrevVout: 0}}, Outputs: []outputView{{N: 0, ValueSats: 1}}}},
 	}
@@ -121,7 +122,7 @@ func TestNativeGraphNegativeRequiresCompleteCoverage(t *testing.T) {
 
 	// Index the whole next block (with no spend of the genesis output). Now the
 	// negative is authoritative through the new snapshot.
-	v1 := blockView{Height: 1, Hash: hash1, VerificationState: "header_anchored", Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, HeaderChainMatch: true}, Transactions: []transactionView{{Index: 0, TxID: "3333333333333333333333333333333333333333333333333333333333333333", Coinbase: true, Outputs: []outputView{{N: 0, ValueSats: 1}}}}}
+	v1 := blockView{Height: 1, Hash: hash1, CacheVisibility: "public", VerificationState: "header_anchored", Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, HeaderChainMatch: true}, Transactions: []transactionView{{Index: 0, TxID: "3333333333333333333333333333333333333333333333333333333333333333", Coinbase: true, Outputs: []outputView{{N: 0, ValueSats: 1}}}}}
 	if err := a.graphIndexBlock(v1, true); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +143,7 @@ func TestGraphStoreIgnoresNonCanonicalSpend(t *testing.T) {
 	hash1 := appendGraphTestHeader(t, a, genesisHashDisplay, 3)
 	prev := genesis.Transactions[0].TxID
 	canonicalTx := "4444444444444444444444444444444444444444444444444444444444444444"
-	v1 := blockView{Height: 1, Hash: hash1, VerificationState: "header_anchored", Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, HeaderChainMatch: true}, Transactions: []transactionView{{Index: 0, TxID: canonicalTx, Inputs: []inputView{{N: 0, PrevTxID: prev, PrevVout: 0}}, Outputs: []outputView{{N: 0, ValueSats: 1}}}}}
+	v1 := blockView{Height: 1, Hash: hash1, CacheVisibility: "public", VerificationState: "header_anchored", Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, HeaderChainMatch: true}, Transactions: []transactionView{{Index: 0, TxID: canonicalTx, Inputs: []inputView{{N: 0, PrevTxID: prev, PrevVout: 0}}, Outputs: []outputView{{N: 0, ValueSats: 1}}}}}
 	if err := a.graphIndexBlock(v1, true); err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +254,7 @@ func TestNativeGraphReorgDropsDetachedSpend(t *testing.T) {
 	hashA := appendGraphTestHeader(t, a, genesisHashDisplay, 10)
 	prev := genesis.Transactions[0].TxID
 	spendTx := "5555555555555555555555555555555555555555555555555555555555555555"
-	va := blockView{Height: 1, Hash: hashA, VerificationState: "header_anchored", Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, HeaderChainMatch: true}, Transactions: []transactionView{{Index: 0, TxID: spendTx, Inputs: []inputView{{N: 0, PrevTxID: prev, PrevVout: 0}}, Outputs: []outputView{{N: 0, ValueSats: 1}}}}}
+	va := blockView{Height: 1, Hash: hashA, CacheVisibility: "public", VerificationState: "header_anchored", Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, HeaderChainMatch: true}, Transactions: []transactionView{{Index: 0, TxID: spendTx, Inputs: []inputView{{N: 0, PrevTxID: prev, PrevVout: 0}}, Outputs: []outputView{{N: 0, ValueSats: 1}}}}}
 	if err := a.graphIndexBlock(va, true); err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +280,7 @@ func TestNativeGraphReorgDropsDetachedSpend(t *testing.T) {
 	}
 	_ = f.Close()
 	a.status.TipHash = hashB
-	vb := blockView{Height: 1, Hash: hashB, VerificationState: "header_anchored", Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, HeaderChainMatch: true}, Transactions: []transactionView{{Index: 0, TxID: "6666666666666666666666666666666666666666666666666666666666666666", Coinbase: true, Outputs: []outputView{{N: 0, ValueSats: 1}}}}}
+	vb := blockView{Height: 1, Hash: hashB, CacheVisibility: "public", VerificationState: "header_anchored", Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, HeaderChainMatch: true}, Transactions: []transactionView{{Index: 0, TxID: "6666666666666666666666666666666666666666666666666666666666666666", Coinbase: true, Outputs: []outputView{{N: 0, ValueSats: 1}}}}}
 	if err := a.graphIndexBlock(vb, true); err != nil {
 		t.Fatal(err)
 	}

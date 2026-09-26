@@ -636,6 +636,10 @@ func scanCoreBlockFile(path string, fileNum uint32, start, size int64, key [8]by
 }
 
 func (a *app) anchorCoreStoreToHeaders() error {
+	if err := a.lockSelectedHeaders051(); err != nil {
+		return err
+	}
+	defer a.headerChainMu.RUnlock()
 	data, err := os.ReadFile(a.headersPath)
 	if err != nil || len(data) < 80 {
 		return err

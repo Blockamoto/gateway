@@ -18,6 +18,7 @@ type coverageState struct {
 	IndexedBlocks []heightInterval `json:"indexed_blocks"`
 	TxLocation    []heightInterval `json:"tx_location"`
 	Spender       []heightInterval `json:"spender"`
+	GraphSchema   int              `json:"graph_schema,omitempty"`
 	UpdatedAt     string           `json:"updated_at,omitempty"`
 }
 
@@ -76,6 +77,24 @@ func (a *app) markIndexedHeight(h int64) {
 	a.coverage.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 	a.coverageMu.Unlock()
 	_ = a.saveCoverage()
+}
+
+func (a *app) publicTxLocationCoverage(local []heightInterval) []heightInterval {
+	a.cacheMu.RLock()
+	entries := make([]cachedBlockEntry, 0, len(a.cacheIndex.Blocks))
+	for _, entry := range a.cacheIndex.Blocks {
+		if !entry.Private && entry.Height >= 0 {
+			entries = append(entries, entry)
+		}
+	}
+	a.cacheMu.RUnlock()
+	var public []heightInterval
+	for _, entry := range entries {
+		if intervalsCoverRange(local, entry.Height, entry.Height) && a.headerMatches(entry.Height, entry.Hash) {
+			public = append(public, heightInterval{From: entry.Height, To: entry.Height})
+		}
+	}
+	return mergeIntervals(public)
 }
 
 func (a *app) coverageView() map[string]any {

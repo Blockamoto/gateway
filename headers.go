@@ -22,6 +22,9 @@ var (
 )
 
 func ensureHeaderFile(path string) (int64, error) {
+	if err := recoverHeaderAppend051(path); err != nil {
+		return 0, err
+	}
 	genesis, _ := hex.DecodeString(genesisHeaderHex)
 	st, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {

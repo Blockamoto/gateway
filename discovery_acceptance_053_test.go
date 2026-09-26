@@ -105,7 +105,7 @@ func Test053UnknownGatewayThroughNoisyGraph(t *testing.T) {
 				n.mu.Lock()
 				retire := []*bitcoinSession{}
 				for _, s := range n.sessions {
-					if s.scout && !s.peer.gateway && s.addrReceived && len(s.slot) == 0 {
+					if s.scout && !s.peer.gateway && s.addrSampleReceived && len(s.slot) == 0 {
 						s.retired = true
 						n.ledger[s.peer.addr].RetryAfter = n.now().Add(time.Hour)
 						n.touchLocked(n.ledger[s.peer.addr])

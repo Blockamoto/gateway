@@ -103,6 +103,56 @@ func Test050MigrationRequiresExplicitMoveAndGraph(t *testing.T) {
 		t.Fatal("reclamation allowed without Core handoff")
 	}
 }
+
+func TestMigrationRetainsCachePublicationPolicy(t *testing.T) {
+	for _, private := range []bool{false, true} {
+		name := "public"
+		if private {
+			name = "private"
+		}
+		t.Run(name, func(t *testing.T) {
+			a, v := initGraphTestApp(t)
+			prefix := "0-" + v.Hash
+			dir := filepath.Join(a.dataDir, "blocks", "raw")
+			if err := os.MkdirAll(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, prefix+".block"), testGenesisBlockPayload(t), 0600); err != nil {
+				t.Fatal(err)
+			}
+			a.cacheIndex.Blocks[v.Hash] = cachedBlockEntry{Height: 0, Hash: v.Hash, Prefix: prefix, Private: private}
+			a.cacheIndex.Heights["0"] = v.Hash
+			if err := a.startMigration(migrationRequest{Action: "start", Mode: "copy", Scope: "range", From: 0, To: 0}); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			var job migrationJob
+			for time.Now().Before(deadline) {
+				a.migrationMu.Lock()
+				job = a.migration
+				a.migrationMu.Unlock()
+				if !job.Running {
+					break
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			if job.Running {
+				t.Fatal("migration did not stop")
+			}
+			_, archiveErr := a.archiveBlock(v.Hash)
+			if private {
+				if job.State != "paused" || job.Copied != 0 || !strings.Contains(job.Error, "private") || archiveErr == nil || len(a.graphCoverage()) != 0 {
+					t.Fatalf("private cache migrated to public storage: job=%+v archive=%v", job, archiveErr)
+				}
+				if _, err := a.cachedBlockPayloadUnverified(v.Hash); err != nil {
+					t.Fatalf("private source was altered: %v", err)
+				}
+			} else if job.State != "copied" || job.Copied != 1 || archiveErr != nil || !intervalsCoverRange(a.graphCoverage(), 0, 0) {
+				t.Fatalf("public cache migration failed: job=%+v archive=%v", job, archiveErr)
+			}
+		})
+	}
+}
 func Test050InterruptedJobsRestartPaused(t *testing.T) {
 	dir := t.TempDir()
 	a := &app{dataDir: dir}

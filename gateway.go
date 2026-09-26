@@ -91,7 +91,7 @@ func exchangeGatewayOutbound(p *peerConn) error {
 	_ = p.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	defer p.conn.SetReadDeadline(time.Time{})
 	for {
-		m, err := readMessage(p.conn)
+		m, err := readHandshakeMessage(p.conn)
 		if err != nil {
 			return err
 		}
@@ -109,6 +109,9 @@ func exchangeGatewayOutbound(p *peerConn) error {
 			if got.Wire != gatewayWireVersion {
 				return fmt.Errorf("Gateway wire %d is incompatible", got.Wire)
 			}
+			if got.Error != "" {
+				return fmt.Errorf("Gateway negotiation: %s", got.Error)
+			}
 			p.gatewayProtocols = append([]gatewayProtocolSupport(nil), got.Protocols...)
 			if w, ok := protocolVersionSupported(got.Protocols, bodProtocolID, minBODWireVersion, bodWireVersion); ok {
 				p.bod, p.bodWire = true, w
@@ -118,13 +121,13 @@ func exchangeGatewayOutbound(p *peerConn) error {
 	}
 }
 
-func handleGatewayMessage(c interface{ Write([]byte) (int, error) }, payload []byte, p *peerConn) {
+func handleGatewayMessage(c interface{ Write([]byte) (int, error) }, payload []byte, p *peerConn) error {
 	if !p.gateway || len(payload) > maxGatewayMsgPayload {
-		return
+		return fmt.Errorf("Gateway negotiation unavailable")
 	}
 	var got gatewayMessage
 	if json.Unmarshal(payload, &got) != nil || got.Wire != gatewayWireVersion || got.Kind != "hello" || got.ID == "" {
-		return
+		return fmt.Errorf("invalid Gateway hello")
 	}
 	p.gatewayProtocols = append([]gatewayProtocolSupport(nil), got.Protocols...)
 	if w, ok := protocolVersionSupported(got.Protocols, bodProtocolID, minBODWireVersion, bodWireVersion); ok {
@@ -136,6 +139,37 @@ func handleGatewayMessage(c interface{ Write([]byte) (int, error) }, payload []b
 	out := gatewayMessage{Wire: gatewayWireVersion, Kind: "hello_ack", ID: got.ID, Protocols: p.localProtocols}
 	raw, _ := json.Marshal(out)
 	if len(raw) <= maxGatewayMsgPayload {
-		_ = writeMessage(c, "gwmsg", raw)
+		return writeMessage(c, "gwmsg", raw)
 	}
+	return fmt.Errorf("Gateway hello response too large")
+}
+
+// Complete the initial protocol list before giving the socket to the managed
+// reader. The immutable negotiated list can then be used safely in both roles.
+func exchangeGatewayInbound(p *peerConn) error {
+	_ = p.conn.SetDeadline(time.Now().Add(5 * time.Second))
+	defer p.conn.SetDeadline(time.Time{})
+	for messages := 0; messages < 16; messages++ {
+		m, err := readHandshakeMessage(p.conn)
+		if err != nil {
+			return err
+		}
+		switch m.command {
+		case "ping":
+			if len(m.payload) == 8 {
+				if err := writeMessage(p.conn, "pong", m.payload); err != nil {
+					return err
+				}
+			}
+		case "gwmsg":
+			var hello gatewayMessage
+			if json.Unmarshal(m.payload, &hello) != nil || hello.Wire != gatewayWireVersion || hello.Kind != "hello" || hello.ID == "" || len(hello.ID) > 128 {
+				return fmt.Errorf("invalid Gateway hello")
+			}
+			return handleGatewayMessage(p.conn, m.payload, p)
+		case "feature":
+			return fmt.Errorf("late feature negotiation")
+		}
+	}
+	return fmt.Errorf("Gateway hello message budget exceeded")
 }

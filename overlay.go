@@ -249,9 +249,6 @@ func (a *app) peerCapabilitiesLegacy() ([]string, int64, string, int) {
 			caps = append(caps, "spendloc")
 		}
 	}
-	if core.Connected {
-		caps = append(caps, "utxos")
-	}
 	return uniqueStrings(caps), height, tip, cacheBlocks
 }
 
@@ -282,7 +279,7 @@ func (s *overlayServer) handshakeInbound(c net.Conn) (*peerConn, error) {
 	sentVerack, sentFeature := false, false
 	peerFeature, peerWire := false, 0
 	for !(gotVersion && gotVerack && sentVerack) {
-		m, err := readMessage(c)
+		m, err := readHandshakeMessage(c)
 		if err != nil {
 			return nil, err
 		}
@@ -365,11 +362,27 @@ func (s *overlayServer) handleConn(c net.Conn) {
 	if p.gateway {
 		s.observeConn(c, "feature_negotiated", "Bitcoin P2P")
 	}
+	if p.gateway && s.app.network != nil {
+		if err := exchangeGatewayInbound(p); err != nil {
+			return
+		}
+		s.observeConn(c, "connected", "Gateway On Demand")
+		s.mu.Lock()
+		if v := s.live[c.RemoteAddr().String()]; v != nil {
+			v.Gateway = true
+		}
+		s.mu.Unlock()
+		managed := s.app.network.adoptInbound(p)
+		if managed == nil {
+			return
+		}
+		defer managed.close("Inbound connection ended")
+		<-managed.done
+		return
+	}
 	addrAnswered := false
 	addressBudget := 5000
-	// A bounded per-connection request count is an intentionally simple first
-	// resource limit. Clients currently use one request per connection.
-	requestCount := 0
+	var bodBudget, satBudget sessionServiceBudget
 	seenRequestIDs := map[string]bool{}
 	for {
 		_ = c.SetReadDeadline(time.Now().Add(120 * time.Second))
@@ -410,12 +423,15 @@ func (s *overlayServer) handleConn(c net.Conn) {
 			s.app.settingsMu.RUnlock()
 			if allowed {
 				s.handleChainRequest(c, m.command, m.payload)
+			} else {
+				writeBitcoinUnavailable(c, m)
 			}
 		case "getdata":
 			s.app.settingsMu.RLock()
 			serveBitcoin := s.app.settings.ServeData
 			s.app.settingsMu.RUnlock()
 			if !serveBitcoin {
+				writeBitcoinUnavailable(c, m)
 				continue
 			}
 			s.observeConn(c, "active", "Bitcoin P2P")
@@ -431,18 +447,27 @@ func (s *overlayServer) handleConn(c net.Conn) {
 				s.mu.Unlock()
 			}
 		case "satmsg":
-			requestCount++
-			if requestCount > 16 {
-				return
-			}
 			if !p.gateway {
 				return
 			}
 			if _, ok := protocolVersionSupported(p.gatewayProtocols, satlineProtocolID, 1, 1); !ok {
 				return
 			}
+			var env satlineEnvelope
+			if strictSatlineJSON(m.payload, &env) != nil || !validSatlineRequestID(env.ID) {
+				continue
+			}
+			previous := satBudget.started
+			status := satBudget.take(time.Now(), 16, env.ID)
+			if satBudget.started != previous {
+				seenRequestIDs = map[string]bool{}
+			}
 			if !s.app.satlineNetworkingEnabled() {
-				return
+				status = "unsupported"
+			}
+			if status != "" {
+				writeSatlineUnavailable(c, env.ID, status)
+				continue
 			}
 			s.observeConn(c, "active", "Satline")
 			s.app.handleSatlineWire(c, m.payload, seenRequestIDs)
@@ -451,17 +476,15 @@ func (s *overlayServer) handleConn(c net.Conn) {
 				// Feature specs based on BIP434 must not be used without negotiation.
 				continue
 			}
-			requestCount++
-			if requestCount > 64 || len(m.payload) > maxBODMsgPayload {
+			if len(m.payload) > maxBODMsgPayload {
 				return
 			}
 			var meta bodEnvelope
-			if json.Unmarshal(m.payload, &meta) == nil && meta.ID != "" {
-				if seenRequestIDs[meta.ID] {
-					s.writeBODResponse(c, bodEnvelope{Wire: bodWireVersion, Kind: "response", Type: meta.Type, ID: meta.ID, Status: "invalid", Error: "duplicate request id"})
+			if json.Unmarshal(m.payload, &meta) == nil && meta.ID != "" && len(meta.ID) <= 128 {
+				if status := bodBudget.take(time.Now(), 64, meta.ID); status != "" {
+					s.writeBODResponse(c, bodEnvelope{Wire: bodWireVersion, Kind: "response", Type: meta.Type, ID: meta.ID, Status: status, Error: "request budget or duplicate ID"})
 					continue
 				}
-				seenRequestIDs[meta.ID] = true
 			}
 			s.app.settingsMu.RLock()
 			serveBOD := s.app.settings.ServeData
@@ -564,6 +587,10 @@ func (s *overlayServer) handleBODMsg(c net.Conn, payload []byte) {
 		return
 	}
 	req.Type = bodInternalType(env.Type)
+	if req.Type == "address_utxos" {
+		s.writeBODResponse(c, bodEnvelope{Wire: bodWireVersion, Kind: "response", Type: env.Type, ID: env.ID, Status: "unsupported", Error: "Remote address-wide UTXO scans are not supported"})
+		return
+	}
 	resp, status := s.app.answerBODRequest(req)
 	raw, _ := json.Marshal(resp)
 	out := bodEnvelope{Wire: bodWireVersion, Kind: "response", Type: env.Type, ID: env.ID, Status: status, Payload: raw}

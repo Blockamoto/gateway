@@ -188,7 +188,7 @@ func deleteShortcut() {
 }
 func registerUninstall(installDir, uninstaller string) error {
 	key := `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\GatewayClient`
-	rows := [][3]string{{"DisplayName", "REG_SZ", "Gateway Client"}, {"DisplayVersion", "REG_SZ", "0.5.4"}, {"Publisher", "REG_SZ", "Gateway Client"}, {"InstallLocation", "REG_SZ", installDir}, {"DisplayIcon", "REG_SZ", filepath.Join(installDir, "GatewayClient.exe")}, {"UninstallString", "REG_SZ", fmt.Sprintf("\"%s\" --uninstall", uninstaller)}, {"QuietUninstallString", "REG_SZ", fmt.Sprintf("\"%s\" --uninstall --quiet", uninstaller)}, {"NoModify", "REG_DWORD", "1"}, {"NoRepair", "REG_DWORD", "1"}}
+	rows := [][3]string{{"DisplayName", "REG_SZ", "Gateway Client"}, {"DisplayVersion", "REG_SZ", "0.5.4-repair.1"}, {"Publisher", "REG_SZ", "Gateway Client"}, {"InstallLocation", "REG_SZ", installDir}, {"DisplayIcon", "REG_SZ", filepath.Join(installDir, "GatewayClient.exe")}, {"UninstallString", "REG_SZ", fmt.Sprintf("\"%s\" --uninstall", uninstaller)}, {"QuietUninstallString", "REG_SZ", fmt.Sprintf("\"%s\" --uninstall --quiet", uninstaller)}, {"NoModify", "REG_DWORD", "1"}, {"NoRepair", "REG_DWORD", "1"}}
 	for _, r := range rows {
 		if err := regAdd(key, r[0], r[1], r[2]); err != nil {
 			return err
@@ -532,7 +532,7 @@ var nextButton, backButton, titleLabel, detailLabel uintptr
 func showBootstrapStage(stage int) {
 	bootstrapStage = stage
 	if stage == 0 {
-		setText(titleLabel, "Welcome to Gateway Client 0.5.4")
+		setText(titleLabel, "Welcome to Gateway Client 0.5.4-repair.1")
 		setText(detailLabel, "Bitcoin Core is optional. Gateway can connect to Bitcoin peers itself.\r\n\r\nThis installer copies the application and opens the same seven-stage setup available from Settings. Your existing data and privacy decisions stay in place.\r\n\r\nThis is a testing candidate, not a Windows-accepted release.")
 		setText(nextButton, "Next")
 	} else {
@@ -584,7 +584,7 @@ func runGUI() {
 	class := u16("GatewayClientInstaller052")
 	wc := WNDCLASS{WndProc: syscall.NewCallback(wndProc), Instance: inst, Icon: icon, Cursor: cursor, Background: COLOR_WINDOW + 1, ClassName: class}
 	procRegisterClass.Call(uintptr(unsafe.Pointer(&wc)))
-	hwnd, _, _ := procCreateWindowEx.Call(0, uintptr(unsafe.Pointer(class)), uintptr(unsafe.Pointer(u16("Gateway Client 0.5.4 Setup"))), WS_OVERLAPPEDWINDOW&^0x00040000&^0x00010000, CW_USEDEFAULT, CW_USEDEFAULT, 720, 590, 0, 0, inst, 0)
+	hwnd, _, _ := procCreateWindowEx.Call(0, uintptr(unsafe.Pointer(class)), uintptr(unsafe.Pointer(u16("Gateway Client 0.5.4-repair.1 Setup"))), WS_OVERLAPPEDWINDOW&^0x00040000&^0x00010000, CW_USEDEFAULT, CW_USEDEFAULT, 720, 590, 0, 0, inst, 0)
 	mainHWND = hwnd
 	titleLabel = createControl("STATIC", "", WS_CHILD|WS_VISIBLE, 28, 25, 640, 38, 0)
 	detailLabel = createControl("STATIC", "", WS_CHILD|WS_VISIBLE, 28, 77, 640, 210, 0)

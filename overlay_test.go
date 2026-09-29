@@ -11,12 +11,20 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 func fakeCore(t *testing.T) (string, func()) {
+	dir, stop, _ := fakeCoreWithScanCounter(t)
+	return dir, stop
+}
+
+func fakeCoreWithScanCounter(t *testing.T) (string, func(), *atomic.Int64) {
 	t.Helper()
+	scans := &atomic.Int64{}
 	ln, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +58,7 @@ func fakeCore(t *testing.T) (string, func()) {
 		case "gettxspendingprevout":
 			result = []any{map[string]any{"txid": txid, "vout": 1, "spendingtxid": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "blockhash": blockhash}}
 		case "scantxoutset":
+			scans.Add(1)
 			result = map[string]any{"success": true, "txouts": 1, "height": 0, "bestblock": blockhash, "total_amount": 1.25, "unspents": []any{map[string]any{"txid": txid, "vout": 2, "scriptPubKey": "0014abcd", "desc": "addr(bc1qtest)#x", "amount": 1.25, "blockhash": blockhash, "confirmations": 1}}}
 		default:
 			_ = json.NewEncoder(w).Encode(map[string]any{"result": nil, "error": map[string]any{"code": -1, "message": "unknown"}, "id": "bod"})
@@ -59,11 +68,11 @@ func fakeCore(t *testing.T) (string, func()) {
 	})
 	srv := &http.Server{Handler: mux}
 	go srv.Serve(ln)
-	return dir, func() { _ = srv.Close() }
+	return dir, func() { _ = srv.Close() }, scans
 }
 
 func TestCoreLookupAndOverlay(t *testing.T) {
-	dir, stopCore := fakeCore(t)
+	dir, stopCore, scans := fakeCoreWithScanCounter(t)
 	defer stopCore()
 	txid := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	settings := appSettings{BitcoinDataDir: dir, RPCAuthMode: "auto", ServeData: true}
@@ -100,8 +109,11 @@ func TestCoreLookupAndOverlay(t *testing.T) {
 		t.Fatalf("overlay: %+v %v", resp, err)
 	}
 	addrResp, err := queryOverlayPeer(overlayPeer{Addr: fmt.Sprintf("127.0.0.1:%d", overlayTCPPort)}, overlayRequest{Version: overlayProtocolVersion, Type: "address_utxos", Address: "bc1qtest"})
-	if err != nil || addrResp.AddressUTXOs == nil || len(addrResp.AddressUTXOs.UTXOs) != 1 {
-		t.Fatalf("address overlay: %+v %v", addrResp, err)
+	if err == nil || !strings.Contains(err.Error(), "unsupported") || addrResp.AddressUTXOs != nil {
+		t.Fatalf("remote address scan must be unsupported: %+v %v", addrResp, err)
+	}
+	if got := scans.Load(); got != 1 {
+		t.Fatalf("remote request triggered Core scan: got %d scans, want only the explicit local scan", got)
 	}
 }
 

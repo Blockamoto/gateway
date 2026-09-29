@@ -1,0 +1,40 @@
+{
+  "version": "0.6.0-alpha.1",
+  "url": "https://github.com/Blockamoto/gateway/releases/tag/v0.6.0-alpha.1",
+  "source_commit": "d89193e8e1d925731d21cbb3455de28b21b3b403",
+  "published_at": "2026-09-29T01:35:14Z",
+  "prerelease": true,
+  "verification": "All five uploaded asset sizes and GitHub server SHA-256 digests exactly match local packaged files; tag resolves to clean build source. Browser download completion not claimed.",
+  "assets": [
+    {
+      "name": "artifact-manifest.json",
+      "size": 746,
+      "digest": "sha256:b072a40e3ac833bcf1b87e5de4434f5a191db4d700890bed071518e69355a136",
+      "url": "https://github.com/Blockamoto/gateway/releases/download/v0.6.0-alpha.1/artifact-manifest.json"
+    },
+    {
+      "name": "gateway-client-v0.6.0-alpha.1-installer.exe",
+      "size": 26083328,
+      "digest": "sha256:4aa80170aac433fa2c19561044292da9dd7978349721b7aa19325bd3b4abc4a1",
+      "url": "https://github.com/Blockamoto/gateway/releases/download/v0.6.0-alpha.1/gateway-client-v0.6.0-alpha.1-installer.exe"
+    },
+    {
+      "name": "gateway-client-v0.6.0-alpha.1-linux-amd64.zip",
+      "size": 4030654,
+      "digest": "sha256:eed196842216c6da9e6d77773738259ff655557acaa6be4148a77d35283ec122",
+      "url": "https://github.com/Blockamoto/gateway/releases/download/v0.6.0-alpha.1/gateway-client-v0.6.0-alpha.1-linux-amd64.zip"
+    },
+    {
+      "name": "gateway-client-v0.6.0-alpha.1-windows-amd64.zip",
+      "size": 18799157,
+      "digest": "sha256:32e9cfb375e416d211aa397c0e80885f43bb2a6b3a64d97e6d34dd43bd852c1a",
+      "url": "https://github.com/Blockamoto/gateway/releases/download/v0.6.0-alpha.1/gateway-client-v0.6.0-alpha.1-windows-amd64.zip"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 339,
+      "digest": "sha256:fea4aa804415b0b77c2c3e8589bcbacda9f9f2dadb6affb2c648512923767279",
+      "url": "https://github.com/Blockamoto/gateway/releases/download/v0.6.0-alpha.1/SHA256SUMS.txt"
+    }
+  ]
+}

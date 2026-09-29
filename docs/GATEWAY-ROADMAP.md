@@ -71,3 +71,11 @@ Privacy controls should let people choose what to serve, direct versus relay-onl
 ## Human-readable addressing direction
 
 Make structural paths first-class in Gateway interfaces and pursue a documented interoperable Gateway grammar, not a change to Bitcoin consensus. Retain native hashes and chain anchors. Block-height paths resolve against the selected chain and can change after reorganization. Output offsets locate historical output positions; a sat number is a stable ordinal identity whose location changes. Revealed inscription content stays in transaction witness data. Deriving a global sat number or current ownership can require ancestry/history beyond one reveal block and must not be claimed from the path alone.
+
+## Next-version note: inscription ID block-location fallback
+
+When an inscription ID cannot be resolved because Gateway cannot locate its reveal transaction, prompt the user for the reveal block height and retry with the original inscription ID preserved. Missing local block bytes alone should not require this prompt when the block location is already known. The ID supplies the transaction ID and inscription index; the user should not also need to supply a transaction position.
+
+Resolve the supplied height against the selected header chain, fetch the block from available Bitcoin peers, verify the block and witness commitment, locate the matching transaction, and extract the requested inscription. This should work without a local full Bitcoin node, an external Ord server, or a Gateway locator peer. A wrong block must produce an explicit transaction-not-found result; unavailable block sources should allow waiting or retry. This resolves inscription content, not its current owner or global sat lineage.
+
+Build on the existing optional block-hash hint by making the fallback contextual and accepting a block height. This is a follow-up feature request recorded after publication of v0.6.2, not functionality claimed by that release.

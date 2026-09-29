@@ -106,6 +106,7 @@ func (a *app) searchQuery(q string) (searchResponse, error) {
 			return searchResponse{}, err
 		}
 		out.Kind, out.Tx = "transaction", &r.Resolution
+		out.Ord = r.Inscription
 		out.Coordinate, out.FocusKind, out.FocusIndex, out.FocusOffset = r.Coordinate, r.FocusKind, r.FocusIndex, r.FocusOffset
 	} else if looksLikeAddress(q) {
 		v, err := a.resolveAddressUTXOsViaOverlay(q)

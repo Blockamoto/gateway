@@ -85,11 +85,12 @@ function invalidatePlan() { reviewedRequest = ''; $('build').disabled = true; $(
 function selectedDefinition() { return definitions.find(x => x.id === $('index').value); }
 function showRules() {
   const d = selectedDefinition(); if (!d) return;
+  const fromField = $('from').closest('.field'); if (fromField) fromField.hidden = d.id === 'bitmap';
   $('definition-summary').textContent = d.theory + (d.id === 'bitmap' ? ' Base claims only: ownership, parcels and full historical compatibility are not available.' : ' Reveal occurrences only: canonical inscription numbers are not available.');
   $('rule-theory').textContent = d.theory;
   $('rule-json').textContent = pretty(d);
   $('from').placeholder = String(d.start_height);
-  $('from-note').textContent = d.arbitrary_start ? 'A bounded scan may start at any block. Resume with the same first block.' : 'Fresh state starts at block ' + d.start_height + '; a mid-history fresh start is not valid.';
+  $('from-note').textContent = d.id === 'bitmap' ? 'Bitmap history always begins at block ' + d.start_height + '. Choose only the last block to index.' : (d.arbitrary_start ? 'A bounded scan may start at any block. Resume with the same first block.' : 'Fresh state starts at block ' + d.start_height + '; a mid-history fresh start is not valid.');
   metadata($('rule-meta'), [['Definition', d.name + ' · ' + d.id], ['Version / network', d.version + ' / ' + d.network], ['Rule identity', d.rule_hash], ['Dependencies', d.dependencies.join(' → ') || 'None'], ['Build support', d.buildable ? 'Available in this release' : 'No derivation executor; inspect provider capabilities'], ['Checkpoint / output schema', d.checkpoint_schema + ' / ' + d.output_schema], ['Encoding', d.canonical_encoding]]);
   $('rule-list').replaceChildren(...d.rules.map(x => element('li', x)));
 }
@@ -101,7 +102,7 @@ function showJob(job) {
   if (!job?.id) { $('job-summary').textContent = 'No index job has been started.'; $('job-meta').replaceChildren(); $('job-error').textContent = ''; $('job-progress').hidden = true; return; }
   $('job-summary').textContent = job.index + ' · ' + human(job.state);
   const completed = job.height >= job.from ? job.height : 'None yet';
-  metadata($('job-meta'), [['Selected range', job.from + ' → ' + (job.to >= 0 ? job.to : 'Waiting for verified tip')], ['Last committed height', completed], ['Source retention', human(job.retention)], ['Job ID', job.id]]);
+  metadata($('job-meta'), [['Selected range', job.from + ' → ' + (job.to >= 0 ? job.to : 'Waiting for verified tip')], ['Last committed height', completed], ['Blocks checked', job.blocks_checked ?? 0], ['Districts found', job.districts_found ?? 0], ['Source retention', human(job.retention)], ['Job ID', job.id]]);
   $('job-error').textContent = job.error || '';
   $('job-progress').hidden = job.to < job.from;
   if (job.to >= job.from) { $('job-progress').max = job.to - job.from + 1; $('job-progress').value = Math.max(0, Math.min(job.to, job.height) - job.from + 1); }

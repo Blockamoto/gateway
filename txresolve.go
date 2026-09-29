@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -225,6 +226,7 @@ func (a *app) resolveAddressUTXOsViaOverlay(address string) (addressResolutionVi
 
 type coordinateResolution struct {
 	Resolution  txResolutionView
+	Inscription *ordRecord
 	FocusKind   string
 	FocusIndex  int
 	FocusOffset *uint64
@@ -243,6 +245,19 @@ func (a *app) resolveCoordinate(c bodCoordinate) (coordinateResolution, error) {
 	focusKind, focusIndex := "transaction", -1
 	var focusOffset *uint64
 	switch c.Kind {
+	case coordInscription:
+		if c.InscriptionIndex < 0 {
+			return coordinateResolution{}, fmt.Errorf("invalid inscription index")
+		}
+		// The reveal is resolved from the authenticated Bitcoin block. The
+		// resulting record is the same native witness evidence used by the
+		// known-ID resolver, but the lookup starts from a human path.
+		id := fmt.Sprintf("%si%d", tx.TxID, c.InscriptionIndex)
+		rec, err := a.resolveInscription(context.Background(), id, block.Hash)
+		if err != nil {
+			return coordinateResolution{}, err
+		}
+		return coordinateResolution{Resolution: txResolutionView{TxID: tx.TxID, Height: block.Height, BlockHash: block.Hash, LocatorPeer: "BOD positional address " + c.Raw, BitcoinPeer: block.SourcePeer, SourceNetwork: block.SourceNetwork, FromCache: block.FromCache, LocatorVerified: block.Verification.HeaderChainMatch, TransactionVerified: true, VerificationState: block.VerificationState, Transaction: tx}, Inscription: &rec, Coordinate: c.Raw}, nil
 	case coordOutput:
 		if c.IOIndex < 0 || c.IOIndex >= len(tx.Outputs) {
 			return coordinateResolution{}, fmt.Errorf("transaction %s has %d outputs; output %d does not exist", tx.Coordinate, len(tx.Outputs), c.IOIndex)

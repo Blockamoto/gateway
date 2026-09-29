@@ -13,6 +13,7 @@ const (
 	coordOutput      coordinateKind = "output"
 	coordInput       coordinateKind = "input"
 	coordSatpoint    coordinateKind = "satpoint"
+	coordInscription coordinateKind = "inscription"
 )
 
 type bodCoordinate struct {
@@ -21,6 +22,7 @@ type bodCoordinate struct {
 	TxIndex   int
 	IOIndex   int
 	SatOffset uint64
+	InscriptionIndex int
 	Raw       string
 }
 
@@ -98,6 +100,17 @@ func parseBODCoordinate(s string) (bodCoordinate, bool) {
 		h, ok3 := parseNonNeg(parts[3])
 		if ok0 && ok1 && ok2 && ok3 && vout <= maxInt && tx <= maxInt {
 			return bodCoordinate{Kind: coordSatpoint, Height: h, TxIndex: int(tx), IOIndex: int(vout), SatOffset: off, Raw: raw}, true
+		}
+	}
+	// Inscription occurrence: transaction-index.i<inscription-index>.block-height.
+	// This is deliberately positional and Bitcoin-derived; it does not require
+	// an Ord server or a transaction hash.
+	if len(parts) == 3 && strings.HasPrefix(parts[1], "i") {
+		tx, ok1 := parseNonNeg(parts[0])
+		idx, ok2 := parseNonNeg(strings.TrimPrefix(parts[1], "i"))
+		h, ok3 := parseNonNeg(parts[2])
+		if ok1 && ok2 && ok3 && tx <= maxInt && idx <= maxInt {
+			return bodCoordinate{Kind: coordInscription, Height: h, TxIndex: int(tx), InscriptionIndex: int(idx), IOIndex: -1, Raw: raw}, true
 		}
 	}
 	return bodCoordinate{}, false

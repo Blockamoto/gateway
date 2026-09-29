@@ -83,7 +83,10 @@ func (a *app) resolveInscription(ctx context.Context, id, blockHint string) (ord
 	a.settingsMu.RLock()
 	enabled := a.settings.OrdEnabled
 	a.settingsMu.RUnlock()
-	if !enabled {
+	// A structural inscription coordinate supplies its authenticated reveal
+	// block directly, so it can resolve from Bitcoin peers without an Ord
+	// backend. Known-ID lookups still honor the module setting.
+	if !enabled && strings.TrimSpace(blockHint) == "" {
 		return ordRecord{}, fmt.Errorf("Ord on Demand is disabled")
 	}
 	txid, index, e := inscriptionParts(id)

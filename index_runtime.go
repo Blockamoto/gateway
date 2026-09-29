@@ -19,6 +19,8 @@ type indexJob struct {
 	Height    int64  `json:"height"`
 	Error     string `json:"error,omitempty"`
 	Retention string `json:"retention"`
+	BlocksChecked int `json:"blocks_checked"`
+	DistrictsFound int `json:"districts_found"`
 }
 type indexStatusView struct {
 	Definitions []indexDefinition   `json:"definitions"`
@@ -274,8 +276,13 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		}
 		block, e := a.fetchBlockWithPolicy(t, j.Retention)
 		if e != nil {
-			finish("failed", e)
-			return
+			// Block bodies may be temporarily unavailable even while headers and
+			// peer sessions are healthy. Keep the checkpointed job alive and retry
+			// after the normal wait interval instead of forcing a manual restart.
+			if !wait(fmt.Errorf("waiting for block %d from Bitcoin peers: %w", next, e)) {
+				return
+			}
+			continue
 		}
 		if ctx.Err() != nil {
 			finish("paused", nil)
@@ -297,6 +304,12 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 			return
 		}
 		j.Height = next
+		j.BlocksChecked++
+		if latest, readErr := s.readBatch(s.head.Commitment); readErr == nil && j.Index == "bitmap" {
+			for _, record := range latest.Bitmap {
+				if record.Accepted { j.DistrictsFound++ }
+			}
+		}
 	}
 }
 func (a *app) indexQuery(id string, limit int) (any, error) {

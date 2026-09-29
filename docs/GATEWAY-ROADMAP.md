@@ -79,3 +79,9 @@ When an inscription ID cannot be resolved because Gateway cannot locate its reve
 Resolve the supplied height against the selected header chain, fetch the block from available Bitcoin peers, verify the block and witness commitment, locate the matching transaction, and extract the requested inscription. This should work without a local full Bitcoin node, an external Ord server, or a Gateway locator peer. A wrong block must produce an explicit transaction-not-found result; unavailable block sources should allow waiting or retry. This resolves inscription content, not its current owner or global sat lineage.
 
 Build on the existing optional block-hash hint by making the fallback contextual and accepting a block height. This is a follow-up feature request recorded after publication of v0.6.2, not functionality claimed by that release.
+
+## Next-version candidates: Bitmap names, parcels and audit
+
+The user proposed a parcel indexer, Bitmap index audit, comparison tool, and Bitmap address resolution for the next development pass. The comparison tool is a larger project; this records proposed scope, not completed functionality or a guaranteed release bundle.
+
+Use `DISTRICT.bitmap` to resolve the district's accepted Bitmap inscription, and `PARCEL.DISTRICT.bitmap` to resolve the parcel's inscription through the corresponding indexes. These are compact positional addresses with no additional labels. Integrate them consistently wherever Gateway accepts resource addresses, including the browser address bar. Bind results to the applicable rule profile and indexed chain coverage; distinguish missing coverage, no accepted claim, and unavailable inscription content. A parcel number must not be treated as an inscription index. Parcel rules and indexing requirements need to be specified and tested before claiming parcel resolution support.

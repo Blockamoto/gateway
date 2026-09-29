@@ -155,8 +155,15 @@ func (n *bitcoinNetwork) receiveAddresses(s *bitcoinSession, rows []advertisedPe
 		x.LastAddrOutcome = "address_message_received"
 		n.touchLocked(x)
 	}
-	n.mu.Unlock()
-	n.learn(rows, s.peer.addr)
+	if s.peer.gateway {
+		for _, row := range rows {
+			n.recordAddressLocked(row, "gateway_addr:"+s.peer.addr)
+		}
+		n.mu.Unlock()
+	} else {
+		n.mu.Unlock()
+		n.learn(rows, s.peer.addr)
+	}
 	n.persist()
 }
 func (s *bitcoinSession) isScout() bool { s.n.mu.Lock(); defer s.n.mu.Unlock(); return s.scout }
@@ -208,7 +215,7 @@ func (n *bitcoinNetwork) maintainDiscovery() {
 			n.ensureConfiguredAddress(p, "local_core_bitcoin", 0)
 		}
 	}
-	refreshPublicIP := !settings.DiscoveryPaused && n.app.needsPublicIPObservations054()
+	refreshPublicIP := settings.BitcoinGatewayDiscovery && !settings.DiscoveryPaused && n.app.needsPublicIPObservations054()
 	n.mu.Lock()
 	n.configuredGateways = configuredGateways
 	now := n.now()
@@ -218,7 +225,7 @@ func (n *bitcoinNetwork) maintainDiscovery() {
 			outbound++
 		}
 	}
-	if !settings.DiscoveryPaused && !n.intakeBlockedLocked() && !n.noBootstrap && !n.bootstrapBusy && outbound < 2 && (n.bootstrapAt.IsZero() || now.Sub(n.bootstrapAt) > 5*time.Minute) {
+	if !n.intakeBlockedLocked() && !n.noBootstrap && !n.bootstrapBusy && outbound < 2 && (n.bootstrapAt.IsZero() || now.Sub(n.bootstrapAt) > 5*time.Minute) {
 		n.bootstrapBusy = true
 		n.bootstrapAt = now
 		n.eventLocked("bootstrap", "", "Asking Bitcoin DNS seeds for ordinary Bitcoin introductions")
@@ -259,7 +266,7 @@ func (n *bitcoinNetwork) maintainDiscovery() {
 			s.lastServiceCheck = now
 			health = append(health, s)
 		}
-		if s.scout && !s.healthChecking && len(s.slot) == 0 && (!seek || now.Sub(s.view.Connected) > n.policy.ProbeWindow || (s.addrSampleReceived && !s.peer.gateway)) {
+		if s.scout && !s.healthChecking && len(s.slot) == 0 && (!seek || (!settings.BitcoinGatewayDiscovery && !s.peer.gateway) || now.Sub(s.view.Connected) > n.policy.ProbeWindow || (s.addrSampleReceived && !s.peer.gateway)) {
 			s.retired = true
 			if x := n.ledger[s.peer.addr]; x != nil {
 				x.RetryAfter = now.Add(n.policy.RevisitAfter)
@@ -311,6 +318,17 @@ func (n *bitcoinNetwork) maintainDiscovery() {
 	n.announceOnManagedPeers()
 }
 func (n *bitcoinNetwork) dialDiscoveryPeer(x bitcoinAddress) {
+	n.app.settingsMu.RLock()
+	allowedProbe := n.app.settings.BitcoinGatewayDiscovery && !n.app.settings.DiscoveryPaused
+	n.app.settingsMu.RUnlock()
+	n.mu.Lock()
+	role := n.dialing[x.Address].Role
+	normal := normalGatewayCandidate053(&x) || containsString(n.configuredGateways, x.Address)
+	n.mu.Unlock()
+	if !allowedProbe && !normal && (role == "gateway_search" || role == "gateway_candidate") {
+		n.failedOutcome(x.Address, fmt.Errorf("Bitcoin discovery experiment is off"), "experiment_stopped_before_dial")
+		return
+	}
 	ctx, cancel := context.WithTimeout(n.ctx, 20*time.Second)
 	defer cancel()
 	n.mu.Lock()
@@ -330,7 +348,18 @@ func (n *bitcoinNetwork) dialDiscoveryPeer(x bitcoinAddress) {
 		}
 	}()
 	flags, height := n.app.localBitcoinAdvertisement()
-	p, err := handshakeOutboundState(c, x.Address, n.app.localGatewayProtocols(), flags, height)
+	n.app.settingsMu.RLock()
+	probe := n.app.settings.BitcoinGatewayDiscovery && !n.app.settings.DiscoveryPaused
+	n.app.settingsMu.RUnlock()
+	n.mu.Lock()
+	directGateway := normalGatewayCandidate053(&x) || containsString(n.configuredGateways, x.Address)
+	n.mu.Unlock()
+	protocols := n.app.localGatewayProtocols()
+	if !probe && !directGateway {
+		protocols = nil
+		flags &^= gatewayExperimentalServiceBit
+	}
+	p, err := handshakeOutboundState(c, x.Address, protocols, flags, height)
 	close(done)
 	if err != nil {
 		c.Close()
@@ -387,14 +416,15 @@ func (n *bitcoinNetwork) dialDiscoveryPeer(x bitcoinAddress) {
 		a.OutcomeAt = now
 		a.LastOutcome = "bitcoin_connected"
 		a.Negotiated = append([]gatewayProtocolSupport(nil), p.gatewayProtocols...)
-		if a.EverHint || p.gateway {
+		if len(protocols) > 0 && (a.EverHint || p.gateway) {
 			a.GatewayChecks++
 		}
-		a.LastNegotiation = "no_gateway"
+		a.LastNegotiation = "not_requested"
 		if p.gateway {
 			a.LastNegotiation = "gateway_negotiated"
 			a.GatewayRetryAfter = time.Time{}
-		} else {
+		} else if len(protocols) > 0 {
+			a.LastNegotiation = "no_gateway"
 			a.GatewayRetryAfter = now.Add(n.policy.RevisitAfter)
 		}
 		n.touchLocked(a)
@@ -577,6 +607,7 @@ func (n *bitcoinNetwork) discoverySnapshot() map[string]any {
 	n.app.settingsMu.RLock()
 	enabled := !n.app.settings.NetworkDisabled
 	paused := n.app.settings.DiscoveryPaused
+	probe := n.app.settings.BitcoinGatewayDiscovery
 	lan := n.app.settings.LANDiscovery
 	configuredGateways := configuredGatewayBootstrapPeers(n.app.settings)
 	n.app.settingsMu.RUnlock()
@@ -630,7 +661,9 @@ func (n *bitcoinNetwork) discoverySnapshot() map[string]any {
 	snapshot := map[string]any{"connections": rows, "connected": len(n.sessions), "stable_connections": stable, "search_connections": scouts, "gateway_connected": gateway, "bod_available": bod, "useful_gateway_peers": useful, "address_count": len(n.addresses), "gateway_hint_count": hinted, "previously_negotiated_count": verified, "candidates": candidates, "recent": append([]networkPeerView(nil), n.recent...), "bootstrap_error": n.bootstrapError, "bootstrap_running": n.bootstrapBusy, "experimental_service_bit": 25, "enabled": enabled, "discovery_paused": paused, "lan_discovery": lan, "discovery": state, "events": append([]discoveryEvent(nil), n.events...), "gateway_target": n.policy.GatewaySlots, "limits": map[string]any{"bitcoin_slots": n.policy.BitcoinSlots, "gateway_slots": n.policy.GatewaySlots, "search_slots": n.policy.ScoutSlots, "address_capacity": maxBitcoinAddresses, "dial_interval_seconds": n.policy.TokenInterval.Seconds(), "revisit_minutes": n.policy.RevisitAfter.Minutes()}, "transport_note": "Bitcoin P2P v1. This is not a VPN or encrypted transport. A peer locator is not full consensus validation."}
 	snapshot["candidate_details_truncated"] = hinted > len(candidates)
 	snapshot["configured_gateway_peers"] = configuredGateways
-	snapshot["discovery_policy"] = map[string]any{"healthy_target": n.policy.GatewaySlots, "normal_scouting": enabled && !paused && !n.intakeBlockedLocked() && useful < n.policy.GatewaySlots, "remembered_peer_priority": true, "configured_peer_limit": maxGatewayBootstrapPeers, "note": "Remembered verified peers and configured entrances share bounded dial budgets. Normal Bitcoin scouting steps back at the useful-provider target and resumes automatically on loss. Bitcoin transport and bounded public-IP refresh remain available."}
+	snapshot["bitcoin_gateway_discovery"] = probe
+	snapshot["experiment"] = map[string]any{"enabled": probe, "active": probe && enabled && !paused, "default": "off", "fresh_trial": false, "note": "Opt-in controls Bitcoin hint seeking and address announcements. Existing history is retained; use an isolated fresh profile to test Bitcoin-only first contact. Ordinary Bitcoin data access remains independent."}
+	snapshot["discovery_policy"] = map[string]any{"healthy_target": n.policy.GatewaySlots, "normal_gateway_seeking": enabled && !paused && useful < n.policy.GatewaySlots, "normal_scouting": probe && enabled && !paused && !n.intakeBlockedLocked() && useful < n.policy.GatewaySlots, "remembered_peer_priority": true, "configured_peer_limit": maxGatewayBootstrapPeers, "note": "Remembered verified peers and configured entrances share bounded dial budgets. Configured and remembered routes resume after loss. Experimental Bitcoin scouting is opt-in and steps back at the useful-provider target. Bitcoin transport remains independent; extra public-IP probes require experimental consent."}
 	snapshot["ledger"] = n.ledgerSummaryLocked(n.now())
 	snapshot["candidate_states"] = n.candidateViewsLocked(candidates, n.now())
 	n.mu.Unlock()

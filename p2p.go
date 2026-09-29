@@ -374,7 +374,7 @@ func handshakeOutboundState(c net.Conn, addr string, protocols []gatewayProtocol
 				_ = writeMessage(c, "sendaddrv2", nil)
 			}
 			gotVersion = true
-			if p.version >= 70017 && !sentFeature {
+			if p.version >= 70017 && !sentFeature && len(protocols) > 0 {
 				if err := writeMessage(c, "feature", makeFeaturePayload(gatewayFeatureID, gatewayFeatureData())); err != nil {
 					c.Close()
 					return nil, err

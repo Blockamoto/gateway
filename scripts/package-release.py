@@ -60,11 +60,14 @@ range and source retention. Core and Ord are optional. Example terminal flow:
 
 New derived records are private. Publishing an index freezes an explicit
 snapshot; global serving must also be enabled for peer access. Configure your
-own reachable Gateway entrances in Discovery. No project server is bundled.
+own reachable Gateway entrances in Connections. No project server is bundled.
+Experimental Bitcoin-based Gateway discovery is OFF by default; advanced Probe
+requires deliberate opt-in. Ordinary Bitcoin data connections remain independent.
 
 STATUS.md and RELEASE-ACCEPTANCE.json list actual verification and alpha limits.
 This is an unsigned prerelease, not a claim of completed historical compatibility
-or native installer/visual browser acceptance. SOURCE-REVISION.txt identifies
+or native installer execution. Desktop/narrow browser QA is recorded in the
+acceptance file. SOURCE-REVISION.txt identifies
 the exact source. No wallet, Core data, credentials or node profile is included.
 ''')
         files = sorted(p for p in folder.rglob('*') if p.is_file())

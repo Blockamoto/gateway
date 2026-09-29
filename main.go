@@ -361,7 +361,7 @@ func main() {
 	fmt.Println("UI:", url)
 	fmt.Println("Data:", dataDir)
 	fmt.Println("Gateway On Demand/BOD wire: Bitcoin P2P TCP", overlayTCPPort, "· bit 25 => possible Gateway On Demand · BIP 434 Gateway On Demand · Gateway On Demand wire", gatewayWireVersion, "· BOD wire", bodWireVersion)
-	fmt.Println("Gateway discovery: bounded Bitcoin address crawl; no preloaded Gateway endpoints. LAN discovery is off unless explicitly enabled.")
+	fmt.Println("Gateway discovery: configured and remembered peers; Bitcoin-only discovery is an explicit Probe opt-in. No project seed is bundled.")
 	fmt.Println("Compatibility: app >=", minCompatibleAppVersion, "· storage schema", storageSchemaVersion, "· headers reusable")
 	fmt.Printf("Local API: v%d · skin API v%d · skin %s\n", localAPIVersion, skinAPIVersion, a.activeSkinName())
 	fmt.Println()

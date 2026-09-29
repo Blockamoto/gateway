@@ -145,6 +145,9 @@ func (n *bitcoinNetwork) recordAddressLocked(row advertisedPeer, source string) 
 		n.ledgerMeta.Repeats++
 		x.Observations++
 		x.LastSeen = now
+		if strings.HasPrefix(source, "gateway_addr:") && row.Services&gatewayExperimentalServiceBit != 0 {
+			x.GatewayIntroduction = source
+		}
 		x.GossipServices |= row.Services
 		n.observeClaimLocked(x, row.Services, source, now)
 		if x.DirectAt.IsZero() {
@@ -193,6 +196,9 @@ func (n *bitcoinNetwork) recordAddressLocked(row advertisedPeer, source string) 
 		}
 	}
 	x := &bitcoinAddress{Address: address, Key: key, Source: source, Services: row.Services, GossipServices: row.Services, FirstSeen: now, LastSeen: now, Observations: 1, AdvertisedAt: row.Timestamp, Exclusion: excluded, EverHint: row.Services&gatewayExperimentalServiceBit != 0}
+	if strings.HasPrefix(source, "gateway_addr:") && row.Services&gatewayExperimentalServiceBit != 0 {
+		x.GatewayIntroduction = source
+	}
 	n.observeClaimLocked(x, row.Services, source, now)
 	b, _ := json.Marshal(x)
 	if n.ledgerCompactBytes+int64(len(b))+ledgerReserve053(len(n.ledger)+1) > n.ledgerMeta.MaxBytes {

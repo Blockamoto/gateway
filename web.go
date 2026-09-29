@@ -209,6 +209,8 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 	a.settingsMu.RLock()
 	old := a.settings
 	a.settingsMu.RUnlock()
+	// Consent is changed only through explicit Probe controls, never a general settings save.
+	s.BitcoinGatewayDiscovery = old.BitcoinGatewayDiscovery
 	s.SatlineUsePeers = old.SatlineUsePeers
 	s.SatlineServePublished = old.SatlineServePublished
 	s.BitcoinDataDir = strings.TrimSpace(s.BitcoinDataDir)

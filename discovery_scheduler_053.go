@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+// Gateway introductions are still claims, but do not require Bitcoin-only discovery.
+func normalGatewayCandidate053(x *bitcoinAddress) bool {
+	return x != nil && (x.GatewayVerified || x.Source == "manual_gateway" || x.Source == "lan_udp" || x.GatewayIntroduction != "")
+}
+
 // Ordinary, specific-hint, and weak-hint queues, each split into first tries
 // and revisits. The exact ledger is authoritative; these queues are disposable.
 func workBucket053(x *bitcoinAddress) int {
@@ -79,6 +84,9 @@ func (n *bitcoinNetwork) planDiscoveryWithRecoveryLocked(now time.Time, seek, re
 }
 
 func (n *bitcoinNetwork) planDiscoveryWithRefreshLocked(now time.Time, seek, recoverKnown, refreshPublicIP bool) []bitcoinAddress {
+	n.app.settingsMu.RLock()
+	probe := n.app.settings.BitcoinGatewayDiscovery
+	n.app.settingsMu.RUnlock()
 	n.refillWorkLocked(now)
 	if n.ledgerError != "" {
 		return nil
@@ -128,7 +136,10 @@ func (n *bitcoinNetwork) planDiscoveryWithRefreshLocked(now time.Time, seek, rec
 				capacity = n.policy.ScoutSlots
 			}
 			knownTurn := r == 1 && recoverKnown && memberCount+counts[role] < n.policy.GatewaySlots
-			refreshTurn := r == 2 && !seek && refreshPublicIP && !n.intakeBlockedLocked() && n.publicIPRefreshDueLocked(now)
+			refreshTurn := probe && r == 2 && !seek && refreshPublicIP && !n.intakeBlockedLocked() && n.publicIPRefreshDueLocked(now)
+			if r == 2 && !probe {
+				continue
+			}
 			if counts[role] >= capacity || r != 0 && !seek && !knownTurn && !refreshTurn {
 				continue
 			}
@@ -187,7 +198,7 @@ func (n *bitcoinNetwork) planDiscoveryWithRefreshLocked(now time.Time, seek, rec
 			// Configured entrances get alternating candidate opportunities after
 			// remembered verified members. Other turns retain the Bitcoin hint
 			// queues, so failed seeds cannot monopolize Gateway discovery.
-			if chosen == nil && r == 1 && seek && n.roleTurns[r]%2 == 0 {
+			if chosen == nil && r == 1 && seek && (!probe || n.roleTurns[r]%2 == 0) {
 				for _, address := range n.configuredGateways {
 					x := n.ledger[address]
 					if x == nil || x.Exclusion != "" || now.Before(x.RetryAfter) || now.Before(n.gatewayRecheckAfterLocked(x)) || n.sessions[address] != nil {
@@ -211,6 +222,9 @@ func (n *bitcoinNetwork) planDiscoveryWithRefreshLocked(now time.Time, seek, rec
 						continue
 					}
 					if _, ok := n.dialing[address]; ok {
+						continue
+					}
+					if r == 1 && !probe && !normalGatewayCandidate053(x) {
 						continue
 					}
 					if r == 1 && now.Before(n.gatewayRecheckAfterLocked(x)) {
@@ -267,7 +281,17 @@ func (n *bitcoinNetwork) planDiscoveryWithRefreshLocked(now time.Time, seek, rec
 			n.tokens--
 			counts[role]++
 			groups[role][peerNetworkGroup(x.Address)] = true
-			n.dialing[x.Address] = networkPeerView{ID: "bitcoin:" + x.Address, Address: x.Address, Source: x.Source, Role: role, State: "connecting", Owner: "Gateway", Direction: "outbound", Transport: "Bitcoin P2P v1", Updated: now, Services: x.Services, ServiceHex: hexServices054(x.Services), Protocols: []string{"Bitcoin P2P"}}
+			attemptSource := x.Source
+			if r == 1 {
+				if containsString(n.configuredGateways, x.Address) {
+					attemptSource = "manual_gateway"
+				} else if x.GatewayVerified {
+					attemptSource = "remembered_gateway:" + x.Source
+				} else if x.GatewayIntroduction != "" {
+					attemptSource = x.GatewayIntroduction
+				}
+			}
+			n.dialing[x.Address] = networkPeerView{ID: "bitcoin:" + x.Address, Address: x.Address, Source: attemptSource, Role: role, State: "connecting", Owner: "Gateway", Direction: "outbound", Transport: "Bitcoin P2P v1", Updated: now, Services: x.Services, ServiceHex: hexServices054(x.Services), Protocols: []string{"Bitcoin P2P"}}
 			if x.FirstAttempt.IsZero() {
 				x.FirstAttempt = now
 			}

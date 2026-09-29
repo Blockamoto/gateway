@@ -48,7 +48,11 @@ func (a *app) handleIndexPage(w http.ResponseWriter, r *http.Request) {
 	nonce := base64.RawStdEncoding.EncodeToString(random[:])
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'self' 'nonce-"+nonce+"'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+	ancestors := "'none'"
+	if r.URL.Query().Get("embedded") == "1" {
+		ancestors = "'self'"
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'self' 'nonce-"+nonce+"'; connect-src 'self'; frame-ancestors "+ancestors+"; base-uri 'none'; form-action 'self'")
 	io.WriteString(w, strings.ReplaceAll(string(body), "__INDEX_NONCE__", nonce))
 }
 

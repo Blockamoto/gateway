@@ -51,6 +51,9 @@ func independentTestApp(t *testing.T) *app {
 		t.Fatal(e)
 	}
 	s := defaultSettings()
+	// Historical network fixtures exercise Bitcoin-native discovery deliberately.
+	// Production defaults and migration are tested separately with this opt-in off.
+	s.BitcoinGatewayDiscovery = true
 	s.CoreDisabled = true
 	s.CoreMountDisabled = true
 	s.BitcoinDataDir = ""

@@ -48,8 +48,8 @@ func (a *app) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"ok": true, "note": "Retry eligible peers; history, cooldowns and rate limits retained"})
 		return
 	}
-	if q.Action != "pause" && q.Action != "resume" && q.Action != "advertise" {
-		jsonError(w, 400, fmt.Errorf("choose pause, resume, retry or advertise"))
+	if q.Action != "pause" && q.Action != "resume" && q.Action != "advertise" && q.Action != "bitcoin_probe_start" && q.Action != "bitcoin_probe_stop" {
+		jsonError(w, 400, fmt.Errorf("choose pause, resume, retry, advertise, bitcoin_probe_start or bitcoin_probe_stop"))
 		return
 	}
 	q.Address = strings.TrimSpace(q.Address)
@@ -60,6 +60,11 @@ func (a *app) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	a.settingsMu.Lock()
 	next := a.settings
 	switch q.Action {
+	case "bitcoin_probe_start":
+		next.BitcoinGatewayDiscovery = true
+		next.DiscoveryPaused = false
+	case "bitcoin_probe_stop":
+		next.BitcoinGatewayDiscovery = false
 	case "pause":
 		next.DiscoveryPaused = true
 	case "resume":
@@ -79,9 +84,11 @@ func (a *app) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	if q.Action == "advertise" {
 		a.network.lastAnnounceKey = ""
 	}
-	if q.Action == "pause" {
+	if q.Action == "pause" || q.Action == "bitcoin_probe_stop" {
 		for addr, cancel := range a.network.dialCancels {
-			if a.network.dialing[addr].Role != "bitcoin_transport" {
+			x := a.network.ledger[addr]
+			normal := normalGatewayCandidate053(x) || containsString(a.network.configuredGateways, addr)
+			if a.network.dialing[addr].Role != "bitcoin_transport" && (q.Action == "pause" || !normal) {
 				cancel()
 			}
 		}

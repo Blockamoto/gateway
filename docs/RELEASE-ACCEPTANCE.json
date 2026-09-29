@@ -1,9 +1,9 @@
 {
-  "version": "0.6.0-alpha.1",
+  "version": "0.6.1",
   "platform": "Windows amd64",
   "toolchain": "go1.27.1",
   "command": "go test -count=1 -json -timeout=600s . ./internal/cleanup ./packaging/native-host ./packaging/gateway-launcher (GATEWAY_TEST_BINARY freshly rebuilt)",
-  "test_pass_events_including_subtests": 459,
+  "test_pass_events_including_subtests": 465,
   "failed_tests": [
     "Test054PurgeKeepsExternalAndUserFiles",
     "Test054PurgeRejectsOverlapAndRoot",
@@ -15,20 +15,16 @@
     "TestSatlineProcessHelper"
   ],
   "skip_classification": "Archive symlink fixture lacks privilege; helper entry point is intentionally not a standalone test.",
-  "test_log_sha256": "e11c14b5122e7399b995e2dab4e29755e0fe90d2156ed120ad1b5fed6b319131",
+  "test_log_sha256": "34d41eb1e0f92cff35a2c074d1f0e4b63e52d4dda40b9587665c82873f19ef85",
   "additional_checks": [
     "go vet passed",
-    "Browser companion parsing/privacy tests passed",
-    "Satline UI helper tests passed",
-    "Discovery and index JavaScript syntax passed",
-    "Real Bitmap origin evidence verifier passed",
-    "16 pinned OPI grammar cases passed",
-    "Header-window real retarget and rollback regression passed",
-    "Index storage cleanup preview protection regression passed after combined run",
-    "Empty-candidate checkpoint regression reproduced then fixed; index and Bitmap tests passed",
-    "Final binary live restart/extension 792435 to 792436 passed with zero cached raw blocks"
+    "Actual shipped shell JavaScript navigation regression: first/degraded load, all 11 destinations, history, address routing, nested clicks and origin guard passed",
+    "Index shipped-script workflow regression: exact-plan gating, build/pause/resume and no implicit publication/peer inspection passed",
+    "Discovery opt-in regressions passed; legacy settings do not grant consent",
+    "Embedded Indexes same-origin CSP and shell asset allowlist tests passed",
+    "Windows resources, installer exact payload and Linux ELF audit passed"
   ],
-  "visual_review": "Not performed: browser connector blocked loopback; user explicitly authorized finishing release without delaying for connector diagnosis.",
+  "visual_review": "Actual Chrome desktop and 390px narrow viewport reviewed using a separate QA profile. Overview, planning, results, connections, settings and Probe inspected. Narrow inscription wrapping corrected; coverage displays explicit range/block count. Live ordinary Bitcoin connections coexist with Probe off; explicit Probe start/stop preserved Bitcoin connections. Real Bitmap build at 792435 completed through UI after waiting/pause/resume; lookup and query return district 0. No browser errors observed.",
   "native_installer_execution": "Not performed; PE resources and exact embedded payload are audited separately.",
   "linux": "Cross-compiled ELF; not executed natively in this Windows run.",
   "limits": [

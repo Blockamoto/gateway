@@ -980,7 +980,11 @@ func (a *app) getOverlayPeers() []overlayPeer {
 	// endpoints advertising experimental service bit 25. The hint is never
 	// trusted by itself; every candidate must still negotiate Gateway via BIP 434,
 	// then advertise Bitcoin on Demand through the Gateway protocol list.
-	for _, ap := range discoverGatewayServicePeers(a.preferred) {
+	var experimentalHints []advertisedPeer
+	if settings.BitcoinGatewayDiscovery && !settings.DiscoveryPaused && !settings.NetworkDisabled {
+		experimentalHints = discoverGatewayServicePeers(a.preferred)
+	}
+	for _, ap := range experimentalHints {
 		if seen[ap.Addr] {
 			continue
 		}

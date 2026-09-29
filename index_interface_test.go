@@ -233,7 +233,7 @@ func TestIndexInterfacePublicationFreezesReviewedCheckpoint(t *testing.T) {
 func TestIndexInterfaceManagementIsolationAndPageCSP(t *testing.T) {
 	a := &app{dataDir: t.TempDir()}
 	handler := indexInterfaceHandler(a)
-	for _, path := range []string{"/indexes", "/api/v1/index/rules", "/api/v1/index/build"} {
+	for _, path := range []string{"/indexes", "/indexes?embedded=1", "/api/v1/index/rules", "/api/v1/index/build"} {
 		for _, origin := range []string{"null", "http://evil.example", "http://127.0.0.1:9091"} {
 			req := httptest.NewRequest("GET", "http://127.0.0.1:9090"+path, nil)
 			req.RemoteAddr = "127.0.0.1:50000"
@@ -254,7 +254,11 @@ func TestIndexInterfaceManagementIsolationAndPageCSP(t *testing.T) {
 	if first.Body.String() == second.Body.String() {
 		t.Fatal("CSP nonce reused")
 	}
-	if first.Header().Get("Cache-Control") != "no-store" || !strings.Contains(first.Body.String(), "Canonical inscription numbers") {
+	embedded := indexInterfaceCall(handler, "GET", "/indexes?embedded=1", "")
+	if embedded.Code != 200 || !strings.Contains(embedded.Header().Get("Content-Security-Policy"), "frame-ancestors 'self'") {
+		t.Fatal("same-origin index workspace cannot embed", embedded.Code)
+	}
+	if first.Header().Get("Cache-Control") != "no-store" || !strings.Contains(strings.ToLower(first.Body.String()), "canonical inscription numbers") {
 		t.Fatal("cache policy or numbering caveat missing")
 	}
 }

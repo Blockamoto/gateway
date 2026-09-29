@@ -27,7 +27,7 @@ def main() -> None:
         for name in ('GatewayClient.exe', 'GatewayOnDemand.exe', 'GatewayNativeHost.exe'):
             shutil.copy2(out/name, payload/name)
         shutil.copytree(root/'browser-companion', payload/'browser-companion')
-        shutil.copy2(root/'packaging/windows-installer/main.go.txt', temp/'main.go')
+        (temp/'main.go').write_text((root/'packaging/windows-installer/main.go.txt').read_text(encoding='utf-8').replace('__GATEWAY_VERSION__', version), encoding='utf-8')
         shutil.copytree(root/'internal', temp/'internal')
         shutil.copy2(root/'gateway_windows_amd64.syso',temp/'gateway_windows_amd64.syso')
         build(temp, 'windows', f'gateway-client-v{version}-installer.exe', True)

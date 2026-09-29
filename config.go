@@ -12,15 +12,16 @@ import (
 )
 
 type appSettings struct {
-	DiscoveryPaused       bool     `json:"discovery_paused"`
-	LANDiscovery          bool     `json:"lan_discovery"`
-	CoreDisabled          bool     `json:"core_disabled"`
-	CoreMountDisabled     bool     `json:"core_mount_disabled"`
-	PrepareMountedFiles   bool     `json:"prepare_mounted_files"`
-	NetworkDisabled       bool     `json:"network_disabled"`
-	HeadersPaused         bool     `json:"headers_paused"`
-	BitcoinPeers          []string `json:"bitcoin_peers,omitempty"`
-	GatewayBootstrapPeers []string `json:"gateway_bootstrap_peers,omitempty"`
+	BitcoinGatewayDiscovery bool     `json:"bitcoin_gateway_discovery"` // Explicit Probe consent; absent legacy settings stay off.
+	DiscoveryPaused         bool     `json:"discovery_paused"`
+	LANDiscovery            bool     `json:"lan_discovery"`
+	CoreDisabled            bool     `json:"core_disabled"`
+	CoreMountDisabled       bool     `json:"core_mount_disabled"`
+	PrepareMountedFiles     bool     `json:"prepare_mounted_files"`
+	NetworkDisabled         bool     `json:"network_disabled"`
+	HeadersPaused           bool     `json:"headers_paused"`
+	BitcoinPeers            []string `json:"bitcoin_peers,omitempty"`
+	GatewayBootstrapPeers   []string `json:"gateway_bootstrap_peers,omitempty"`
 
 	OrdEnabled            bool   `json:"ord_enabled"`
 	OrdURL                string `json:"ord_url,omitempty"`
@@ -48,15 +49,16 @@ type appSettings struct {
 }
 
 type publicSettings struct {
-	DiscoveryPaused       bool     `json:"discovery_paused"`
-	LANDiscovery          bool     `json:"lan_discovery"`
-	CoreDisabled          bool     `json:"core_disabled"`
-	CoreMountDisabled     bool     `json:"core_mount_disabled"`
-	PrepareMountedFiles   bool     `json:"prepare_mounted_files"`
-	NetworkDisabled       bool     `json:"network_disabled"`
-	HeadersPaused         bool     `json:"headers_paused"`
-	BitcoinPeers          []string `json:"bitcoin_peers,omitempty"`
-	GatewayBootstrapPeers []string `json:"gateway_bootstrap_peers,omitempty"`
+	BitcoinGatewayDiscovery bool     `json:"bitcoin_gateway_discovery"` // Explicit Probe consent; absent legacy settings stay off.
+	DiscoveryPaused         bool     `json:"discovery_paused"`
+	LANDiscovery            bool     `json:"lan_discovery"`
+	CoreDisabled            bool     `json:"core_disabled"`
+	CoreMountDisabled       bool     `json:"core_mount_disabled"`
+	PrepareMountedFiles     bool     `json:"prepare_mounted_files"`
+	NetworkDisabled         bool     `json:"network_disabled"`
+	HeadersPaused           bool     `json:"headers_paused"`
+	BitcoinPeers            []string `json:"bitcoin_peers,omitempty"`
+	GatewayBootstrapPeers   []string `json:"gateway_bootstrap_peers,omitempty"`
 
 	OrdEnabled            bool   `json:"ord_enabled"`
 	OrdURL                string `json:"ord_url,omitempty"`
@@ -83,7 +85,7 @@ type publicSettings struct {
 }
 
 func (s appSettings) public() publicSettings {
-	return publicSettings{DiscoveryPaused: s.DiscoveryPaused, LANDiscovery: s.LANDiscovery, CoreDisabled: s.CoreDisabled, CoreMountDisabled: s.CoreMountDisabled, PrepareMountedFiles: s.PrepareMountedFiles, NetworkDisabled: s.NetworkDisabled, HeadersPaused: s.HeadersPaused, BitcoinPeers: append([]string(nil), s.BitcoinPeers...), OrdEnabled: s.OrdEnabled, OrdURL: s.OrdURL, ArchiveDir: s.ArchiveDir,
+	return publicSettings{BitcoinGatewayDiscovery: s.BitcoinGatewayDiscovery, DiscoveryPaused: s.DiscoveryPaused, LANDiscovery: s.LANDiscovery, CoreDisabled: s.CoreDisabled, CoreMountDisabled: s.CoreMountDisabled, PrepareMountedFiles: s.PrepareMountedFiles, NetworkDisabled: s.NetworkDisabled, HeadersPaused: s.HeadersPaused, BitcoinPeers: append([]string(nil), s.BitcoinPeers...), OrdEnabled: s.OrdEnabled, OrdURL: s.OrdURL, ArchiveDir: s.ArchiveDir,
 		CacheBlocks: s.CacheBlocks, ShareCache: s.ShareCache, PrivacyMode: s.PrivacyMode, ServeData: s.ServeData, Onboarded: s.Onboarded,
 		StorageCapMB: s.StorageCapMB, BitcoinDataDir: s.BitcoinDataDir, BitcoinBlocksDir: s.BitcoinBlocksDir,
 		ManualPeer: s.ManualPeer, GatewayBootstrapPeers: append([]string(nil), s.GatewayBootstrapPeers...), AdvertiseAddr: s.AdvertiseAddr, RPCAuthMode: s.RPCAuthMode, RPCUser: s.RPCUser,

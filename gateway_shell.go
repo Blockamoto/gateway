@@ -85,7 +85,7 @@ func (a *app) serveGatewayShell(w http.ResponseWriter, r *http.Request) {
 }
 func (a *app) handleShellAsset(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/shell/")
-	if name != "app.js" && name != "style.css" && name != "network.js" && name != "network.css" && name != "discovery.js" && name != "discovery.css" && name != "gateway-mark.svg" && name != "gateway.ico" {
+	if name != "app.js" && name != "workspace.js" && name != "style.css" && name != "network.js" && name != "network.css" && name != "discovery.js" && name != "discovery.css" && name != "gateway-mark.svg" && name != "gateway.ico" {
 		http.NotFound(w, r)
 		return
 	}

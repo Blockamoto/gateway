@@ -230,6 +230,7 @@ func (a *app) bitcoinAdvertisementStatus() map[string]any {
 	listen := a.gatewayListenerAddress()
 	a.settingsMu.RLock()
 	allowed := a.settings.ServeData || a.settings.SatlineServePublished
+	probe := a.settings.BitcoinGatewayDiscovery && !a.settings.DiscoveryPaused
 	a.settingsMu.RUnlock()
 	state := "disabled"
 	note := "Enable inbound serving only to offer data. Outbound discovery does not require it."
@@ -278,11 +279,21 @@ func (a *app) bitcoinAdvertisementStatus() map[string]any {
 		state = "public_inbound_observed"
 		note = "A public inbound Gateway session has been observed. This is not a universal reachability guarantee."
 	}
-	return map[string]any{"state": state, "listener": listen, "public_ip_observations": observations, "conflicting_public_ip_observations": len(observations) > 1, "observation_ttl_seconds": 1800, "announcement_min_change_seconds": 300, "endpoint": endpoint, "endpoint_source": source, "services": flags, "services_hex": fmt.Sprintf("0x%016x", flags), "gossip_eligible": flags&nodeNetworkService != 0, "last_announcement": last, "public_inbound_gateway_sessions": inbound, "provider": r, "note": note}
+	if !probe {
+		state = "bitcoin_experiment_off"
+		note = "Bitcoin address announcements are off. Configured connections and opt-in inbound serving are independent; enable the experiment only in Probe."
+	}
+	return map[string]any{"bitcoin_gateway_discovery": probe, "state": state, "listener": listen, "public_ip_observations": observations, "conflicting_public_ip_observations": len(observations) > 1, "observation_ttl_seconds": 1800, "announcement_min_change_seconds": 300, "endpoint": endpoint, "endpoint_source": source, "services": flags, "services_hex": fmt.Sprintf("0x%016x", flags), "gossip_eligible": flags&nodeNetworkService != 0, "last_announcement": last, "public_inbound_gateway_sessions": inbound, "provider": r, "note": note}
 }
 
 // Each cycle resolves one immutable endpoint/flags snapshot for every recipient.
 func (n *bitcoinNetwork) announcementSnapshot054() (advertisedPeer, bool) {
+	n.app.settingsMu.RLock()
+	probe := n.app.settings.BitcoinGatewayDiscovery && !n.app.settings.DiscoveryPaused && !n.app.settings.NetworkDisabled
+	n.app.settingsMu.RUnlock()
+	if !probe {
+		return advertisedPeer{}, false
+	}
 	endpoint, _ := n.app.advertisedGatewayEndpoint()
 	flags, _ := n.app.localBitcoinAdvertisement()
 	if endpoint == "" {

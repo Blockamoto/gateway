@@ -151,6 +151,9 @@ func (a *app) setIndexPublication(id string, published bool, expected ...string)
 	if err != nil {
 		return indexPeerManifest{}, err
 	}
+	if id == "bitmap" && s.head.Mode == "lean" {
+		return indexPeerManifest{}, fmt.Errorf("lean Bitmap publication requires a compatible peer format; keep this instance local or use full mode for peer sharing")
+	}
 	if s.checkpoint == nil {
 		return indexPeerManifest{}, fmt.Errorf("index has no committed snapshot")
 	}

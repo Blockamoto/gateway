@@ -10,6 +10,7 @@ class Node {
  addEventListener(name,fn){this.events[name]=fn}
  setAttribute(k,v){this.attributes[k]=v}
  removeAttribute(k){delete this.attributes[k]}
+ closest(){return this.parent || (this.parent=new Node())}
  focus(){this.focused=true}
  querySelector(tag){return this.children.find(n=>n.tagName===tag)||new Node(tag)}
  async emit(name){if(this.events[name])await this.events[name]({preventDefault(){},currentTarget:this})}
@@ -38,7 +39,7 @@ const flush=()=>new Promise(r=>setImmediate(r));
  await nodes.get('build').emit('click');assert.equal(calls.filter(c=>c.url.endsWith('/build')).length,0,'even programmatic click cannot submit stale plan');
  await nodes.get('plan-form').emit('submit');await nodes.get('build').emit('click');assert.equal(calls.filter(c=>c.url.endsWith('/build')).length,1);
  assert.equal(nodes.get('pause').disabled,false);await nodes.get('pause').emit('click');assert.equal(nodes.get('resume').disabled,false);
- await tabs.find(t=>t.dataset.view==='results').emit('click');await nodes.get('resume').emit('click');assert.equal(nodes.get('plan-button').focused,true);assert(panes.filter(p=>p.dataset.pane==='build').every(p=>!p.hidden));assert.equal(nodes.get('build').disabled,true,'resume requires new review');
+ await tabs.find(t=>t.dataset.view==='results').emit('click');await nodes.get('resume').emit('click');assert.equal(calls.filter(c=>c.url.endsWith('/build')).length,2,'resume restarts original request');assert(panes.filter(p=>p.dataset.pane==='build').every(p=>!p.hidden));assert.equal(nodes.get('build').disabled,true,'active resumed job cannot start twice');
  assert(!calls.some(c=>/\/peers|\/peer-preview|\/publish/.test(c.url)),'first load and local work do not inspect peers or publish');
  console.log('Indexes shipped-script interactions PASS: first load, four workspace views, exact-plan gating, edits, build, pause, resume, no implicit sharing/network inspection.');
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -304,6 +304,11 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 			} else {
 				c.Request.To = &n
 			}
+		case "--mode":
+			if value != "lean" && value != "full" {
+				return c, fmt.Errorf("mode requires lean or full")
+			}
+			c.Request.Mode = value
 		case "--retention":
 			if value == "" {
 				return c, fmt.Errorf("retention requires ephemeral, cache or retain")

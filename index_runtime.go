@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,16 +12,17 @@ import (
 )
 
 type indexJob struct {
-	ID        string `json:"id"`
-	Index     string `json:"index"`
-	State     string `json:"state"`
-	From      int64  `json:"from"`
-	To        int64  `json:"to"`
-	Height    int64  `json:"height"`
-	Error     string `json:"error,omitempty"`
-	Retention string `json:"retention"`
-	BlocksChecked int `json:"blocks_checked"`
-	DistrictsFound int `json:"districts_found"`
+	Mode           string `json:"mode,omitempty"`
+	ID             string `json:"id"`
+	Index          string `json:"index"`
+	State          string `json:"state"`
+	From           int64  `json:"from"`
+	To             int64  `json:"to"`
+	Height         int64  `json:"height"`
+	Error          string `json:"error,omitempty"`
+	Retention      string `json:"retention"`
+	BlocksChecked  int    `json:"blocks_checked"`
+	DistrictsFound int    `json:"districts_found"`
 }
 type indexStatusView struct {
 	Definitions []indexDefinition   `json:"definitions"`
@@ -98,7 +100,17 @@ func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {
 	if s.checkpoint != nil && s.checkpoint.From != p.From {
 		return indexJob{}, fmt.Errorf("existing instance begins at %d; use that range to resume", s.checkpoint.From)
 	}
-	j := indexJob{ID: fmt.Sprintf("%d", time.Now().UnixNano()), Index: req.Index, State: "running", From: p.From, To: p.To, Height: p.From - 1, Retention: p.Retention}
+	if s.checkpoint != nil {
+		existingMode := s.head.Mode
+		if existingMode == "" {
+			existingMode = "full"
+		}
+		if req.Mode != "" && req.Mode != existingMode {
+			return indexJob{}, fmt.Errorf("existing index uses %s mode; resume with that mode", existingMode)
+		}
+		p.Mode = existingMode
+	}
+	j := indexJob{Mode: p.Mode, ID: fmt.Sprintf("%d", time.Now().UnixNano()), Index: req.Index, State: "running", From: p.From, To: p.To, Height: p.From - 1, Retention: p.Retention}
 	if s.checkpoint != nil {
 		j.Height = s.checkpoint.Height
 	}
@@ -213,6 +225,8 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		return
 	}
 	s = checked
+	s.head.Mode = j.Mode
+	retryDelay := 2 * time.Second
 	wait := func(e error) bool {
 		j.State = "waiting"
 		j.Error = e.Error()
@@ -224,7 +238,7 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		case <-ctx.Done():
 			finish("paused", nil)
 			return false
-		case <-time.After(2 * time.Second):
+		case <-time.After(retryDelay):
 			return true
 		}
 	}
@@ -252,11 +266,14 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 			}
 			continue
 		}
+		j.Height = j.From - 1
 		next := j.From
 		if s.checkpoint != nil {
 			next = s.checkpoint.Height + 1
 			j.Height = s.checkpoint.Height
 		}
+		j.BlocksChecked = int(next - j.From)
+		j.DistrictsFound = len(s.winners)
 		if next > j.To {
 			finish("complete", nil)
 			return
@@ -276,14 +293,26 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		}
 		block, e := a.fetchBlockWithPolicy(t, j.Retention)
 		if e != nil {
+			var unavailable blockUnavailableError
+			if !errors.As(e, &unavailable) {
+				finish("failed", e)
+				return
+			}
 			// Block bodies may be temporarily unavailable even while headers and
 			// peer sessions are healthy. Keep the checkpointed job alive and retry
 			// after the normal wait interval instead of forcing a manual restart.
 			if !wait(fmt.Errorf("waiting for block %d from Bitcoin peers: %w", next, e)) {
 				return
 			}
+			if retryDelay < 30*time.Second {
+				retryDelay *= 2
+				if retryDelay > 30*time.Second {
+					retryDelay = 30 * time.Second
+				}
+			}
 			continue
 		}
+		retryDelay = 2 * time.Second
 		if ctx.Err() != nil {
 			finish("paused", nil)
 			return
@@ -304,12 +333,6 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 			return
 		}
 		j.Height = next
-		j.BlocksChecked++
-		if latest, readErr := s.readBatch(s.head.Commitment); readErr == nil && j.Index == "bitmap" {
-			for _, record := range latest.Bitmap {
-				if record.Accepted { j.DistrictsFound++ }
-			}
-		}
 	}
 }
 func (a *app) indexQuery(id string, limit int) (any, error) {

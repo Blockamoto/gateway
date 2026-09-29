@@ -58,6 +58,7 @@ type indexCheckpoint struct {
 }
 
 type indexBuildRequest struct {
+	Mode      string `json:"mode,omitempty"`
 	Index     string `json:"index"`
 	From      *int64 `json:"from,omitempty"`
 	To        *int64 `json:"to,omitempty"`
@@ -65,6 +66,7 @@ type indexBuildRequest struct {
 }
 
 type indexPlan struct {
+	Mode            string            `json:"mode"`
 	Definition      indexDefinition   `json:"definition"`
 	Dependencies    []indexDefinition `json:"dependencies"`
 	From            int64             `json:"from"`
@@ -139,6 +141,13 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 	if err != nil {
 		return indexPlan{}, err
 	}
+	mode := req.Mode
+	if mode == "" {
+		mode = "lean"
+	}
+	if mode != "lean" && mode != "full" {
+		return indexPlan{}, fmt.Errorf("mode must be lean or full")
+	}
 	retention := req.Retention
 	if retention == "" {
 		retention = "ephemeral"
@@ -160,7 +169,7 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 	if !d.ArbitraryStart && from != d.StartHeight {
 		return indexPlan{}, fmt.Errorf("%s requires its genesis/prior validated checkpoint; arbitrary fresh starting ranges are invalid", d.ID)
 	}
-	p := indexPlan{Definition: d, From: from, To: to, Retention: retention, Sequential: !d.ArbitraryStart, Dependencies: []indexDefinition{}, SourceBytes: retention, StorageEstimate: "Unknown until source coverage is examined; derived records grow with the selected range.", Verification: "Locally checked Bitcoin block and witness evidence anchored to selected headers or Core active chain.", Notes: []string{"Core and Ord are optional providers, not required installations.", "Peer claims never become locally verified state without evidence.", "All new derived index records are private until explicitly published.", "A negative end height snapshots the available verified tip when work starts."}}
+	p := indexPlan{Mode: mode, Definition: d, From: from, To: to, Retention: retention, Sequential: !d.ArbitraryStart, Dependencies: []indexDefinition{}, SourceBytes: retention, StorageEstimate: "Unknown until source coverage is examined; derived records grow with the selected range.", Verification: "Locally checked Bitcoin block and witness evidence anchored to selected headers or Core active chain.", Notes: []string{"Core and Ord are optional providers, not required installations.", "Peer claims never become locally verified state without evidence.", "All new derived index records are private until explicitly published.", "A negative end height snapshots the available verified tip when work starts."}}
 	seen := map[string]bool{}
 	var visit func(string) error
 	visit = func(id string) error {

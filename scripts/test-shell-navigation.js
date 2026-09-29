@@ -80,6 +80,7 @@ async function harness(browser, address = '.gateway', failStatus = false) {
     }
     if (url.pathname === '/') return fulfill(html.replace('__GATEWAY_BOOTSTRAP__', JSON.stringify({version:'test', address, activation:''})), 'text/html');
     if (scripts.has(url.pathname)) return fulfill(scripts.get(url.pathname), 'application/javascript');
+    if (url.pathname === '/shell/style.css') return fulfill(read('ui/shell/style.css'), 'text/css');
     if (url.pathname.endsWith('.css')) return fulfill('', 'text/css');
     if (url.pathname === '/shell/gateway.ico') return fulfill('', 'image/x-icon');
     if (url.pathname === '/shell/gateway-mark.svg') return fulfill('<svg xmlns="http://www.w3.org/2000/svg"/>', 'image/svg+xml');
@@ -129,6 +130,10 @@ async function run() {
       await healthy(h.page, 'initial Home');
       await h.page.locator('#home-current').getByText('No index job started', {exact:true}).waitFor();
       await checkRoute(h.page, '.gateway', '#home-current .current-work');
+      assert.equal(await h.page.locator('.nav-item[data-route="satline.gateway"]').isVisible(), false, 'Satline hidden by default');
+      await h.page.evaluate(() => { sessionStorage.setItem('gateway.dev_mode','1'); });
+      await h.page.reload();
+      await healthy(h.page,'development mode reload');
       const routes = [
         ['bitcoin.gateway', '#content h1'], ['satline.gateway', '#satline-module'],
         ['ord.gateway', '#ord-form'], ['indexes.gateway', 'iframe.indexes-frame'],

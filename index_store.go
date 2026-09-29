@@ -12,6 +12,7 @@ import (
 )
 
 type bitmapRecord struct {
+	Lean          bool     `json:"-"`
 	Inscription   string   `json:"inscription"`
 	Height        int64    `json:"height"`
 	Order         int      `json:"order"`
@@ -34,6 +35,7 @@ type indexBatch struct {
 	Diagnostics       []inscriptionExtractionDiagnostic `json:"diagnostics,omitempty"`
 }
 type indexHead struct {
+	Mode       string `json:"mode,omitempty"`
 	Commitment string `json:"commitment"`
 	Retention  string `json:"retention"`
 	Published  bool   `json:"published"`
@@ -290,6 +292,17 @@ func (s *indexStore) appendBlock(block blockView, from int64, retention string) 
 	} else {
 		b.Inscriptions = extracted.Occurrences
 	}
+	if s.definition.ID == "bitmap" && s.head.Mode == "lean" {
+		lean := []bitmapRecord{}
+		for _, r := range b.Bitmap {
+			if r.Accepted {
+				r.Lean = true
+				lean = append(lean, r)
+			}
+		}
+		b.Bitmap = lean
+		b.Diagnostics = nil
+	}
 	c := indexCheckpoint{Schema: s.definition.CheckpointSchema, Definition: s.definition.ID, Version: s.definition.Version, RuleHash: s.definition.RuleHash, Network: s.definition.Network, From: from, Height: block.Height, BlockHash: block.Hash, DependencyFingerprint: indexDigest(struct{ Block, Parser, Reference string }{block.Hash, inscriptionParserProfile, inscriptionReferenceCommit}), RecordsHash: batchRecordsHash(b)}
 	if s.checkpoint != nil {
 		c.PreviousCommitment = s.checkpoint.Commitment
@@ -304,7 +317,7 @@ func (s *indexStore) appendBlock(block blockView, from int64, retention string) 
 	}
 	// The atomic head is the only visibility boundary. An interrupted orphan
 	// commit is harmless and cannot advance advertised coverage.
-	head := indexHead{Commitment: c.Commitment, Retention: retention, Published: s.head.Published}
+	head := indexHead{Mode: s.head.Mode, Commitment: c.Commitment, Retention: retention, Published: s.head.Published}
 	if e = atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); e != nil {
 		return e
 	}

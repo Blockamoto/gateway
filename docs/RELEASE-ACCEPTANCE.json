@@ -1,36 +1,25 @@
 {
-  "version": "0.6.1",
+  "version": "0.6.2",
   "platform": "Windows amd64",
   "toolchain": "go1.27.1",
-  "command": "go test -count=1 -json -timeout=600s . ./internal/cleanup ./packaging/native-host ./packaging/gateway-launcher (GATEWAY_TEST_BINARY freshly rebuilt)",
-  "test_pass_events_including_subtests": 465,
+  "application_tests": "PASS: go test -count=1 -timeout=180s .",
+  "targeted_tests": "PASS: lean restart, duplicate, rewind, malformed records; coordinate entry forms; index peer tests",
+  "vet": "PASS: main, cleanup, native-host, launcher",
+  "browser_tests": "PASS: real Chromium navigation; shipped index script interactions; companion and UI helpers",
   "failed_tests": [
     "Test054PurgeKeepsExternalAndUserFiles",
     "Test054PurgeRejectsOverlapAndRoot",
     "Test054MetadataLinksCannotGrantOwnership"
   ],
-  "failure_classification": "Three unchanged baseline fixtures require Windows symlink privilege; main application and launcher/native-host packages passed. Full command exits nonzero.",
-  "skipped_tests": [
-    "Test050ArchivePathCannotEnterCoreThroughSymlink",
-    "TestSatlineProcessHelper"
+  "failure_classification": "Existing Windows symlink privilege failures in cleanup fixtures. Main application and native-host tests pass.",
+  "packaging": "Windows/Linux builds; PE resources and matching installer payload audited; package hashes generated during release",
+  "not_claimed": [
+    "Native Linux execution",
+    "Installer installation",
+    "Full-history scan with this release",
+    "WebRTC or browser-to-peer implementation",
+    "Lean peer publication",
+    "Full contestability audit"
   ],
-  "skip_classification": "Archive symlink fixture lacks privilege; helper entry point is intentionally not a standalone test.",
-  "test_log_sha256": "34d41eb1e0f92cff35a2c074d1f0e4b63e52d4dda40b9587665c82873f19ef85",
-  "additional_checks": [
-    "go vet passed",
-    "Actual shipped shell JavaScript navigation regression: first/degraded load, all 11 destinations, history, address routing, nested clicks and origin guard passed",
-    "Index shipped-script workflow regression: exact-plan gating, build/pause/resume and no implicit publication/peer inspection passed",
-    "Discovery opt-in regressions passed; legacy settings do not grant consent",
-    "Embedded Indexes same-origin CSP and shell asset allowlist tests passed",
-    "Windows resources, installer exact payload and Linux ELF audit passed"
-  ],
-  "visual_review": "Actual Chrome desktop and 390px narrow viewport reviewed using a separate QA profile. Overview, planning, results, connections, settings and Probe inspected. Narrow inscription wrapping corrected; coverage displays explicit range/block count. Live ordinary Bitcoin connections coexist with Probe off; explicit Probe start/stop preserved Bitcoin connections. Real Bitmap build at 792435 completed through UI after waiting/pause/resume; lookup and query return district 0. No browser errors observed.",
-  "native_installer_execution": "Not performed; PE resources and exact embedded payload are audited separately.",
-  "linux": "Cross-compiled ELF; not executed natively in this Windows run.",
-  "limits": [
-    "No real historical conflicting-winner Bitmap fixture",
-    "No full present-day Bitmap scan or independent full Ord numbering rebuild",
-    "No external two-house bootstrap or guaranteed Bitcoin-only Gateway discovery claim",
-    "Index peer individual batch transfer limit 32 KiB; larger batches require local Bitcoin replay"
-  ]
+  "previous_release_acceptance": "RELEASE-ACCEPTANCE-0.6.1.json"
 }

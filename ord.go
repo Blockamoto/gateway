@@ -80,13 +80,18 @@ func (a *app) saveOrdRecord(rec ordRecord, body []byte) error {
 	return atomicWriteJSON(a.ordPath(rec.ID, ".json"), rec)
 }
 func (a *app) resolveInscription(ctx context.Context, id, blockHint string) (ordRecord, error) {
+	stem := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(id)), ".bitcoin")
+	if c, ok := parseBODCoordinate(stem); ok && c.Kind == coordInscription {
+		resolved, err := a.resolveCoordinate(c)
+		if err != nil {
+			return ordRecord{}, err
+		}
+		return *resolved.Inscription, nil
+	}
 	a.settingsMu.RLock()
 	enabled := a.settings.OrdEnabled
 	a.settingsMu.RUnlock()
-	// A structural inscription coordinate supplies its authenticated reveal
-	// block directly, so it can resolve from Bitcoin peers without an Ord
-	// backend. Known-ID lookups still honor the module setting.
-	if !enabled && strings.TrimSpace(blockHint) == "" {
+	if !enabled {
 		return ordRecord{}, fmt.Errorf("Ord on Demand is disabled")
 	}
 	txid, index, e := inscriptionParts(id)
@@ -94,7 +99,7 @@ func (a *app) resolveInscription(ctx context.Context, id, blockHint string) (ord
 		return ordRecord{}, e
 	}
 	id = fmt.Sprintf("%si%d", txid, index)
-	if rec, _, e := a.loadOrdRecord(id); e == nil {
+	if rec, _, e := a.loadOrdRecord(id); e == nil && blockHint == "" {
 		if rec.Provider == "local_ord_adapter" {
 			return rec, nil
 		}

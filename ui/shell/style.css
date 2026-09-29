@@ -13,3 +13,7 @@ body{background:var(--bg)}button,a,input,select,textarea{touch-action:manipulati
 .settings-sections{display:flex;gap:6px;overflow-x:auto;margin-bottom:24px;border-bottom:1px solid var(--line);padding-bottom:12px}.settings-sections button{white-space:nowrap;background:transparent}.settings-sections button[aria-pressed=true]{color:var(--accent);border-color:var(--accent)}[hidden]{display:none!important}
 
 .indexes-frame{min-height:0;height:1000px}.sidebar{overflow-y:auto;scrollbar-width:thin}.sidebar nav{flex-shrink:0}.sidebar-bottom{margin-top:26px}@media(max-width:780px){.sidebar{overflow:visible}.embedded main{padding:24px 16px}.indexes-frame{min-height:0}}
+
+body:not(.dev-mode) [data-route="satline.gateway"],body:not(.dev-mode) [data-follow],body:not(.dev-mode) #ord-follow,body:not(.dev-mode) .check:has(#satline-enabled),body:not(.dev-mode) .check:has(#setup-satline){display:none!important}
+
+body:not(.dev-mode) #jobs-list,body:not(.dev-mode) .satline-experimental,body:not(.dev-mode) label:has(#setup-satline){display:none!important}

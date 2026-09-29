@@ -27,11 +27,11 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <div class="field"><label for="to">Last block</label><input id="to" type="number" min="0" step="1" placeholder="Verified tip"><small>Leave blank to snapshot the available verified tip when work starts.</small></div>
 </div>
 <div class="field"><label for="retention">Source block retention</label><select id="retention"><option value="ephemeral">Ephemeral — use and discard newly fetched source bytes</option><option value="cache">Cache — retain under the cache policy</option><option value="retain">Retain — keep in Gateway-owned storage</option></select><small>Derived records remain. Existing cache policy and external Bitcoin Core files are separate; this choice never deletes Core data.</small></div>
-<div class="actions"><button type="submit" id="plan-button">Review plan</button><button type="button" class="primary" id="build" disabled>Start reviewed plan</button></div>
+<div class="field"><label for="mode">Result detail</label><select id="mode"><option value="lean">Lean — district and inscription ID only</option><option value="full">Full — candidates and evidence</option></select><small>Existing indexes resume in their original format. Full records are not a complete contestability audit.</small></div><div class="actions"><button type="submit" id="plan-button">Review plan</button><button type="button" class="primary" id="build" disabled>Start reviewed plan</button></div>
 </form>
 <div id="plan" class="index-section" hidden><h3>Before this build starts</h3><dl id="plan-meta" class="index-meta"></dl><ul id="plan-notes"></ul><p id="plan-buildability" class="small muted"></p><details><summary>Exact plan JSON</summary><pre id="plan-json"></pre></details></div>
 </section>
-<section class="panel" aria-labelledby="job-heading"><h2 id="job-heading">Current job</h2><p id="job-summary" class="muted small">Loading local status…</p><progress id="job-progress" hidden></progress><dl id="job-meta" class="index-meta"></dl><p id="job-error" class="small"></p><div class="actions"><button id="pause" disabled>Pause build</button><button id="resume" disabled>Load previous request</button></div><p class="small muted">Pause takes effect after an in-flight source request returns. To resume, load the previous request, review its plan, then start it again. Completed checkpoints are reused.</p><details><summary>Exact job JSON</summary><pre id="job-json"></pre></details></section>
+<section class="panel" aria-labelledby="job-heading"><h2 id="job-heading">Current job</h2><p id="job-summary" class="muted small">Loading local status…</p><progress id="job-progress" hidden></progress><dl id="job-meta" class="index-meta"></dl><p id="job-error" class="small"></p><div class="actions"><button id="pause" disabled>Pause build</button><button id="resume" disabled>Load previous request</button></div><p class="small muted">Pause takes effect after an in-flight source request returns. Resume retries the same range from its saved checkpoint. Completed checkpoints are reused.</p><details><summary>Exact job JSON</summary><pre id="job-json"></pre></details></section>
 </div>
 <section class="panel index-section" data-pane="build" aria-labelledby="rules-heading"><h2 id="rules-heading">Understand the recipe</h2><p id="rule-theory" class="small"></p><dl id="rule-meta" class="index-meta"></dl><details><summary>Detailed rules</summary><ol id="rule-list"></ol></details><p class="small muted">A definition describes what answers mean; it does not prove this node can answer them. Provider and retained-instance status appear below. Unsupported historical compatibility profiles remain unavailable and never rewrite Bitmap base results.</p><details><summary>Machine-readable definition</summary><pre id="rule-json"></pre></details></section>
 
@@ -73,8 +73,8 @@ async function api(action, body) {
   return result;
 }
 function request() {
-  const result = {index: $('index').value, retention: $('retention').value};
-  for (const field of ['from', 'to']) if ($(field).value !== '') {
+  const result = {index: $('index').value, retention: $('retention').value, mode: $('index').value === 'bitmap' ? $('mode').value : 'full'};
+  for (const field of ['from', 'to']) if ($(field).value !== '' && !(field === 'from' && $('index').value === 'bitmap')) {
     const n = Number($(field).value);
     if (!Number.isSafeInteger(n) || n < 0) throw new Error('Block heights must be non-negative integers.');
     result[field] = n;
@@ -85,6 +85,7 @@ function invalidatePlan() { reviewedRequest = ''; $('build').disabled = true; $(
 function selectedDefinition() { return definitions.find(x => x.id === $('index').value); }
 function showRules() {
   const d = selectedDefinition(); if (!d) return;
+  $('mode').closest('.field').hidden = d.id !== 'bitmap';
   const fromField = $('from').closest('.field'); if (fromField) fromField.hidden = d.id === 'bitmap';
   $('definition-summary').textContent = d.theory + (d.id === 'bitmap' ? ' Base claims only: ownership, parcels and full historical compatibility are not available.' : ' Reveal occurrences only: canonical inscription numbers are not available.');
   $('rule-theory').textContent = d.theory;
@@ -98,6 +99,7 @@ function showJob(job) {
   const active = ['running', 'waiting', 'pausing'].includes(job?.state);
   $('pause').disabled = !active || job.state === 'pausing';
   $('resume').disabled = !job?.id || active;
+  $('resume').textContent = job?.state === 'failed' ? 'Retry from checkpoint' : 'Resume from checkpoint';
   $('job-json').textContent = pretty(job);
   if (!job?.id) { $('job-summary').textContent = 'No index job has been started.'; $('job-meta').replaceChildren(); $('job-error').textContent = ''; $('job-progress').hidden = true; return; }
   $('job-summary').textContent = job.index + ' · ' + human(job.state);
@@ -163,7 +165,7 @@ async function refresh() {
   } catch (error) { message(error.message, true); } finally { fetching = false; }
 }
 $('index').addEventListener('change', () => { $('from').value = ''; invalidatePlan(); showRules(); });
-for (const id of ['from', 'to', 'retention']) $(id).addEventListener('input', invalidatePlan);
+for (const id of ['from', 'to', 'retention', 'mode']) $(id).addEventListener('input', invalidatePlan);
 $('plan-form').addEventListener('submit', async event => {
   event.preventDefault(); invalidatePlan(); $('plan-button').disabled = true;
   try {
@@ -183,10 +185,12 @@ $('build').addEventListener('click', async () => {
   } catch (error) { message(error.message, true); }
 });
 $('pause').addEventListener('click', async () => { $('pause').disabled = true; try { showJob(await api('pause', {})); message('Pause requested. Waiting for any source request to finish.'); await refresh(); } catch (error) { message(error.message, true); } });
-$('resume').addEventListener('click', () => {
+$('resume').addEventListener('click', async () => {
   const job = status?.job; if (!job?.id) return;
   $('index').value = job.index; $('from').value = job.from; $('to').value = job.to >= 0 ? job.to : ''; $('retention').value = job.retention;
-  invalidatePlan(); showRules(); selectView('build'); $('plan-button').focus(); message('Previous request loaded. Review the plan to resume its committed checkpoint.');
+  $('mode').value = job.mode || 'full';
+  invalidatePlan(); showRules(); selectView('build');
+  try { $('resume').disabled = true; showJob(await api('build', request())); message('Resuming from the committed checkpoint.'); await refresh(); } catch (error) { message(error.message, true); $('resume').disabled = false; }
 });
 $('query-form').addEventListener('submit', async event => {
   event.preventDefault(); const button = event.currentTarget.querySelector('button'); button.disabled = true;
@@ -194,11 +198,12 @@ $('query-form').addEventListener('submit', async event => {
     const id = $('query-index').value, result = await api('query?index=' + encodeURIComponent(id) + '&limit=' + encodeURIComponent($('query-limit').value));
     $('query-json').textContent = pretty(result); $('query-results').replaceChildren();
     $('query-summary').textContent = querySummary(result);
-    for (const row of result.rows || []) {
+    for (let row of result.rows || []) {
+      if (typeof row === 'string') { const split = row.indexOf(':'); row = {district:row.slice(0,split),inscription:row.slice(split+1),accepted:true,lean:true}; }
       const card = element('article', undefined, 'index-entry');
       card.append(element('h3', id === 'bitmap' ? (row.district === undefined ? 'Rejected candidate' : row.district + '.bitmap') : 'Inscription occurrence'));
       card.append(element('p', row.inscription || row.id, 'mono'));
-      card.append(element('p', id === 'bitmap' ? (row.accepted ? 'Accepted base claim. ' : 'Rejected base claim. ') + human(row.reason) + '. Ownership: ' + human(row.ownership) + '. Historical compatibility: ' + human(row.compatibility) + '.' : 'Reveal block ' + row.block_height + ', transaction ' + row.tx_index + ', input ' + row.input_index + ', envelope ' + row.envelope_index + '. Canonical number unknown.', 'small'));
+      card.append(element('p', id === 'bitmap' ? row.lean ? 'Accepted base claim. Lean record; audit details were not retained.' : (row.accepted ? 'Accepted base claim. ' : 'Rejected base claim. ') + human(row.reason) + '. Ownership: ' + human(row.ownership) + '. Historical compatibility: ' + human(row.compatibility) + '.' : 'Reveal block ' + row.block_height + ', transaction ' + row.tx_index + ', input ' + row.input_index + ', envelope ' + row.envelope_index + '. Canonical number unknown.', 'small'));
       details(card, 'Raw record and evidence', row); $('query-results').append(card);
     }
   } catch (error) { message(error.message, true); } finally { button.disabled = false; }
@@ -210,6 +215,7 @@ $('lookup-form').addEventListener('submit', async event => {
     const key = $('lookup-key').value;
     if (!/^(0|[1-9][0-9]*)$/.test(key)) throw new Error('Use a canonical district number without leading zeros.');
     const result = await api('lookup?index=bitmap&key=' + encodeURIComponent(key));
+    if (typeof result.record === 'string') { const split=result.record.indexOf(':'); result.record={district:result.record.slice(0,split),inscription:result.record.slice(split+1)}; }
     $('lookup-json').textContent = pretty(result); $('lookup-json').hidden = false;
     $('lookup-summary').textContent = (result.found && result.record ? 'Retained base claim for ' + key + '.bitmap: ' + result.record.inscription + '.' : result.checkpoint ? 'No accepted claim found within the committed local range. This is not a global absence proof.' : 'No committed local Bitmap state. This is not a global absence proof.') + ' Chain state: ' + human(result.chain_state) + '.';
   } catch (error) { $('lookup-summary').textContent = error.message; message(error.message, true); } finally { button.disabled = false; }

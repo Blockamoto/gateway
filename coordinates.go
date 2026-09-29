@@ -17,13 +17,13 @@ const (
 )
 
 type bodCoordinate struct {
-	Kind      coordinateKind
-	Height    int64
-	TxIndex   int
-	IOIndex   int
-	SatOffset uint64
+	Kind             coordinateKind
+	Height           int64
+	TxIndex          int
+	IOIndex          int
+	SatOffset        uint64
 	InscriptionIndex int
-	Raw       string
+	Raw              string
 }
 
 func txCoordinate(txIndex int, height int64) string {
@@ -54,6 +54,11 @@ func satpointCoordinate(offset uint64, vout, txIndex int, height int64) string {
 func parseBODCoordinate(s string) (bodCoordinate, bool) {
 	raw := strings.TrimSpace(strings.ToLower(s))
 	parts := strings.Split(raw, ".")
+	if len(parts) == 2 {
+		if tx, idx, ok := strings.Cut(parts[0], "i"); ok {
+			parts = []string{tx, "i" + idx, parts[1]}
+		}
+	}
 	parseNonNeg := func(x string) (int64, bool) {
 		if x == "" {
 			return 0, false

@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 const bitmapOPIProfile = "opi-0a09b987c87692ec3cabd404c8bcc7367707ee9a-eligibility"
 
@@ -17,6 +20,11 @@ type bitmapCompatibilityResult struct {
 // numbering, bound sat placement, first-claim coverage or an OPI winner.
 func bitmapCompatibility(r bitmapRecord) bitmapCompatibilityResult {
 	result := bitmapCompatibilityResult{Profile: bitmapOPIProfile, State: "historical_context_missing", Reason: "Requires pinned Ord boundness/numbering and inscription-number-ordered prior claims.", Scope: "candidate_eligibility_only; not a reconstructed compatibility winner"}
+	if r.Lean {
+		result.State = "not_evaluated"
+		result.Reason = "Lean records retain no compatibility evidence."
+		return result
+	}
 	if r.ContentType != "text/plain" && !strings.HasPrefix(r.ContentType, "text/plain;") {
 		result.State = "excluded"
 		result.Reason = "Pinned OPI ingestion/Bitmap reader requires text/plain or text/plain; parameters. Gateway base does not filter MIME."
@@ -30,4 +38,15 @@ func bitmapCompatibility(r bitmapRecord) bitmapCompatibilityResult {
 type bitmapQueryRecord struct {
 	bitmapRecord
 	CompatibilityResult bitmapCompatibilityResult `json:"compatibility_result"`
+}
+
+func (r bitmapQueryRecord) MarshalJSON() ([]byte, error) {
+	if r.Lean {
+		return json.Marshal(r.bitmapRecord)
+	}
+	type full bitmapRecord
+	return json.Marshal(struct {
+		full
+		CompatibilityResult bitmapCompatibilityResult `json:"compatibility_result"`
+	}{full(r.bitmapRecord), r.CompatibilityResult})
 }

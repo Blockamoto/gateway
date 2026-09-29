@@ -237,6 +237,8 @@ func (a *app) fetchAndDecodeTargetUncached(target blockTarget) (blockView, error
 // Index jobs select source retention without changing global settings or
 // implicitly building unrelated graph indexes. Existing user caches keep their
 // original publication policy.
+type blockUnavailableError struct{ error }
+
 func (a *app) fetchBlockWithPolicy(target blockTarget, policy string) (blockView, error) {
 
 	prefixHeight := target.Height
@@ -294,7 +296,7 @@ func (a *app) fetchBlockWithPolicy(target blockTarget, policy string) (blockView
 					target.Height = bd.Height
 				}
 			} else {
-				return blockView{}, fmt.Errorf("Bitcoin peers did not serve the block (%v); BOD peer fallback also failed (%v)", err, e2)
+				return blockView{}, blockUnavailableError{fmt.Errorf("Bitcoin peers did not serve the block (%v); BOD peer fallback also failed (%v)", err, e2)}
 			}
 		}
 	}

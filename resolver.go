@@ -208,6 +208,11 @@ func parseResourceAddress(raw string) (resolverTarget, error) {
 			return resolverTarget{Namespace: "gateway", Kind: name, Input: raw, Friendly: low, CanonicalURI: godURI(low)}, nil
 		}
 	}
+	stem := strings.TrimSuffix(strings.ToLower(raw), ".bitcoin")
+	if c, ok := parseBODCoordinate(stem); ok && c.Kind == coordInscription {
+		f := fmt.Sprintf("%d.i%d.%d.bitcoin", c.TxIndex, c.InscriptionIndex, c.Height)
+		return resolverTarget{Namespace: "bitcoin", Kind: "inscription_coordinate", Input: raw, SearchQuery: fmt.Sprintf("%d.i%d.%d", c.TxIndex, c.InscriptionIndex, c.Height), Friendly: f, CanonicalURI: godURI(f)}, nil
+	}
 	if t, m, e := parseBitcoinFriendly(raw); m {
 		return t, e
 	}

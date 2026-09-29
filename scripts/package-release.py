@@ -41,7 +41,7 @@ def main():
                 shutil.copy2(root / launcher, folder / launcher)
             shutil.copytree(root / 'browser-companion', folder / 'browser-companion')
             (folder / 'portable.marker').write_text('Gateway portable profile.\n')
-        for document in ['INDEXING.md', 'INDEX-PEER.md', 'GATEWAY-BOOTSTRAP.md', 'STATUS.md', 'BITMAP-RESEARCH.md', 'RELEASE-ACCEPTANCE.json', 'ZERO-STATE-INDEX-ACCEPTANCE.json']:
+        for document in ['RELEASE-NOTES-v0.6.2.md', 'GATEWAY-ROADMAP.md', 'INDEXING.md', 'INDEX-PEER.md', 'GATEWAY-BOOTSTRAP.md', 'STATUS.md', 'BITMAP-RESEARCH.md', 'RELEASE-ACCEPTANCE.json', 'ZERO-STATE-INDEX-ACCEPTANCE.json']:
             shutil.copy2(root / 'docs' / document, folder / document)
         shutil.copy2(build / 'binary-audit.json', folder / 'BINARY-AUDIT.json')
         (folder / 'SOURCE-REVISION.txt').write_text(f'Repository: https://github.com/Blockamoto/gateway\nCommit: {revision}\nVersion: {version}\nPackaged UTC: {datetime.datetime.now(datetime.timezone.utc).isoformat()}\n')

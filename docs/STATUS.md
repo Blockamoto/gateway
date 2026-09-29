@@ -1,5 +1,9 @@
 # Implementation status
 
+Gateway 0.6.2: compact inscription paths, checkpoint retries, Bitmap counts and lean mode, fixed Bitmap start, and Satline development visibility controls. See RELEASE-NOTES-v0.6.2.md and RELEASE-ACCEPTANCE.json for current verification. GATEWAY-ROADMAP.md records the testing review and deferred architecture ideas.
+
+## Previous releases
+
 GATEWAY 0.6.1 RELEASE COMPLETE: https://github.com/Blockamoto/gateway/releases/tag/v0.6.1. Tagged source f271f2c7cdcf4ed98bb2ba88dd983158b2aa70f9. All five uploaded asset sizes and SHA-256 digests match the local audited files; see RELEASE-PUBLISHED-0.6.1.json.
 
 Delivered the requested frontend/workflow overhaul, sidebar navigation fix, accurate welcome/footer/installer version, and experimental Bitcoin-based Gateway discovery OFF by default with deliberate advanced Probe opt-in. Ordinary Bitcoin headers/blocks remain independent. Actual Chrome desktop and 390px narrow review plus a real bounded Bitmap build/lookup passed in an isolated QA profile. Main tests pass; the combined run has 465 passing test events and the same three Windows cleanup symlink-privilege failures. See RELEASE-ACCEPTANCE.json.

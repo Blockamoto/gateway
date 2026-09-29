@@ -199,11 +199,12 @@ $('query-form').addEventListener('submit', async event => {
     $('query-json').textContent = pretty(result); $('query-results').replaceChildren();
     $('query-summary').textContent = querySummary(result);
     for (let row of result.rows || []) {
+      if (row.schema === 'bitmap-lean-v2') { row.lean=true; row.accepted=true; }
       if (typeof row === 'string') { const split = row.indexOf(':'); row = {district:row.slice(0,split),inscription:row.slice(split+1),accepted:true,lean:true}; }
       const card = element('article', undefined, 'index-entry');
       card.append(element('h3', id === 'bitmap' ? (row.district === undefined ? 'Rejected candidate' : row.district + '.bitmap') : 'Inscription occurrence'));
       card.append(element('p', row.inscription || row.id, 'mono'));
-      card.append(element('p', id === 'bitmap' ? row.lean ? 'Accepted base claim. Lean record; audit details were not retained.' : (row.accepted ? 'Accepted base claim. ' : 'Rejected base claim. ') + human(row.reason) + '. Ownership: ' + human(row.ownership) + '. Historical compatibility: ' + human(row.compatibility) + '.' : 'Reveal block ' + row.block_height + ', transaction ' + row.tx_index + ', input ' + row.input_index + ', envelope ' + row.envelope_index + '. Canonical number unknown.', 'small'));
+      card.append(element('p', id === 'bitmap' ? row.lean ? 'Accepted base claim. Reveal block ' + (row.reveal_height ?? 'unknown') + '. Lean record; audit details were not retained.' : (row.accepted ? 'Accepted base claim. ' : 'Rejected base claim. ') + human(row.reason) + '. Ownership: ' + human(row.ownership) + '. Historical compatibility: ' + human(row.compatibility) + '.' : 'Reveal block ' + row.block_height + ', transaction ' + row.tx_index + ', input ' + row.input_index + ', envelope ' + row.envelope_index + '. Canonical number unknown.', 'small'));
       details(card, 'Raw record and evidence', row); $('query-results').append(card);
     }
   } catch (error) { message(error.message, true); } finally { button.disabled = false; }

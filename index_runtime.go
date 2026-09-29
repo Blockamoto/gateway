@@ -360,6 +360,7 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 			for _, r := range b.Bitmap {
 				total++
 				if len(rows) < limit {
+					r.Height = b.Checkpoint.Height
 					rows = append(rows, bitmapQueryRecord{r, bitmapCompatibility(r)})
 				}
 			}
@@ -388,12 +389,14 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 }
 
 type indexLookupResult struct {
-	Found         bool                       `json:"found"`
-	Record        *bitmapRecord              `json:"record,omitempty"`
-	Checkpoint    *indexCheckpoint           `json:"checkpoint"`
-	ChainState    string                     `json:"chain_state"`
-	Absence       string                     `json:"absence"`
-	Compatibility *bitmapCompatibilityResult `json:"compatibility_result,omitempty"`
+	RevealHeight    int64                      `json:"reveal_height"`
+	RevealBlockHash string                     `json:"reveal_block_hash,omitempty"`
+	Found           bool                       `json:"found"`
+	Record          *bitmapRecord              `json:"record,omitempty"`
+	Checkpoint      *indexCheckpoint           `json:"checkpoint"`
+	ChainState      string                     `json:"chain_state"`
+	Absence         string                     `json:"absence"`
+	Compatibility   *bitmapCompatibilityResult `json:"compatibility_result,omitempty"`
 }
 
 func (a *app) indexLookup(id, key string) (any, error) {
@@ -415,6 +418,9 @@ func (a *app) indexLookup(id, key string) (any, error) {
 		for _, r := range b.Bitmap {
 			if r.Accepted && r.District != nil && *r.District == n {
 				copy := r
+				copy.Height = b.Checkpoint.Height
+				result.RevealHeight = b.Checkpoint.Height
+				result.RevealBlockHash = b.Checkpoint.BlockHash
 				result.Found = true
 				result.Record = &copy
 				result.Absence = ""

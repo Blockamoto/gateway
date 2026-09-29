@@ -21,7 +21,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
     (async () => {
       const address = String(message.address || '');
       const stored = await chrome.storage.local.get('gatewayNamespaces');
-      const namespaces = stored.gatewayNamespaces || ['.bitcoin', '.gateway'];
+      const namespaces = stored.gatewayNamespaces || ['.bitcoin', '.gateway', '.bitmap'];
       // Unknown domain searches stay entirely in the browser. The native host
       // receives only an exact token in a locally registered namespace.
       if (!GatewaySearch.matchesNamespace(address, namespaces)) return {valid:false};

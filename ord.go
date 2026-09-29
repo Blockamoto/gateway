@@ -108,7 +108,7 @@ func (a *app) resolveInscription(ctx context.Context, id, blockHint string) (ord
 		}
 	}
 	var txr txResolutionView
-	if validHash(blockHint) {
+	if strings.TrimSpace(blockHint) != "" {
 		t, e := a.resolveBlockTarget(blockHint)
 		if e != nil {
 			return ordRecord{}, e

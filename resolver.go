@@ -200,6 +200,14 @@ func parseLocalResolverTarget(input string) (resolverTarget, error) {
 func parseResourceAddress(raw string) (resolverTarget, error) {
 	raw = strings.TrimSpace(raw)
 	low := strings.ToLower(raw)
+	if strings.HasSuffix(low, ".bitmap") {
+		district := strings.TrimSuffix(low, ".bitmap")
+		n, err := strconv.ParseUint(district, 10, 64)
+		if err != nil || strconv.FormatUint(n, 10) != district {
+			return resolverTarget{}, fmt.Errorf("expected district.bitmap; parcel resolution is not implemented")
+		}
+		return resolverTarget{Namespace: "bitmap", Kind: "district", Input: raw, SearchQuery: district, Friendly: low, CanonicalURI: godURI(low)}, nil
+	}
 	if low == ".gateway" || low == "home.gateway" || low == "gateway.gateway" {
 		return resolverTarget{Namespace: "gateway", Kind: "home", Input: raw, Friendly: ".gateway", CanonicalURI: "god://.gateway"}, nil
 	}
@@ -251,6 +259,23 @@ func (a *app) resolveLocalTarget(input string) (localResolveResponse, error) {
 	switch {
 	case t.Namespace == "gateway":
 		result = searchResponse{Kind: "module", Module: t.Kind, Query: t.Friendly}
+	case t.Namespace == "bitmap":
+		value, err := a.indexLookup("bitmap", t.SearchQuery)
+		if err != nil {
+			return localResolveResponse{}, err
+		}
+		lookup := value.(indexLookupResult)
+		if !lookup.Found {
+			return localResolveResponse{}, fmt.Errorf("Bitmap district not found in indexed coverage; build or resume the Bitmap index in Indexes")
+		}
+		if lookup.ChainState != "selected_chain" {
+			return localResolveResponse{}, fmt.Errorf("Bitmap index chain anchor is %s; sync headers or resume the index", lookup.ChainState)
+		}
+		rec, err := a.resolveInscription(context.Background(), lookup.Record.Inscription, lookup.RevealBlockHash)
+		if err != nil {
+			return localResolveResponse{}, err
+		}
+		result = searchResponse{Kind: "inscription", Ord: &rec}
 	case t.Namespace == "ord":
 		rec, e := a.resolveInscription(context.Background(), t.SearchQuery, "")
 		if e != nil {

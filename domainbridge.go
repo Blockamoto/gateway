@@ -68,7 +68,7 @@ func dnsResponse(packet []byte) []byte {
 	if !ok {
 		return nil
 	}
-	isBitcoin := name == "bitcoin" || strings.HasSuffix(name, ".bitcoin") || strings.HasSuffix(name, ".gateway")
+	isBitcoin := name == "bitcoin" || strings.HasSuffix(name, ".bitcoin") || strings.HasSuffix(name, ".gateway") || strings.HasSuffix(name, ".bitmap")
 	resp := make([]byte, qend)
 	copy(resp, packet[:qend])
 	flags := uint16(0x8000 | 0x0080)

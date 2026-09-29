@@ -159,7 +159,7 @@ func setBitcoinDomainRuleElevated(enabled bool) error {
 	if enabled {
 		inner = `$old = Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { ($_.Comment -eq 'Gateway On Demand .bitcoin resolver') -or ($_.Comment -eq 'Blocks on Demand .bitcoin resolver') }
 $old | ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force -ErrorAction SilentlyContinue }
-Add-DnsClientNrptRule -Namespace @('.bitcoin','.gateway') -NameServers '127.0.0.1' -Comment 'Gateway On Demand .bitcoin resolver' | Out-Null
+Add-DnsClientNrptRule -Namespace @('.bitcoin','.gateway','.bitmap') -NameServers '127.0.0.1' -Comment 'Gateway On Demand .bitcoin resolver' | Out-Null
 Clear-DnsClientCache -ErrorAction SilentlyContinue
 `
 	} else {

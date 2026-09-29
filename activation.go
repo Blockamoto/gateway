@@ -30,7 +30,7 @@ func validGatewayHost(host string) bool {
 		return true
 	} // historical local bridge compatibility
 	t, e := parseResourceAddress(host)
-	return e == nil && (t.Namespace == "gateway" || strings.HasSuffix(t.Friendly, ".bitcoin"))
+	return e == nil && (t.Namespace == "gateway" || t.Namespace == "bitmap" || strings.HasSuffix(t.Friendly, ".bitcoin"))
 }
 func safeLocalRequest(r *http.Request) bool {
 	h, _, e := net.SplitHostPort(r.RemoteAddr)

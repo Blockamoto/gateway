@@ -57,7 +57,7 @@ func gatewayBrowserNamespaces() []browserNamespace {
 	// v0.4.4 has one bundled browser-resolvable module. Keep this as a registry
 	// boundary so later modules can add namespaces without teaching the browser
 	// companion anything about Bitcoin itself.
-	return []browserNamespace{{Suffix: ".bitcoin", Module: "Bitcoin on Demand"}, {Suffix: ".gateway", Module: "Gateway Client"}}
+	return []browserNamespace{{Suffix: ".bitmap", Module: "Bitmap"}, {Suffix: ".bitcoin", Module: "Bitcoin on Demand"}, {Suffix: ".gateway", Module: "Gateway Client"}}
 }
 
 func browserCompanionDir(exe string) string {

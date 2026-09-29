@@ -42,7 +42,12 @@ type bitmapQueryRecord struct {
 
 func (r bitmapQueryRecord) MarshalJSON() ([]byte, error) {
 	if r.Lean {
-		return json.Marshal(r.bitmapRecord)
+		return json.Marshal(struct {
+			Schema       string  `json:"schema"`
+			District     *uint64 `json:"district"`
+			Inscription  string  `json:"inscription"`
+			RevealHeight int64   `json:"reveal_height"`
+		}{"bitmap-lean-v2", r.District, r.Inscription, r.Height})
 	}
 	type full bitmapRecord
 	return json.Marshal(struct {

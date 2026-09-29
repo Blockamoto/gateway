@@ -25,6 +25,30 @@ func marked(t *testing.T) string {
 	}
 	return r
 }
+
+func TestIndexStoragePreviewPreservesProtectedData(t *testing.T) {
+	root := marked(t)
+	for _, name := range []string{"indexes/bitmap/head.json", "indexes/bitmap/commits/fixture.json", "indexes/sources/fixture.block", "indexes/exports/report.json", "indexes/wallet.dat"} {
+		write(t, filepath.Join(root, name), "fixture")
+	}
+	plan, e := Preview(root, "profile", nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	count := 0
+	for _, item := range plan.Items {
+		rel, _ := filepath.Rel(root, item.Path)
+		if strings.HasPrefix(rel, "indexes") {
+			if strings.Contains(rel, "exports") || strings.Contains(rel, "wallet.dat") {
+				t.Fatal("protected index child selected")
+			}
+			count++
+		}
+	}
+	if count != 3 {
+		t.Fatalf("owned index files in preview: %d", count)
+	}
+}
 func Test054PurgeKeepsExternalAndUserFiles(t *testing.T) {
 	root := marked(t)
 	external := t.TempDir()

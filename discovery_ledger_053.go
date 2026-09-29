@@ -386,9 +386,15 @@ func (n *bitcoinNetwork) ensureConfiguredAddress(address, source string, service
 	if err != nil {
 		return
 	}
-	if n.ledger[canonical] != nil {
-		return
-	} // Settings polling is not a new observation.
+	if x := n.ledger[canonical]; x != nil {
+		// A new explicit configuration may authorize a previously excluded
+		// endpoint or add its first Gateway hint. Repeated settings polling is
+		// not a new observation and must never reset prior direct checks.
+		authorize := (strings.HasPrefix(source, "manual") || source == "local_core_bitcoin") && (x.Exclusion == "private_or_disallowed_gossip" || x.Exclusion == "inbound_source_only")
+		if !authorize && (services&gatewayExperimentalServiceBit == 0 || x.EverHint) {
+			return
+		}
+	}
 	n.recordAddressLocked(advertisedPeer{Addr: canonical, Services: services}, source)
 }
 

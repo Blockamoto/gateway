@@ -22,16 +22,25 @@ func (a *app) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var q struct {
-		Action     string `json:"action"`
-		Address    string `json:"address"`
-		MaxRecords int    `json:"max_records"`
-		MaxMiB     int64  `json:"max_mib"`
+		Action     string   `json:"action"`
+		Address    string   `json:"address"`
+		Peers      []string `json:"peers"`
+		MaxRecords int      `json:"max_records"`
+		MaxMiB     int64    `json:"max_mib"`
 	}
 	if !satlineBody(w, r, &q) {
 		return
 	}
 	if q.Action == "budget" {
 		a.setDiscoveryBudget(w, q.MaxRecords, q.MaxMiB)
+		return
+	}
+	if q.Action == "bootstrap_peers" {
+		if err := a.setGatewayBootstrapPeers(q.Peers, false); err != nil {
+			jsonError(w, 400, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "note": "Gateway entrances saved; existing history, connections and cooldowns retained"})
 		return
 	}
 	if q.Action == "retry" {

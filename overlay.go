@@ -64,32 +64,35 @@ type blockData struct {
 }
 
 type overlayRequest struct {
-	Version   int    `json:"version,omitempty"` // legacy internal field; wire version lives in envelope
-	Type      string `json:"type"`
-	TxID      string `json:"txid,omitempty"`
-	Vout      uint32 `json:"vout,omitempty"`
-	Address   string `json:"address,omitempty"`
-	Height    int64  `json:"height,omitempty"`
-	BlockHash string `json:"block_hash,omitempty"`
+	IndexRange *indexPeerRangeRequest `json:"index_range,omitempty"`
+	Version    int                    `json:"version,omitempty"` // legacy internal field; wire version lives in envelope
+	Type       string                 `json:"type"`
+	TxID       string                 `json:"txid,omitempty"`
+	Vout       uint32                 `json:"vout,omitempty"`
+	Address    string                 `json:"address,omitempty"`
+	Height     int64                  `json:"height,omitempty"`
+	BlockHash  string                 `json:"block_hash,omitempty"`
 }
 
 type overlayResponse struct {
-	Version       int             `json:"version"`
-	OK            bool            `json:"ok"`
-	Type          string          `json:"type,omitempty"`
-	Error         string          `json:"error,omitempty"`
-	PeerID        string          `json:"peer_id,omitempty"`
-	Capabilities  []string        `json:"capabilities,omitempty"`
-	HeaderHeight  int64           `json:"header_height,omitempty"`
-	TipHash       string          `json:"tip_hash,omitempty"`
-	CacheBlocks   int             `json:"cache_blocks,omitempty"`
-	BlockLocation *blockLocation  `json:"block_location,omitempty"`
-	BlockData     *blockData      `json:"block_data,omitempty"` // retained for internal compatibility; not sent on bodmsg
-	TxLocation    *txLocation     `json:"tx_location,omitempty"`
-	SpendLocation *spendLocation  `json:"spend_location,omitempty"`
-	AddressUTXOs  *addressUTXOSet `json:"address_utxos,omitempty"`
-	Status        *bodStatus      `json:"status,omitempty"`
-	ClaimSnapshot *chainSnapshot  `json:"claim_snapshot,omitempty"`
+	IndexManifests []indexPeerManifest `json:"index_manifests,omitempty"`
+	IndexPage      *indexPeerPage      `json:"index_page,omitempty"`
+	Version        int                 `json:"version"`
+	OK             bool                `json:"ok"`
+	Type           string              `json:"type,omitempty"`
+	Error          string              `json:"error,omitempty"`
+	PeerID         string              `json:"peer_id,omitempty"`
+	Capabilities   []string            `json:"capabilities,omitempty"`
+	HeaderHeight   int64               `json:"header_height,omitempty"`
+	TipHash        string              `json:"tip_hash,omitempty"`
+	CacheBlocks    int                 `json:"cache_blocks,omitempty"`
+	BlockLocation  *blockLocation      `json:"block_location,omitempty"`
+	BlockData      *blockData          `json:"block_data,omitempty"` // retained for internal compatibility; not sent on bodmsg
+	TxLocation     *txLocation         `json:"tx_location,omitempty"`
+	SpendLocation  *spendLocation      `json:"spend_location,omitempty"`
+	AddressUTXOs   *addressUTXOSet     `json:"address_utxos,omitempty"`
+	Status         *bodStatus          `json:"status,omitempty"`
+	ClaimSnapshot  *chainSnapshot      `json:"claim_snapshot,omitempty"`
 }
 
 type bodEnvelope struct {
@@ -248,6 +251,9 @@ func (a *app) peerCapabilitiesLegacy() ([]string, int64, string, int) {
 		if has {
 			caps = append(caps, "spendloc")
 		}
+	}
+	if len(a.publishedIndexManifests()) > 0 {
+		caps = append(caps, "index_manifest", "index_range")
 	}
 	return uniqueStrings(caps), height, tip, cacheBlocks
 }
@@ -609,6 +615,9 @@ func (s *overlayServer) writeBODResponse(c net.Conn, env bodEnvelope) {
 }
 
 func (a *app) answerBODRequest(req overlayRequest) (overlayResponse, string) {
+	if req.Type == "index_manifest" || req.Type == "index_range" {
+		return a.answerIndexPeerRequest(req)
+	}
 	claim := a.bestClaimSnapshot()
 	resp := overlayResponse{Version: bodWireVersion, OK: false, Type: req.Type, PeerID: a.source.peerID(), ClaimSnapshot: &claim}
 	a.settingsMu.RLock()
@@ -954,9 +963,15 @@ func (a *app) getOverlayPeers() []overlayPeer {
 	a.peerMu.RUnlock()
 
 	a.settingsMu.RLock()
-	manual := a.settings.ManualPeer
+	settings := a.settings
 	a.settingsMu.RUnlock()
-	seeds := discoverOverlayPeers(manual) // manual + LAN bootstrap remains a useful stage-zero path.
+	seeds := []overlayPeer{}
+	for _, address := range configuredGatewayBootstrapPeers(settings) {
+		seeds = append(seeds, overlayPeer{Protocol: bodWireVersion, Addr: address, ID: "configured", HeaderHeight: -1, DiscoverySource: "manual_gateway"})
+	}
+	if settings.LANDiscovery {
+		seeds = append(seeds, discoverOverlayPeers("")...)
+	}
 	seen := map[string]bool{}
 	for _, p := range seeds {
 		seen[p.Addr] = true

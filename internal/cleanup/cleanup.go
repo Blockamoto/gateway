@@ -275,7 +275,7 @@ var rootFiles = map[string]bool{
 	"discovery-ledger-v1.wal": true, ".discovery-checkpoint.tmp": true, "windows-tray-v1.ps1": true,
 	Marker: true,
 }
-var rootDirs = map[string]bool{"headers": true, "blocks": true, "graph": true, "satline": true, "ord": true, "archive": true, "migration": true}
+var rootDirs = map[string]bool{"headers": true, "blocks": true, "graph": true, "satline": true, "ord": true, "archive": true, "migration": true, "indexes": true}
 
 func forbiddenName(name string) bool {
 	name = strings.ToLower(name)

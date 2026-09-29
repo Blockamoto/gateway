@@ -180,6 +180,10 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 		"Current placement can be derived on demand through Satline. Only CURRENTLY_UNSPENT with a usable snapshot establishes placement at that snapshot; an unresolved frontier is not current state. No global current-sat index or Ord sat-state adapter is implemented.")
 	add("satline", "gateway_satline", "per_query_sparse", "rechecked_on_query", satline, satline && s.SatlineServePublished && local.PublishedSatline, nil, nil, nil,
 		"Per-query lineage and reusable checkpoints, with optional verified peer acceleration. No whole-chain coverage is inferred from saved hops. Only detached explicit publications are remotely served, as hints requiring recipient verification.")
+	add("inscriptions", "gateway_known_id", "on_demand", "reveal_checked_on_query", s.OrdEnabled, false, nil, nil, nil, "Existing known-ID inscription resolver checks reveal/content evidence on demand. It does not supply a complete inventory or global numbering; bounded index instances are reported separately.")
+	_, ordErr := validatedOrdURL(s.OrdURL)
+	add("inscriptions", "ord_http", "configured_coverage_unknown", "provider_claim_until_reveal_checked", s.OrdEnabled && strings.TrimSpace(s.OrdURL) != "" && ordErr == nil, false, nil, nil, nil, "Optional read-only Ord HTTP provider for known-ID content and metadata. Configuration does not prove availability or historical coverage; external databases are not modified.")
+	add("inscription-numbering", "none", "unavailable", "unknown", false, false, nil, nil, nil, "Gateway has no full historical numbering executor. Provider labels or bounded occurrence scans are not locally derived canonical numbers.")
 	return rows
 }
 

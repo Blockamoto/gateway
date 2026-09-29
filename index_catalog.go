@@ -89,7 +89,7 @@ func indexDefinitions() []indexDefinition {
 		{ID: "satline", Name: "Satline", Dependencies: []string{"tx-locator", "txo-spender", "blocks"}, Theory: "On-demand verified lineage; deeper retained history is optional."},
 		{ID: "inscriptions", Name: "Inscription occurrences", Dependencies: []string{"blocks"}, Theory: "Bounded witness-envelope occurrences and content; canonical numbers remain unknown.", ArbitraryStart: true, Buildable: true},
 		{ID: "inscription-numbering", Name: "Canonical inscription numbering", Dependencies: []string{"inscriptions", "sat-state"}, Theory: "Sequential historical state including curse and Jubilee rules; bounded scans cannot supply it."},
-		{ID: "bitmap", Name: "Bitmap districts", Dependencies: []string{"inscriptions"}, StartHeight: 792435, Buildable: true, Theory: "First valid district claim in Bitcoin reveal order. Ownership is a separate optional dependency.", Rules: []string{"Mainnet; start at block 792435 or a locally validated prior checkpoint.", "Apply blocks, transactions, inputs and recognized envelopes in Bitcoin order.", "Direct content must be canonical ASCII decimal followed by .bitmap, with no leading zero except 0.", "The target Bitcoin block must exist at the reveal height.", "First valid claim wins; preserve subsequent candidates with rejection reasons.", "Do not use canonical inscription numbering to reorder claims.", "Ownership is unknown without separately resolved sat/inscription evidence.", "Compatibility results never mutate the base index."}},
+		{ID: "bitmap", Name: "Bitmap districts", Dependencies: []string{"inscriptions"}, StartHeight: 792435, Buildable: true, Theory: "First valid district claim in Bitcoin reveal order. Ownership is a separate optional dependency.", Rules: []string{"Mainnet; start at block 792435 or a locally validated prior checkpoint.", "Apply blocks, transactions, inputs and recognized envelopes in Bitcoin order.", "Gateway district profile: direct raw body must be canonical ASCII decimal followed by .bitmap, with no leading zero except 0; no decompression or delegate lookup.", "MIME and parser flags do not exclude a recognized occurrence; global curse, boundness and numbering are not assumed. This is not an OPI-equivalence claim.", "The target Bitcoin block must exist at the reveal height.", "First valid claim wins; preserve subsequent candidates with rejection reasons.", "Do not use canonical inscription numbering to reorder claims.", "Ownership is unknown without separately resolved sat/inscription evidence.", "Compatibility results never mutate the base index."}},
 		{ID: "bitmap-compatibility", Name: "Bitmap compatibility analysis", Dependencies: []string{"bitmap"}, Theory: "Named evidence-backed interpretations alongside immutable base results; unsupported profiles are not guessed."},
 	}
 	for i := range defs {
@@ -98,6 +98,9 @@ func indexDefinitions() []indexDefinition {
 		d.Network = "bitcoin-mainnet"
 		d.CheckpointSchema = 1
 		d.OutputSchema = 1
+		if d.ID == "bitmap" {
+			d.OutputSchema = 2
+		}
 		d.CanonicalEncoding = "ordered Go JSON struct fields; UTF-8; no whitespace; ordered records; SHA-256"
 		if d.Rules == nil {
 			d.Rules = []string{d.Theory}

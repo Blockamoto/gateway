@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -74,26 +73,14 @@ func (a *app) handlePeers(w http.ResponseWriter, r *http.Request) {
 			}
 			a.refreshPeersAsync()
 		case "add":
-			if _, _, e := net.SplitHostPort(q.Address); e != nil || strings.ContainsAny(q.Address, "/ ?#\r\n") {
-				jsonError(w, 400, fmt.Errorf("use a peer host:port"))
-				return
-			}
-			a.settingsMu.Lock()
-			a.settings.ManualPeer = q.Address
-			s := a.settings
-			a.settingsMu.Unlock()
-			if e := a.saveSettings(s); e != nil {
-				jsonError(w, 500, e)
+			if e := a.setGatewayBootstrapPeers([]string{q.Address}, true); e != nil {
+				jsonError(w, 400, e)
 				return
 			}
 			a.peerMu.Lock()
 			a.peerScanAt = time.Time{}
 			a.peerMu.Unlock()
 			a.refreshPeersAsync()
-			if a.network != nil {
-				a.network.add(q.Address, "manual_gateway", gatewayExperimentalServiceBit)
-				a.network.retry()
-			}
 		case "disconnect":
 			if a.network != nil && a.network.disconnect(q.Address) {
 				break

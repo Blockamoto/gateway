@@ -33,6 +33,17 @@ Usage:
   gateway-client graph build [from to]     Build native graph (default genesis -> snapshot tip)
   gateway-client graph stop                Stop native graph backfill
   gateway-client graph spender <txid:vout> Resolve through the graph capability
+  gateway-client index rules [index-id]    Inspect index rules and dependencies
+  gateway-client index plan <index-id> [--from N --to N --retention ephemeral|cache|retain]
+  gateway-client index build <index-id> [--from N --to N --retention ephemeral|cache|retain]
+  gateway-client index pause               Request a pause after the current source request
+  gateway-client index status              Definitions, providers, instances and current job
+  gateway-client index query <index-id> [--limit 50] Inspect retained derived records
+  gateway-client index lookup bitmap <district> Look up one exact Bitmap district in retained state
+  gateway-client index peers              Inspect claims from already-negotiated peers (explicit network request)
+  gateway-client index peer <host:port> <index-id> Preview a known peer's latest block; no storage or Bitcoin replay
+  gateway-client index publish <index-id>  Freeze the current checkpoint for explicit sharing
+  gateway-client index unpublish <index-id> Withdraw publication; keep private local records
   gateway-client satline status                    Satline module/storage status
   gateway-client satline start <query>              Show birth or resume a checked checkpoint
   gateway-client satline next <query>               Advance exactly one logical hop
@@ -138,6 +149,8 @@ func runCLI(a *app, args []string) (handled bool, exitCode int) {
 	var out any
 	var err error
 	switch cmd {
+	case "index":
+		out, err = a.runIndexCLI(args[1:])
 	case "resolve", "search":
 		if e := need(1, "resolve <query>"); e != nil {
 			return fail(e)

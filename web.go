@@ -214,6 +214,21 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 	s.BitcoinDataDir = strings.TrimSpace(s.BitcoinDataDir)
 	s.BitcoinBlocksDir = strings.TrimSpace(s.BitcoinBlocksDir)
 	s.ManualPeer = strings.TrimSpace(s.ManualPeer)
+	if s.GatewayBootstrapPeers == nil {
+		// Existing settings forms do not know this field; preserve the list.
+		s.GatewayBootstrapPeers = append([]string(nil), old.GatewayBootstrapPeers...)
+	}
+	var bootstrapErr error
+	if s.GatewayBootstrapPeers, bootstrapErr = normalizeGatewayBootstrapPeers(s.GatewayBootstrapPeers); bootstrapErr != nil {
+		jsonError(w, 400, bootstrapErr)
+		return
+	}
+	if s.ManualPeer != "" {
+		if s.ManualPeer, bootstrapErr = normalizeGatewayBootstrapPeer(s.ManualPeer); bootstrapErr != nil {
+			jsonError(w, 400, bootstrapErr)
+			return
+		}
+	}
 	s.AdvertiseAddr = strings.TrimSpace(s.AdvertiseAddr)
 	s.RPCAuthMode = strings.ToLower(strings.TrimSpace(s.RPCAuthMode))
 	if s.RPCAuthMode == "" {

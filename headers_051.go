@@ -81,11 +81,14 @@ func workInSuffix(path string, start int64) (*big.Int, error) {
 	}
 }
 func verifyConnectedHeader(path string, height int64, h []byte) error {
-	if e := verifyHeaderConsensusBasics(path, height, h); e != nil {
+	return verifyConnectedHeaderWithReader(func(n int64) ([]byte, error) { return readHeaderAt(path, n) }, height, h)
+}
+func verifyConnectedHeaderWithReader(read func(int64) ([]byte, error), height int64, h []byte) error {
+	if e := verifyHeaderConsensusWithReader(read, height, h); e != nil {
 		return e
 	}
 	if height > 0 {
-		prev, e := readHeaderAt(path, height-1)
+		prev, e := read(height - 1)
 		if e != nil {
 			return e
 		}
@@ -95,7 +98,7 @@ func verifyConnectedHeader(path string, height int64, h []byte) error {
 		}
 		times := []uint32{}
 		for i := height - 1; i >= 0 && len(times) < 11; i-- {
-			p, e := readHeaderAt(path, i)
+			p, e := read(i)
 			if e != nil {
 				return e
 			}
@@ -447,6 +450,30 @@ func appendCheckedHeaderBatch051(ctx context.Context, path string, count int64, 
 	if _, e = f.Seek(originalBytes, io.SeekStart); e != nil {
 		return original, e
 	}
+	// Consensus checks need at most one retarget interval of prior headers.
+	// Load that bounded window once instead of reopening the file for every
+	// timestamp/difficulty/link lookup (millions of opens on a fresh Windows node).
+	start := count - 2016
+	if start < 0 {
+		start = 0
+	}
+	prior, e := os.Open(path)
+	if e != nil {
+		return original, e
+	}
+	window := make([]byte, (count-start)*80)
+	_, e = prior.ReadAt(window, start*80)
+	prior.Close()
+	if e != nil {
+		return original, e
+	}
+	read := func(height int64) ([]byte, error) {
+		off := (height - start) * 80
+		if off < 0 || off+80 > int64(len(window)) {
+			return nil, fmt.Errorf("header dependency outside validation window")
+		}
+		return window[off : off+80], nil
+	}
 	if e = beginHeaderAppend051(path, original); e != nil {
 		return original, e
 	}
@@ -464,7 +491,7 @@ func appendCheckedHeaderBatch051(ctx context.Context, path string, count int64, 
 	}
 	for _, h := range headers {
 		if e = ctx.Err(); e == nil {
-			e = verifyConnectedHeader(path, count, h)
+			e = verifyConnectedHeaderWithReader(read, count, h)
 		}
 		if e == nil {
 			var written int
@@ -477,6 +504,7 @@ func appendCheckedHeaderBatch051(ctx context.Context, path string, count int64, 
 			return rollback(e)
 		}
 		count++
+		window = append(window, h...)
 	}
 	if e = ctx.Err(); e != nil {
 		return rollback(e)

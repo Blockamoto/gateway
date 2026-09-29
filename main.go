@@ -17,6 +17,9 @@ import (
 )
 
 type app struct {
+	indexMu            sync.Mutex
+	indexJob           indexJob
+	indexCancel        func()
 	servingMu          sync.Mutex
 	servingReadiness   bitcoinServingReadiness
 	servingRefreshing  bool
@@ -154,6 +157,9 @@ func main() {
 	fatalIf(err)
 	fatalIf(os.MkdirAll(dataDir, 0755))
 	cliArgs := flag.Args()
+	if handled, code := runEarlyIndexCLI(dataDir, cliArgs); handled {
+		os.Exit(code)
+	}
 	cliOnly := len(cliArgs) > 0 && !strings.EqualFold(cliArgs[0], "ui") && !strings.EqualFold(cliArgs[0], "serve-ui")
 	if !cliOnly && *setupFlag {
 		if running, e := readRuntimeInfo(dataDir); e == nil && runtimeAlive(running) {
@@ -336,6 +342,7 @@ func main() {
 
 	a.registerSatlineRoutes(mux)
 	a.registerGatewayRoutes(mux)
+	a.registerIndexRoutes(mux)
 	if err := a.startOrdContent(); err != nil {
 		fmt.Println("Ord content preview unavailable:", err)
 	}

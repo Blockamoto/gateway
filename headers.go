@@ -207,6 +207,9 @@ func findHeaderHeightByHash(path, wanted string) (int64, []byte, error) {
 }
 
 func verifyHeaderConsensusBasics(path string, height int64, h []byte) error {
+	return verifyHeaderConsensusWithReader(func(n int64) ([]byte, error) { return readHeaderAt(path, n) }, height, h)
+}
+func verifyHeaderConsensusWithReader(read func(int64) ([]byte, error), height int64, h []byte) error {
 	if len(h) != 80 {
 		return fmt.Errorf("header length %d", len(h))
 	}
@@ -216,7 +219,7 @@ func verifyHeaderConsensusBasics(path string, height int64, h []byte) error {
 	if height == 0 {
 		return nil
 	}
-	prev, err := readHeaderAt(path, height-1)
+	prev, err := read(height - 1)
 	if err != nil {
 		return err
 	}
@@ -228,7 +231,7 @@ func verifyHeaderConsensusBasics(path string, height int64, h []byte) error {
 		}
 		return nil
 	}
-	first, err := readHeaderAt(path, height-2016)
+	first, err := read(height - 2016)
 	if err != nil {
 		return err
 	}

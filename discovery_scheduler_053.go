@@ -184,6 +184,23 @@ func (n *bitcoinNetwork) planDiscoveryWithRefreshLocked(now time.Time, seek, rec
 			if chosen == nil && knownTurn && (!seek || n.roleTurns[r]%2 == 0) {
 				chooseKnown(false)
 			}
+			// Configured entrances get alternating candidate opportunities after
+			// remembered verified members. Other turns retain the Bitcoin hint
+			// queues, so failed seeds cannot monopolize Gateway discovery.
+			if chosen == nil && r == 1 && seek && n.roleTurns[r]%2 == 0 {
+				for _, address := range n.configuredGateways {
+					x := n.ledger[address]
+					if x == nil || x.Exclusion != "" || now.Before(x.RetryAfter) || now.Before(n.gatewayRecheckAfterLocked(x)) || n.sessions[address] != nil {
+						continue
+					}
+					if _, pending := n.dialing[address]; pending {
+						continue
+					}
+					if chosen == nil || x.LastAttempt.Before(chosen.LastAttempt) {
+						chosen, chosenBucket = x, n.workBucketAtLocked(x, now)
+					}
+				}
+			}
 			for _, b := range buckets {
 				if chosen != nil || r != 0 && !seek && !refreshTurn {
 					break

@@ -127,6 +127,7 @@ type bitcoinNetwork struct {
 	bootstrapAt         time.Time
 	bootstrapBusy       bool
 	bootstrapError      string
+	configuredGateways  []string // current normalized settings, protected by mu
 	saveMu              sync.Mutex
 	headerCursor        uint64
 	policy              discoveryPolicy

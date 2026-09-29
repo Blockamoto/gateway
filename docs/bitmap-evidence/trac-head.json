@@ -1,0 +1,81 @@
+{
+  "sha": "b0130f1d66178da7f3e89c6db1a0244be6ea4d3c",
+  "node_id": "C_kwDOJ966UtoAKGIwMTMwZjFkNjYxNzhkYTdmM2U4OWM2ZGIxYTAyNDRiZTZlYTRkM2M",
+  "commit": {
+    "author": {
+      "name": "Benny",
+      "email": "uniftyio@gmail.com",
+      "date": "2023-08-11T16:11:49Z"
+    },
+    "committer": {
+      "name": "GitHub",
+      "email": "noreply@github.com",
+      "date": "2023-08-11T16:11:49Z"
+    },
+    "message": "Update README.md\n\nmissing r",
+    "tree": {
+      "sha": "18afc37bd7f03dfb4b5df4ea451c1a57724c3a84",
+      "url": "https://api.github.com/repos/BennyTheDev/trac-bitmap-public-endpoint/git/trees/18afc37bd7f03dfb4b5df4ea451c1a57724c3a84"
+    },
+    "url": "https://api.github.com/repos/BennyTheDev/trac-bitmap-public-endpoint/git/commits/b0130f1d66178da7f3e89c6db1a0244be6ea4d3c",
+    "comment_count": 0,
+    "verification": {
+      "verified": true,
+      "reason": "valid",
+      "signature": "-----BEGIN PGP SIGNATURE-----\n\nwsBcBAABCAAQBQJk1l3FCRBK7hj4Ov3rIwAAACQIAIx4Fg6K4fj+OtssCmuJPzW6\niNGs2uZMWDOGtcr2dg4sEnSbb8Tt9CGTQ9MD4lo74B8crWBI3PwQwxJoyOoe4rrz\nRE5WCTxqqhcyz5Ojz34IH29gAt85JXTUwFrNzCCucN1nXpKOJbpK3n0m2QMQuyg7\nIGo+U42ACZ4c2v1UUFELYTK3B7nYvGWoMCF5HYeGlPbMHc6QMtseBi6956kDJMqt\nHb4k/SNVs/suOPwWElLLgBK1yZHJEcakf0UoXtXJVc8d1l2LVWpOqrDm2gKWDhlq\nM46ZKLTCtZRDpEYzuaWN1K8ou0fqmYmQVatSLwrexqAtu9/4Z5geqP4nOOfTvY8=\n=0UkY\n-----END PGP SIGNATURE-----\n",
+      "payload": "tree 18afc37bd7f03dfb4b5df4ea451c1a57724c3a84\nparent 4ebc421103c028f43c799eb911cb29d7260c8d94\nauthor Benny <uniftyio@gmail.com> 1691770309 +0200\ncommitter GitHub <noreply@github.com> 1691770309 +0200\n\nUpdate README.md\n\nmissing r",
+      "verified_at": "2024-01-16T19:59:59Z"
+    }
+  },
+  "url": "https://api.github.com/repos/BennyTheDev/trac-bitmap-public-endpoint/commits/b0130f1d66178da7f3e89c6db1a0244be6ea4d3c",
+  "html_url": "https://github.com/BennyTheDev/trac-bitmap-public-endpoint/commit/b0130f1d66178da7f3e89c6db1a0244be6ea4d3c",
+  "comments_url": "https://api.github.com/repos/BennyTheDev/trac-bitmap-public-endpoint/commits/b0130f1d66178da7f3e89c6db1a0244be6ea4d3c/comments",
+  "author": null,
+  "committer": {
+    "login": "web-flow",
+    "id": 19864447,
+    "node_id": "MDQ6VXNlcjE5ODY0NDQ3",
+    "avatar_url": "https://avatars.githubusercontent.com/u/19864447?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/web-flow",
+    "html_url": "https://github.com/web-flow",
+    "followers_url": "https://api.github.com/users/web-flow/followers",
+    "following_url": "https://api.github.com/users/web-flow/following{/other_user}",
+    "gists_url": "https://api.github.com/users/web-flow/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/web-flow/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/web-flow/subscriptions",
+    "organizations_url": "https://api.github.com/users/web-flow/orgs",
+    "repos_url": "https://api.github.com/users/web-flow/repos",
+    "events_url": "https://api.github.com/users/web-flow/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/web-flow/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "parents": [
+    {
+      "sha": "4ebc421103c028f43c799eb911cb29d7260c8d94",
+      "url": "https://api.github.com/repos/BennyTheDev/trac-bitmap-public-endpoint/commits/4ebc421103c028f43c799eb911cb29d7260c8d94",
+      "html_url": "https://github.com/BennyTheDev/trac-bitmap-public-endpoint/commit/4ebc421103c028f43c799eb911cb29d7260c8d94"
+    }
+  ],
+  "stats": {
+    "total": 2,
+    "additions": 1,
+    "deletions": 1
+  },
+  "files": [
+    {
+      "sha": "507adbb9123544708868d4b44a419100d692e6c2",
+      "filename": "README.md",
+      "status": "modified",
+      "additions": 1,
+      "deletions": 1,
+      "changes": 2,
+      "blob_url": "https://github.com/BennyTheDev/trac-bitmap-public-endpoint/blob/b0130f1d66178da7f3e89c6db1a0244be6ea4d3c/README.md",
+      "raw_url": "https://github.com/BennyTheDev/trac-bitmap-public-endpoint/raw/b0130f1d66178da7f3e89c6db1a0244be6ea4d3c/README.md",
+      "contents_url": "https://api.github.com/repos/BennyTheDev/trac-bitmap-public-endpoint/contents/README.md?ref=b0130f1d66178da7f3e89c6db1a0244be6ea4d3c",
+      "patch": "@@ -33,7 +33,7 @@ const trac = io(\"https://bitmap.trac.network\", {\n     autoConnect : true,\n     reconnection: true,\n     reconnectionDelay: 500,\n-    econnectionDelayMax : 500,\n+    reconnectionDelayMax : 500,\n     randomizationFactor : 0\n });\n "
+    }
+  ]
+}

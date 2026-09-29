@@ -231,6 +231,13 @@ func (a *app) fetchAndDecodeTarget(target blockTarget) (blockView, error) {
 	return a.coalescedBlock(target)
 }
 func (a *app) fetchAndDecodeTargetUncached(target blockTarget) (blockView, error) {
+	return a.fetchBlockWithPolicy(target, "legacy")
+}
+
+// Index jobs select source retention without changing global settings or
+// implicitly building unrelated graph indexes. Existing user caches keep their
+// original publication policy.
+func (a *app) fetchBlockWithPolicy(target blockTarget, policy string) (blockView, error) {
 
 	prefixHeight := target.Height
 	if prefixHeight < 0 {
@@ -243,19 +250,30 @@ func (a *app) fetchAndDecodeTargetUncached(target blockTarget) (blockView, error
 	binPath := filepath.Join(a.dataDir, "blocks", "raw", prefix+".block")
 
 	var payload []byte
+	var retainedView *blockView
 	source := ""
 	sourceNetwork := ""
 	fromCache := false
+	if policy != "legacy" {
+		if raw, decoded, e := readRetainedIndexBlock(filepath.Join(a.dataDir, "indexes", "sources", target.HashDisplay+".block"), target); e == nil {
+			payload = raw
+			retainedView = &decoded
+			source = decoded.SourcePeer
+			sourceNetwork = "index_retained"
+		}
+	}
 
 	// v0.4.0 storage unification: live Core RPC, the read-only Core block-store
 	// mount and the BOD cache are one logical local store. Core bytes are read
 	// in place and are never duplicated merely because BOD accessed a block.
-	if hit, err := a.localStorageBlock(target); err == nil && len(hit.Raw) >= 81 {
-		got := hash256(hit.Raw[:80])
-		if got == target.HashRaw && (len(target.ExpectedHeader) != 80 || bytes.Equal(hit.Raw[:80], target.ExpectedHeader)) {
-			payload, source, sourceNetwork, fromCache = hit.Raw, hit.Source, hit.Network, hit.FromCache
-			if target.Height < 0 && hit.Height >= 0 {
-				target.Height = hit.Height
+	if payload == nil {
+		if hit, err := a.localStorageBlock(target); err == nil && len(hit.Raw) >= 81 {
+			got := hash256(hit.Raw[:80])
+			if got == target.HashRaw && (len(target.ExpectedHeader) != 80 || bytes.Equal(hit.Raw[:80], target.ExpectedHeader)) {
+				payload, source, sourceNetwork, fromCache = hit.Raw, hit.Source, hit.Network, hit.FromCache
+				if target.Height < 0 && hit.Height >= 0 {
+					target.Height = hit.Height
+				}
 			}
 		}
 	}
@@ -292,9 +310,15 @@ func (a *app) fetchAndDecodeTargetUncached(target blockTarget) (blockView, error
 			binPath = filepath.Join(a.dataDir, "blocks", "raw", prefix+".block")
 		}
 	}
-	view, err := parseBlockDetailed(target.Height, target.HashDisplay, target.ExpectedHeader, payload, source, fromCache)
-	if err != nil {
-		return blockView{}, err
+	var view blockView
+	if retainedView != nil {
+		view = *retainedView
+	} else {
+		var err error
+		view, err = parseBlockDetailed(target.Height, target.HashDisplay, target.ExpectedHeader, payload, source, fromCache)
+		if err != nil {
+			return blockView{}, err
+		}
 	}
 	view.SourceNetwork = sourceNetwork
 	view.LocatorPeer = target.LocatorPeer
@@ -339,12 +363,29 @@ func (a *app) fetchAndDecodeTargetUncached(target blockTarget) (blockView, error
 	// Verified derived knowledge is retained independently of raw block cache
 	// possession. This is what lets range materialization build a sparse index
 	// without forcing duplicate block storage.
-	a.indexVerifiedBlockKnowledge(view)
+	if policy == "legacy" {
+		a.indexVerifiedBlockKnowledge(view)
+	}
 
 	a.settingsMu.RLock()
 	cacheEnabled := a.settings.CacheBlocks
 	a.settingsMu.RUnlock()
+	if policy != "legacy" {
+		cacheEnabled = policy == "cache"
+	}
+	if policy != "legacy" && !fromCache {
+		view.CacheVisibility = "private"
+	}
 	writeCache := cacheEnabled && sourceNetwork != "core" && sourceNetwork != "core_mount" && sourceNetwork != "archive"
+	if policy == "retain" && sourceNetwork != "index_retained" && sourceNetwork != "core" && sourceNetwork != "core_mount" && sourceNetwork != "archive" {
+		retained := filepath.Join(a.dataDir, "indexes", "sources", target.HashDisplay+".block")
+		if len(payload) > maxMessageSize {
+			return blockView{}, fmt.Errorf("retained block exceeds Bitcoin block size limit")
+		}
+		if err := atomicWriteBytes(retained, payload); err != nil {
+			return blockView{}, err
+		}
+	}
 	if fromCache || writeCache {
 		view.SavedFiles = savedFilesView{
 			Block: filepath.Join("blocks", "raw", filepath.Base(binPath)),
@@ -353,15 +394,49 @@ func (a *app) fetchAndDecodeTargetUncached(target blockTarget) (blockView, error
 		}
 	}
 	if !fromCache && writeCache {
+		if err := os.MkdirAll(filepath.Dir(binPath), 0700); err != nil {
+			return blockView{}, err
+		}
 		if err := os.WriteFile(binPath, payload, 0644); err != nil {
 			return blockView{}, err
 		}
 	}
 	if writeCache {
-		a.indexCachedBlock(view, prefix)
-		a.enforceCacheLimit()
+		a.indexCachedBlockPolicy(view, prefix, policy == "legacy")
+		a.enforceCacheLimitPolicy(policy == "cache")
 	}
 	return view, nil
+}
+
+// Retained sources are a fallible local provider, not an authority. Bound the
+// read before allocation and verify the complete body before letting this copy
+// suppress a fetch from other providers. An interrupted or damaged file can
+// then be repaired by a later retain-policy fetch.
+func readRetainedIndexBlock(path string, target blockTarget) ([]byte, blockView, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, blockView{}, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, blockView{}, err
+	}
+	if !info.Mode().IsRegular() || info.Size() < 81 || info.Size() > maxMessageSize {
+		return nil, blockView{}, fmt.Errorf("invalid retained block file size or type")
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, maxMessageSize+1))
+	if err != nil {
+		return nil, blockView{}, err
+	}
+	if len(raw) > maxMessageSize {
+		return nil, blockView{}, fmt.Errorf("retained block exceeds Bitcoin block size limit")
+	}
+	view, err := parseBlockDetailed(target.Height, target.HashDisplay, target.ExpectedHeader, raw, "Gateway retained index source", false)
+	if err != nil {
+		return nil, blockView{}, err
+	}
+	return raw, view, nil
 }
 
 func parseBlockDetailed(height int64, hashDisplay string, expectedHeader, payload []byte, source string, fromCache bool) (blockView, error) {

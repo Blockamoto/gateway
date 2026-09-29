@@ -1,4 +1,4 @@
-# Building Gateway Client v0.5.4
+# Building Gateway Client v0.6.0-alpha.1
 
 Baseline: the supplied v0.5.3 discovery candidate. Go 1.23+, Python 3 and `GO111MODULE=off` are required for compilation. The Go program uses the standard library with no fetched modules. Node is used for companion/UI checks; Chromium and Python Playwright are rendering-test dependencies, not shipped runtime dependencies.
 

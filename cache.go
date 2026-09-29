@@ -98,6 +98,10 @@ func (a *app) saveCacheIndex() error {
 }
 
 func indexBlockInto(idx *cacheIndex, v blockView, prefix string) {
+	indexBlockIntoPolicy(idx, v, prefix, true)
+}
+
+func indexBlockIntoPolicy(idx *cacheIndex, v blockView, prefix string, deriveKnowledge bool) {
 	if idx.Blocks == nil {
 		*idx = newCacheIndex()
 	}
@@ -105,12 +109,17 @@ func indexBlockInto(idx *cacheIndex, v blockView, prefix string) {
 	entry := cachedBlockEntry{Height: v.Height, Hash: hash, Prefix: prefix, Private: strings.EqualFold(v.CacheVisibility, "private"), OriginalNetwork: v.SourceNetwork, OriginalSource: v.SourcePeer, OriginalLocator: v.LocatorPeer}
 	if previous, ok := idx.Blocks[hash]; ok {
 		entry.OriginalNetwork, entry.OriginalSource, entry.OriginalLocator = previous.OriginalNetwork, previous.OriginalSource, previous.OriginalLocator
+		if !deriveKnowledge {
+			entry.Private = previous.Private
+		}
 	}
 	idx.Blocks[hash] = entry
 	if v.Height >= 0 {
 		idx.Heights[strconv.FormatInt(v.Height, 10)] = hash
 	}
-	indexBlockKnowledgeInto(idx, v)
+	if deriveKnowledge {
+		indexBlockKnowledgeInto(idx, v)
+	}
 }
 
 func indexBlockKnowledgeInto(idx *cacheIndex, v blockView) {
@@ -185,8 +194,14 @@ func (a *app) indexVerifiedBlockKnowledge(v blockView) {
 }
 
 func (a *app) indexCachedBlock(v blockView, prefix string) {
+	a.indexCachedBlockPolicy(v, prefix, true)
+}
+
+// Explicit index source caching records possession only. Retaining source
+// bytes must not silently select the independent tx/spender indexes.
+func (a *app) indexCachedBlockPolicy(v blockView, prefix string, deriveKnowledge bool) {
 	a.cacheMu.Lock()
-	indexBlockInto(&a.cacheIndex, v, prefix)
+	indexBlockIntoPolicy(&a.cacheIndex, v, prefix, deriveKnowledge)
 	a.cacheMu.Unlock()
 	a.scheduleKnowledgeSave()
 }
@@ -380,11 +395,17 @@ type cacheEviction struct {
 }
 
 func (a *app) enforceCacheLimit() {
+	a.enforceCacheLimitPolicy(false)
+}
+
+// Explicit cache retention is independent of the default lookup-cache toggle,
+// but still observes the same storage cap and eviction policy.
+func (a *app) enforceCacheLimitPolicy(force bool) {
 	a.settingsMu.RLock()
 	capMB := a.settings.StorageCapMB
 	enabled := a.settings.CacheBlocks
 	a.settingsMu.RUnlock()
-	if !enabled || capMB == 0 {
+	if (!enabled && !force) || capMB == 0 {
 		return
 	}
 	limit := capMB * 1024 * 1024

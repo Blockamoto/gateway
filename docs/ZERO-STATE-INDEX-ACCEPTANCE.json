@@ -1,0 +1,104 @@
+{
+  "tested_at": "2026-09-29T01:31:14.986019+00:00",
+  "scope": "Fresh alpha profile originally acquired headers and origin block from ordinary Bitcoin peers with no Core/mount/Ord; after repairing empty-array checkpoint encoding, rederived the origin using those headers, restarted the process and extended to 792436",
+  "binary_sha256": "58b89043d5064fd0ce214a4e2c5a04d8f0e9dff974ea4f20d3248922a1d61c91",
+  "core_disabled": true,
+  "core_mount_disabled": true,
+  "ord_enabled": false,
+  "cache_blocks": false,
+  "job": {
+    "id": "1790645426052774700",
+    "index": "bitmap",
+    "state": "complete",
+    "from": 792435,
+    "to": 792436,
+    "height": 792436,
+    "retention": "ephemeral"
+  },
+  "before_restart": {
+    "found": true,
+    "record": {
+      "inscription": "86539aff946c437af8088955827b7e6ff48fc6192836d4071b697b5359b7a732i0",
+      "height": 792435,
+      "order": 103,
+      "district": 0,
+      "content": "0.bitmap",
+      "content_hash": "df16aa5fafa5bbbc3036c992169cc287e704b1ea6d6b01aa7c71d8b3f34d81e2",
+      "accepted": true,
+      "reason": "first_valid_claim",
+      "ownership": "unknown",
+      "compatibility": "not_evaluated",
+      "content_type": "text/plain;charset=utf-8"
+    },
+    "checkpoint": {
+      "schema": 1,
+      "definition": "bitmap",
+      "version": 1,
+      "rule_hash": "ad5fe1a2014e7e0a0e9e5159a9b716fed27d6abf2a6e811f63aa583e04263d6f",
+      "network": "bitcoin-mainnet",
+      "from": 792435,
+      "height": 792435,
+      "block_hash": "000000000000000000035d4eee4c3b3864b503ed5c6b35a92de219529b34ca2c",
+      "previous_commitment": "",
+      "dependency_fingerprint": "c465ff2f8ae05f6d5defb4d9bf425625f6364de4d3316dd0954496f22288462b",
+      "records_hash": "716d65d35cf8ee22ce9099d7cc7ad35dc0944ac214e00921c38139519b279321",
+      "commitment": "ff867245eac99313ccaeeeb05eb44438ce3f56980b52485bd453700f86007a4b"
+    },
+    "chain_state": "selected_chain",
+    "absence": "",
+    "compatibility_result": {
+      "profile": "opi-0a09b987c87692ec3cabd404c8bcc7367707ee9a-eligibility",
+      "state": "historical_context_missing",
+      "reason": "Requires pinned Ord boundness/numbering and inscription-number-ordered prior claims.",
+      "contested": false,
+      "scope": "candidate_eligibility_only; not a reconstructed compatibility winner"
+    }
+  },
+  "after_restart_and_extension": {
+    "found": true,
+    "record": {
+      "inscription": "86539aff946c437af8088955827b7e6ff48fc6192836d4071b697b5359b7a732i0",
+      "height": 792435,
+      "order": 103,
+      "district": 0,
+      "content": "0.bitmap",
+      "content_hash": "df16aa5fafa5bbbc3036c992169cc287e704b1ea6d6b01aa7c71d8b3f34d81e2",
+      "accepted": true,
+      "reason": "first_valid_claim",
+      "ownership": "unknown",
+      "compatibility": "not_evaluated",
+      "content_type": "text/plain;charset=utf-8"
+    },
+    "checkpoint": {
+      "schema": 1,
+      "definition": "bitmap",
+      "version": 1,
+      "rule_hash": "ad5fe1a2014e7e0a0e9e5159a9b716fed27d6abf2a6e811f63aa583e04263d6f",
+      "network": "bitcoin-mainnet",
+      "from": 792435,
+      "height": 792436,
+      "block_hash": "000000000000000000034109aaf59bb95ee2a10e384f73979fa1948cce034b24",
+      "previous_commitment": "ff867245eac99313ccaeeeb05eb44438ce3f56980b52485bd453700f86007a4b",
+      "dependency_fingerprint": "d43541cfd1aa769a9b440dfbacfba92e4766ed71f1773812b3d5f8988f0e53d2",
+      "records_hash": "d3e2ef866202ce94df1f6ec812fd6cc8e86697c4bc8bed9c1f855841c0bdd164",
+      "commitment": "5edf711ab451674a996ea199fb15a1c3ae95582686b1ba7a99e6fa567197fdaf"
+    },
+    "chain_state": "selected_chain",
+    "absence": "",
+    "compatibility_result": {
+      "profile": "opi-0a09b987c87692ec3cabd404c8bcc7367707ee9a-eligibility",
+      "state": "historical_context_missing",
+      "reason": "Requires pinned Ord boundness/numbering and inscription-number-ordered prior claims.",
+      "contested": false,
+      "scope": "candidate_eligibility_only; not a reconstructed compatibility winner"
+    }
+  },
+  "restart_checkpoint_link_verified": true,
+  "origin_record_unchanged": true,
+  "raw_cache_files": 0,
+  "limits": [
+    "Two bounded blocks, not a present-day Bitmap index",
+    "Header anchoring and block/witness integrity, not full UTXO/script consensus",
+    "No historical conflicting-winner fixture"
+  ]
+}

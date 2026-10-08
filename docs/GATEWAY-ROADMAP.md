@@ -14,10 +14,14 @@ Gateway 0.7.0 starts with Headers and Bitcoin Blocks. This roadmap describes sco
 
 See [status](STATUS.md) for release acceptance and [the tester guide](TESTING-0.7.0.md) for behavior to verify.
 
-## Next
+## Next release: design overhaul and feature expansion
 
+The next release will focus on a substantial app design overhaul alongside additional features. The redesign was deliberately deferred until after the initial 0.7.0 public release. Its detailed design and selected feature set will be defined in the next release brief.
+
+- Develop the design overhaul and capture its scope in the next release brief.
+- Roll out additional features, with the individual capabilities selected as that brief takes shape.
 - Act on first public testing feedback, especially onboarding, address entry, data availability and recovery.
-- Verify hosted delivery and renewal operationally, including expiration and unavailable-service behavior.
+- Continue testing hosted delivery and renewal, including expiration, unavailable-service behavior and idle-service startup.
 - Improve documentation and diagnostics where testers cannot distinguish downloaded headers, stored blocks and committed index coverage.
 - Promote additional indexes individually only after their dependency, replay, restart, reorganization, missing-data, performance and UI checks are adequate.
 

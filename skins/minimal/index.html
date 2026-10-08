@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gateway Minimal Skin</title>
+<style>body{font-family:ui-monospace,Consolas,monospace;background:#111;color:#eee;max-width:980px;margin:40px auto;padding:0 20px}form{display:flex;gap:8px}input{flex:1;padding:12px;background:#191919;border:1px solid #444;color:#fff}button{padding:0 18px}pre{white-space:pre-wrap;word-break:break-word;background:#191919;padding:16px;border:1px solid #333;min-height:220px}.muted{color:#999}</style></head>
+<body><h1>Gateway Client</h1><p class="muted">Minimal Skin API v1 example. Bitcoin on Demand resolver, almost no UI.</p><form id="f"><input id="q" autofocus placeholder="840000 · 127.840000 · txid · address"><button>Resolve</button></form><pre id="out">Ready.</pre>
+<script>
+const out=document.getElementById('out');document.getElementById('f').onsubmit=async(e)=>{e.preventDefault();out.textContent='Resolving…';try{const r=await fetch('/api/v1/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:document.getElementById('q').value})});const j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);out.textContent=JSON.stringify(j,null,2)}catch(err){out.textContent='ERROR: '+err.message}};
+</script></body></html>

@@ -1,0 +1,172 @@
+{
+  "research_date": "2026-09-29",
+  "sources": [
+    {
+      "url": "https://mempool.space/api/block/000000000000000000035d4eee4c3b3864b503ed5c6b35a92de219529b34ca2c/raw",
+      "sha256": "7d43ce185049a994e0e5c1241b13823773a5d9da37679353c596465a472594fa",
+      "bytes": 1834669,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "genesis-block.raw"
+    },
+    {
+      "url": "https://mempool.space/api/tx/86539aff946c437af8088955827b7e6ff48fc6192836d4071b697b5359b7a732",
+      "sha256": "15563992ba127c79f307e76815494351a757c848bfe9468501d8b6dbdf19e49f",
+      "bytes": 2121,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "genesis-tx.json"
+    },
+    {
+      "url": "https://ordinals.com/inscription/86539aff946c437af8088955827b7e6ff48fc6192836d4071b697b5359b7a732i0",
+      "sha256": "d888b451718292faa6af55cdc9a47c0360fb6c83c667afc0bd4fe13573a66f02",
+      "bytes": 5393,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "genesis-inscription.html"
+    },
+    {
+      "url": "https://ordinals.com/content/86539aff946c437af8088955827b7e6ff48fc6192836d4071b697b5359b7a732i0",
+      "sha256": "df16aa5fafa5bbbc3036c992169cc287e704b1ea6d6b01aa7c71d8b3f34d81e2",
+      "bytes": 8,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "genesis-content.txt"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/bestinslot-xyz/OPI/0a09b987c87692ec3cabd404c8bcc7367707ee9a/modules/bitmap_index/bitmap_index.py",
+      "sha256": "81e31a81cc60d4a09924758d83abe0fff93b4de8b6e7e1c2753748e0ac0326c2",
+      "bytes": 14199,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "opi-bitmap-index.py"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/bestinslot-xyz/OPI/0a09b987c87692ec3cabd404c8bcc7367707ee9a/ord/db_reader/src/api.rs",
+      "sha256": "440091f0f550af79a2396a5bba2464eda814442ed091e7ceccd3b159d37d16c7",
+      "bytes": 3386,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "opi-reader-api.rs"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/bestinslot-xyz/OPI/0a09b987c87692ec3cabd404c8bcc7367707ee9a/ord/db_reader/src/server.rs",
+      "sha256": "afd186deb42b18362e44eadf2ff0e2cec1b07331cb8ed6d4c11fb96013e31308",
+      "bytes": 28711,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "opi-reader-server.rs"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/bestinslot-xyz/OPI/0a09b987c87692ec3cabd404c8bcc7367707ee9a/ord/src/index/updater/inscription_updater.rs",
+      "sha256": "9aa32b73e64dbe7b5ea26c0c2c8e30ebabac6947e92abae8345a7f187f1c8f49",
+      "bytes": 25144,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "opi-inscription-updater.rs"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/bestinslot-xyz/OPI/0a09b987c87692ec3cabd404c8bcc7367707ee9a/ord/src/inscriptions/envelope.rs",
+      "sha256": "4f2451d8295da6a398529687a0bacbf0decf1fecb70929d46f53489e909202b4",
+      "bytes": 7244,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "opi-envelope.rs"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/bestinslot-xyz/OPI/0a09b987c87692ec3cabd404c8bcc7367707ee9a/ord/src/chain.rs",
+      "sha256": "8fecde4fd4b7f42c6186890f1f9a8ce06b1ac322c427ef4eaf753dbe9d12b297",
+      "bytes": 2730,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "opi-chain.rs"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/bestinslot-xyz/OPI/0a09b987c87692ec3cabd404c8bcc7367707ee9a/LICENSE",
+      "sha256": "90e1b88dc5845bc8cdd75bee937bf89a730f94d0bca4d04f87374b3a4af73153",
+      "bytes": 11352,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "opi-LICENSE"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/bestinslot-xyz/OPI/0a09b987c87692ec3cabd404c8bcc7367707ee9a/ord/LICENSE",
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "bytes": 7048,
+      "retrieved_date": "2026-09-29",
+      "stored_file": "opi-ord-LICENSE"
+    },
+    {
+      "url": "https://api.github.com/repos/bestinslot-xyz/OPI/commits/0a09b987c87692ec3cabd404c8bcc7367707ee9a",
+      "sha256": "68c2274d1b9a1d56933522fd2018ca7a23322e78d8089b5b5394b0d9400ba26e",
+      "bytes": 6010,
+      "retrieved_date": "2026-09-29",
+      "stored_file": null,
+      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here. Redundant GitHub API response snapshot omitted from this source distribution; upstream URL, digest and retrieval date are retained for provenance."
+    },
+    {
+      "url": "https://api.github.com/repos/Blockamoto/gitbook/commits/caf9e3a6f1e8be195f9f74f264f36983a55fec91",
+      "sha256": "be98d67a8650b98c201ed8edd6f4f6612520968f98cc63976a544ddedba7daf8",
+      "bytes": 5320,
+      "retrieved_date": "2026-09-29",
+      "stored_file": null,
+      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here. Redundant GitHub API response snapshot omitted from this source distribution; upstream URL, digest and retrieval date are retained for provenance."
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Blockamoto/gitbook/caf9e3a6f1e8be195f9f74f264f36983a55fec91/bitmap-theory-whitepaper/theory.md",
+      "sha256": "32cc6f3c3bd36fd75a8eee3c4d873e687548993059d946fd37874bfbb0406cdb",
+      "bytes": 4280,
+      "retrieved_date": "2026-09-29",
+      "stored_file": null
+    },
+    {
+      "url": "https://api.github.com/repos/Trac-Systems/tap-protocol-specs/commits/0ba25b37d51e41e8b8958b0eb4a2c420a84a6361",
+      "sha256": "ed40c6f3ecc8ef7ff7da8bdd9e4cea65a8602f0933f6a9be47f52c9c7bbfb3b3",
+      "bytes": 3459,
+      "retrieved_date": "2026-09-29",
+      "stored_file": null,
+      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here. Redundant GitHub API response snapshot omitted from this source distribution; upstream URL, digest and retrieval date are retained for provenance."
+    },
+    {
+      "url": "https://raw.githubusercontent.com/Trac-Systems/tap-protocol-specs/0ba25b37d51e41e8b8958b0eb4a2c420a84a6361/README.md",
+      "sha256": "9db36e3b5bab45fc0c3462153c6427b289d1a86edaf9171043bdec849bc125c7",
+      "bytes": 103352,
+      "retrieved_date": "2026-09-29",
+      "stored_file": null
+    },
+    {
+      "url": "https://api.github.com/repos/BennyTheDev/trac-bitmap-public-endpoint/commits/b0130f1d66178da7f3e89c6db1a0244be6ea4d3c",
+      "sha256": "6b5042b390be5ef56dec341162658990caf17329f0df749e5f3ba7bf8f27040b",
+      "bytes": 4592,
+      "retrieved_date": "2026-09-29",
+      "stored_file": null,
+      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here. Redundant GitHub API response snapshot omitted from this source distribution; upstream URL, digest and retrieval date are retained for provenance."
+    },
+    {
+      "url": "https://raw.githubusercontent.com/BennyTheDev/trac-bitmap-public-endpoint/b0130f1d66178da7f3e89c6db1a0244be6ea4d3c/README.md",
+      "sha256": "c3e59029390f27dafe4343660c6a9f9cd3de92d28d951e0b2c6a5088db451605",
+      "bytes": 8455,
+      "retrieved_date": "2026-09-29",
+      "stored_file": null
+    },
+    {
+      "stored_file": "genesis-tx.raw",
+      "origin": "locally derived evidence or research verifier",
+      "sha256": "ed0ec47c9c56a70b9c26cc5432bcf884b54b3779aa6ae00ea80886b0be5a8a5c",
+      "bytes": 314
+    },
+    {
+      "stored_file": "genesis-verification.json",
+      "origin": "locally derived evidence or research verifier",
+      "sha256": "66f1ab5179157e97827e134d35e49ae927262d4796ab27bfe8c46a69b20f459b",
+      "bytes": 997
+    },
+    {
+      "stored_file": "verify_bitcoin_evidence.py",
+      "origin": "locally derived evidence or research verifier",
+      "sha256": "ddb3324993a67ae6d204861b0e368509ab711083dc1923ef1b3a033ce27c58ce",
+      "bytes": 6755
+    },
+    {
+      "stored_file": "verify_profile_rules.py",
+      "origin": "locally derived evidence or research verifier",
+      "sha256": "ef2cab83f3d5b7925e81b1cb3a84254c7a0802a11b7ff5298171348b0a6b81bf",
+      "bytes": 1860
+    },
+    {
+      "stored_file": "profile-rule-checks.json",
+      "origin": "locally derived evidence or research verifier",
+      "sha256": "237f088ce2c083bf357d057295cff3d22b527367c4cb8b9986f366fee78a0c5f",
+      "bytes": 2323
+    }
+  ]
+}

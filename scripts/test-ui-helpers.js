@@ -1,0 +1,13 @@
+'use strict';
+const assert = require('node:assert/strict');
+const {escapeHTML,pointText,pointCoordinate,stateLabel}=require('../ui/satline/app.js');
+assert.equal(escapeHTML('<img src=x onerror="x">'), '&lt;img src=x onerror=&quot;x&quot;&gt;');
+assert.equal(escapeHTML("a'b&c"), 'a&#39;b&amp;c');
+const p={txid:'a'.repeat(64),vout:2,offset:500,height:840000,tx_index:123};
+assert.equal(pointCoordinate(p),'500.2.123.840000.bitcoin');
+assert.equal(pointText(p),'a'.repeat(64)+':2:500');
+assert.equal(pointCoordinate({}),'');
+assert.equal(stateLabel('UNRESOLVED'),'Unresolved');
+assert.equal(stateLabel('CURRENTLY_UNSPENT'),'Unspent at snapshot');
+assert.equal(stateLabel('LOST_DUPLICATE_TXID'),'Duplicate-txid loss');
+console.log('Satline UI helpers: PASS (escaping, exact coordinates, terminal labels)');

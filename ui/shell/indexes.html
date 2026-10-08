@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Indexes · Gateway</title>
+<link rel="stylesheet" href="/shell/style.css">
+<link rel="stylesheet" href="/shell/index-cards.css">
+<style nonce="__INDEX_NONCE__">
+main{max-width:1440px;margin:auto;padding:32px}.workspace-context{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 0 22px;color:var(--muted);font-size:13px}.workspace-context span:last-child{color:var(--accent,var(--mint))}.workspace-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:24px;overflow-x:auto}.workspace-tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--muted);padding:14px 18px;white-space:nowrap}.workspace-tabs button[aria-current="page"]{border-color:var(--accent,var(--mint));color:var(--text)}.index-layout .panel{margin:0}.page-heading h1{font-size:clamp(28px,4vw,40px);letter-spacing:-1px}.page-heading .lede{max-width:700px;font-size:15px;line-height:1.7}.index-entry h3{font-size:16px}.index-entry{background:var(--bg)}.index-meta{font-size:13px!important}.small{font-size:13px;line-height:1.65}.field label{font-size:13px}.field small{font-size:12px;line-height:1.55}.actions{flex-wrap:wrap}.embedded .index-top{display:none}.embedded main{padding:28px 24px;min-height:0}progress{accent-color:var(--accent,var(--mint))!important}@media(max-width:600px){main{padding:20px 14px}.workspace-tabs button{padding:12px}.query-controls>*{width:100%}.query-controls input{width:100%!important}}.index-top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:35px}.index-top a{font-size:14px}.index-layout{display:grid;grid-template-columns:1fr;gap:22px}.index-layout>*{min-width:0}.index-section{margin-top:22px}.index-list{display:grid;gap:12px}.index-entry{border:1px solid var(--line);border-radius:12px;padding:16px}.index-entry h3{margin-top:0}.index-entry p:last-child{margin-bottom:0}.index-meta{display:grid;grid-template-columns:150px minmax(0,1fr);gap:9px 15px;font-size:12px;line-height:1.6}.index-meta dt{color:var(--muted)}.index-meta dd{margin:0;overflow-wrap:anywhere}.index-note{border-left:3px solid var(--mint);padding:10px 15px;background:var(--panel2)}#message{padding:14px 18px;border:1px solid var(--line);border-radius:12px;margin:18px 0;white-space:pre-wrap}#message[data-error="true"]{color:var(--red)}#job-error{color:var(--amber);white-space:pre-wrap}progress{width:100%;height:12px;accent-color:var(--mint)}ol,ul{padding-left:22px;line-height:1.8;font-size:12px}summary{font-size:13px}button{white-space:normal}.query-controls{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.query-controls .field{margin:0}.query-controls input{width:110px}[hidden]{display:none!important}@media(max-width:800px){.index-layout{grid-template-columns:1fr}.index-meta{grid-template-columns:1fr;gap:3px}.index-meta dd{margin-bottom:10px}.index-top{align-items:flex-start}}
+main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width:0}.index-entry .mono{overflow-wrap:anywhere}@media(max-width:600px){.embedded main{padding:20px 14px}}
+.query-controls .records-follow input{width:auto!important}
+</style>
+<link rel="stylesheet" href="/shell/theme.css"><script nonce="__INDEX_NONCE__" src="/shell/theme.js"></script></head>
+<body>
+<main>
+<nav class="index-top" aria-label="Index navigation"><a href="/">← Gateway home</a><a href="/?resolve=storage.gateway">Storage settings</a></nav>
+<header class="page-heading"><div><div class="eyebrow">Your Gateway · Indexes</div><h1>Your indexes.</h1><p class="lede">Choose what to keep, what to keep live, and what to inspect. Each index has its own controls.</p></div><button id="refresh">Refresh status</button></header>
+<div class="workspace-context"><span id="workspace-state">Reading your local workspace…</span><span>Private local data · sharing locked for this testing build</span></div><section class="index-catalog" aria-label="Index cards"><div id="index-cards" class="index-card-grid"></div><details class="index-other"><summary>🔒 Features for later testing</summary><p class="small muted">These implementations remain in Gateway. They are locked in this build while Headers and Blocks are tested.</p><div id="capability-cards" class="index-card-grid"></div></details></section><div id="index-workspace" hidden><h2 id="selected-index-label" class="selected-index-label" hidden></h2><nav id="index-details-nav" class="workspace-tabs" aria-label="Selected index details" hidden><button type="button" data-view="build">Build a range</button><button type="button" data-view="results">Records & sharing</button><button type="button" data-view="providers">Data sources</button><button type="button" data-view="peers">Peer claims</button></nav><div id="message" role="status" aria-live="polite" hidden></div>
+<section class="panel" id="current-job-panel" aria-labelledby="job-heading"><h2 id="job-heading">Current job</h2><p id="job-summary" class="muted small">Loading local status…</p><progress id="job-progress" hidden></progress><dl id="job-meta" class="index-meta"></dl><p id="job-error" class="small"></p><p id="job-limitations" class="hint small" hidden></p><div class="actions"><button id="job-records" type="button">Progress & records</button><button id="pause" disabled>Pause build</button><button id="resume" disabled>Load previous request</button></div><p class="small muted">Pause takes effect after an in-flight source request returns. Resume retries the same range from its saved checkpoint. Completed checkpoints are reused.</p><details><summary>Exact job JSON</summary><pre id="job-json"></pre></details><div id="job-queue" class="index-section"></div></section><div class="index-layout" data-pane="build">
+<section class="panel" aria-labelledby="build-heading">
+<h2 id="build-heading">What would you like to build?</h2>
+<form id="plan-form">
+<input id="index" type="hidden" value="blocks">
+<p id="definition-summary" class="small muted"></p>
+<div class="form-grid">
+<div class="field"><label for="from">First block</label><small>Mainnet inscriptions suggest 767430 (inscription zero). Custom starts remain available; this is not preceding sat history.</small><input id="from" type="number" min="0" step="1" placeholder="Definition start"><small id="from-note">An existing instance resumes from its last committed checkpoint.</small></div>
+<label class="check"><input id="initial-live" type="checkbox"> Live: catch up and follow new blocks</label><div class="field" id="end-field"><label for="to">Last block</label><input id="to" type="number" min="0" step="1" placeholder="Verified tip"><small>Leave blank to snapshot the available verified tip when work starts.</small></div>
+</div>
+<fieldset id="combined-outputs" hidden><legend>Also index these block results</legend><p class="small muted">Share source fetching and decoding. Each result keeps its own coverage and recoverable progress.</p><div id="output-choices"></div></fieldset><details id="advanced-retention"><summary>Advanced retention</summary><label class="check" id="sat-history-field" hidden><input id="retain-sat-history" type="checkbox"><span>Retain movement history for newly indexed blocks<small class="block muted">Enabling this later does not rebuild past movement history; turning it off preserves already recorded history. Sat identity, origin and current placement do not require full movement history.</small></span></label><div class="field"><label for="retention">Source block retention</label><select id="retention"><option value="ephemeral">Ephemeral — use and discard newly fetched source bytes</option><option value="cache">Cache — retain under the cache policy</option><option value="retain">Retain — keep in Gateway-owned storage</option></select><small>Derived records remain. Existing cache policy and external Bitcoin Core files are separate; this choice never deletes Core data.</small></div></details>
+<div class="field"><label for="mode">Result detail</label><select id="mode"><option value="lean">Lean: district, inscription ID and reveal location</option><option value="full">Full — candidates and evidence</option></select><small>Existing indexes resume in their original format. Full records are not a complete contestability audit.</small></div><div class="actions"><button type="submit" id="plan-button">Review plan</button><button type="button" class="primary" id="build" disabled>Start reviewed plan</button></div>
+</form>
+<div id="plan" class="index-section" hidden><h3>Before this build starts</h3><dl id="plan-meta" class="index-meta"></dl><ul id="plan-notes"></ul><p id="plan-buildability" class="small muted"></p><details><summary>Exact plan JSON</summary><pre id="plan-json"></pre></details></div>
+</section>
+
+</div>
+<section class="panel index-section" data-pane="build" aria-labelledby="rules-heading"><h2 id="rules-heading">Understand the recipe</h2><p id="rule-theory" class="small"></p><dl id="rule-meta" class="index-meta"></dl><details><summary>Detailed rules</summary><ol id="rule-list"></ol></details><p class="small muted">A definition describes what answers mean; it does not prove this node can answer them. Provider and retained-instance status appear below. Unsupported historical compatibility profiles remain unavailable and never rewrite Bitmap base results.</p><details><summary>Machine-readable definition</summary><pre id="rule-json"></pre></details></section>
+
+<section id="sat-lookup-panel" class="panel index-section" data-pane="results" hidden><h2>Find a sat</h2><form id="sat-lookup-form" class="query-controls"><label class="field">Sat number<input id="sat-lookup-number" type="text" inputmode="numeric" pattern="0|[1-9][0-9]*" required placeholder="0"></label><button type="submit">Look up sat</button></form><p class="small muted">Reads your Sat index. Identity, origin and placement are valid only within its verified snapshot. Lookup never starts indexing or tracing.</p><p id="sat-lookup-summary" class="small" role="status"></p><dl id="sat-lookup-meta" class="index-meta"></dl><details><summary>Sat evidence</summary><pre id="sat-lookup-json"></pre></details></section>
+<section class="panel index-section" data-pane="results" aria-labelledby="lookup-heading" hidden><h2 id="lookup-heading">Find a Bitmap district</h2><form id="lookup-form" class="query-controls"><div class="field"><label for="lookup-key">District number</label><input id="lookup-key" type="text" inputmode="numeric" pattern="0|[1-9][0-9]*" maxlength="20" placeholder="0" required></div><button type="submit">Look up district</button></form><p class="small muted">Enter the exact district number, without .bitmap or leading zeros. Lookup reads retained derived records; it does not build an index or fetch source blocks. Exact lookup may inspect the committed history and take longer than the bounded preview. A missing local result does not prove no claim exists.</p><p id="lookup-summary" class="small" role="status"></p><details><summary>Lookup evidence</summary><pre id="lookup-json" hidden></pre></details></section>
+<section class="panel index-section" data-pane="results" aria-labelledby="query-heading" hidden><h2 id="query-heading">Latest discoveries</h2><form id="query-form" class="query-controls"><input id="query-index" type="hidden" value="bitmap"><input id="query-limit" type="hidden" value="50"><button type="submit">Refresh records</button><label class="records-follow"><input id="follow-records" type="checkbox" checked>Follow new discoveries</label></form><p id="query-freshness" class="small muted" hidden>Following is paused. This saved preview is not revalidated against chain changes; refresh before relying on current chain status.</p><p id="query-summary" class="small muted">Queries inspect retained records newest first, within a bounded window of at most 512 block batches. They do not start a build or fetch from the network.</p><div id="query-results" class="table-wrap"></div><details><summary>Result JSON and evidence</summary><pre id="query-json"></pre></details></section>
+<section class="panel index-section" data-pane="results" aria-labelledby="instances-heading" hidden><h2 id="instances-heading">Your local knowledge</h2><details><summary>Coverage and sharing explained</summary><p class="small muted">Each index reports its own retained instance and coverage. Coverage records completed work within the stated range. A retained result and its checkpoint are distinct from keeping its original source blocks. Checkpoints are rechecked against the selected chain before resume.</p><p class="small muted">Publishing freezes the displayed checkpoint and its records for peer sharing. Later work stays private until you publish again. Network service also requires the separate Serve data setting. Withdraw publication to stop sharing without deleting local records.</p></details><div id="instances" class="index-list"></div></section>
+<section class="panel index-section" data-pane="providers" aria-labelledby="providers-heading" hidden><h2 id="providers-heading">Available providers</h2><p class="small muted">Bitcoin Core and Ord are optional. A provider being configured, queryable or reachable does not imply complete historical coverage or permission to share its results.</p><div id="providers" class="index-list"></div></section>
+<section class="panel index-section" data-pane="peers" aria-labelledby="peer-heading" hidden><h2 id="peer-heading">Inspect peer index claims</h2><p id="peer-unavailable" class="hint" hidden>Peer record exchange is not supported for this index in this release. Inspect local evidence and providers in Data sources.</p><p class="small muted">These buttons send explicit network requests to already-negotiated Gateway peers. Peers can observe the request. Claim inspection contacts at most four known peers and does not start discovery. The preview checks one published block's internal commitments; it is not Bitcoin replay and does not store or import the result.</p><button id="peer-claims">Inspect known peer claims</button><p id="peer-summary" class="small" role="status">No peer inspection requested.</p><details><summary>Peer responses and evidence</summary><pre id="peer-claims-json" hidden></pre></details><form id="peer-form" class="query-controls"><div class="field"><label for="peer-address">Known peer from the claim results</label><input id="peer-address" type="text" placeholder="host:port" required></div><input id="peer-index" type="hidden" value="bitmap"><button type="submit">Preview latest published block</button></form><p id="peer-preview-summary" class="small" role="status">Peer evidence still requires local Bitcoin replay before it can become verified index state.</p><details><summary>Preview evidence</summary><pre id="peer-preview-json" hidden></pre></details></section>
+<details class="index-section"><summary>Full local status JSON</summary><pre id="status-json"></pre></details>
+<details class="index-section"><summary>Terminal equivalents</summary><p class="small muted"> <code>index rules</code>, <code>index plan blocks --to HEIGHT</code>, <code>index build blocks --to HEIGHT --retention ephemeral</code>, <code>index pause</code>, <code>index status</code>, <code>index query blocks --limit 50</code>.</p></details>
+</div></main>
+<script src="/shell/index-cards.js" nonce="__INDEX_NONCE__"></script>
+<script nonce="__INDEX_NONCE__">
+'use strict';
+const $ = id => document.getElementById(id);
+if (new URLSearchParams(location.search).get('embedded') === '1') { document.body.classList.add('embedded'); if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { parent.postMessage({type:'gateway:index-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)+4},location.origin); }).observe(document.querySelector('main')); }
+let currentView = "catalog", selectedIndex = "", cards, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
+function selectView(view) {
+  currentView = view;
+  for (const pane of document.querySelectorAll('[data-pane]')) pane.hidden = pane.dataset.pane !== view;
+  for (const tab of document.querySelectorAll('[data-view]')) { if (tab.dataset.view === view) tab.setAttribute('aria-current','page'); else tab.removeAttribute('aria-current'); }
+}
+for (const tab of document.querySelectorAll('[data-view]')) tab.addEventListener('click', () => { selectView(tab.dataset.view); showSelectedStatus(); if (tab.dataset.view === 'results' && selectedDefinition()?.buildable) loadRecords(); });
+let definitions = [], reviewedRequest = '', status = null, fetching = false, instancesKey = '', providersKey = '', statusRevision = 0, refreshPromise = null;
+const pretty = value => JSON.stringify(value, null, 2);
+const human = value => ({first_valid_claim:'First valid claim in the indexed history',not_evaluated:'Not evaluated',recorded_contiguous_range:'Recorded continuous range',ephemeral:'Discard source blocks after processing',unknown:'Unknown'})[value] || String(value ?? 'unknown').replaceAll('_', ' ');
+const ranges = value => value?.length ? value.map(x => x.from + '–' + x.to + ' (' + (x.to - x.from + 1).toLocaleString() + ' block' + (x.to === x.from ? '' : 's') + ')').join(', ') : 'No recorded range';
+function message(text, error = false) { $('message').textContent = text; $('message').dataset.error = String(error); $('message').hidden = !text; }
+function element(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }
+function metadata(target, rows) { target.replaceChildren(); for (const [label, value] of rows) target.append(element('dt', label), element('dd', String(value ?? 'unknown'))); }
+function details(parent, label, value) { const el = element('details'); el.append(element('summary', label), element('pre', pretty(value))); parent.append(el); }
+function querySummary(result) {
+  if (!result.checkpoint) return 'No committed local results for this index. An empty result does not establish global absence.';
+  const count = result.total_known === true ? ' of ' + result.total + ' recorded results' : ' from at least ' + result.total + ' inspected records; the full count is unknown';
+  return 'Showing ' + result.rows.length + count + '. Snapshot block ' + result.checkpoint.height + '. Newest first, inspected ' + result.inspected_blocks + ' block batches (maximum 512). Chain state: ' + human(result.chain_state) + '.' + (result.truncated ? ' This view is partial; absence here is not proof of no record.' : '') + (result.next_cursor ? ' Continuation metadata is included in the result JSON.' : '');
+}
+async function api(action, body) {
+  if (body !== undefined && action !== 'plan') statusRevision++;
+  const options = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)};
+  const response = await fetch('/api/v1/index/' + action, options);
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Request failed (' + response.status + ')');
+  return result;
+}
+function request() {
+  const result = {index: $('index').value, retention: $('retention').value, live: $('initial-live').checked, live_configured: true, mode: $('index').value === 'bitmap' ? $('mode').value : 'full'};
+  for (const field of ['from', 'to']) if (!(field === 'to' && result.live) && $(field).value !== '' && !(field === 'from' && $('index').value === 'bitmap')) {
+    const n = Number($(field).value);
+    if (!Number.isSafeInteger(n) || n < 0) throw new Error('Block heights must be non-negative integers.');
+    result[field] = n;
+  }
+  if(result.index==='blocks')result.outputs=[...$('output-choices').querySelectorAll('input')].filter(x=>x.checked&&!x.disabled).map(x=>x.value);
+  if(['blocks','sat-state'].includes(result.index)){result.retain_sat_history=$('retain-sat-history').checked;result.sat_history_configured=true;}
+  return result;
+}
+function invalidatePlan() { reviewedRequest = ''; $('build').disabled = true; $('plan').hidden = true; }
+function selectedDefinition() { return definitions.find(x => x.id === $('index').value); }
+function selectIndex(id, view, initialLive = false) {
+  if(selectedIndex){const draft={};for(const key of ['from','to','retention','mode'])draft[key]=$(key).value;draft.live=$('initial-live').checked;draft.history=$('retain-sat-history').checked;draft.outputs=[...$('output-choices').querySelectorAll('input')].filter(x=>x.checked&&!x.disabled).map(x=>x.value);planDrafts.set(selectedIndex,draft)}
+  if(!id){selectedIndex='';cards.select('');selectView('catalog');return;}
+  message('');selectedIndex = id; receivedRecordKeys=new Set();lastRecordReceipt=''; recordSerial++; recordKey = ''; recordLoading = false;
+  for (const field of ['index', 'query-index', 'peer-index']) $(field).value = id;
+  const d = selectedDefinition(), instance = status?.instances?.find(x => x.definition === id);
+  if (!d) return; if (d.locked) { message(d.lock_reason); cards.select(''); selectView('catalog'); return; }
+  $('selected-index-label').textContent = d.name;
+  $('selected-index-label').hidden = false; $('index-details-nav').hidden = false;
+  $('from').value = instance?.checkpoint?.from ?? (id === 'inscriptions' && d.network === 'bitcoin-mainnet' ? 767430 : 0);
+ $('initial-live').checked = initialLive || Boolean(status?.live?.find(x => x.index === id)?.enabled); syncLiveForm(); $('from').readOnly = Boolean(instance);
+  $('to').value = ''; $('retention').value = status?.live?.find(x => x.index === id)?.retention || instance?.retention || 'ephemeral';
+  $('mode').value = instance ? instance.mode || 'full' : 'lean'; $('mode').disabled = Boolean(instance); $('retain-sat-history').checked=Boolean(status?.live?.find(x=>x.index===id)?.retain_sat_history??instance?.retain_sat_history);
+  for (const tab of document.querySelectorAll('[data-view]')) tab.hidden = tab.dataset.view==='peers'||(!d.buildable && ['build','results'].includes(tab.dataset.view));
+  $('query-results').replaceChildren(); $('query-json').textContent = '';
+  $('query-summary').textContent = 'Loading local records. This is a bounded preview, not the entire index.';
+  $('lookup-json').textContent = ''; $('lookup-summary').textContent = '';
+  invalidatePlan(); showRules();const draft=planDrafts.get(id);if(draft){for(const key of ['from','to','retention','mode'])$(key).value=draft[key];$('initial-live').checked=draft.live;$('retain-sat-history').checked=draft.history;for(const input of $('output-choices').querySelectorAll('input'))input.checked=!input.disabled&&draft.outputs.includes(input.value);syncLiveForm()}cards.select(id); selectView(view);
+  if (d.buildable && view === 'results') loadRecords();
+  showSelectedStatus();
+}
+function showRules() {
+  const d = selectedDefinition(); if (!d) return; if (d.locked) { message(d.lock_reason); cards.select(''); selectView('catalog'); return; }
+  $('current-job-panel').hidden=!d.buildable;const peerSupported=false;$('peer-unavailable').hidden=peerSupported;$('peer-claims').hidden=!peerSupported;$('peer-form').hidden=!peerSupported;
+  $('mode').closest('.field').hidden = d.id !== 'bitmap';
+  const fromField = $('from').closest('.field'); if (fromField) fromField.hidden = d.id === 'bitmap';
+  $('definition-summary').textContent = d.theory+(d.id==='inscriptions'?' Canonical inscription numbers are derived automatically only with continuous compatible history and rules. Partial ranges retain stable inscription IDs; a local row count is not a canonical number.':'');
+  $('combined-outputs').hidden=d.id!=='blocks';
+  $('sat-history-field').hidden=!['blocks','sat-state'].includes(d.id)||!definitions.some(x=>x.id==='sat-state'&&!x.locked);
+  const choices=$('output-choices');choices.replaceChildren();
+  if(d.id==='blocks')for(const [id,label,note] of [['sat-state','Sats','Continuous history from genesis is required.'],['tx-locator','Transaction locations','Positions in the selected blocks.'],['inscriptions','Inscriptions','Stable identifiers; canonical numbers require compatible continuous history.'],['bitmap','Bitmaps','Applicable from block 792435.'],['txo-spender','TXO spenders','Positive spend evidence; coverage bounds absence claims.']]){
+   const definition=definitions.find(x=>x.id===id),labelNode=element('label',undefined,'check'),input=element('input');input.type='checkbox';input.value=id;input.dataset.output=id;input.checked=!definition?.locked&&!!status?.live?.find(x=>x.index==='blocks')?.outputs?.includes(id);input.disabled=!definition?.buildable||!!definition?.locked;labelNode.title=definition?.lock_reason||note;input.addEventListener('change',invalidatePlan);labelNode.append(input,element('span',label+' — '+note+(input.disabled?' Unavailable in this build.':'')));choices.append(labelNode);
+  }
+  $('rule-theory').textContent = d.theory;
+  $('rule-json').textContent = pretty(d);
+  $('from').placeholder = String(d.start_height);
+  $('from-note').textContent = d.id === 'bitmap' ? 'Bitmap history always begins at block ' + d.start_height + '. Choose only the last block to index.' : (d.arbitrary_start ? 'A fresh bounded scan may start at any block. Compatible overlapping or adjacent ranges reuse saved coverage; disjoint ranges and prepending history are not supported.' : 'Fresh state starts at block ' + d.start_height + '; a mid-history fresh start is not valid.');
+  metadata($('rule-meta'), [['Definition', d.name + ' · ' + d.id], ['Version / network', d.version + ' / ' + d.network], ['Rule identity', d.rule_hash], ['Dependencies', d.dependencies.join(' → ') || 'None'], ['Build support', d.buildable ? 'Available in this release' : 'No derivation executor; inspect provider capabilities'], ['Checkpoint / output schema', d.checkpoint_schema + ' / ' + d.output_schema], ['Encoding', d.canonical_encoding]]);
+  $('rule-list').replaceChildren(...d.rules.map(x => element('li', x)));
+}
+function jobLocked(job) { return [job?.index,...(job?.outputs||[])].some(id=>definitions.find(d=>d.id===id)?.locked) || !!job?.retain_sat_history && !!definitions.find(d=>d.id==='sat-state')?.locked; }
+function showJob(job) {
+  const active = ['running', 'waiting', 'pausing'].includes(job?.state);
+  $('pause').disabled = !active || job.state === 'pausing';
+  $('resume').disabled = jobLocked(job) || !job?.id || active || (job.queue_managed ? !['paused','failed'].includes(job.group_state||job.state) : ['complete','cancelled','queued','yielded'].includes(job.state));
+  $('resume').textContent = jobLocked(job) ? '🔒 Saved job locked for testing' : job?.state === 'failed' ? 'Retry from checkpoint' : 'Resume from checkpoint';
+  $('job-json').textContent = pretty(job);$('job-limitations').hidden=!job?.limitations?.length;$('job-limitations').textContent=(job?.limitations||[]).join(' ');
+  if (!job?.id) { $('job-summary').textContent = 'No index job has been started.'; $('job-meta').replaceChildren(); $('job-error').textContent = ''; $('job-progress').hidden = true; return; }
+  $('job-summary').textContent = (selectedDefinition()?.name||job.index) + ' · ' + human(job.state)+(job.queue_position?' · queue position '+job.queue_position:'')+(job.waiting_reason?' · '+job.waiting_reason:'')+(job.outputs?.length?' · Shared with '+[job.parent_index||job.index,...job.outputs].filter((x,i,all)=>all.indexOf(x)===i).join(', ')+'. Pausing pauses this shared job.':'');
+  const completed = job.height >= job.from ? job.height : 'None yet';
+  metadata($('job-meta'), [[job.live?'Current bounded job range':'Selected range', job.from + ' → ' + (job.to >= 0 ? job.to : 'Waiting for verified tip')], ['Last committed height', completed], ['Blocks checked', job.blocks_checked ?? 0], ['Reused derived blocks', job.reused_blocks ?? 'See plan'], ['Newly committed blocks', job.added_blocks ?? 'See committed height'], [selectedIndex==='bitmap'?'Districts found':'Records found', job.districts_found ?? job.records_found ?? 'See records'], ['Source retention', human(job.retention)], ['Job ID', job.id]]);
+  $('job-error').textContent = job.error || '';
+  $('job-progress').hidden = job.live || job.to < job.from;
+  if (job.to >= job.from) { $('job-progress').max = job.to - job.from + 1; $('job-progress').value = Math.max(0, Math.min(job.to, job.height) - job.from + 1); }
+  if (reviewedRequest) $('build').disabled = !selectedDefinition()?.buildable;
+  $('build').textContent=['running','waiting','pausing'].includes(status?.job?.state)?'Queue reviewed plan':'Start reviewed plan';
+}
+function showInstances(instances) {
+  const holder = $('instances'); holder.replaceChildren();
+  if (!instances?.length) { holder.append(element('p', 'Turn on Live to catch up all applicable history and follow new blocks, or review a bounded range. Derived answers appear here as blocks are committed.', 'small muted')); const button = element('button', 'Review a bounded range'); button.addEventListener('click', () => { selectIndex(selectedIndex || 'blocks', 'build'); }); holder.append(button); return; }
+  for (const instance of instances) {
+    const card = element('article', undefined, 'index-entry'); card.append(element('h3', instance.definition));
+    const list = element('dl', undefined, 'index-meta');
+    metadata(list, [['Coverage', ranges(instance.coverage)], ['Gaps', instance.gaps?.length ? ranges(instance.gaps) : 'None within committed coverage'], ['Completeness', human(instance.completeness)], ['Verification', human(instance.verification)], ['Provenance', human(instance.provenance)], ['Source retention', human(instance.retention)], ['Queryable / shareable', (instance.queryable ? 'Yes' : 'No') + ' / ' + (instance.serveable ? 'Yes' : 'No')]]);
+    card.append(list, element('p', instance.note || '', 'small muted'));
+    const actions = element('div', undefined, 'actions');
+    for (const [action, label] of (['inscriptions','bitmap'].includes(instance.definition) ? [['publish', 'Publish / refresh this checkpoint'], ['unpublish', 'Withdraw publication']] : [])) {
+      const button = element('button', label); button.type = 'button';
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try {
+          const body = {index: instance.definition};
+          if (action === 'publish') body.checkpoint = instance.checkpoint.commitment;
+          const result = await api(action, body);
+          message(action === 'publish' ? 'Checkpoint published explicitly. Newer work remains private. Network service requires Serve data to be enabled.' : 'Publication withdrawn. Your local derived records remain.');
+          details(card, 'Publication result', result); await refresh();
+        } catch (error) { message(error.message, true); button.disabled = false; }
+      });
+      actions.append(button);
+    }
+    if(actions.children.length){const sharing = element('details'); sharing.append(element('summary', 'Share this checkpoint'), element('p', 'Explicit publication exposes this frozen checkpoint when Serve data is enabled. Later work stays private.', 'small muted'), actions); card.append(sharing)}else card.append(element('p','This derived Bitcoin index is local. Peer checkpoint publication is not supported in this version.','small muted'));details(card, 'Checkpoint and evidence', instance); holder.append(card);
+  }
+}
+function showProviders(providers) {
+  const holder = $('providers'); holder.replaceChildren();
+  if (!providers?.length) holder.append(element('p', 'No provider capabilities reported. Refresh status or review connection settings.', 'small muted'));
+  for (const provider of providers || []) {
+    const card = element('article', undefined, 'index-entry'); card.append(element('h3', provider.id + ' · ' + human(provider.provider)));
+    const list = element('dl', undefined, 'index-meta');
+    metadata(list, [['Readiness', human(provider.readiness || 'Coverage dependent')], ['Resolver enabled / shareable', (provider.queryable ? 'Yes' : 'No') + ' / ' + (provider.serveable ? 'Yes' : 'No')], ['Coverage', ranges(provider.coverage)], ['Completeness', human(provider.completeness)], ['Verification', human(provider.verification)]]);
+    card.append(list, element('p', provider.note || '', 'small muted')); details(card, 'Provider evidence and public coverage', provider); holder.append(card);
+  }
+}
+
+function showSelectedStatus(){
+ if(!selectedIndex||!status)return;
+ showJob(window.GatewayIndexCards.jobFor(selectedIndex,status));
+ const instances=(status.instances||[]).filter(x=>x.definition===selectedIndex),providers=(status.providers||[]).filter(x=>x.id===selectedIndex);
+ const ik=selectedIndex+pretty(instances),pk=selectedIndex+pretty(providers);
+ if(ik!==instancesKey){showInstances(instances);instancesKey=ik}if(pk!==providersKey){showProviders(providers);providersKey=pk}
+ $('lookup-form').closest('section').hidden=currentView!=='results'||selectedIndex!=='bitmap';$('sat-lookup-panel').hidden=currentView!=='results'||selectedIndex!=='sat-state';
+ const queue=$('job-queue');queue.replaceChildren();
+ const jobs=(status.jobs||[]).filter(x=>(x.index===selectedIndex||(x.outputs||[]).includes(selectedIndex))&&x.queue_managed&&['queued','paused'].includes(x.state));
+ for(const job of jobs){const row=element('div',undefined,'queue-entry');row.append(element('p',human(job.state)+(job.queue_position?' #'+job.queue_position:'')+' · '+job.from+'–'+job.to+' · '+(job.waiting_reason||'Saved request')));const controls=element('div',undefined,'actions');
+  for(const [action,label] of (job.state==='queued'?[['up','Earlier'],['down','Later'],['pause','Pause queued plan'],['cancel','Cancel queued plan']]:[['resume','Resume queued plan'],['cancel','Cancel plan']])){const button=element('button',label);button.type='button';if(jobLocked(job)&&action!=='cancel'){button.disabled=true;button.title='This saved job requires an index locked in this testing build.';}button.addEventListener('click',async()=>{button.disabled=true;try{await api('queue',{id:job.id,action});await refresh()}catch(error){message(error.message,true);button.disabled=false}});controls.append(button)}row.append(controls);queue.append(row);
+ }
+}
+$('job-records').addEventListener('click',()=>{selectView('results');showSelectedStatus();loadRecords()});
+
+async function refresh() {
+  if (fetching) { await refreshPromise; return refresh(); }
+  fetching = true;
+  const revision = statusRevision;
+  refreshPromise = (async () => {
+    try {
+      const result = await api('status');
+      if (revision !== statusRevision) return; // A pending control superseded this status read.
+      status = result; definitions = status.definitions || [];
+      $('status-json').textContent = pretty(status);
+      cards.render(status); cards.health(!(status.errors || []).some(x => String(x).startsWith('live:')));
+      showSelectedStatus();
+      $('workspace-state').textContent = (status.instances?.length || 0) + ' local indexes · ' + ((status.live || []).filter(x => x.enabled && x.on).length) + ' following new blocks';
+      if (status.errors?.length) message(status.errors.join('\n'), true);
+      if (selectedIndex && currentView === 'results' && $('follow-records').checked) {
+        const instance = status.instances?.find(x => x.definition === selectedIndex);
+        const key = selectedIndex + ':' + (instance?.checkpoint?.commitment || 'empty') + ':' + (instance?.verification || '');
+        if (key !== recordKey && !recordLoading) { if (await loadRecords()) recordKey = key; }
+      }
+    } catch (error) { cards.health(false); message('Status unavailable: ' + error.message, true); }
+    finally { fetching = false; }
+  })();
+  return refreshPromise;
+}
+function syncLiveForm(){ $('end-field').hidden = $('initial-live').checked; $('to').disabled = $('initial-live').checked; }
+$('initial-live').addEventListener('change',()=>{syncLiveForm();invalidatePlan();});
+for (const id of ['from', 'to', 'retention', 'mode', 'retain-sat-history']) $(id).addEventListener('input', invalidatePlan);
+$('plan-form').addEventListener('submit', async event => {
+  event.preventDefault(); invalidatePlan(); $('plan-button').disabled = true;
+  try {
+    const body = request(), key = JSON.stringify(body), plan = await api('plan', body);
+    if (JSON.stringify(request()) !== key) return;
+    reviewedRequest = key; $('plan').hidden = false;
+    metadata($('plan-meta'), [['Index', plan.definition.name], ['Build range', plan.from + ' → ' + (plan.live ? 'Latest available, then follow' : plan.to < 0 ? 'Verified tip at start' : plan.to)], ['Dependency order', plan.dependencies.map(x => x.name).join(' → ') || 'None'], ['Sequential history', plan.sequential ? 'Required' : 'Bounded range permitted'], ['Source retention', human(plan.retention)], ['Storage estimate', plan.storage_estimate], ['Verification', human(plan.verification)]]);
+    $('plan-notes').replaceChildren(...plan.notes.map(x => element('li', x)),...(plan.outputs||[]).map(x=>element('li',(x.index||'Output')+': '+(x.reason||x.recovery||'planned')+' · Reuse: '+ranges(x.reuse)+' · Add: '+ranges(x.add)))); $('plan-json').textContent = pretty(plan);
+    $('plan-buildability').textContent = plan.definition.buildable ? 'Starting may fetch Bitcoin data. Peers can observe requests. Derived records remain private.' : 'This definition has no derivation executor in this release. Existing providers may support related on-demand queries.';
+    $('build').disabled = !plan.definition.buildable; $('build').textContent=['running','waiting','pausing'].includes(status?.job?.state)?'Queue reviewed plan':'Start reviewed plan'; message('Plan ready. Review the range, dependencies and retention before starting.');
+  } catch (error) { message(error.message, true); } finally { $('plan-button').disabled = false; }
+});
+$('build').addEventListener('click', async () => {
+  try {
+    const body = request(); if (!reviewedRequest || JSON.stringify(body) !== reviewedRequest) throw new Error('Review this exact plan before starting.');
+    $('build').disabled = true; const job = await api('build', body); reviewedRequest = ''; showJob(job); selectView('results');loadRecords(); message(job.state==='queued'?'Plan queued. Its position and waiting reason appear with this index.':'Build started. Progress counts committed blocks; the table shows records already received.'); await refresh();
+  } catch (error) { message(error.message, true); }
+});
+$('pause').addEventListener('click', async () => { $('pause').disabled = true; try { showJob(await api('pause', {index:selectedIndex})); message('Pause requested. Waiting for any source request to finish.'); await refresh(); } catch (error) { message(error.message, true); } });
+$('resume').addEventListener('click', async () => {
+  const projected = window.GatewayIndexCards.jobFor(selectedIndex,status||{}); if (!projected?.id) return;
+  const job=(status.jobs||[]).find(x=>x.id===projected.id)||(status.job?.id===projected.id?status.job:projected);
+  if(job.queue_managed){try{await api('queue',{id:job.id,action:'resume'});message('Resume requested for this index.');await refresh()}catch(error){message(error.message,true)}return;}
+  selectIndex(job.index, 'build');
+  $('index').value = job.index; $('from').value = job.from; $('to').value = job.to >= 0 ? job.to : ''; $('retention').value = job.retention;
+  $('mode').value = job.mode || 'full';
+  invalidatePlan(); showRules();$('initial-live').checked=!!job.live;$('retain-sat-history').checked=!!job.retain_sat_history;for(const input of $('output-choices').querySelectorAll('input'))input.checked=(job.outputs||[]).includes(input.value);syncLiveForm(); selectView('build');
+  try { $('resume').disabled = true; showJob(await api('build', request())); message('Resuming from the committed checkpoint.'); await refresh(); } catch (error) { message(error.message, true); $('resume').disabled = false; }
+});
+async function loadRecords() {
+  const id = selectedIndex || $('query-index').value, serial = ++recordSerial;
+  if (!definitions.find(x => x.id === id)?.buildable) return;
+  recordLoading = true;
+  try {
+    const result = await api('query?index=' + encodeURIComponent(id) + '&limit=50');
+    if (serial !== recordSerial || id !== selectedIndex || currentView !== 'results') return;
+    $('query-json').textContent = pretty(result);
+    const previous=receivedRecordKeys,keys=new Set(),receipt=new Date().toLocaleTimeString(),hadReceipt=!!lastRecordReceipt;let newRows=0;
+    lastRecordReceipt=receipt;
+    $('query-summary').textContent = querySummary(result) + ' Latest 50 within the last 512 block batches; full-history pagination is not available yet.';
+    const table = element('table', undefined, 'records-table'), head = element('thead'), header = element('tr'), body = element('tbody');
+    table.append(element('caption', 'Local stored records. Chain state: ' + human(result.chain_state) + '.'));
+    for (const label of [id === 'bitmap' ? 'District' : ['blocks','tx-locator'].includes(id) ? 'Block' : id==='sat-state'?'Sat snapshot':id==='txo-spender'?'Spent output':'Inscription', 'Identifier', 'Block height', ...(['bitmap','inscriptions'].includes(id)?['Inscription number','Sat number']:[]), 'Details']) header.append(element('th', label));
+    head.append(header); table.append(head, body);
+    for (let row of (result.rows || []).slice(0,50)) {
+      if (typeof row === 'string') { const i = row.indexOf(':'); row = {district:row.slice(0,i),inscription:row.slice(i+1)}; }
+      const key=String(row.inscription||row.id||(row.txid?row.txid+':'+row.vin:null)||row.block_hash||pretty(row));keys.add(key);const isNew=hadReceipt&&!previous.has(key);if(isNew)newRows++;
+      const tr = element('tr',undefined,isNew?'record-received':'');tr.addEventListener('animationend',()=>{tr.className=''});
+      tr.append(element('td', id === 'bitmap' ? row.district === undefined ? 'Candidate' : String(row.district) + '.bitmap' : id==='sat-state'?(row.data?.outputs??'Unknown')+' unspent outputs':id==='txo-spender'?row.prev_txid+':'+row.vout:Array.isArray(row.data?.txids)?row.data.txids.length+' transactions':'Reveal'));
+      tr.append(element('td', row.inscription || row.id || row.txid || row.block_hash || 'Unknown', 'record-id'));
+      tr.append(element('td', String(row.reveal_height ?? row.height ?? row.block_height ?? 'Unknown')));
+      if(['bitmap','inscriptions'].includes(id)){
+       tr.append(element('td',Number.isSafeInteger(row.canonical_number)?String(row.canonical_number):'Not established'));
+       const sat=element('td');
+       const foundSat=discoveredSats.get(row.inscription||row.id);if(foundSat?.known)row.sat_number=foundSat.sat_number;
+       if(Number.isSafeInteger(row.sat_number))sat.textContent=String(row.sat_number);
+       else if(row.numbering_state==='unbound'||row.sat_state==='unbound')sat.textContent='Unbound';
+       else{const discover=element('button','Discover sat number');discover.type='button';discover.disabled=!(row.inscription||row.id)||satDiscoveryPending.has(row.inscription||row.id);if(satDiscoveryPending.has(row.inscription||row.id))discover.textContent='Discovering…';discover.addEventListener('click',async()=>{discover.disabled=true;discover.textContent='Discovering…';satDiscoveryPending.add(row.inscription||row.id);try{const result=await api('discover-sat',{id:row.inscription||row.id});satDiscoveryPending.delete(row.inscription||row.id);discoveredSats.set(row.inscription||row.id,result);if(id!==selectedIndex)return;if(serial!==recordSerial){await loadRecords();return;}sat.replaceChildren(element('span',result.known&&Number.isSafeInteger(result.sat_number)?String(result.sat_number):result.state==='unbound'?'Unbound':'Not established'));if(result.note)sat.append(element('small',result.note,'block muted'));}catch(error){satDiscoveryPending.delete(row.inscription||row.id);discover.textContent='Retry sat discovery';discover.disabled=false;message(error.message,true)}});sat.append(discover)}
+       tr.append(sat);
+      }
+      const cell = element('td'); details(cell, 'Evidence', row); tr.append(cell); body.append(tr);
+    }
+    receivedRecordKeys=keys;
+    $('query-summary').textContent+=' Received '+receipt+(newRows?' · '+newRows+' newly received record'+(newRows===1?'':'s')+' in this response.':'.');
+    $('query-results').replaceChildren(table);
+    if (!(result.rows || []).length) $('query-results').append(element('p', 'No records in this preview window. This is not proof of global absence.', 'small muted'));
+    return true;
+  } catch (error) { if (serial === recordSerial) { recordKey = ''; message(error.message, true); } }
+  finally { if (serial === recordSerial) recordLoading = false; }
+}
+$('query-form').addEventListener('submit', async event => { event.preventDefault(); await loadRecords(); });
+$('follow-records').addEventListener('change', () => { recordSerial++; recordLoading = false; recordKey = ''; $('query-freshness').hidden = $('follow-records').checked; if ($('follow-records').checked) loadRecords(); });
+$('sat-lookup-form').addEventListener('submit',async event=>{
+ event.preventDefault();const button=event.currentTarget.querySelector('button'),index=selectedIndex;button.disabled=true;$('sat-lookup-summary').textContent='Reading local sat evidence…';
+ try{const sat=$('sat-lookup-number').value;if(!/^(0|[1-9][0-9]*)$/.test(sat))throw Error('Use a sat number without leading zeros.');const result=await api('sat?sat='+encodeURIComponent(sat));if(index!==selectedIndex)return;
+  $('sat-lookup-summary').textContent=result.note|| (result.known?'Sat identity established at the indexed snapshot.':'Sat identity or placement is not established by this index.');
+  const point=result.satpoint;metadata($('sat-lookup-meta'),[['Sat number',result.sat_number??sat],['State',human(result.state)],['Current placement at snapshot',point?point.txid+':'+point.vout+':'+point.offset:'Not established'],['Snapshot block',result.snapshot?.height??'Not established'],['Chain state',human(result.chain_state)],['Origin',result.origin?pretty(result.origin):'Not established'],['Complete movement history',result.history_retained?'Genesis through snapshot':'Not complete; see retained ranges'],['History recording',result.history_recording?'On for newly indexed blocks':'Off'],['Retained history coverage',ranges(result.history_coverage)]]);$('sat-lookup-json').textContent=pretty(result);
+ }catch(error){if(index===selectedIndex)$('sat-lookup-summary').textContent=error.message}finally{button.disabled=false}
+});
+$('lookup-form').addEventListener('submit', async event => {
+  event.preventDefault(); const button = event.currentTarget.querySelector('button'); button.disabled = true;
+  $('lookup-summary').textContent = 'Reading local district evidence…'; $('lookup-json').hidden = true;
+  try {
+    const key = $('lookup-key').value;
+    if (!/^(0|[1-9][0-9]*)$/.test(key)) throw new Error('Use a canonical district number without leading zeros.');
+    const result = await api('lookup?index=bitmap&key=' + encodeURIComponent(key));
+    if (typeof result.record === 'string') { const split=result.record.indexOf(':'); result.record={district:result.record.slice(0,split),inscription:result.record.slice(split+1)}; }
+    $('lookup-json').textContent = pretty(result); $('lookup-json').hidden = false;
+    $('lookup-summary').textContent = (result.found && result.record ? 'Retained base claim for ' + key + '.bitmap: ' + result.record.inscription + '.' : result.checkpoint ? 'No accepted claim found within the committed local range. This is not a global absence proof.' : 'No committed local Bitmap state. This is not a global absence proof.') + ' Chain state: ' + human(result.chain_state) + '.';
+  } catch (error) { $('lookup-summary').textContent = error.message; message(error.message, true); } finally { button.disabled = false; }
+});
+$('peer-claims').addEventListener('click', async () => {
+  $('peer-claims').disabled = true; $('peer-summary').textContent = 'Requesting claims from known peers…';
+  try {
+    const result = await api('peers'); $('peer-claims-json').textContent = pretty(result); $('peer-claims-json').hidden = false;
+    $('peer-summary').textContent = 'Inspected ' + result.inspected_peers + ' of ' + result.known_peers + ' known peers. ' + result.note;
+  } catch (error) { $('peer-summary').textContent = error.message; message(error.message, true); } finally { $('peer-claims').disabled = false; }
+});
+$('peer-form').addEventListener('submit', async event => {
+  event.preventDefault(); const button = event.currentTarget.querySelector('button'); button.disabled = true;
+  $('peer-preview-summary').textContent = 'Requesting one published block from the known peer…'; $('peer-preview-json').hidden = true;
+  try {
+    const result = await api('peer-preview', {peer: $('peer-address').value, index: $('peer-index').value});
+    $('peer-preview-json').textContent = pretty(result); $('peer-preview-json').hidden = false;
+    $('peer-preview-summary').textContent = 'Peer claim only. Bitcoin replay performed: ' + String(result.bitcoin_replay_performed) + '. Stored: ' + String(result.stored) + '. Local Bitcoin replay is required before accepting this as verified index state.';
+  } catch (error) { $('peer-preview-summary').textContent = error.message; message(error.message, true); } finally { button.disabled = false; }
+});
+cards = window.GatewayIndexCards.mount({document,primary:$('index-cards'),other:$('capability-cards'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message});
+selectView('catalog');
+$('refresh').addEventListener('click', refresh);
+refresh();
+setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+</script>
+</body>
+</html>

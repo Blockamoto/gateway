@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" data-gateway-module="satline">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Satline · Gateway Client</title><link rel="stylesheet" href="/satline/style.css"><link rel="stylesheet" href="/shell/theme.css"><script src="/shell/theme.js"></script><script defer src="/satline/app.js"></script></head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+<a class="brand" href="/"><span class="gateway-mark" aria-hidden="true">G</span><span>Gateway Client<small id="version">LOCAL PROTOCOL STACK</small></span></a>
+<div class="eyebrow">MODULES</div>
+<nav class="modules" aria-label="Gateway modules"><a href="/"><span class="module-symbol">₿</span>Bitcoin on Demand</a><a class="active" href="/satline" aria-current="page"><span class="module-symbol line-symbol">↳</span>Satline<span class="active-dot"></span></a></nav>
+<div class="side-heading"><span class="eyebrow">LOCAL HISTORY</span><button id="refreshRecents" class="icon-button" title="Refresh local records" aria-label="Refresh local records">↻</button></div>
+<div id="recents" class="recents"><p class="muted">No queries loaded.</p></div>
+<div class="sidebar-bottom"><span class="small-dot"></span><span id="moduleStatus">Checking module…</span><p id="storeStatus" class="muted small">Your queried lineages stay here.</p><a href="/?settings=1" class="quiet-link">Gateway settings ↗</a></div>
+</aside>
+<main>
+<header class="page-header"><div><div class="eyebrow">BITCOIN / ORDINAL MOVEMENT</div><h1>Satline<span class="accent">.</span></h1><p class="lede">One sat. Its path through Bitcoin.</p></div><span class="pill" id="networkBadge">PEER EXCHANGE OFF</span></header>
+<section class="query-card" aria-label="Resolve a sat">
+<label for="query" class="eyebrow">SAT NUMBER OR SATPOINT</label>
+<form id="queryForm"><input id="query" spellcheck="false" autocomplete="off" placeholder="123456789 or offset.vout.tx.block.bitcoin" aria-describedby="inputHelp"><button id="resolve" class="primary" type="submit">Resolve all <span aria-hidden="true">↓</span></button></form>
+<div class="query-footer"><span id="inputHelp" class="muted small">A sat number starts at birth. A satpoint starts at that output.</span><div class="button-row"><button id="step" class="secondary">Step mode</button><button id="next" class="secondary" disabled>Next hop →</button><button id="stop" class="danger-quiet" hidden>Stop</button></div></div>
+</section>
+<div id="message" class="notice" role="status" aria-live="polite" hidden></div>
+<section id="summary" class="summary" hidden aria-label="Lineage summary"></section>
+<div class="workspace">
+<section class="lineage-section" aria-label="Sat lineage">
+<div class="section-heading"><div><span class="eyebrow">THE LINE</span><span id="lineLabel" class="muted small">Confirmed history, one transition at a time</span></div><details class="action-menu"><summary>Record actions</summary><div><button data-action="refresh">Refresh</button><button data-action="recheck">Recheck Bitcoin evidence</button><button data-action="rebuild">Rebuild this record</button><button data-action="copy-query">Copy query</button><button data-action="remove" class="danger-quiet">Remove local record</button></div></details></div>
+<div id="empty" class="empty"><div class="empty-line" aria-hidden="true"><i></i><i></i><i></i></div><h2>A history waiting to be followed.</h2><p>Enter a sat number to locate its birth, or follow a specific output position forward. Each movement links back to its Bitcoin evidence.</p><button id="example" class="secondary">Start with sat 0</button></div>
+<div id="timeline" class="timeline" aria-live="off"></div>
+<button id="more" class="secondary load-more" hidden>Show 50 more hops</button>
+<details id="metrics" class="metrics" hidden><summary>Resolution diagnostics</summary><div id="metricsBody"></div></details>
+</section>
+<aside class="inspector">
+<section class="panel peer-panel"><div class="eyebrow">VERIFIED PEER EXCHANGE</div><h2>Helpful peers.<br>Local checks.</h2><p class="muted small">Peers provide cached segments. Your client checks the Bitcoin transactions and recomputes every sat movement before accepting them.</p>
+<label class="switch-row"><input id="usePeers" type="checkbox"><span>Use peer hints<small>Send only a targeted query</small></span></label>
+<label class="switch-row"><input id="servePublished" type="checkbox"><span>Serve published snapshots<small>Never your private query list</small></span></label>
+<button id="saveNetwork" class="secondary wide">Apply network settings</button>
+<hr><label for="peer" class="eyebrow">GATEWAY PEER</label><input id="peer" class="compact-input" placeholder="host:48333 or a discovered peer" list="peerList" spellcheck="false"><datalist id="peerList"></datalist>
+<button id="fetchPeer" class="secondary wide" disabled>Fetch &amp; verify segment</button><p id="peerLimits" class="muted small">Up to 32 hops per request. Cache-only serving.</p>
+<div class="privacy-note">A queried peer learns the sat or satpoint and your connection address. The current transport is not encrypted or anonymous; network observers may also see the request.</div>
+</section>
+<section class="panel"><div class="eyebrow">THIS RECORD</div><h3 id="publicationStatus">Private by default</h3><p class="muted small">Publishing freezes the currently stored segment. Later refreshes and received segments remain private until you publish again.</p><button id="publish" class="secondary wide" disabled>Publish this snapshot</button><button id="unpublish" class="danger-quiet wide" hidden>Withdraw publication</button><p class="muted small">Withdrawal stops future serving here. It cannot erase copies already received by another peer.</p></section>
+<section class="panel compact"><div class="eyebrow">NETWORK ACTIVITY</div><dl id="networkStats"><dt>Wire protocol</dt><dd>Satline v1</dd></dl><p class="muted small" id="listenStatus">Not serving Satline.</p></section>
+</aside>
+</div>
+<footer>Gateway routes. Bitcoin on Demand supplies the evidence. Satline follows the sat.<span id="footer-version">Gateway Client</span></footer>
+</main>
+</div>
+<div id="toast" class="toast" role="status" hidden></div>
+</body></html>

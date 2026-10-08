@@ -1,0 +1,99 @@
+{
+  "mode": "sat",
+  "sat_number": 995,
+  "issuance": {
+    "height": 0,
+    "subsidy_sats": 5000000000,
+    "subsidy_offset": 995,
+    "first_sat": 0
+  },
+  "birth_satpoint": {
+    "txid": "0000000000000000000000000000000000000000000000000000000000001771",
+    "vout": 0,
+    "offset": 995,
+    "height": 0,
+    "block_hash": "0000000000000000000000000000000000000000000000000000000000100000",
+    "tx_index": 0
+  },
+  "state": "CURRENTLY_UNSPENT",
+  "current_satpoint": {
+    "txid": "000000000000000000000000000000000000000000000000000000000000177c",
+    "vout": 0,
+    "offset": 5000000015,
+    "height": 2,
+    "block_hash": "0000000000000000000000000000000000000000000000000000000000100002",
+    "tx_index": 0
+  },
+  "snapshot": {
+    "network": "mainnet",
+    "height": 2,
+    "hash": "0000000000000000000000000000000000000000000000000000000000100002",
+    "source": "test_graph"
+  },
+  "hop_count": 2,
+  "hops": [
+    {
+      "index": 0,
+      "type": "output_to_output",
+      "source": {
+        "txid": "0000000000000000000000000000000000000000000000000000000000001771",
+        "vout": 0,
+        "offset": 995,
+        "height": 0,
+        "block_hash": "0000000000000000000000000000000000000000000000000000000000100000",
+        "tx_index": 0
+      },
+      "spending_txid": "0000000000000000000000000000000000000000000000000000000000001772",
+      "spending_vin": 0,
+      "block_height": 1,
+      "block_hash": "0000000000000000000000000000000000000000000000000000000000100001",
+      "input_stream_position": 995,
+      "destination": {
+        "txid": "0000000000000000000000000000000000000000000000000000000000001772",
+        "vout": 1,
+        "offset": 895,
+        "height": 1,
+        "block_hash": "0000000000000000000000000000000000000000000000000000000000100001",
+        "tx_index": 1
+      },
+      "verification_state": "header_anchored",
+      "spender_provider": "test_graph",
+      "note": "Sat mapped from the concatenated transaction input stream into outputs in FIFO order."
+    },
+    {
+      "index": 1,
+      "type": "fee_to_coinbase",
+      "source": {
+        "txid": "0000000000000000000000000000000000000000000000000000000000001772",
+        "vout": 1,
+        "offset": 895,
+        "height": 1,
+        "block_hash": "0000000000000000000000000000000000000000000000000000000000100001",
+        "tx_index": 1
+      },
+      "spending_txid": "0000000000000000000000000000000000000000000000000000000000001774",
+      "spending_vin": 1,
+      "block_height": 2,
+      "block_hash": "0000000000000000000000000000000000000000000000000000000000100002",
+      "input_stream_position": 995,
+      "destination": {
+        "txid": "000000000000000000000000000000000000000000000000000000000000177c",
+        "vout": 0,
+        "offset": 5000000015,
+        "height": 2,
+        "block_hash": "0000000000000000000000000000000000000000000000000000000000100002",
+        "tx_index": 0
+      },
+      "transaction_fee_sats": 10,
+      "fee_offset": 5,
+      "prior_block_fees_sats": 10,
+      "coinbase_stream_offset": 5000000015,
+      "verification_state": "header_anchored",
+      "spender_provider": "test_graph",
+      "note": "Sat became a transaction fee and was appended to the coinbase implicit input after the subsidy and fees of preceding block transactions."
+    }
+  ],
+  "verification_state": "header_anchored",
+  "chain_tip_height": 2,
+  "note": "Confirmed lineage terminates at this satpoint through the stated chain snapshot. Mempool movement, if present, is reported separately and is not canonical Satline history."
+}

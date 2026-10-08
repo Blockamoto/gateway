@@ -1,0 +1,27 @@
+# Review and deploy explicitly; this file does not create or publish a release.
+services:
+  - type: web
+    name: gateway-updates
+    runtime: go
+    plan: free
+    repo: https://github.com/Blockamoto/gateway
+    branch: main
+    autoDeployTrigger: "off"
+    # Relative imports require this checkout to sit outside the active GOPATH/src.
+    # Render's native Go checkout sits in its default GOPATH, so isolate this build.
+    buildCommand: go version && GOPATH="$PWD/.gateway-build-gopath" GO111MODULE=off CGO_ENABLED=0 go build -trimpath -o gateway-update-publisher ./packaging/update-publisher
+    # This tracked trust document contains only the independently approved
+    # public key. No signing key or secret-file mount belongs on Render.
+    startCommand: >-
+      exec ./gateway-update-publisher serve-release -repository Blockamoto/gateway -version "$GATEWAY_RELEASE_VERSION" -public assets/bootstrap/update-public-key.json -listen "0.0.0.0:$PORT"
+    healthCheckPath: /manifest.json
+    envVars:
+      - key: GATEWAY_RELEASE_VERSION
+        sync: false
+# Public releases need no GitHub credential. While the repository is private,
+# delivery waits until visibility changes, unless an operator explicitly
+# provisions a temporary read-only GATEWAY_PUBLISHER_GITHUB_TOKEN.
+# Never upload the private signing key to Render.
+# No disk: each cold start re-fetches and verifies the selected signed bundle.
+# Render's native Go runtime follows its supported stable version; GO_VERSION
+# does not pin it. Record the actual compiler version in the deployment receipt.

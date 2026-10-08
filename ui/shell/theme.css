@@ -1,0 +1,37 @@
+/* Shared shell/index appearance. Explicit dark choices retain the dark palette. */
+:root:not([data-theme=dark]){color-scheme:light;--bg:#f4f1e9;--panel:#fffdf8;--panel2:#ece9df;--line:#d1cec3;--text:#252f2c;--muted:#59645e;--mint:#365f48;--accent:#365f48;--sky:#28616b;--amber:#805512;--red:#a03430;--radius:20px;background:var(--bg);color:var(--text)}
+:root:not([data-theme=dark]) body{background:radial-gradient(ellipse at top left,#fffdf8 0,transparent 65%),var(--bg);color:var(--text)}
+:root:not([data-theme=dark]) :is(.sidebar,.topbar,.network-strip,.panel,.tile,.index-card,.gateway-setup,.setup-choice,.status-cell,.io,pre,input,select,textarea,.address-bar,.nav-item.active,.current-work,.workspace-hero,.home-state,.seek-hero,.seek-step-number,.coverage-track,dialog){background:var(--panel);color:var(--text);border-color:var(--line)}
+:root:not([data-theme=dark]) :is(.sidebar,.topbar,.network-strip,dialog){background:#fffdf8e8;backdrop-filter:blur(18px)}
+:root:not([data-theme=dark]) :is(button,.badge,.status-pill,.hint,.setup-step,.record-details){background:var(--panel2);color:var(--text);border-color:var(--line)}
+:root:not([data-theme=dark]) :is(button.primary,.address-go){background:var(--accent);color:#fffdf8;border-color:var(--accent)}
+:root:not([data-theme=dark]) :is(button:hover,.nav-item:hover){background:#e2e8df;color:var(--text)}
+:root:not([data-theme=dark]) :is(.muted,small,.eyebrow,.app-footer,.network-meta){color:var(--muted)}
+:root:not([data-theme=dark]) :is(.notice.error,.error){color:var(--red);background:#fff0eb}
+:root:not([data-theme=dark]) :is(th,td){border-color:var(--line)}
+:is(.panel,.tile,.index-card,.gateway-setup,dialog){border-radius:20px;box-shadow:0 1px 0 #ffffff35 inset,0 8px 26px #172a2210}
+:is(button,input,select){border-radius:12px}
+:root:not([data-theme=dark]) .index-card[data-selected=true]{border-color:var(--accent)}
+#theme-select{display:block;min-width:220px;margin-top:12px}
+@media(prefers-reduced-transparency:reduce){:root:not([data-theme=dark]) :is(.sidebar,.topbar,.network-strip,dialog){background:var(--panel);backdrop-filter:none}}
+
+/* Shared navigation: Home stays independent, workspaces live in the top bar. */
+.app-shell{display:block}.topbar{height:auto;min-height:85px;gap:10px}.topbar .brand{width:auto;flex:0 0 auto;margin:0;padding:0 12px 0 0;gap:10px;font-size:22px}.topbar .brand>span:last-child{width:auto;font-size:22px}.topbar .brand-mark{width:27px;min-width:27px;height:34px}.topbar .nav-item{width:auto;margin:0;justify-content:center;white-space:nowrap}.topbar .top-nav{padding:10px 12px}.topbar #settings-button{padding:9px 12px}.topbar form{min-width:100px;max-width:none}.skip{left:16px}.topbar [aria-current=page]{box-shadow:inset 0 -2px var(--mint)}
+@media(max-width:900px){.topbar{flex-wrap:wrap;padding:12px 16px}.topbar .brand{margin-right:auto}.topbar form{order:2;flex-basis:100%}.topbar #back{display:none}.topbar #copy-address,.topbar .status-pill{display:none}.topbar .top-nav{font-size:13px}.app-footer{flex-wrap:wrap}}
+@media(max-width:380px){.topbar{gap:5px}.topbar .brand{padding:0;font-size:18px;gap:6px}.topbar .brand>span:last-child{font-size:18px}.topbar .top-nav{padding:9px}.topbar #settings-button{padding:9px}}
+
+:root:not([data-theme=dark]) .topbar form{background:var(--panel2);border-color:var(--line)}
+:root:not([data-theme=dark]) .topbar .brand{color:var(--text)}
+
+.topbar .top-nav span{width:auto;font-size:inherit}
+
+:root:not([data-theme=dark]) .topbar .nav-item span{color:var(--text)}
+
+/* Satline uses the profile palette while keeping its lineage layout. */
+:root[data-gateway-module=satline]:not([data-theme=dark]){--ink:var(--text);--border:var(--line);--raised:var(--panel2);--cyan:var(--sky)}
+:root[data-gateway-module=satline]:not([data-theme=dark]) :is(.query-card,.summary,.node,.action-menu>div,.modules a.active,.recent.selected,.stream-row,.hop-flow .endpoint,.formula,.pill){background:var(--panel);border-color:var(--line);color:var(--text)}
+:root[data-gateway-module=satline]:not([data-theme=dark]) :is(.hop-flow,.stream-row){color:var(--text)}
+:root[data-gateway-module=satline]:not([data-theme=dark]) :is(.modules a.active,.stream-row.selected){background:var(--panel2);color:var(--accent);border-color:var(--accent)}
+:root[data-gateway-module=satline]:not([data-theme=dark]) .node.fee{background:#fbf2df;border-color:#cfb27e}
+:root[data-gateway-module=satline]:not([data-theme=dark]) .node.terminal.lost{background:#fff0eb;border-color:#d99b91}
+:root[data-gateway-module=satline] :is(.query-card,.node,.empty,.summary){border-radius:20px;box-shadow:0 1px 0 #ffffff35 inset,0 8px 26px #172a2210}

@@ -1,0 +1,50 @@
+Gateway 0.7.0 — supported command-line use
+
+Run GatewayClient.exe on Windows or gateway-client on Linux. Flags precede
+the command. With no command, Gateway opens its UI. Use a disposable -data
+directory for experiments; do not run conflicting processes on one profile.
+
+Read-only status and resolution:
+  gateway-client status
+  gateway-client headers
+  gateway-client block 170
+  gateway-client block <block-hash>
+  gateway-client getblockhash 170
+  gateway-client resolve 1.170.bitcoin
+  gateway-client transaction 1.170.bitcoin
+  gateway-client browser
+  gateway-client browser-validate 0.bitcoin
+  gateway-client system
+  gateway-client compatibility
+
+A single address is shorthand for resolve. Commands return JSON or a useful
+error. Fetching a block can use the network and cache even though it does not
+change Bitcoin. Coordinates are zero-based. Suffix addresses put block height
+on the right; i0.1.170.bitcoin selects input zero of transaction one in block 170.
+A transaction ID without known containing-block context may be unavailable.
+
+Index inspection:
+  gateway-client index status
+  gateway-client index rules
+
+Headers and Bitcoin Blocks are the only available indexes. Use the UI's
+Build a range controls for a small bounded test before authorizing Live work.
+Additional indexes and Gateway sharing are locked; retained source code for
+them does not authorize their command-line use in this release.
+
+Useful flags:
+  -data <directory>   Explicit Gateway profile directory
+  -peer <host:port>   Preferred ordinary Bitcoin peer
+  -setup             Open resumable guided setup
+  -no-open           Start the local HTTP/API without opening a browser
+  -background        Run without opening the main window
+  -http <address>    Local HTTP/API address (default 127.0.0.1:0)
+  -skin <directory>  Custom skin containing index.html
+  -handle-uri <URI>  Handle an approved Gateway activation/resource URI
+
+Keep the local API on loopback for ordinary use. Windows registration and
+browser routing are best configured through Settings, where approval and
+connection state are visible. CLI status alone does not prove a native browser
+handshake or successful .bitcoin address entry.
+
+See docs/GETTING-STARTED.md, docs/INDEXING.md and docs/TESTING-0.7.0.md.

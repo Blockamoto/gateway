@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Gateway Browser Companion",
+  "version": "0.7.0",
+  "description": "Recovers exact Gateway resource addresses when a Chromium browser treats them as searches.",
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.google.com/search*",
+        "https://www.google.co.uk/search*",
+        "https://www.bing.com/search*",
+        "https://duckduckgo.com/*",
+        "https://search.brave.com/search*"
+      ],
+      "js": [
+        "search.js",
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqVaxKZVcnMIjjIxfpcbOTopqP7fKfRqxZJKT8lhk8sKqa8bAV9OFhEZ2RTwWQ76DjwBuknXeDQxasT3PeJvROwzPEDNZBlUEVY7MR46W/p54VQ84N40kkPdY9Vs5XTAjWFtAftRrAF4USgdmXbewCfjBXVXph/WSy4gSxBO5Tb+jzoAieoZ8W7gK5FmJ6IuB/NyZon/zr/UtVLU9WdS6EPC5A5uKvFOdpZtMwyVD6O/TgC63O6rRS3vPO49WUlXeRUnhEJ5cPOD3G9TzAjAgvUw5smqwUgfH9sA8xZPPEjCNNdvIoXjvI6nF+3zzLqXgigqXCrHo9WlyompZ6i5AUQIDAQAB",
+  "permissions": [
+    "nativeMessaging",
+    "storage"
+  ],
+  "action": {
+    "default_title": "Gateway Client",
+    "default_popup": "popup.html"
+  }
+}

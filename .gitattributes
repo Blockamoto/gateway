@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+# Evidence and upstream source copies retain the bytes in their provenance hashes.
+docs/bitmap-evidence/** -text
+*.png binary
+*.ico binary
+*.syso binary
+*.raw binary
+*.bin binary

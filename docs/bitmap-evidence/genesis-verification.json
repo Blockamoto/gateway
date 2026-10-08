@@ -1,0 +1,28 @@
+{
+  "block_hash": "000000000000000000035d4eee4c3b3864b503ed5c6b35a92de219529b34ca2c",
+  "height_from_bip34": 792435,
+  "block_timestamp": 1685657332,
+  "transaction_count": 3139,
+  "transaction_index_zero_based": 953,
+  "txid": "86539aff946c437af8088955827b7e6ff48fc6192836d4071b697b5359b7a732",
+  "wtxid": "6db557f86fd804d53343db580297606e0d1a4869cdedae92c84170058f1a99c2",
+  "inscription_id": "86539aff946c437af8088955827b7e6ff48fc6192836d4071b697b5359b7a732i0",
+  "input_index": 0,
+  "envelope_index": 0,
+  "ord_marker_script_offset": 44,
+  "body_hex": "302e6269746d6170",
+  "content_type": "text/plain;charset=utf-8",
+  "checks": [
+    "header_hash",
+    "header_pow",
+    "bip34_height",
+    "transaction_merkle_root",
+    "bip141_witness_commitment",
+    "exact_origin_envelope"
+  ],
+  "limits": [
+    "not a full Bitcoin chain/UTXO/script validation",
+    "not an Ord index rebuild",
+    "inclusion does not prove absence of earlier matching inscriptions"
+  ]
+}

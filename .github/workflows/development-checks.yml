@@ -1,0 +1,88 @@
+name: Gateway development checks
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      GO111MODULE: 'off'
+      CGO_ENABLED: '0'
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Record source and environment
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/gateway-checks"
+          git rev-parse HEAD > "$RUNNER_TEMP/gateway-checks/REVISION.txt"
+          git archive --format=tar --output="$RUNNER_TEMP/gateway-checks/source.tar" HEAD
+          sha256sum "$RUNNER_TEMP/gateway-checks/source.tar" > "$RUNNER_TEMP/gateway-checks/source.sha256"
+          { go version; node --version; python3 --version; uname -a; } > "$RUNNER_TEMP/gateway-checks/environment.txt"
+      - name: Build Linux runtime
+        run: go build -o "$RUNNER_TEMP/gateway-checks/gateway-client" .
+      - name: Go tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          GATEWAY_TEST_BINARY="$RUNNER_TEMP/gateway-checks/gateway-client" go test -count=1 -json -timeout=900s ./... | tee "$RUNNER_TEMP/gateway-checks/go-tests.jsonl"
+      - name: Vet
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          go vet ./... 2>&1 | tee "$RUNNER_TEMP/gateway-checks/vet.txt"
+      - name: Release regression race checks
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=1 go test -race -count=1 -json -run '^Test(063|064|065|066|068|069|Release|Header|Bitcoin|Integration|IndexLocator|SatIndex|SatReverse|Ordinal|InscriptionNumbering)' -timeout=900s . | tee "$RUNNER_TEMP/gateway-checks/race-tests.jsonl"
+          CGO_ENABLED=1 go test -race -count=1 -json -timeout=240s ./internal/updates ./internal/updatepublisher ./internal/updateapply | tee "$RUNNER_TEMP/gateway-checks/update-race-tests.jsonl"
+      - name: Browser companion and UI helper tests
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          { node browser-companion/test.js; node scripts/test-ui-helpers.js; node scripts/test-index-workspace.js; node scripts/test-index-cards.js; node scripts/test-shell-063.js; node scripts/test-home-state-063.js; } 2>&1 | tee "$RUNNER_TEMP/gateway-checks/javascript.txt"
+      - name: Packaging regression tests
+        if: ${{ !cancelled() }}
+        run: |
+          python3 scripts/test-update-packaging.py
+          python3 scripts/test-renew-update-feed.py
+      - name: Install browser test runtime
+        if: ${{ !cancelled() }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/gateway-browser" --no-audit --no-fund playwright@1.62.1
+          "$RUNNER_TEMP/gateway-browser/node_modules/.bin/playwright" install chromium
+      - name: Actual browser UI regressions
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NODE_PATH="$RUNNER_TEMP/gateway-browser/node_modules"
+          { node scripts/test-updates-ui.js; node scripts/test-theme-ui.js; node scripts/test-shell-navigation.js; node scripts/test-setup-browser.js; node scripts/test-peer-aliases-browser.js; node scripts/test-index-workspace-browser.js; node scripts/test-index-cards-browser.js --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/browser-indexes"; } 2>&1 | tee "$RUNNER_TEMP/gateway-checks/browser-ui.txt"
+      - name: Preserve test evidence and source snapshot
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gateway-checks-${{ github.sha }}
+          path: ${{ runner.temp }}/gateway-checks/
+          retention-days: 7
+          if-no-files-found: error

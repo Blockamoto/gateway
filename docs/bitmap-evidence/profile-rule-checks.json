@@ -1,0 +1,87 @@
+{
+  "source_commit": "0a09b987c87692ec3cabd404c8bcc7367707ee9a",
+  "case_kind": "synthetic grammar cases, not historical acceptance evidence",
+  "passed": 16,
+  "cases": [
+    {
+      "body_hex": "302e6269746d6170",
+      "parsed_district": 0,
+      "eligible_by_height_at_792435": true
+    },
+    {
+      "body_hex": "3430342e6269746d6170",
+      "parsed_district": 404,
+      "eligible_by_height_at_792435": true
+    },
+    {
+      "body_hex": "30302e6269746d6170",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "303430342e6269746d6170",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "2e6269746d6170",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "2d312e6269746d6170",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "2b312e6269746d6170",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "312e302e6269746d6170",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "312e4249544d4150",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "20312e6269746d6170",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "312e6269746d61700a",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "312e6269746d617000",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "d9a12e6269746d6170",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "ff2e6269746d6170",
+      "parsed_district": null,
+      "eligible_by_height_at_792435": false
+    },
+    {
+      "body_hex": "3739323433352e6269746d6170",
+      "parsed_district": 792435,
+      "eligible_by_height_at_792435": true
+    },
+    {
+      "body_hex": "3739323433362e6269746d6170",
+      "parsed_district": 792436,
+      "eligible_by_height_at_792435": false
+    }
+  ]
+}

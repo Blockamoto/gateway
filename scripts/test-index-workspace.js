@@ -26,7 +26,8 @@ const fetch=async(url,opts)=>{
 };
 let timelineOptions,selectedTimeline='',timelineSnapshot={},navigation=[];
 const drawer=new Node('details');drawer.open=false;nodes.set('timeline-details',drawer);
-const window={GatewayIndexTimeline:{mount(options){timelineOptions=options;return {
+const inspector=new Node('section');inspector.scrollTo=()=>{};nodes.set('timeline-inspector',inspector);
+const window={GatewayIndexWorkspace:{mountLayout(){},mountRange(){return {update(){},sync(){}}}},GatewayIndexTimeline:{mount(options){timelineOptions=options;return {
  render(value){timelineSnapshot=value}, health(){},
  select(id){selectedTimeline=id;options.workspace.hidden=!id||!!definitions.find(d=>d.id===id)?.locked},
  model(id){return window.GatewayIndexCards.model(definitions.find(d=>d.id===id)||{id},timelineSnapshot)}

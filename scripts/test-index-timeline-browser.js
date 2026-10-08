@@ -112,11 +112,11 @@ async function run() {
     };
     await page.goto(origin+'/indexes', {waitUntil:'networkidle'});
     await page.locator('.timeline-track[data-index="blocks"]').waitFor();
-    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes => nodes.map(node => node.dataset.index)), ['headers','blocks','inscriptions','bitmap-compatibility'], 'Foundational Headers lead all aligned tracks, including locked capabilities');
+    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes => nodes.map(node => node.dataset.index)), ['headers','blocks'], 'Only added or established indexes have tracks, with foundational Headers first');
     assert.deepEqual(await viewport(),{from:0,to:999999,fit:true});
     assert.deepEqual(await blockLane.evaluate(node=>JSON.parse(node.dataset.coverage)),[{from:0,to:9},{from:499990,to:499999},{from:500003,to:500010},{from:999990,to:999999}], 'Rendered physical block coverage excludes gaps and disregards processing/provider claims');
     assert(await page.locator('*').count()<1200,'Million-height chain must use bounded DOM, not one node per block');
-    assert.equal(await page.locator('.timeline-lane').count(),4);
+    assert.equal(await page.locator('.timeline-lane').count(),2);
     noMutations();
     await screenshot('timeline-chain-light');
 
@@ -178,13 +178,16 @@ async function run() {
     await screenshot('timeline-focused-light');
     noMutations();
 
-    await page.locator('.timeline-track[data-index="inscriptions"] .timeline-track-select').click();
-    await page.locator('#timeline-inspector').getByText(/locked/i).first().waitFor();
-    assert.equal(await page.locator('[role="switch"][aria-label="inscriptions On"]').isDisabled(), true);
-    assert.equal(await page.locator('[role="switch"][aria-label="inscriptions Live"]').isDisabled(), true);
-    assert.equal(await page.locator('#timeline-build-range').isVisible(),false);
-    assert.equal(await page.locator('#timeline-open-entity').isVisible(),false);
+    await page.locator('#timeline-add-index').click();
+    for (const id of ['inscriptions','bitmap-compatibility']) {
+      const option = page.locator('#timeline-index-picker button[data-index="'+id+'"]');
+      assert.equal(await option.isDisabled(), true, 'Locked indexes remain unavailable in the Add index chooser');
+      await option.evaluate(node => node.click());
+      assert.equal(await page.locator('.timeline-track[data-index="'+id+'"]').count(),0, 'A locked option cannot create a track');
+    }
+    assert.equal(await page.locator('#timeline-inspector').getAttribute('data-index'),'blocks');
     await screenshot('timeline-locked-light');
+    await page.locator('#timeline-add-index').click();
     noMutations();
 
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
@@ -221,7 +224,7 @@ async function run() {
     assert.equal(calls.filter(call=>call.path.endsWith('/query')).length,0,'All timeline inspection remains independent of record queries');
     await page.locator('#timeline-height').fill('500000');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
     await page.locator('#timeline-build-range').click();
-    assert.equal(await page.locator('#from').inputValue(),'500000');assert.equal(await page.locator('#to').inputValue(),'500000');
+    assert.equal(await page.locator('#from').inputValue(),'0','Preparing a range keeps the retained instance origin fixed');assert.equal(await page.locator('#from').getAttribute('readonly'),'');assert.equal(await page.locator('#to').inputValue(),'500000');
     assert.equal(await page.locator('#initial-live').isChecked(),false,'Preparing a selected range does not implicitly follow the chain');
     assert.equal(await page.locator('#build').isDisabled(),true,'A selected range still needs a reviewed plan');
     assert.equal(await page.locator('#timeline-details').evaluate(details=>details.open),true);

@@ -10,7 +10,7 @@ const sandbox = {window:{}};
 for (const file of ['index-cards.js','index-timeline.js']) {
   vm.runInNewContext(fs.readFileSync(path.join(root,'ui/shell',file),'utf8'),sandbox,{filename:file});
 }
-const {normalizeRanges,subtractRanges,clampView,coverageBins,trackModel} = sandbox.window.GatewayIndexTimeline;
+const {normalizeRanges,subtractRanges,clampView,coverageBins,trackModel,established,rulerMarks} = sandbox.window.GatewayIndexTimeline;
 const plain = value => JSON.parse(JSON.stringify(value));
 const valid = range => range && Number.isSafeInteger(range.from) && Number.isSafeInteger(range.to) && range.from >= 0 && range.to >= range.from;
 function asSet(ranges) {
@@ -81,4 +81,18 @@ assert.deepEqual(plain(trackModel(derived,{instances:[{definition:derived.id,cov
 assert.deepEqual(plain(trackModel(derived,{instances:[{definition:derived.id,checkpoint:{from:0,height:999999}}]}).coverage),[],'A checkpoint height alone never establishes an entire range');
 for(const verification of ['stale_reorg','anchor_unavailable'])assert.deepEqual(plain(trackModel(derived,{instances:[{definition:derived.id,coverage:[{from:0,to:10}],verification}]}).coverage),[],'Unverified chain evidence cannot establish current fallback coverage');
 
-console.log('Index timeline helpers PASS: exact normalization/subtraction with 300 independent set-oracle cases, million-height sparse occupancy, block-scale gaps and no invented block coverage from processing/provider claims.');
+assert.equal(established({id:'headers'},{}),true,'Headers is always the foundational track');
+assert.equal(established(blocks,{providers:[{id:'blocks',coverage:[{from:0,to:100}]}]}),false,'An external provider alone does not add a track');
+assert.equal(established({...blocks,locked:true},misleading),false,'Saved jobs or data cannot unlock a track');
+assert.equal(established(blocks,{live:[{index:'blocks',on:false,enabled:false}]}),false,'Default inactive policy is not an added index');
+assert.equal(established(blocks,{jobs:[{id:'saved',index:'blocks',state:'paused'}]}),true,'Existing work remains reachable');
+assert.equal(established(blocks,snapshot),true,'Stored local data appears without being added again');
+const fullMarks=plain(rulerMarks({from:0,to:999999},1000));
+assert.deepEqual(fullMarks.filter(m=>m.kind==='halving').map(m=>m.height),[210000,420000,630000,840000]);
+assert.equal(fullMarks.some(m=>m.kind==='difficulty'),false,'Distant views avoid densely packed difficulty labels');
+const closeMarks=plain(rulerMarks({from:839990,to:846100},1000));
+assert(closeMarks.some(m=>m.kind==='halving'&&m.height===840000));
+assert.deepEqual(closeMarks.filter(m=>m.kind==='difficulty').map(m=>m.height),[840672,842688,844704],'Difficulty periods are independently anchored to genesis, never restarted at a halving');
+for(const m of closeMarks) assert(m.height>=839990&&m.height<=846100&&Number.isSafeInteger(m.height),'Landmarks stay in the visible block range');
+
+console.log('Index timeline helpers PASS: exact coverage with 300 independent set-oracle cases, sparse pixel occupancy, evidence-only track membership, and independently anchored Bitcoin ruler landmarks.');

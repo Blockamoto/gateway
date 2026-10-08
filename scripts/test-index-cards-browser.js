@@ -90,16 +90,20 @@ async function run() {
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (!request.url().startsWith(endpoint + '/')) external.push(request.url()); });
     await page.goto(endpoint + '/indexes', {waitUntil:'networkidle'});
-    await page.locator('.timeline-track').nth(1).waitFor();
-    assert.equal(await page.locator('.timeline-track').count(), (await (await fetch(endpoint+'/api/v1/index/status')).json()).definitions.length);
+    await page.locator('.timeline-track[data-index="headers"]').waitFor();
+    assert.equal(await page.locator('.timeline-track').count(),1,'A fresh profile starts with the foundational Headers track');
     assert.equal(await page.locator('select#index, select#query-index, select#peer-index').count(), 0);
     await page.screenshot({path:path.join(out, 'timeline-desktop.png'), fullPage:true});
 
-    await page.locator('.timeline-track[data-index="inscriptions"] .timeline-track-select').click();
-    await page.locator('#timeline-inspector').getByText(/locked/i).first().waitFor();
-    assert.equal(await page.locator('#index-workspace').isVisible(),false,'Locked selection hides all working controls');
+    await page.locator('#timeline-add-index').click();
+    assert.equal(await page.locator('#timeline-index-picker [data-index="inscriptions"]').isDisabled(),true,'Locked indexes remain disabled in the chooser');
+    assert.equal(await page.locator('.timeline-track[data-index="inscriptions"]').count(),0,'Unadded locked indexes do not occupy tracks');
     await page.screenshot({path:path.join(out,'locked-features.png'),fullPage:true});
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
+    await page.locator('#timeline-index-picker [data-index="blocks"]').click();
+    await page.locator('.timeline-track[data-index="blocks"]').waitFor();
+    assert.equal(await page.locator('#timeline-details').evaluate(el=>el.open),true,'Adding Blocks opens its settings');
+    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Adding a track never starts indexing');
+    await page.locator('#timeline-details').evaluate(el=>el.open=false);
     const control = page.getByRole('switch', {name:'blocks On', exact:true});
     const live = page.getByRole('switch', {name:'blocks Live', exact:true});
     await page.evaluate(()=>window.GatewayTheme.ready);assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'light');
@@ -150,9 +154,24 @@ async function run() {
     const indexes = page.frameLocator('#indexes-module');
     await indexes.locator('.timeline-track').nth(1).waitFor();
     assert.equal(await page.locator('#address').inputValue(), 'indexes.gateway');
+    async function assertDocked() {
+      const geometry = await page.locator('#indexes-module').evaluate(frame=>{
+        const r=frame.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,pageHeight:document.documentElement.scrollHeight,viewport:innerHeight};
+      });
+      assert(geometry.top>=0&&geometry.bottom<=geometry.viewport+1&&geometry.height>100,'Embedded workspace fits below app navigation');
+      assert(geometry.pageHeight<=geometry.viewport+1,'Timeline cannot require outer page scrolling');
+      const editor = await indexes.locator('.timeline-editor').boundingBox();
+      assert(editor.y>=geometry.top&&editor.y+editor.height<=geometry.viewport+1,'Timeline remains visible within the window');
+      const before=editor.y;
+      await indexes.locator('#timeline-details').evaluate(el=>el.open=!el.open);
+      const after=await indexes.locator('.timeline-editor').boundingBox();
+      assert(Math.abs(before-after.y)<=1,'Expanding inspector details cannot displace the timeline');
+    }
+    await assertDocked();
     await page.screenshot({path:path.join(out,'shell-indexes-desktop.png'),fullPage:true});
     await page.setViewportSize({width:390,height:844});
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'Narrow shell overflow');
+    await assertDocked();
     await page.screenshot({path:path.join(out, 'shell-indexes-narrow.png'), fullPage:true});
     await page.locator('.nav-item[data-route="peers.gateway"]').click();
     await page.locator('#peer-data .panel').waitFor();

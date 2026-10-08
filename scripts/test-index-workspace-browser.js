@@ -34,8 +34,8 @@ async function run(){
    if(url.pathname==='/api/v1/index/sat')return reply({known:true,sat_number:0,state:'located',satpoint:{txid:'fixture',vout:0,offset:0},snapshot:{height:10},origin:{height:0},chain_state:'selected_chain',history_retained:false,history_recording:true,history_coverage:[{from:7,to:10}],note:'Known at snapshot 10.'});
    throw Error('Unexpected '+req.method()+' '+url.pathname);
   });
-  await page.goto(origin+'/indexes');await page.locator('.timeline-track').nth(5).waitFor();assert.equal(calls.filter(c=>c.body).length,0);
-  const selectTrack=async(id,view='build')=>{await page.locator('.timeline-track[data-index="'+id+'"] .timeline-track-select').click();await page.locator('#timeline-details').evaluate(el=>el.open=true);if(view!== 'build')await page.locator('[data-view="'+view+'"]').click()};
+  await page.goto(origin+'/indexes');await page.locator('.timeline-track[data-index="inscriptions"]').waitFor();assert.equal(calls.filter(c=>c.body).length,0);
+  const selectTrack=async(id,view='build')=>{if(!await page.locator('.timeline-track[data-index="'+id+'"]').count()){await page.locator('#timeline-add-index').click();await page.locator('#timeline-index-picker button[data-index="'+id+'"]').click()}await page.locator('.timeline-track[data-index="'+id+'"] .timeline-track-select').click();await page.locator('#timeline-details').evaluate(el=>el.open=true);if(view!== 'build')await page.locator('[data-view="'+view+'"]').click()};
   await selectTrack('blocks');assert.equal(await page.locator('#index').inputValue(),'blocks');assert.equal(await page.locator('#plan-form').isVisible(),true);assert.equal(calls.filter(c=>c.body).length,0,'inspection never enables or starts work');
   for(const id of ['sat-state','tx-locator','inscriptions','bitmap','txo-spender'])await page.locator('[data-output="'+id+'"]').check();
   await page.locator('#from').fill('0');await page.locator('#to').fill('792436');await page.locator('#advanced-retention summary').click();await page.locator('#retain-sat-history').check();

@@ -3,9 +3,8 @@
   "version": "0.7.0",
   "repository": "Blockamoto/gateway",
   "recorded_date_utc": "2026-10-08",
-  "status": "candidate-validated-final-source-and-live-acceptance-pending",
+  "status": "release-artifacts-validated-public-hosted-acceptance-pending",
   "initial_validation_source_revision": "38e96fcf38bb76739787a8c731df697e5118f92f",
-  "final_release_source_revision": null,
   "scope": {
     "enabled": [
       "Headers",
@@ -38,7 +37,7 @@
     },
     "focused_packaging": {
       "result": "PASS",
-      "tests": 7
+      "tests": 9
     },
     "native_installer_wrappers": {
       "result": "PASS",
@@ -46,10 +45,10 @@
       "scope": "Disposable inert payloads and isolated integration paths; no real system installation implied."
     },
     "linux_ci": {
-      "source_revision": "38e96fcf38bb76739787a8c731df697e5118f92f",
+      "source_revision": "98d4b508c23deb11287c42223db7c0495b79b717",
       "result": "PASS",
-      "run_id": 37805624668,
-      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/37805624668",
+      "run_id": 37808706709,
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/37808706709",
       "completed_stages": 14,
       "coverage": [
         "build",
@@ -76,7 +75,7 @@
         "THIRD-PARTY-NOTICES.txt",
         "GO-LICENSE.txt"
       ],
-      "scope": "Candidate binary structure and exact payload audit; final rebuild requires its own audit."
+      "scope": "Final rebuilt Windows and Linux executables; exact installer payloads, external validated header snapshot, resources and bundled notices."
     },
     "local_native_automatic_update": {
       "result": "PASS",
@@ -94,12 +93,12 @@
       "tampered_payload_rejected": true,
       "automatic_install_and_restart": true,
       "page_errors": [],
-      "scope": "Isolated native Windows update through a local fixture publisher, not a published 0.7.1 release."
+      "scope": "Native Windows real publisher local-fixture signing/distribution and client UI configuration/check/download, same-size tampered payload rejection and retry, explicitly selected automatic download and restart without further button presses, same management origin/original browser automatic reload, helper installed acknowledgement, new PID/version/exact binary hashes, byte-preserved appearance.json/profile settings/index policy/user sentinel and profile-saved dark palette after restart, retained public trust; no GitHub origin or release"
     },
     "public_publisher_download_adjustment": {
       "focused_tests": "PASS",
       "independent_review": "PASS",
-      "scope": "Exact approved GitHub release bundle direct download; pinned signature, expiry, release identity and content checks retained. Final committed-source CI remains pending."
+      "scope": "Exact approved public release bundle direct download with signatures, current expiry, identity, size and content checks retained; included in final runtime-source CI."
     },
     "local_defender": {
       "result": "LOCAL_DIAGNOSTIC_NO_THREATS",
@@ -112,32 +111,32 @@
       "scanned_files": [
         {
           "file": "gateway-client-v0.7.0-installer.exe",
-          "bytes": 116674048,
-          "sha256": "cea56902d0058ef17fd98792aa9698adbdc5f60a75ba7ef79877c03bec5d1784",
+          "bytes": 116654080,
+          "sha256": "9eaa3d46602ddc824115d9050b344156f1c16f4f6481ed84a62af67dd7453129",
           "exact_bytes_unchanged": true
         },
         {
           "file": "GatewayClient.exe",
-          "bytes": 11234816,
-          "sha256": "33d5fd09b278a273ea25fd18ebb498398a21ec16e52c1376ec1c6b3b1133f84c",
+          "bytes": 11226112,
+          "sha256": "dfdb7df419e395ea63eb2a583c3749c6f08aa72fa9f6a1283fa6127bb2d64f3a",
           "exact_bytes_unchanged": true
         },
         {
           "file": "GatewayOnDemand.exe",
-          "bytes": 5416448,
-          "sha256": "995e13338cbe642c95539784e35672c681e46bd64afa2a90ab161a00b6563e80",
+          "bytes": 5412864,
+          "sha256": "aeed125b26d723733b9226e6a0b471a476641376f1f2b70031d5e1215ddc1ceb",
           "exact_bytes_unchanged": true
         },
         {
           "file": "GatewayNativeHost.exe",
-          "bytes": 7543808,
-          "sha256": "8fc6eceb129bd7aabdcce2b4c5bd11b7272624f03378f731bee5b0099f795e08",
+          "bytes": 7540224,
+          "sha256": "f0ff2d0ca5b62521f2b0a93c175f4413efb3ebedd960a908a4ae474c773d2e81",
           "exact_bytes_unchanged": true
         },
         {
           "file": "GatewayUpdateHelper.exe",
-          "bytes": 7648768,
-          "sha256": "159a9503d2ccc4ce597ef78391c1c3ecc921dc98e6a2e7bc386966eed56a0d24",
+          "bytes": 7644672,
+          "sha256": "a5025ae2264f574521d4ce38f0373d7fba19081b6789c2be8eeb2db9b8e82f8d",
           "exact_bytes_unchanged": true
         }
       ],
@@ -166,10 +165,7 @@
       "operator_guide": "../packaging/update-publisher/RENEWAL.md"
     }
   },
-  "remaining_before_publication": [
-    "Final exact-source CI after publisher download adjustment.",
-    "Final release rebuild, artifact hashes and binary/payload audit."
-  ],
+  "remaining_before_publication": [],
   "remaining_live_acceptance": [
     "Owner changes repository visibility and approved release assets become public.",
     "Verify hosted signed application and header delivery against approved artifact identities.",
@@ -177,8 +173,10 @@
     "Run renewal workflow and verify resulting hosted sequences, expiries and public receipt."
   ],
   "limits": [
-    "Initial-source validation does not automatically certify later source or rebuilt bytes.",
+    "Final Linux CI covers the validated runtime source. Windows full-suite results are recorded for the initial source, with focused publisher/build checks and rebuilt-artifact acceptance for subsequent changes.",
     "Expected skipped tests are not passes.",
     "Local fixtures do not establish public hosted behavior or real browser-profile registration."
-  ]
+  ],
+  "validated_runtime_source_revision": "98d4b508c23deb11287c42223db7c0495b79b717",
+  "packaged_source_reference": "The artifact-manifest.json and SOURCE-REVISION.txt identify the packaged commit; only release records may differ from the validated runtime source."
 }

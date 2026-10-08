@@ -1,6 +1,17 @@
 {
-  "schema": 1,
+  "application_expires_at": "2026-11-07T17:30:26Z",
+  "application_manifest_sha256": "6981fca2587cce6f686792338c0dc6eb560d8afe5bb9935404e406982123c089",
+  "application_sequence": 3,
+  "bundle_asset_id": 622515228,
+  "bundle_sha256": "0c8c611939cd8b71ee0bb80c37138d08b7443b36a0c710978a6137b992670085",
+  "header_sequence": 2,
+  "headers_expires_at": "2026-11-07T17:30:26Z",
+  "headers_manifest_sha256": "b6a1697edc40eb5bb2f320ebc52149042a5080674872fb33bf32005bf532ec36",
+  "publisher_url": "https://gateway-updates.onrender.com",
   "repository": "Blockamoto/gateway",
-  "version": "0.7.0",
-  "status": "awaiting-initial-publication"
+  "schema": 1,
+  "source_revision": "e7c81ea0aa059e700881eff3fd7f62c3506645f0",
+  "status": "verified",
+  "verified_at": "2026-10-08T17:31:11+00:00",
+  "version": "0.7.0"
 }

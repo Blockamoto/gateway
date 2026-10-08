@@ -1,6 +1,6 @@
 # Gateway 0.7.0 — first public testing release
 
-Gateway retrieves the Bitcoin blocks you request and lets you inspect their transactions, inputs, outputs and positions. Bitcoin Core is optional. The release artifacts have passed local validation and final runtime-source Linux CI. Public hosted delivery acceptance remains pending; see [status](STATUS.md) and the [acceptance record](RELEASE-ACCEPTANCE-0.7.0.json).
+Gateway retrieves the Bitcoin blocks you request and lets you inspect their transactions, inputs, outputs and positions. Bitcoin Core is optional. The published release artifacts passed local validation and final runtime-source Linux CI. The public hosted updater and manual commissioning of its weekly renewal workflow passed; see [status](STATUS.md) and the [acceptance record](RELEASE-ACCEPTANCE-0.7.0.json).
 
 ## Available
 
@@ -30,6 +30,10 @@ Initial source `38e96fcf38bb76739787a8c731df697e5118f92f` passed the Windows Go 
 
 A native automatic update from 0.7.0 to a synthetic local 0.7.1 fixture completed download, installation and restart with settings and headers preserved. This demonstrates the local updater path, not live production delivery. Local Defender scans reported no threats in the exact installer and four application executables with unchanged definitions 1.459.601.0; that does not establish cloud or browser-download clearance.
 
-The dedicated hosted endpoint and restricted renewal environment are prepared, and the weekly approved-release renewal workflow is committed. Public delivery and live renewal acceptance wait for repository visibility and release publication. The final runtime-source Linux checks and rebuilt binary/payload audit passed before publication; the acceptance record identifies those checks and exact scanned files. See [updates](UPDATES.md) and the [renewal operator guide](../packaging/update-publisher/RENEWAL.md).
+The public hosted updater passed a native automatic install/restart into the exact 0.7.0 release using an isolated synthetic older-version fixture, plus a fresh-install automatic check. Settings and headers were preserved. Independent HTTPS verification passed for both application archives and all 97 header chunks, and repeated successfully against the renewed feeds. Acceptance used a warmed service; idle cold-start latency was not measured.
+
+The dedicated service is live, and the configured weekly approved-release renewal workflow passed its [manual commissioning run](https://github.com/Blockamoto/gateway/actions/runs/37816973175). Both feeds now expire on 7 November 2026 at 17:30:26 UTC, at application sequence 3 and header sequence 2. Released application and header content remain unchanged. Future scheduled execution still depends on working permissions and hosting.
+
+The package and `v0.7.0` tag identify source `e7c81ea0aa059e700881eff3fd7f62c3506645f0`; the later feed-operation fix is separate. The acceptance record identifies final runtime-source CI, rebuilt binary/payload checks and exact scanned files. See [updates](UPDATES.md) and the [renewal operator guide](../packaging/update-publisher/RENEWAL.md).
 
 Gateway's original source is now distributed under [MIT](../LICENSE), with [third-party notices](../THIRD-PARTY-NOTICES.md) retained.

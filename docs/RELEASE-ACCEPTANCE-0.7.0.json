@@ -3,7 +3,7 @@
   "version": "0.7.0",
   "repository": "Blockamoto/gateway",
   "recorded_date_utc": "2026-10-08",
-  "status": "release-artifacts-validated-public-hosted-acceptance-pending",
+  "status": "published-hosted-and-renewal-verified",
   "initial_validation_source_revision": "38e96fcf38bb76739787a8c731df697e5118f92f",
   "scope": {
     "enabled": [
@@ -145,38 +145,241 @@
         "No Microsoft cloud, Chrome download or other-machine clearance established.",
         "No code-signing identity or certificate added."
       ]
+    },
+    "public_https_delivery": {
+      "result": "PASS",
+      "source_revision": "e7c81ea0aa059e700881eff3fd7f62c3506645f0",
+      "application_sequence": 1,
+      "header_sequence": 1,
+      "application_archive_count": 2,
+      "header_chunk_count": 97,
+      "complete_downloads": 99,
+      "header_count": 969480,
+      "complete_header_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+      "application_manifest_sha256": "5e01ae25e35c1fc9ef30779a35b4141a47edccd869fc8f0e606c71b60c57d9b2",
+      "headers_manifest_sha256": "fa3e6a1c0dfd9418feac49dfcef4661b9453f461f678b44da1ea6aee54a85097",
+      "transport": "Native curl HTTPS; no redirects or credentials; signature, size and content checks retained.",
+      "application_expires_at_utc": "2026-11-07T16:56:53Z",
+      "headers_expires_at_utc": "2026-11-07T16:57:21Z",
+      "scope": "Initial publication verification, before feed renewal."
+    },
+    "public_native_automatic_update": {
+      "result": "PASS",
+      "fixture_source_version": "0.6.99",
+      "source_is_synthetic_fixture": true,
+      "installed_version": "0.7.0",
+      "source_revision": "e7c81ea0aa059e700881eff3fd7f62c3506645f0",
+      "application_sequence": 1,
+      "download_button_pressed": false,
+      "restart_button_pressed": false,
+      "installed_binary_sha256": {
+        "GatewayClient.exe": "dfdb7df419e395ea63eb2a583c3749c6f08aa72fa9f6a1283fa6127bb2d64f3a",
+        "GatewayUpdateHelper.exe": "a5025ae2264f574521d4ce38f0373d7fba19081b6789c2be8eeb2db9b8e82f8d",
+        "GatewayOnDemand.exe": "aeed125b26d723733b9226e6a0b471a476641376f1f2b70031d5e1215ddc1ceb",
+        "GatewayNativeHost.exe": "f0ff2d0ca5b62521f2b0a93c175f4413efb3ebedd960a908a4ae474c773d2e81"
+      },
+      "preserved_profile_files": {
+        "settings.json": "037e26ed24be7a4d61183b62bac0dda26ad64589fa4e650aeb08e9a557952e42",
+        "appearance.json": "99529e33f9fdb8c0e22634c7ad88478979f2c6cb778a1a118c4c1aee5680ae49",
+        "keep-user-data.txt": "bf702fd77e4e32611ea28bf263e383eac7e20b85d9851e4abb28d245e9067ab8",
+        "indexes/live.json": "fe86d5b26b0ef18cb98f18f63e98e558ede0fcc1431b560da6b2588a315eb4ae",
+        "headers/headers.bin": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467"
+      },
+      "preserved_bootstrap_files": {
+        "headers-mainnet.bin": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "headers-mainnet.json": "11becb52a2a12e6f935039d6f3517aef0db79322377e8bedd061aca946991c98"
+      },
+      "fresh_bundled_channel": {
+        "id": "stable",
+        "label": "Gateway updates",
+        "visible": true,
+        "configured_before_ui": true,
+        "automatic_check": true,
+        "automatic_install": false,
+        "manual_configuration_actions": 0,
+        "live_check": true,
+        "up_to_date": true,
+        "last_checked": "2026-10-08T17:13:35Z"
+      },
+      "fresh_header_feed": {
+        "sequence": 1,
+        "digest": "fa3e6a1c0dfd9418feac49dfcef4661b9453f461f678b44da1ea6aee54a85097",
+        "signed_count": 969480,
+        "validated_snapshot_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "complete_file_sha256": "4a433ff5ca82dbb3cee7bb6db755a61dec1638a619ab6289a47a5c700316b1b3",
+        "complete_file_count": 970514,
+        "ordinary_peer_extension_headers": 1034,
+        "synchronization": {
+          "ready": true,
+          "state": "current",
+          "count": 970514,
+          "height": 970513
+        },
+        "existing_snapshot_prefix_preserved": true
+      },
+      "full_profile_header_bytes": 77558400,
+      "github_credentials_in_client": false,
+      "private_signing_key_read": false,
+      "fixture_release_created": false,
+      "system_install_performed": false,
+      "production_profile_touched": false,
+      "publisher_prewarmed": true,
+      "cold_start_measured": false,
+      "page_errors": []
+    },
+    "renewed_public_https_delivery": {
+      "result": "PASS",
+      "source_revision": "e7c81ea0aa059e700881eff3fd7f62c3506645f0",
+      "application_sequence": 3,
+      "header_sequence": 2,
+      "bundle_sha256": "0c8c611939cd8b71ee0bb80c37138d08b7443b36a0c710978a6137b992670085",
+      "github_asset_id": 622515228,
+      "github_asset_bytes": 86975055,
+      "github_asset_digest_and_size_match": true,
+      "workflow_receipt_digest_match": true,
+      "application_archive_count": 2,
+      "header_chunk_count": 97,
+      "complete_downloads": 99,
+      "header_count": 969480,
+      "complete_header_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+      "application_manifest_sha256": "6981fca2587cce6f686792338c0dc6eb560d8afe5bb9935404e406982123c089",
+      "headers_manifest_sha256": "b6a1697edc40eb5bb2f320ebc52149042a5080674872fb33bf32005bf532ec36",
+      "application_expires_at_utc": "2026-11-07T17:30:26Z",
+      "headers_expires_at_utc": "2026-11-07T17:30:26Z",
+      "approved_content_unchanged_except_sequence_and_timestamps": true,
+      "unchanged_artifact_and_chunk_entries": 99,
+      "transport": "Native curl 8.21.0/Schannel HTTPS, default config disabled, no redirects or credentials; existing strict signature, size and content checks unchanged.",
+      "verified_at": "2026-10-08T17:36:36Z",
+      "scope": "Independent complete downloads against the current renewed manifests; app archives, all header chunks, signatures, sizes, hashes, approved release/source and full reconstructed header digest verified."
     }
   },
   "hosted_delivery": {
     "endpoint": "https://gateway-updates.onrender.com",
     "endpoint_allocated": true,
-    "repository_visibility": "private",
+    "repository_visibility": "public",
     "visibility_change_owner_controlled": true,
-    "live_acceptance": "pending-public-repository-and-release",
+    "live_acceptance": "PASS",
     "renewal": {
       "workflow_committed": true,
-      "schedule": "weekly",
+      "schedule": "Mondays at 06:17 UTC",
       "environment": "gateway-update-renewal",
       "restricted_branch": "main",
       "signing_and_deploy_hook_secrets_provisioned": true,
       "approved_release_only": true,
       "validity_days": 30,
-      "live_run_verified": false,
-      "operator_guide": "../packaging/update-publisher/RENEWAL.md"
+      "live_run_verified": true,
+      "operator_guide": "../packaging/update-publisher/RENEWAL.md",
+      "manual_run_dispatched": true,
+      "commissioning_attempts": [
+        {
+          "run_id": 37815060892,
+          "run_url": "https://github.com/Blockamoto/gateway/actions/runs/37815060892",
+          "result": "FAIL_BEFORE_UPLOAD_OR_PROMOTION",
+          "error": "HTTP 415 during ZIP upload request negotiation",
+          "canonical_feeds_unchanged": true,
+          "canonical_application_sequence": 1,
+          "canonical_header_sequence": 1
+        },
+        {
+          "run_id": 37816973175,
+          "run_url": "https://github.com/Blockamoto/gateway/actions/runs/37816973175",
+          "result": "PASS",
+          "trigger": "workflow_dispatch",
+          "scope": "Manual commissioning of the configured weekly workflow: approved-content renewal, upload, promotion, Render deployment and exact live-manifest comparison.",
+          "application_sequence": 3,
+          "header_sequence": 2,
+          "application_expires_at": "2026-11-07T17:30:26Z",
+          "headers_expires_at": "2026-11-07T17:30:26Z",
+          "verified_at": "2026-10-08T17:31:11+00:00"
+        }
+      ],
+      "commissioning_fix": {
+        "scope": "Upload request Accept header uses JSON response negotiation while ZIP request content type remains correct.",
+        "regression_tests_passed": 18,
+        "independently_reviewed": true,
+        "source_revision": "6f2c17b8d2c8ed9328f26683d989e12bea86a5bb",
+        "successful_live_rerun": "PASS",
+        "linux_ci": {
+          "result": "PASS",
+          "run_id": 37815970248,
+          "run_url": "https://github.com/Blockamoto/gateway/actions/runs/37815970248"
+        }
+      },
+      "manual_commissioning_result": "PASS",
+      "future_scheduled_execution_guaranteed": false,
+      "public_receipt": "UPDATE-FEED-STATUS.json",
+      "receipt_commit": "b3a49c8a14f528f58c24a678f1e4ea9e46093031"
+    },
+    "initial_acceptance_deployment": {
+      "id": "dep-db3sq8142hec73eubo30",
+      "source_revision": "e7c81ea0aa059e700881eff3fd7f62c3506645f0",
+      "status": "live"
+    },
+    "deployment": {
+      "id": "dep-db3t6fij9qps73fce88g",
+      "source_revision": "6f2c17b8d2c8ed9328f26683d989e12bea86a5bb",
+      "status": "live"
+    },
+    "current_verified_feed": {
+      "source_revision": "e7c81ea0aa059e700881eff3fd7f62c3506645f0",
+      "bundle_sha256": "0c8c611939cd8b71ee0bb80c37138d08b7443b36a0c710978a6137b992670085",
+      "bundle_asset_id": 622515228,
+      "application_sequence": 3,
+      "header_sequence": 2,
+      "application_expires_at": "2026-11-07T17:30:26Z",
+      "headers_expires_at": "2026-11-07T17:30:26Z",
+      "application_manifest_sha256": "6981fca2587cce6f686792338c0dc6eb560d8afe5bb9935404e406982123c089",
+      "headers_manifest_sha256": "b6a1697edc40eb5bb2f320ebc52149042a5080674872fb33bf32005bf532ec36",
+      "verified_at": "2026-10-08T17:31:11+00:00"
     }
   },
   "remaining_before_publication": [],
-  "remaining_live_acceptance": [
-    "Owner changes repository visibility and approved release assets become public.",
-    "Verify hosted signed application and header delivery against approved artifact identities.",
-    "Verify application update/install/restart through the public hosted service.",
-    "Run renewal workflow and verify resulting hosted sequences, expiries and public receipt."
-  ],
+  "remaining_live_acceptance": [],
   "limits": [
     "Final Linux CI covers the validated runtime source. Windows full-suite results are recorded for the initial source, with focused publisher/build checks and rebuilt-artifact acceptance for subsequent changes.",
     "Expected skipped tests are not passes.",
-    "Local fixtures do not establish public hosted behavior or real browser-profile registration."
+    "Local fixtures do not establish public hosted behavior or real browser-profile registration.",
+    "Public native acceptance used a warmed service; idle cold-start latency was not measured.",
+    "The weekly workflow passed a manually triggered commissioning run. Future scheduled runs depend on continued permissions, enabled scheduling and available hosting.",
+    "The published native automatic-update test used an isolated synthetic older client. No synthetic application release or real system installation was performed."
   ],
   "validated_runtime_source_revision": "98d4b508c23deb11287c42223db7c0495b79b717",
-  "packaged_source_reference": "The artifact-manifest.json and SOURCE-REVISION.txt identify the packaged commit; only release records may differ from the validated runtime source."
+  "packaged_source_reference": "The v0.7.0 tag and artifact source remain e7c81ea0aa059e700881eff3fd7f62c3506645f0. Runtime validation covers 98d4b508c23deb11287c42223db7c0495b79b717; only release records differ in the packaged commit. Later operator and feed-receipt commits do not replace or retag the application artifacts.",
+  "publication": {
+    "release_url": "https://github.com/Blockamoto/gateway/releases/tag/v0.7.0",
+    "release_id": 407055194,
+    "draft": false,
+    "prerelease": true,
+    "repository_public": true,
+    "original_asset_count": 9,
+    "packaged_source_revision": "e7c81ea0aa059e700881eff3fd7f62c3506645f0",
+    "tag_commit": "e7c81ea0aa059e700881eff3fd7f62c3506645f0",
+    "initial_bundle_sha256": "6cd43b88585d7c9ae1e48171d37a213a8cedcb310b7108d596731a110546ffe0"
+  },
+  "validation_attempt_notes": [
+    {
+      "check": "public HTTPS transfers",
+      "initial_result": "Python urllib transfer verification encountered premature EOF, repeated with loop-until-EOF reading.",
+      "final_result": "Native curl completed all 99 downloads with unchanged signature, length and content validation.",
+      "application_source_changed": false
+    },
+    {
+      "check": "fresh header preservation",
+      "initial_result": "Whole-file hash equality failed when ordinary synchronization extended the valid snapshot.",
+      "final_result": "Corrected harness checked the original validated snapshot prefix; it was byte-preserved and the same application binaries passed with 1,034 normal peer-added headers.",
+      "application_source_changed": false
+    }
+  ],
+  "publisher_metadata_history": [
+    {
+      "scope": "Application notes were refreshed from the corrected public release body before renewal; the application sequence advanced to 2 while the header sequence remained 1. Other bundle entries remained byte-identical.",
+      "application_artifacts_changed": false,
+      "header_content_changed": false
+    },
+    {
+      "scope": "The successful weekly-workflow commissioning run renewed the approved notes and content at application sequence 3 and header sequence 2. Only the two manifest entries changed, through sequences and timestamps.",
+      "application_artifacts_changed": false,
+      "header_content_changed": false
+    }
+  ]
 }

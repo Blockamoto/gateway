@@ -1,6 +1,6 @@
 # Gateway updates
 
-Gateway supports signed application updates and separately signed header delivery. The bundled Gateway channel provisions its hosted source and public verification key on first launch. Ordinary users need no publisher account, access token or private key. The configured address and mode are shown in **Settings → Updates**.
+Gateway supports signed application updates and separately signed header delivery. The bundled Gateway channel provisions `https://gateway-updates.onrender.com` and its public verification key on first launch. Ordinary users need no publisher account, access token or private key. The configured address and mode are shown in **Settings → Updates**. The endpoint is allocated; live acceptance is pending public repository visibility and release publication, as recorded in [status](STATUS.md).
 
 ## Choose when updates happen
 
@@ -47,4 +47,8 @@ The publisher reads approved GitHub release artifacts, checks source/tag and art
 
 Signed metadata has an issue and expiry time, with a maximum validity of 31 days. Expiry stops acceptance of stale delivery information; it does not expire the installed application or the signing key. Renewal must preserve the approved release identity and advance valid metadata without approving arbitrary new code.
 
-The 0.7.0 hosted setup and renewal automation are under preparation. This document does not claim they are deployed or tested. See [current status](STATUS.md) for acceptance; publication must include a verified live application check and header delivery check. Operators should test renewal and failure reporting before relying on it unattended.
+The weekly GitHub workflow is committed and the `gateway-update-renewal` environment is restricted to `main`, with its signing and deployment-hook secrets provisioned. It renews only the committed approved release, extends each feed to 30 days and advances its independent sequence without changing app/header content. It does not choose a new application release automatically.
+
+The public service obtains the exact approved release bundle directly from GitHub's release-download URL, avoiding anonymous REST rate limits. It still verifies the pinned signatures, expiry, release identity and every app/header byte before serving. Render receives public verification material, not the private signing key. Public downloads need no GitHub credential; anonymous delivery cannot start while the source repository remains private.
+
+Local publisher/renewal checks and a native automatic-update fixture passed. The dedicated public service and a live renewal run remain unaccepted until the owner changes repository visibility and the approved release is available. Do not treat workflow configuration as proof of successful scheduled operation. Follow the [renewal operator guide](../packaging/update-publisher/RENEWAL.md), check [feed status](UPDATE-FEED-STATUS.json), and review [release acceptance](RELEASE-ACCEPTANCE-0.7.0.json) before relying on unattended delivery.

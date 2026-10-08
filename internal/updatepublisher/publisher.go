@@ -430,11 +430,14 @@ func originGET(ctx context.Context, client *http.Client, target, token, accept s
 	setOriginHeaders(request, token, accept)
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, errors.New("private GitHub origin request failed")
+		return nil, errors.New("GitHub origin request failed")
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub origin returned HTTP %d", response.StatusCode)
+	}
+	if response.ContentLength > limit {
+		return nil, errors.New("GitHub origin response exceeds its download limit")
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil || int64(len(data)) > limit {

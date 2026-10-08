@@ -1,18 +1,25 @@
 # Gateway 0.7.0 status
 
-The first public testing release is being prepared. The source targets **Headers and Bitcoin Blocks**, with the explorer/schema, ordinary Bitcoin serving, optional local providers, Windows browser access and signed updates. Additional indexes and Gateway sharing remain locked.
+The **0.7.0 release candidate has passed local validation and initial-source Linux CI**. It enables Headers and Bitcoin Blocks, with the explorer/schema, ordinary Bitcoin serving, optional local providers, Windows browser access and signed updates. Additional indexes and Gateway sharing remain locked.
 
-This repository's documentation describes the intended 0.7.0 behavior. It does not yet claim that release artifacts, live hosted delivery or renewal automation have passed final acceptance. Exact source/package hashes and test results must be recorded before publication. The repository remains private during preparation; its owner controls the public visibility change.
+The repository remains private during preparation; its owner controls the public visibility change. Public hosted delivery and a live renewal run are still pending that change and release publication. The [acceptance record](RELEASE-ACCEPTANCE-0.7.0.json) separates completed evidence from the final-source and live checks still required.
 
-## Remaining release acceptance
+## Completed validation
 
-- Build the exact release source and validate Windows/Linux packages, bundled notices, fresh startup and restart.
-- Run native, browser, packaging and relevant race checks, keeping skips and platform limitations explicit.
-- Verify installer update/source choices, real `.bitcoin` browser registration and data preservation in disposable profiles.
-- Exercise ordinary Bitcoin block retrieval, bounded index work, privacy/serving controls and locked backend paths.
-- Verify the live signed app/header feed, application install/restart and incremental headers against the published artifact hashes.
-- Verify the renewal workflow and its failure visibility before calling renewal automatic.
+- Initial source `38e96fcf38bb76739787a8c731df697e5118f92f`: Windows Go suite **817 passed, 54 expected skips**, Go vet and six JavaScript helper suites passed.
+- [Linux CI on that exact source](https://github.com/Blockamoto/gateway/actions/runs/37805624668): all 14 stages passed, including Go tests, vet, race, packaging, companion/helpers and actual browser UI regressions.
+- Focused packaging: seven regression tests and four native installer-wrapper fixture suites passed. These use disposable inert payloads; they do not represent a real system installation.
+- Release build and binary audit passed with **969,480 headers**, the full snapshot external to the client, matching installer payloads and bundled license notices.
+- A native Windows automatic update from 0.7.0 to a **synthetic local 0.7.1 fixture** passed download, verification, install, restart and settings/header preservation. Tampered bytes were rejected. This used a local test publisher, not the production service.
+- Five exact Windows files, including the installer, had no threats reported by local Defender diagnostic scans using unchanged definitions **1.459.601.0**. The binaries remain unsigned; this establishes neither cloud/download clearance nor acceptance on other machines.
+- The public publisher download adjustment passed focused tests and independent review. It uses the approved release's direct bundle URL instead of depending on anonymous GitHub REST requests, while retaining signature and content verification.
 
-Windows binaries remain unsigned; no general antivirus-clearance claim is made.
+## Before publication and live acceptance
+
+The final source must pass its exact-revision CI and final rebuild/audit before publishing. Earlier file hashes and scan results describe the tested candidate bytes, not automatically any later rebuilt bytes.
+
+The dedicated endpoint is allocated at `https://gateway-updates.onrender.com`. The renewal environment is restricted to `main`, its signing/deployment secrets are provisioned, and the weekly workflow is committed. This is prepared infrastructure, not a completed live renewal. After the owner makes the repository public and release assets are available, verify hosted app/header delivery, the application update path and a manual renewal run through that workflow.
+
+The [renewal operator guide](../packaging/update-publisher/RENEWAL.md) describes the approved-release policy, failure reporting and recovery. [Feed status](UPDATE-FEED-STATUS.json) records the current publication/renewal state.
 
 Read [release notes](RELEASE-NOTES-v0.7.0.md), [Getting started](GETTING-STARTED.md), [the QA guide](TESTING-0.7.0.md) and [the roadmap](GATEWAY-ROADMAP.md).

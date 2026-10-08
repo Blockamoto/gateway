@@ -1,0 +1,184 @@
+{
+  "schema": 1,
+  "version": "0.7.0",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-08",
+  "status": "candidate-validated-final-source-and-live-acceptance-pending",
+  "initial_validation_source_revision": "38e96fcf38bb76739787a8c731df697e5118f92f",
+  "final_release_source_revision": null,
+  "scope": {
+    "enabled": [
+      "Headers",
+      "Bitcoin Blocks",
+      "known-block explorer and schema",
+      "ordinary Bitcoin serving",
+      "optional read-only local providers",
+      "Windows browser integration",
+      "signed application and header updates"
+    ],
+    "locked": [
+      "additional indexes",
+      "Gateway-to-Gateway peerhood and sharing"
+    ]
+  },
+  "completed_checks": {
+    "windows_go": {
+      "source_revision": "38e96fcf38bb76739787a8c731df697e5118f92f",
+      "result": "PASS",
+      "passed": 817,
+      "expected_skips": 54,
+      "failed": 0
+    },
+    "go_vet": {
+      "result": "PASS"
+    },
+    "javascript_helpers": {
+      "result": "PASS",
+      "suites": 6
+    },
+    "focused_packaging": {
+      "result": "PASS",
+      "tests": 7
+    },
+    "native_installer_wrappers": {
+      "result": "PASS",
+      "suites": 4,
+      "scope": "Disposable inert payloads and isolated integration paths; no real system installation implied."
+    },
+    "linux_ci": {
+      "source_revision": "38e96fcf38bb76739787a8c731df697e5118f92f",
+      "result": "PASS",
+      "run_id": 37805624668,
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/37805624668",
+      "completed_stages": 14,
+      "coverage": [
+        "build",
+        "full Go tests",
+        "vet",
+        "race checks",
+        "browser companion and UI helpers",
+        "packaging",
+        "actual browser UI regressions"
+      ]
+    },
+    "candidate_binary_audit": {
+      "result": "PASS",
+      "headers": {
+        "bytes": 77558400,
+        "count": 969480,
+        "sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "fresh_installer_payload_verified": true,
+        "external_to_client": true
+      },
+      "installer_payloads_match": true,
+      "bundled_notices": [
+        "LICENSE",
+        "THIRD-PARTY-NOTICES.txt",
+        "GO-LICENSE.txt"
+      ],
+      "scope": "Candidate binary structure and exact payload audit; final rebuild requires its own audit."
+    },
+    "local_native_automatic_update": {
+      "result": "PASS",
+      "current_version": "0.7.0",
+      "synthetic_fixture_version": "0.7.1",
+      "production_trust_configured": false,
+      "public_hosted_delivery_tested": false,
+      "preserved_files": [
+        "settings.json",
+        "appearance.json",
+        "keep-user-data.txt",
+        "indexes/live.json",
+        "headers/headers.bin"
+      ],
+      "tampered_payload_rejected": true,
+      "automatic_install_and_restart": true,
+      "page_errors": [],
+      "scope": "Isolated native Windows update through a local fixture publisher, not a published 0.7.1 release."
+    },
+    "public_publisher_download_adjustment": {
+      "focused_tests": "PASS",
+      "independent_review": "PASS",
+      "scope": "Exact approved GitHub release bundle direct download; pinned signature, expiry, release identity and content checks retained. Final committed-source CI remains pending."
+    },
+    "local_defender": {
+      "result": "LOCAL_DIAGNOSTIC_NO_THREATS",
+      "intelligence_version": "1.459.601.0",
+      "definition_updates_requested": false,
+      "definitions_unchanged": true,
+      "protection_or_exclusion_changes": false,
+      "external_submission_requested": false,
+      "authenticode_signed": false,
+      "scanned_files": [
+        {
+          "file": "gateway-client-v0.7.0-installer.exe",
+          "bytes": 116674048,
+          "sha256": "cea56902d0058ef17fd98792aa9698adbdc5f60a75ba7ef79877c03bec5d1784",
+          "exact_bytes_unchanged": true
+        },
+        {
+          "file": "GatewayClient.exe",
+          "bytes": 11234816,
+          "sha256": "33d5fd09b278a273ea25fd18ebb498398a21ec16e52c1376ec1c6b3b1133f84c",
+          "exact_bytes_unchanged": true
+        },
+        {
+          "file": "GatewayOnDemand.exe",
+          "bytes": 5416448,
+          "sha256": "995e13338cbe642c95539784e35672c681e46bd64afa2a90ab161a00b6563e80",
+          "exact_bytes_unchanged": true
+        },
+        {
+          "file": "GatewayNativeHost.exe",
+          "bytes": 7543808,
+          "sha256": "8fc6eceb129bd7aabdcce2b4c5bd11b7272624f03378f731bee5b0099f795e08",
+          "exact_bytes_unchanged": true
+        },
+        {
+          "file": "GatewayUpdateHelper.exe",
+          "bytes": 7648768,
+          "sha256": "159a9503d2ccc4ce597ef78391c1c3ecc921dc98e6a2e7bc386966eed56a0d24",
+          "exact_bytes_unchanged": true
+        }
+      ],
+      "limits": [
+        "These findings apply only to the exact candidate bytes and local intelligence version.",
+        "No Microsoft cloud, Chrome download or other-machine clearance established.",
+        "No code-signing identity or certificate added."
+      ]
+    }
+  },
+  "hosted_delivery": {
+    "endpoint": "https://gateway-updates.onrender.com",
+    "endpoint_allocated": true,
+    "repository_visibility": "private",
+    "visibility_change_owner_controlled": true,
+    "live_acceptance": "pending-public-repository-and-release",
+    "renewal": {
+      "workflow_committed": true,
+      "schedule": "weekly",
+      "environment": "gateway-update-renewal",
+      "restricted_branch": "main",
+      "signing_and_deploy_hook_secrets_provisioned": true,
+      "approved_release_only": true,
+      "validity_days": 30,
+      "live_run_verified": false,
+      "operator_guide": "../packaging/update-publisher/RENEWAL.md"
+    }
+  },
+  "remaining_before_publication": [
+    "Final exact-source CI after publisher download adjustment.",
+    "Final release rebuild, artifact hashes and binary/payload audit."
+  ],
+  "remaining_live_acceptance": [
+    "Owner changes repository visibility and approved release assets become public.",
+    "Verify hosted signed application and header delivery against approved artifact identities.",
+    "Verify application update/install/restart through the public hosted service.",
+    "Run renewal workflow and verify resulting hosted sequences, expiries and public receipt."
+  ],
+  "limits": [
+    "Initial-source validation does not automatically certify later source or rebuilt bytes.",
+    "Expected skipped tests are not passes.",
+    "Local fixtures do not establish public hosted behavior or real browser-profile registration."
+  ]
+}

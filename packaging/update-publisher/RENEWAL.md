@@ -34,6 +34,10 @@ fails closed when hosting or renewal is unavailable.
    key. Public GitHub downloads require no token. While the repository remains
    private, anonymous live delivery waits for its owner to make it public; the
    workflow itself can still access private assets using `GITHUB_TOKEN`.
+   Anonymous startup downloads the exact approved `releases/download/vVERSION/`
+   bundle directly, avoiding shared-IP REST API rate limits. It still verifies
+   pinned signatures, expiry, release identity, and every app/header byte before
+   serving. An explicitly supplied private-origin token retains the REST path.
 6. Once live delivery is available, run the workflow manually on main and check
    that its receipt says `verified` and both hosted sequences/expiries match.
    The committed workflow then runs weekly. No Codex or workstation task is

@@ -52,6 +52,29 @@ class PackagingTests(unittest.TestCase):
     def namespace(self, script):
         return runpy.run_path(str(self.root / 'scripts' / script))
 
+    def test_release_build_info_rejects_personal_package_identities(self):
+        validate = self.namespace('build-release.py')['validate_release_build_info']
+        for value in ('_/C_/Users/example/source', '_/home/example/source', '_/root/source', 'C:\\Users\\example\\source'):
+            with self.subTest(value=value), self.assertRaisesRegex(SystemExit, 'personal Go package'):
+                validate('app: go1.27.1\n\tpath\t' + value + '\n\tbuild\t-trimpath=true\n')
+        validate('app: go1.27.1\n\tpath\t_/C_/GatewayReleaseBuild/source\n\tbuild\t-trimpath=true\n')
+        validate('app: go1.27.1\n\tpath\t_/opt/gateway-release/source\n')
+        with self.assertRaisesRegex(SystemExit, 'missing or personal'):
+            validate('app: no Go build information\n')
+
+    def test_release_workspace_bounds(self):
+        validate = self.namespace('build-release.py')['validate_release_workspace']
+        neutral = Path(self.root.anchor) / 'GatewayReleaseBuild' / 'fixture' / 'source'
+        home = neutral.parent / 'operator-home'
+        with patch.object(Path, 'home', return_value=home):
+            validate(neutral, neutral/'build/work', str(neutral.parent/'gopath'))
+            with self.assertRaisesRegex(SystemExit, 'personal home'):
+                validate(home/'source', home/'source/work', '')
+            with self.assertRaisesRegex(SystemExit, 'outside GOPATH'):
+                validate(neutral, neutral/'build/work', str(neutral.parent))
+            with self.assertRaisesRegex(SystemExit, 'inside the neutral'):
+                validate(neutral, neutral.parent/'outside-work', '')
+
     def test_builder_installer_payload_and_helper_targets(self):
         calls = []
         out = self.root / 'build'
@@ -63,6 +86,7 @@ class PackagingTests(unittest.TestCase):
             calls.append((target.name, options['env']['GOOS'], command[command.index('-ldflags') + 1]))
             if target.name.endswith('-installer.exe'):
                 payload = Path(options['cwd']) / 'payload'
+                self.assertTrue(Path(options['cwd']).resolve().is_relative_to(self.root/'build/release-work'))
                 self.assertEqual((Path(options['cwd'])/'gateway_windows_amd64.syso').read_bytes(),b'fixture-installer-resource-object')
                 self.assertEqual((payload / 'COMPATIBILITY.json').read_bytes(), self.compatibility)
                 self.assertEqual((payload / 'TESTING-0.6.4.md').read_bytes(), (self.root / 'docs/TESTING-0.6.4.md').read_bytes())

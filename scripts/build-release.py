@@ -3,7 +3,7 @@
 Requires Python 3 and Go 1.23+; no third-party Go packages or network fetches.
 """
 from __future__ import annotations
-import argparse, base64, datetime, hashlib, json, os, shutil, subprocess, sys, tempfile
+import argparse, base64, datetime, hashlib, json, os, re, shutil, subprocess, sys, tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -15,12 +15,38 @@ def public_object(pairs):
         value[key] = item
     return value
 
+def personal_package_path(value: str) -> bool:
+    # GOPATH-off builds retain synthetic absolute package identities even with
+    # -trimpath. Inspect those identities, not ordinary Windows API strings.
+    value = value.replace('\\', '/')
+    if value.startswith('_/'):
+        value = value[1:]
+    if re.match(r'^/[A-Za-z]_/', value):
+        value = value[1] + ':' + value[3:]
+    return bool(re.match(r'^(?:[A-Za-z]:)?/(?:Users|home|Documents and Settings)/[^/]+(?:/|$)', value, re.I)
+                or re.match(r'^(?:[A-Za-z]:)?/root(?:/|$)', value, re.I))
+
+def validate_release_workspace(root: Path, work: Path, gopath: str) -> None:
+    root, work = root.resolve(), work.resolve()
+    if personal_package_path(str(root)) or root.is_relative_to(Path.home().resolve()):
+        raise SystemExit('Release source must be in a neutral workspace outside personal home directories; see BUILDING.md.')
+    if any(root.is_relative_to(Path(entry).resolve()) for entry in gopath.split(os.pathsep) if entry):
+        raise SystemExit('Release source must be outside GOPATH because Gateway uses relative imports.')
+    if not work.is_relative_to(root) or personal_package_path(str(work)):
+        raise SystemExit('Release installer work directory must stay inside the neutral source workspace.')
+
+def validate_release_build_info(info: str) -> None:
+    paths = [line.strip().split('\t', 1)[1] for line in info.splitlines() if line.strip().startswith('path\t')]
+    if len(paths) != 1 or personal_package_path(paths[0]):
+        raise SystemExit('Release executable has missing or personal Go package build information; use a neutral source workspace.')
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--headers-baseline', type=Path, help='explicit mainnet headers.bin input; validated by the built runtime before delivery')
     parser.add_argument('--without-header-baseline', action='store_true', help='explicit development build without bundled headers')
     parser.add_argument('--update-channels', type=Path, help='independently approved public channel descriptor; contains no secrets')
+    parser.add_argument('--work-dir', type=Path, help='installer staging parent; defaults to build/release-work inside the source workspace')
     args = parser.parse_args()
     if bool(args.headers_baseline) == args.without_header_baseline:
         parser.error('Choose --headers-baseline PATH for releases or --without-header-baseline for development.')
@@ -78,12 +104,20 @@ def main() -> None:
         target = bootstrap/'update-channels.json'; target.write_bytes(channels)
         replacements[str(root/'assets/bootstrap/update-channels.json')] = str(target)
     overlay = bootstrap/'overlay.json'; overlay.write_text(json.dumps({'Replace':replacements}))
-    subprocess.run([sys.executable,str(root/'scripts/build-icon-resources.py')],check=True)
     base = dict(os.environ, GO111MODULE='off', CGO_ENABLED='0', GOARCH='amd64')
+    work = (args.work_dir or root/'build/release-work').resolve()
+    if args.headers_baseline:
+        gopath = subprocess.check_output(['go', 'env', 'GOPATH'], env=base, text=True).strip()
+        validate_release_workspace(root, work, gopath)
+    work.mkdir(parents=True, exist_ok=True)
+    subprocess.run([sys.executable,str(root/'scripts/build-icon-resources.py')],check=True)
     def build(cwd: Path, target: str, name: str, gui: bool=False) -> None:
         env = dict(base, GOOS=target)
         overlay_args = ['-overlay', str(overlay)] if cwd == root else []
         subprocess.run(['go', 'build', *overlay_args, '-trimpath', '-ldflags', '-s -w' + (' -H windowsgui' if gui else ''), '-o', str(out/name), '.'], cwd=cwd, env=env, check=True)
+        if args.headers_baseline:
+            info = subprocess.check_output(['go', 'version', '-m', str(out/name)], env=base, text=True)
+            validate_release_build_info(info)
     build(root, 'linux', 'gateway-client')
     build(root/'packaging/update-helper', 'linux', 'gateway-update-helper')
     build(root, 'windows', 'GatewayClient.exe')
@@ -94,8 +128,8 @@ def main() -> None:
     build(root/'packaging/update-helper', 'windows', 'GatewayUpdateHelper.exe', True)
     build(root/'packaging/gateway-launcher', 'windows', 'GatewayOnDemand.exe', True)
     build(root/'packaging/native-host', 'windows', 'GatewayNativeHost.exe')
-    with tempfile.TemporaryDirectory(prefix='gateway-installer-') as work:
-        temp = Path(work); payload = temp/'payload'; payload.mkdir()
+    with tempfile.TemporaryDirectory(prefix='gateway-installer-', dir=work) as installer_work:
+        temp = Path(installer_work); payload = temp/'payload'; payload.mkdir()
         for name in ('GatewayClient.exe', 'GatewayOnDemand.exe', 'GatewayNativeHost.exe', 'GatewayUpdateHelper.exe'):
             shutil.copy2(out/name, payload/name)
         shutil.copy2(root/'COMPATIBILITY.json', payload/'COMPATIBILITY.json')

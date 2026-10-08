@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -264,14 +265,31 @@ func restoreDistribution(raw []byte, directory, version, repository string, key 
 }
 
 func RestoreGitHubDistribution(ctx context.Context, repository, version, token, directory string, key updates.TrustedKey) error {
+	return restoreGitHubDistribution(ctx, repository, version, token, directory, key, githubClient())
+}
+
+func restoreGitHubDistribution(ctx context.Context, repository, version, token, directory string, key updates.TrustedKey, client *http.Client) error {
 	if !validRepository(repository) {
 		return fmt.Errorf("unsupported repository")
 	}
 	if _, e := updates.CompareVersions(version, "0.0.0"); e != nil {
 		return e
 	}
+	name := "gateway-update-feed-v" + version + ".zip"
+	if token == "" {
+		// Public serving needs no anonymous REST metadata call (whose rate limit
+		// is shared by origin IP). Fetch only this explicitly selected release;
+		// the independently pinned signatures authenticate every delivered byte.
+		// Ordinary restore retains expiry checks; this is never renewal recovery.
+		target := "https://github.com/" + repository + "/releases/download/v" + version + "/" + name
+		raw, e := originGET(ctx, client, target, "", "application/octet-stream", updates.MaxArtifactBytes)
+		if e != nil {
+			return fmt.Errorf("approved public bundle unavailable; repository and selected release asset must be publicly accessible: %w", e)
+		}
+		return RestoreDistribution(raw, directory, version, repository, key)
+	}
+	// Explicit private-origin credentials keep the authenticated REST path.
 	base := "https://api.github.com/repos/" + repository
-	client := githubClient()
 	raw, e := originGET(ctx, client, base+"/releases/tags/v"+version, token, "application/vnd.github+json", maxOriginMetadata)
 	if e != nil {
 		return e
@@ -283,7 +301,6 @@ func RestoreGitHubDistribution(ctx context.Context, repository, version, token, 
 	if release.Draft || release.TagName != "v"+version || release.HTMLURL != "https://github.com/"+repository+"/releases/tag/v"+version {
 		return fmt.Errorf("selected distribution release mismatch")
 	}
-	name := "gateway-update-feed-v" + version + ".zip"
 	var asset *githubAsset
 	for i := range release.Assets {
 		if release.Assets[i].Name == name {

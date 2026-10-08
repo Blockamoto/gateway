@@ -1,6 +1,6 @@
 # Gateway 0.7.0 — first public testing release
 
-Gateway retrieves the Bitcoin blocks you request and lets you inspect their transactions, inputs, outputs and positions. Bitcoin Core is optional. This release is under preparation; see [status](STATUS.md) for acceptance rather than treating these notes as a publication announcement.
+Gateway retrieves the Bitcoin blocks you request and lets you inspect their transactions, inputs, outputs and positions. Bitcoin Core is optional. The release candidate has passed local validation and initial-source Linux CI. Final-source checks and public hosted delivery remain pending; see [status](STATUS.md) and the [acceptance record](RELEASE-ACCEPTANCE-0.7.0.json).
 
 ## Available
 
@@ -22,6 +22,14 @@ Gateway verifies blocks and chain context but does not replace Core's full scrip
 
 Choose the Windows installer or a **fresh** Windows/Linux ZIP for a first installation. Application-only ZIPs are update payloads. Fresh packages include the header snapshot, tester guide and license notices. Compare downloads with the release's checksum file.
 
-Follow [Getting started](GETTING-STARTED.md), [the QA guide](TESTING-0.7.0.md) and [known issues](KNOWN-ISSUES.md). Windows executables are unsigned; a local scan is not a promise that all security products will accept them. Live hosted update and renewal acceptance remain pending in [status](STATUS.md).
+Follow [Getting started](GETTING-STARTED.md), [the QA guide](TESTING-0.7.0.md) and [known issues](KNOWN-ISSUES.md). Windows executables are unsigned; a local scan is not a promise that all security products will accept them.
+
+## Validation and delivery status
+
+Initial source `38e96fcf38bb76739787a8c731df697e5118f92f` passed the Windows Go suite with 817 passes and 54 expected skips, Go vet, six JavaScript helper suites and [all Linux CI stages](https://github.com/Blockamoto/gateway/actions/runs/37805624668). Focused packaging and native wrapper fixtures passed. The build audit verified 969,480 bundled headers, external snapshot layout and included notices.
+
+A native automatic update from 0.7.0 to a synthetic local 0.7.1 fixture completed download, installation and restart with settings and headers preserved. This demonstrates the local updater path, not live production delivery. Local Defender scans reported no threats in the exact installer and four application executables with unchanged definitions 1.459.601.0; that does not establish cloud or browser-download clearance.
+
+The dedicated hosted endpoint and restricted renewal environment are prepared, and the weekly approved-release renewal workflow is committed. Public delivery and live renewal acceptance wait for repository visibility and release publication. Final exact-source CI and rebuild/audit are still required before publishing. See [updates](UPDATES.md) and the [renewal operator guide](../packaging/update-publisher/RENEWAL.md).
 
 Gateway's original source is now distributed under [MIT](../LICENSE), with [third-party notices](../THIRD-PARTY-NOTICES.md) retained.

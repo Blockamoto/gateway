@@ -14,7 +14,19 @@ python3 scripts/build-release.py --out build/development --without-header-baseli
 
 In PowerShell, set `$env:GO111MODULE='off'` and `$env:CGO_ENABLED='0'`, then run the Python command using your Python executable. A development build explicitly omits the full snapshot and synchronizes headers normally. Test with a disposable `-data` directory rather than a working installation's profile.
 
-For a release build, replace `--without-header-baseline` with `--headers-baseline PATH` pointing to a completed genesis-first mainnet header file. `--update-channels PATH` supplies a reviewed public channel descriptor containing the publisher URL and public verification key. It must contain no private key or service credential. See [header delivery](docs/HEADER-BASELINE.md) and [updates](docs/UPDATES.md).
+## Public release build
+
+Build the exact approved source commit from a neutral workspace outside personal home directories and outside `GOPATH`, for example `C:\GatewayReleaseBuild\0.7.0\source` on Windows or `/opt/gateway-release/0.7.0/source` on Linux. Restrict that workspace to the release operator. Gateway's relative imports retain an absolute package identity when `GO111MODULE=off`; `-trimpath` alone does not remove a username from that identity. Moving the source into `GOPATH/src` is not supported by these relative imports.
+
+Use `--headers-baseline PATH` pointing to a completed genesis-first mainnet header file. `--update-channels PATH` supplies a reviewed public channel descriptor containing the publisher URL and public verification key. It must contain no private key or service credential. From the neutral source workspace, for example:
+
+```powershell
+python scripts/build-release.py --out build/release-0.7.0 --headers-baseline C:/GatewayReleaseBuild/0.7.0/headers.bin --update-channels assets/bootstrap/update-channels.json
+```
+
+Installer staging defaults to `build/release-work` inside that source workspace, independently of the user's temporary directory. `--work-dir` may select another directory inside the neutral source workspace. The public builder rejects personal source paths and `GOPATH` locations, and checks the Go package identity in every built executable. Explicit development builds remain usable from normal checkouts.
+
+Before packaging, run `go version -m` against the five Windows executables and both Linux executables. Their `path` entries must refer only to the neutral workspace, with no personal home prefix such as `_/C_/Users/<name>` or `_/home/<name>`. Also inspect the final bytes for your actual workstation path in UTF-8 and UTF-16; normal Windows API strings are not evidence of a personal-path leak. See [header delivery](docs/HEADER-BASELINE.md) and [updates](docs/UPDATES.md).
 
 ## Validation
 

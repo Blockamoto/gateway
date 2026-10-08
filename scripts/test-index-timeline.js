@@ -10,7 +10,7 @@ const sandbox = {window:{}};
 for (const file of ['index-cards.js','index-timeline.js']) {
   vm.runInNewContext(fs.readFileSync(path.join(root,'ui/shell',file),'utf8'),sandbox,{filename:file});
 }
-const {normalizeRanges,subtractRanges,clampView,coverageBins,trackModel,established,rulerMarks} = sandbox.window.GatewayIndexTimeline;
+const {normalizeRanges,subtractRanges,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,established,rulerMarks} = sandbox.window.GatewayIndexTimeline;
 const plain = value => JSON.parse(JSON.stringify(value));
 const valid = range => range && Number.isSafeInteger(range.from) && Number.isSafeInteger(range.to) && range.from >= 0 && range.to >= range.from;
 function asSet(ranges) {
@@ -28,6 +28,19 @@ assert.deepEqual(plain(normalizeRanges([null,{}, {from:-1,to:4},{from:2,to:1},{f
 assert.deepEqual(plain(subtractRanges([{from:0,to:10}], [{from:0,to:0},{from:3,to:5},{from:10,to:10}])),[{from:1,to:2},{from:6,to:9}]);
 assert.deepEqual(plain(subtractRanges([{from:5,to:5}], [{from:5,to:5}])),[],'A one-block gap removes that exact block');
 assert.deepEqual(plain(subtractRanges([{from:4,to:8}], [{from:0,to:20}])),[]);
+assert.deepEqual(plain(toggleBlock([{from:10,to:20}],15)),[{from:10,to:14},{from:16,to:20}],'Ctrl deselection of an interior block creates a true one-block hole');
+assert.deepEqual(plain(toggleBlock(toggleBlock([{from:10,to:20}],15),15)),[{from:10,to:20}],'Adding the excluded block rejoins adjacent ranges');
+assert.deepEqual(plain(toggleBlock([{from:10,to:20}],30)),[{from:10,to:20},{from:30,to:30}],'Ctrl adding a distant block never fills the intervening gap');
+assert.deepEqual(plain(selectBlock([],40,12,{extend:true})),{ranges:[{from:12,to:40}],anchor:40},'Shift ranges are inclusive and work in either direction');
+assert.deepEqual(plain(selectBlock([{from:1,to:4}],12,20,{extend:true,toggle:true})),{ranges:[{from:1,to:4},{from:12,to:20}],anchor:12},'Ctrl Shift retains discontiguous earlier selections');
+assert.deepEqual(plain(selectBlock([],null,0,{extend:true})),{ranges:[{from:0,to:0}],anchor:0},'Shift without an anchor selects the clicked block, including genesis');
+assert.deepEqual(plain(selectBlock([{from:1,to:4}],2,Infinity,{extend:true})),{ranges:[{from:1,to:4}],anchor:2},'Invalid clicks cannot corrupt an existing selection');
+assert.deepEqual(plain(selectionMarkers([{from:4,to:8},{from:15,to:15}])),[{range:0,edge:'in',height:4},{range:0,edge:'out',height:8},{range:1,edge:'single',height:15}],'Each range has two endpoints while a single block has one marker');
+assert.deepEqual(plain(nearestMarker([{from:10,to:14},{from:20,to:21}],{height:21,edge:'out'})),{range:1,edge:'out',height:21},'Keyboard focus finds exact endpoint identity after redraw');
+assert.deepEqual(plain(nearestMarker([{from:10,to:14}],{height:11,edge:'out'})),{range:0,edge:'out',height:14},'A moved endpoint merged into another range keeps the same endpoint role on the merged range');
+assert.deepEqual(plain(nearestMarker([{from:11,to:14}],{height:11,edge:'single'})),{range:0,edge:'in',height:11},'A single block merged with adjacent coverage retains focus at its unchanged boundary height');
+assert.deepEqual(plain(nearestMarker([{from:11,to:11}],{height:11,edge:'in'})),{range:0,edge:'single',height:11},'A range shrunk to one block retains focus on its compact marker');
+assert.equal(nearestMarker([],{height:11,edge:'in'}),null,'Empty selections have no marker to focus');
 assert.deepEqual(plain(normalizeRanges([{from:999999,to:999999},{from:1000001,to:1000001}])),[{from:999999,to:999999},{from:1000001,to:1000001}], 'Single-block gaps survive normalization at long-chain scale');
 assert.deepEqual(plain(clampView({from:900,to:1100},999)),{from:799,to:999},'Panning through the tip preserves span while bounding it');
 assert.deepEqual(plain(clampView({from:50,to:200},99)),{from:0,to:99},'A view wider than the chain is clamped to the full extent');
@@ -48,6 +61,11 @@ for (let sample=0;sample<300;sample++) {
   exact(result);
   assert.deepEqual(asSet(result),asSet(input).filter(height=>!removed.has(height)),'Subtraction matches an independently enumerated set difference');
   assert.equal(JSON.stringify({input,holes}),before,'Helpers must never modify server evidence');
+  const click=random(130),beforeSet=new Set(asSet(input)),toggled=plain(toggleBlock(input,click));
+  if(beforeSet.has(click))beforeSet.delete(click);else beforeSet.add(click);
+  exact(toggled);
+  assert.deepEqual(asSet(toggled),[...beforeSet].sort((a,b)=>a-b),'Ctrl toggle matches the independently enumerated set operation');
+  assert.deepEqual(plain(toggleBlock(toggled,click)),normalized,'Toggling the same block twice restores the exact previous selection');
   const view={from:random(40),to:80+random(40)},pixels=1+random(24),bins=plain(coverageBins(input,view,pixels));
   const expected=asSet(input).filter(height=>height>=view.from&&height<=view.to);
   assert.equal(bins.reduce((total,bin)=>total+bin.count,0),expected.length,'Viewport aggregation counts only distinct covered blocks inside the viewport');
@@ -95,4 +113,4 @@ assert(closeMarks.some(m=>m.kind==='halving'&&m.height===840000));
 assert.deepEqual(closeMarks.filter(m=>m.kind==='difficulty').map(m=>m.height),[840672,842688,844704],'Difficulty periods are independently anchored to genesis, never restarted at a halving');
 for(const m of closeMarks) assert(m.height>=839990&&m.height<=846100&&Number.isSafeInteger(m.height),'Landmarks stay in the visible block range');
 
-console.log('Index timeline helpers PASS: exact coverage with 300 independent set-oracle cases, sparse pixel occupancy, evidence-only track membership, and independently anchored Bitcoin ruler landmarks.');
+console.log('Index timeline helpers PASS: exact coverage and discontiguous selections with 300 independent set-oracle cases, sparse pixel occupancy, evidence-only track membership, and independently anchored Bitcoin ruler landmarks.');

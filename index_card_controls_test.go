@@ -130,7 +130,7 @@ func Test064InitialCardOnPersistsWithoutWorkAndLiveAuthorizesHistory(t *testing.
 
 func Test071TimelineAssetsAndNoIndexDropdowns(t *testing.T) {
 	a := &app{}
-	for _, name := range []string{"index-cards.js", "index-timeline.css", "index-timeline.js", "index-workspace.js"} {
+	for _, name := range []string{"index-cards.js", "index-timeline.css", "index-timeline.js", "index-workspace.js", "timeline-explorer.js"} {
 		r := httptest.NewRecorder()
 		a.handleShellAsset(r, httptest.NewRequest("GET", "/shell/"+name, nil))
 		if r.Code != 200 {
@@ -144,7 +144,7 @@ func Test071TimelineAssetsAndNoIndexDropdowns(t *testing.T) {
 			t.Fatal("index chooser still uses dropdown", id)
 		}
 	}
-	if !strings.Contains(body, `src="/shell/index-cards.js" nonce="`) || !strings.Contains(body, `src="/shell/index-timeline.js" nonce="`) || !strings.Contains(body, `src="/shell/index-workspace.js" nonce="`) || !strings.Contains(body, `href="/shell/index-timeline.css"`) || !strings.Contains(body, `id="index-timeline"`) {
+	if !strings.Contains(body, `src="/shell/index-cards.js" nonce="`) || !strings.Contains(body, `src="/shell/index-timeline.js" nonce="`) || !strings.Contains(body, `src="/shell/index-workspace.js" nonce="`) || !strings.Contains(body, `src="/shell/timeline-explorer.js" nonce="`) || !strings.Contains(body, `href="/shell/index-timeline.css"`) || !strings.Contains(body, `id="index-timeline"`) {
 		t.Fatal("timeline and shared models not wired to shipped page")
 	}
 	if strings.Contains(body, `id="index-cards"`) || strings.Contains(body, `id="capability-cards"`) {

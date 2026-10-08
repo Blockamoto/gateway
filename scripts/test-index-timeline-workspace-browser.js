@@ -44,6 +44,7 @@ async function run() {
       }
       if(url.pathname==='/favicon.ico')return reply('','image/x-icon');
       if(url.pathname==='/api/v1/appearance')return reply({theme:'light',default:'light'});
+      if(url.pathname==='/api/v1/navigate')return reply({error:'Offline block fixture'},'application/json',503);
       const body=req.method()==='POST'?req.postDataJSON():null;
       calls.push({method:req.method(),path:url.pathname,body});
       if(url.pathname==='/api/v1/index/status')return reply(snapshot);
@@ -55,7 +56,7 @@ async function run() {
     const settle=() => page.evaluate(() => new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const view=() => page.locator('#index-timeline').evaluate(el=>({from:Number(el.dataset.from),to:Number(el.dataset.to),fit:el.dataset.fit==='true'}));
     const span=value=>value.to-value.from+1;
-    const refresh=async()=>{const response=page.waitForResponse(r=>r.url()===origin+'/api/v1/index/status');await page.locator('#refresh').click();await response;await settle();};
+    const refresh=async()=>{const response=page.waitForResponse(r=>r.url()===origin+'/api/v1/index/status');await page.locator('#timeline-refresh').click();await response;await settle();};
     const shot=async name=>{if(out)await page.screenshot({path:path.join(out,name+'.png'),fullPage:true});};
     const drag=async(locator,dx,dy=0)=>{const box=await locator.boundingBox();assert(box,'Drag target is visible');const x=box.x+box.width/2,y=box.y+box.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y+dy,{steps:8});await page.mouse.up();await settle();};
     const onlyPlans=()=>assert.deepEqual(calls.filter(c=>c.method==='POST'&&!c.path.endsWith('/plan')),[],'UI navigation, adding tracks and preparing ranges never start indexing');
@@ -64,10 +65,12 @@ async function run() {
     const horizontal='#timeline-scrollbar-horizontal';
     await page.goto(origin+'/indexes',{waitUntil:'networkidle'});
     await page.locator('#timeline-divider').waitFor();
-    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers'],'An unused block definition must not create a track');
+    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks'],'Headers and Blocks are default tracks even without stored blocks');
     await page.locator('#timeline-add-index').click();
     assert.equal(await page.locator('#timeline-index-picker button[data-index="inscriptions"]').isDisabled(),true);
-    await page.locator('#timeline-index-picker button[data-index="blocks"]').click();
+    await page.locator('#timeline-add-index').click();
+    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
+    await page.locator('#timeline-details').evaluate(el=>el.open=true);
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks']);
     assert.equal(await page.locator('#timeline-inspector').getAttribute('data-index'),'blocks');
     assert.equal(await page.locator('#timeline-details').evaluate(el=>el.open),true,'Adding an index opens its settings without starting work');
@@ -80,7 +83,7 @@ async function run() {
     const docked=await editorBox();
     await page.locator('#timeline-details').evaluate(el=>el.open=true);await settle();
     assert.deepEqual(await editorBox(),docked,'Inspector expansion cannot move or resize the timeline');
-    const geometry=await page.evaluate(()=>({height:innerHeight,scrollHeight:document.documentElement.scrollHeight,scrollY,inspectorScrollable:document.querySelector('#timeline-inspector').scrollHeight>document.querySelector('#timeline-inspector').clientHeight}));
+    const geometry=await page.evaluate(()=>({height:innerHeight,scrollHeight:document.documentElement.scrollHeight,scrollY,inspectorScrollable:document.querySelector('#timeline-inspector-panel').scrollHeight>document.querySelector('#timeline-inspector-panel').clientHeight}));
     assert(geometry.scrollHeight<=geometry.height+1&&geometry.scrollY===0,'The document is a fixed workspace');
     assert(geometry.inspectorScrollable,'Long inspector content has its own scroll area');
     assert(docked.y+docked.height<=geometry.height&&docked.y+docked.height>geometry.height-40,'Timeline fills the lower workspace');
@@ -184,6 +187,7 @@ async function run() {
 
     // Range handles and numeric fields share one draft; changes invalidate a
     // reviewed plan, but never submit a build or silently fix invalid text.
+    await page.locator('#timeline-inspector-tab').click();
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await page.locator('#timeline-details').evaluate(el=>el.open=true);
     await page.locator('#from').fill('200000');await page.locator('#to').fill('700000');

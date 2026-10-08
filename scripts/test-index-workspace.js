@@ -24,10 +24,11 @@ const fetch=async(url,opts)=>{
  if(mutationGate?.action===url.split('/').at(-1))await mutationGate.wait;
  return {ok:true,json:async()=>result};
 };
-let timelineOptions,selectedTimeline='',timelineSnapshot={},navigation=[];
+let timelineOptions,selectedTimeline='',timelineSnapshot={},navigation=[],explorerFocus=[];
 const drawer=new Node('details');drawer.open=false;nodes.set('timeline-details',drawer);
 const inspector=new Node('section');inspector.scrollTo=()=>{};nodes.set('timeline-inspector',inspector);
-const window={GatewayIndexWorkspace:{mountLayout(){},mountRange(){return {update(){},sync(){}}}},GatewayIndexTimeline:{mount(options){timelineOptions=options;return {
+nodes.set('timeline-inspector-panel',inspector);
+const window={GatewayTimelineExplorer:{mount(){return {focus:value=>explorerFocus.push(value),health(){}}}},GatewayIndexWorkspace:{mountLayout(){},mountRange(){return {update(){},sync(){}}}},GatewayIndexTimeline:{mount(options){timelineOptions=options;return {
  render(value){timelineSnapshot=value}, health(){},
  select(id){selectedTimeline=id;options.workspace.hidden=!id||!!definitions.find(d=>d.id===id)?.locked},
  model(id){return window.GatewayIndexCards.model(definitions.find(d=>d.id===id)||{id},timelineSnapshot)}
@@ -83,13 +84,13 @@ const flush=()=>new Promise(r=>setImmediate(r));
  assert.equal(drawer.open,true);assert.equal(nodes.get('plan-button').focused,true);
  assert.equal(calls.filter(c=>c.body).length,beforeRange,'Preparing a timeline range does not plan, start, or enable work');
  timelineOptions.buildRange('inscriptions',-1,20);assert.equal(nodes.get('from').value,'10','Invalid range cannot replace the draft');
- timelineOptions.openEntity('inscriptions',12);assert.deepEqual(navigation.map(n=>n.value.address),['12.bitcoin']);assert.equal(navigation[0].origin,'http://fixture.local');
+ timelineOptions.openEntity('inscriptions',12);assert.equal(explorerFocus.length,1);assert.equal(explorerFocus[0].height,12);assert.equal(explorerFocus[0].index,'inscriptions');
  assert.equal(nodes.get('from').value,'10','Opening Explorer preserves the selected range');
- timelineOptions.openEntity('inscriptions',-1);assert.equal(navigation.length,1);
+ timelineOptions.openEntity('inscriptions',-1);assert.equal(explorerFocus.length,1);
  const beforeLocked=calls.length;timelineOptions.select('address-history','catalog');
  assert.equal(selectedTimeline,'address-history');assert.equal(nodes.get('index-workspace').hidden,true);assert(panes.every(p=>p.hidden));
  timelineOptions.buildRange('address-history',1,2);timelineOptions.openEntity('address-history',1);
- assert.equal(calls.length,beforeLocked,'Locked selection and actions make no API request');assert.equal(navigation.length,1,'Locked selection cannot open an entity');
+ assert.equal(calls.length,beforeLocked,'Locked selection and actions make no API request');assert.equal(explorerFocus.length,1,'Locked selection cannot open an entity');
  timelineOptions.select('inscriptions','build');assert.equal(nodes.get('from').value,'10');assert.equal(nodes.get('to').value,'20','Switching through a locked track preserves the earlier draft');
  // The old track's in-flight mutation must not redirect a newly selected
  // inspector or discard its independently reviewed plan when it finishes.

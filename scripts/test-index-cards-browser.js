@@ -91,7 +91,7 @@ async function run() {
     page.on('request', request => { if (!request.url().startsWith(endpoint + '/')) external.push(request.url()); });
     await page.goto(endpoint + '/indexes', {waitUntil:'networkidle'});
     await page.locator('.timeline-track[data-index="headers"]').waitFor();
-    assert.equal(await page.locator('.timeline-track').count(),1,'A fresh profile starts with the foundational Headers track');
+    assert.equal(await page.locator('.timeline-track').count(),2,'A fresh profile starts with foundational Headers and Blocks tracks');
     assert.equal(await page.locator('select#index, select#query-index, select#peer-index').count(), 0);
     await page.screenshot({path:path.join(out, 'timeline-desktop.png'), fullPage:true});
 
@@ -99,10 +99,11 @@ async function run() {
     assert.equal(await page.locator('#timeline-index-picker [data-index="inscriptions"]').isDisabled(),true,'Locked indexes remain disabled in the chooser');
     assert.equal(await page.locator('.timeline-track[data-index="inscriptions"]').count(),0,'Unadded locked indexes do not occupy tracks');
     await page.screenshot({path:path.join(out,'locked-features.png'),fullPage:true});
-    await page.locator('#timeline-index-picker [data-index="blocks"]').click();
+    await page.locator('#timeline-add-index').click();
+    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await page.locator('.timeline-track[data-index="blocks"]').waitFor();
-    assert.equal(await page.locator('#timeline-details').evaluate(el=>el.open),true,'Adding Blocks opens its settings');
-    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Adding a track never starts indexing');
+    assert.equal(await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').getAttribute('aria-pressed'), 'true', 'Choosing default Blocks opens its track inspector');
+    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Choosing a track never starts indexing');
     await page.locator('#timeline-details').evaluate(el=>el.open=false);
     const control = page.getByRole('switch', {name:'blocks On', exact:true});
     const live = page.getByRole('switch', {name:'blocks Live', exact:true});

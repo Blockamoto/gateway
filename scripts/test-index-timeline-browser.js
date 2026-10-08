@@ -88,6 +88,7 @@ async function run() {
       if (url.pathname === '/api/v1/appearance') return reply({theme, default:'light'});
       const call = {method:request.method(), path:url.pathname, body:request.method() === 'POST' ? request.postDataJSON() : null};
       calls.push(call);
+      if(url.pathname==='/api/v1/navigate')return reply({error:'Offline block fixture'},'application/json',503);
       if (url.pathname === '/api/v1/index/status') return unavailable ? reply({error:'Fixture unavailable'}, 'application/json', 503) : reply(snapshot);
       if (url.pathname === '/api/v1/index/query') return reply({rows:[], total:0, total_known:true, inspected_blocks:0, chain_state:'selected_chain'});
       unexpected.push(call.method + ' ' + call.path);
@@ -97,12 +98,12 @@ async function run() {
     const screenshot = async name => {if (out) await page.screenshot({path:path.join(out,name+'.png'),fullPage:true});};
     const refresh = async (preserveFocus=false) => {
       const response = page.waitForResponse(response => response.url() === origin + '/api/v1/index/status');
-      if(preserveFocus)await page.locator('#refresh').evaluate(button=>button.click());
-      else await page.locator('#refresh').click();
+      if(preserveFocus)await page.locator('#timeline-refresh').evaluate(button=>button.click());
+      else await page.locator('#timeline-refresh').click();
       await response;
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     };
-    const noMutations = () => assert.equal(calls.filter(call => call.method !== 'GET').length, 0, 'Navigation and inspection cannot alter indexing, Live, sharing or network settings');
+    const noMutations = () => assert.equal(calls.filter(call => call.method !== 'GET' && call.path !== '/api/v1/navigate').length, 0, 'Exploration cannot alter indexing, Live, sharing or network settings');
     const viewport = () => page.locator('#index-timeline').evaluate(node => ({from:Number(node.dataset.from),to:Number(node.dataset.to),fit:node.dataset.fit==='true'}));
     const blockLane = page.locator('.timeline-lane[data-index="blocks"]');
     const clickBlock = async height => {
@@ -129,6 +130,7 @@ async function run() {
     await page.locator('#timeline-height').fill('500003');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
     assert.equal(await page.locator('#timeline-open-entity').innerText(),'Open in Explorer','Header selection can use independent known local block availability');
     await page.locator('#timeline-fit').click();
+    await page.locator('#timeline-inspector-tab').click();
 
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await page.locator('#timeline-inspector').waitFor();
@@ -230,16 +232,16 @@ async function run() {
     assert.equal(await page.locator('#timeline-details').evaluate(details=>details.open),true);
     noMutations();
 
-    // Embedded Explorer navigation is explicit and emits only the selected
-    // address; the fixture never supplies a real resolver or peer connection.
+    // Explorer remains in the workspace; only the focused known block is requested.
     await page.goto(origin+'/indexes?embedded=1',{waitUntil:'networkidle'});
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await page.evaluate(()=>{window.timelineNavigations=[];window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data?.type==='gateway:navigate')window.timelineNavigations.push(event.data.address);});});
     await page.locator('#timeline-height').fill('500000');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
     assert.deepEqual(await page.evaluate(()=>window.timelineNavigations),[]);
-    await page.locator('#timeline-open-entity').click();
-    await page.waitForFunction(()=>window.timelineNavigations.length===1);
-    assert.deepEqual(await page.evaluate(()=>window.timelineNavigations),['500000.bitcoin']);
+    await page.locator('#timeline-explorer-tab').click();
+    await page.locator('#timeline-explorer-panel[data-state="error"]').waitFor();
+    assert.deepEqual(await page.evaluate(()=>window.timelineNavigations),[]);
+    assert(calls.some(call=>call.path==='/api/v1/navigate'&&call.body.address==='500000.bitcoin'));
     noMutations();
     assert.deepEqual(unexpected, [], 'All browser traffic stays in the isolated read-only fixture');
     assert.deepEqual(errors, [], 'No uncaught browser errors');

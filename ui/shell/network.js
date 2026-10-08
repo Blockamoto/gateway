@@ -2,7 +2,7 @@
 (() => {
  const $=id=>document.getElementById(id), esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])), num=v=>Number.isFinite(v)?v.toLocaleString('en-GB'):'unknown';
  const titles=['Your Bitcoin connection','Browser access','Network & local data'];
- let snapshot=null,network=null,stage=0,working=false,previousFocus=null,readinessBusy=false,routingFailure=false;
+ let snapshot=null,network=null,indexStatus=null,stage=0,working=false,previousFocus=null,readinessBusy=false,routingFailure=false;
  async function api(path,body){const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),body?.action==='browser-routing'?120000:15000);try{const r=await fetch(path,{signal:ctl.signal,...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});const v=await r.json();if(!r.ok)throw Error(v.error||r.statusText);return v}finally{clearTimeout(timer)}}
  function error(e){$('setup-error').textContent=e.message||String(e);$('setup-error').hidden=false;}
  function readyControls(){ $('setup-next').disabled=working||routingFailure; $('setup-back').disabled=working||stage===0; }
@@ -13,7 +13,7 @@
  const devMode=()=>sessionStorage.getItem('gateway.dev_mode')==='1';
  function renderNetwork(n){
   network=n;const h=n.headers||{};
-  $('network-summary').textContent=`${n.enabled===false?'Outbound offline':'Bitcoin: '+num(n.connected||0)+' connections'} · Gateway peerhood: locked · Headers: ${h.header_state||'starting'}`;
+  $('network-summary').textContent=`${n.enabled===false?'Outbound offline':'Bitcoin: '+num(n.connected||0)+' connections'} · Gateway peerhood: locked · Headers: ${h.header_state||'starting'}${indexStatus?' · '+num(indexStatus.localIndexes)+' local indexes · '+num(indexStatus.following)+' following new blocks · Gateway sharing locked':''}`;
   const warning=$('header-warning'),behind=Number.isFinite(h.header_target_height)&&Number.isFinite(h.header_height)&&h.header_target_height>h.header_height;
   if(warning)warning.hidden=!behind;
   const paused=n.headers_user_paused||(h.header_state==='paused'&&n.enabled!==false);$('headers-pause').textContent=paused?'Resume headers':'Pause headers';$('headers-pause').dataset.action=paused?'resume':'pause';
@@ -74,5 +74,6 @@
  $('headers-pause').onclick=async()=>{try{await api('/api/v1/headers',{action:$('headers-pause').dataset.action||'pause'});renderNetwork(await api('/api/v1/network'))}catch(e){$('header-progress').textContent=e.message}};
  $('headers-retry').onclick=async()=>{try{await api('/api/v1/headers',{action:'retry'});renderNetwork(await api('/api/v1/network'))}catch(e){$('header-progress').textContent=e.message}};
  document.addEventListener('gateway:dev-mode',()=>{if(network)renderNetwork(network)});
+ document.addEventListener('gateway:index-status',event=>{indexStatus=event.detail;if(network)renderNetwork(network)});
  poll();api('/api/v1/setup').then(s=>{snapshot=s;if(s.show_automatically||new URLSearchParams(location.search).get('setup')==='1')open()}).catch(()=>{});
 })();

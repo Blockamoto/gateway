@@ -16,8 +16,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <body class="indexes-workspace">
 <main>
 <nav class="index-top" aria-label="Index navigation"><a href="/">← Gateway home</a><a href="/?resolve=storage.gateway">Storage settings</a></nav>
-<header class="page-heading"><h1>Indexes</h1><button id="refresh">Refresh status</button></header>
-<div class="workspace-context"><span id="workspace-state">Reading your local workspace…</span><span>Local index coverage · Gateway sharing locked</span></div><div id="message" role="status" aria-live="polite" hidden></div><section id="index-timeline" aria-label="Index timeline"></section><div id="index-workspace" hidden><h2 id="selected-index-label" class="selected-index-label" hidden></h2><nav id="index-details-nav" class="workspace-tabs" aria-label="Selected index details" hidden><button type="button" data-view="build">Build a range</button><button type="button" data-view="results">Records & sharing</button><button type="button" data-view="providers">Data sources</button><button type="button" data-view="peers">Peer claims</button></nav>
+<div id="workspace-state" class="timeline-status-strip" role="status">Reading your local workspace…</div><div id="message" role="status" aria-live="polite" hidden></div><section id="index-timeline" aria-label="Index timeline"></section><div id="index-workspace" hidden><h2 id="selected-index-label" class="selected-index-label" hidden></h2><nav id="index-details-nav" class="workspace-tabs" aria-label="Selected index details" hidden><button type="button" data-view="build">Build a range</button><button type="button" data-view="results">Records & sharing</button><button type="button" data-view="providers">Data sources</button><button type="button" data-view="peers">Peer claims</button></nav>
 <section class="panel" id="current-job-panel" aria-labelledby="job-heading"><h2 id="job-heading">Current job</h2><p id="job-summary" class="muted small">Loading local status…</p><progress id="job-progress" hidden></progress><dl id="job-meta" class="index-meta"></dl><p id="job-error" class="small"></p><p id="job-limitations" class="hint small" hidden></p><div class="actions"><button id="job-records" type="button">Progress & records</button><button id="pause" disabled>Pause build</button><button id="resume" disabled>Load previous request</button></div><p class="small muted">Pause takes effect after an in-flight source request returns. Resume retries the same range from its saved checkpoint. Completed checkpoints are reused.</p><details><summary>Exact job JSON</summary><pre id="job-json"></pre></details><div id="job-queue" class="index-section"></div></section><div class="index-layout" data-pane="build">
 <section class="panel" aria-labelledby="build-heading">
 <h2 id="build-heading">What would you like to build?</h2>
@@ -52,11 +51,12 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <script src="/shell/index-cards.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-timeline.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-workspace.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/timeline-explorer.js" nonce="__INDEX_NONCE__"></script>
 <script nonce="__INDEX_NONCE__">
 'use strict';
 const $ = id => document.getElementById(id);
 if (new URLSearchParams(location.search).get('embedded') === '1') document.body.classList.add('embedded');
-let currentView = "catalog", selectedIndex = "", timeline, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
+let currentView = "catalog", selectedIndex = "", timeline, explorer, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
 function selectView(view) {
   currentView = view;
   for (const pane of document.querySelectorAll('[data-pane]')) pane.hidden = pane.dataset.pane !== view;
@@ -68,7 +68,7 @@ const rangePicker = window.GatewayIndexWorkspace.mountRange({root:$('build-range
 const pretty = value => JSON.stringify(value, null, 2);
 const human = value => ({first_valid_claim:'First valid claim in the indexed history',not_evaluated:'Not evaluated',recorded_contiguous_range:'Recorded continuous range',ephemeral:'Discard source blocks after processing',unknown:'Unknown'})[value] || String(value ?? 'unknown').replaceAll('_', ' ');
 const ranges = value => value?.length ? value.map(x => x.from + '–' + x.to + ' (' + (x.to - x.from + 1).toLocaleString() + ' block' + (x.to === x.from ? '' : 's') + ')').join(', ') : 'No recorded range';
-function message(text, error = false) { const changed=$('message').textContent!==text||$('message').hidden; $('message').textContent = text; $('message').dataset.error = String(error); $('message').hidden = !text; if(text&&error&&changed)$('timeline-inspector')?.scrollTo({top:0}); }
+function message(text, error = false) { const changed=$('message').textContent!==text||$('message').hidden; $('message').textContent = text; $('message').dataset.error = String(error); $('message').hidden = !text; if(text&&error&&changed)($('timeline-inspector-panel')||$('timeline-inspector'))?.scrollTo({top:0}); }
 function element(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }
 function metadata(target, rows) { target.replaceChildren(); for (const [label, value] of rows) target.append(element('dt', label), element('dd', String(value ?? 'unknown'))); }
 function details(parent, label, value) { const el = element('details'); el.append(element('summary', label), element('pre', pretty(value))); parent.append(el); }
@@ -230,7 +230,13 @@ async function refresh() {
       if (revision !== statusRevision) return; // A pending control superseded this status read.
       status = result; definitions = status.definitions || [];
       $('status-json').textContent = pretty(status);
-      timeline.render(status); timeline.health(!(status.errors || []).some(x => String(x).startsWith('live:')));
+      const healthy=!(status.errors || []).some(x => String(x).startsWith('live:'));
+      const recovering=$('index-timeline').dataset.healthy==='false';
+      timeline.render(status); timeline.health(healthy);
+      // Position can change while requests are paused. Resume the latest
+      // playhead rather than the block that was focused before status loss.
+      if(recovering && healthy && selectedIndex && !selectedDefinition()?.locked && timeline.getPlayhead()!==null) explorer?.focus({index:selectedIndex,height:timeline.getPlayhead(),immediate:false});
+      explorer?.health(healthy);
       if (!selectedIndex && definitions.length) {
         const first=definitions.find(d=>d.id==='headers'&&!d.locked)||definitions.find(d=>!d.locked);
         if(first) selectIndex(first.id,first.buildable?'build':'providers');
@@ -238,14 +244,16 @@ async function refresh() {
       showSelectedStatus();
       syncRetainedStart();
       rangePicker.update(selectedDefinition(),status);
-      $('workspace-state').textContent = (status.instances?.length || 0) + ' local indexes · ' + ((status.live || []).filter(x => x.enabled && x.on).length) + ' following new blocks';
+      const workspaceStatus={type:'gateway:index-status',localIndexes:status.instances?.length||0,following:(status.live||[]).filter(x=>x.enabled&&x.on).length,sharingLocked:true};
+      $('workspace-state').textContent=workspaceStatus.localIndexes+' local indexes · '+workspaceStatus.following+' following new blocks · Gateway sharing locked';
+      if(document.body.classList.contains('embedded'))parent.postMessage(workspaceStatus,location.origin);
       if (status.errors?.length) message(status.errors.join('\n'), true);
       if (selectedIndex && currentView === 'results' && $('follow-records').checked) {
         const instance = status.instances?.find(x => x.definition === selectedIndex);
         const key = selectedIndex + ':' + (instance?.checkpoint?.commitment || 'empty') + ':' + (instance?.verification || '');
         if (key !== recordKey && !recordLoading) { if (await loadRecords()) recordKey = key; }
       }
-    } catch (error) { timeline.health(false); message('Status unavailable: ' + error.message, true); }
+    } catch (error) { timeline.health(false); explorer?.health(false); message('Status unavailable: ' + error.message, true); }
     finally { fetching = false; }
   })();
   return refreshPromise;
@@ -382,14 +390,12 @@ function prepareTimelineRange(id, from, to) {
 function openTimelineEntity(id,height) {
   const definition=definitions.find(d=>d.id===id);
   if(!definition || definition.locked || !Number.isSafeInteger(height) || height<0) return;
-  const address=height+'.bitcoin';
-  if(new URLSearchParams(location.search).get('embedded')==='1') parent.postMessage({type:'gateway:navigate',address},location.origin);
-  else location.href='/?resolve='+encodeURIComponent(address);
+  explorer?.focus({index:id,height,immediate:true});
 }
-timeline = window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:prepareTimelineRange,openEntity:openTimelineEntity});
+timeline = window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:prepareTimelineRange,openEntity:openTimelineEntity,onFocus:value=>explorer?.focus(value)});
 window.GatewayIndexWorkspace.mountLayout($('index-timeline'),$('message'));
+explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message});
 selectView('catalog');
-$('refresh').addEventListener('click', refresh);
 refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 </script>

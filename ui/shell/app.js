@@ -33,7 +33,7 @@
  function actionError(p){Promise.resolve(p).catch(e=>notice(e.message,true));}
  function activateNav(module){document.body.classList.toggle('indexes-workspace',module==='indexes');document.querySelectorAll('.nav-item').forEach(b=>{const route=b.dataset.route||'';const key=route==='.gateway'?'home':route.split('.')[0];const active=key===module;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});root.classList.remove('embed-host');}
  async function navigate(address,history=true){
-  address=String(address||'.gateway').trim();const ticket=++sequence;current=address;$('address').value=address;notice('');document.body.classList.remove('indexes-workspace');window.GatewayUpdates.unmount();if(activityTimer){clearTimeout(activityTimer);activityTimer=null;}
+  address=String(address||'.gateway').trim();const ticket=++sequence;current=address;$('address').value=address;notice('');document.body.classList.remove('indexes-workspace');document.dispatchEvent(new CustomEvent('gateway:index-status',{detail:null}));window.GatewayUpdates.unmount();if(activityTimer){clearTimeout(activityTimer);activityTimer=null;}
   if(history){window.history.pushState({address},'',location.pathname+'?resolve='+encodeURIComponent(address));root.focus({preventScroll:true});window.scrollTo({top:0,behavior:'instant'});}
   const names={'.gateway':'home','home.gateway':'home','gateway.gateway':'home','bitcoin.gateway':'bitcoin','satline.gateway':'satline','ord.gateway':'ord','peers.gateway':'peers','storage.gateway':'storage','activity.gateway':'activity','settings.gateway':'settings','sync.gateway':'sync','indexes.gateway':'indexes'};
   if(names[address]){if(boot.activation){api('/api/v1/activation',{id:boot.activation,stage:'displayed',error:''}).catch(()=>{});boot.activation='';}activateNav(names[address]);switch(names[address]){case 'home':return showHome();case 'indexes':root.classList.add('embed-host');root.innerHTML='<iframe id="indexes-module" class="module-frame indexes-frame" title="Index workspace" src="/indexes?embedded=1"></iframe>';return;case 'sync':return showSyncCoverage();case 'bitcoin':return showBitcoinHome();case 'satline':return showSatline();case 'ord':return showOrdHome();case 'peers':return showPeers();case 'storage':return showStorage();case 'activity':return showActivity();case 'settings':return showSettings();}}
@@ -85,7 +85,17 @@ $('rpc-mode').value=settings.rpc_auth_mode||'auto';$('settings-form').onsubmit=a
  }catch(e){notice(e.message,true)}}
  document.addEventListener('click',e=>{const route=e.target.closest('[data-route]');if(route){e.preventDefault();actionError(navigate(route.dataset.route));return}const copy=e.target.closest('[data-copy]');if(copy)navigator.clipboard.writeText(copy.dataset.copy).then(()=>toast('Copied.')).catch(()=>notice('Clipboard unavailable on this origin. Select the displayed identifier to copy.',true));});
  $('address-form').onsubmit=e=>{e.preventDefault();actionError(navigate($('address').value))};$('back').onclick=()=>history.back();$('copy-address').onclick=()=>navigator.clipboard.writeText(current).then(()=>toast('Resource address copied.')).catch(()=>notice('Select the address to copy it.',true));window.onpopstate=e=>actionError(navigate(e.state?.address||new URLSearchParams(location.search).get('resolve')||'.gateway',false));
- window.addEventListener('message',e=>{if(e.origin!==location.origin)return;if(e.data?.type==='gateway:navigate'&&typeof e.data.address==='string'){boot.from_satline=e.data.from||'';actionError(navigate(e.data.address));}});
+ window.addEventListener('message',e=>{
+  if(e.origin!==location.origin)return;
+  if(e.data?.type==='gateway:index-status'){
+   const frame=$('indexes-module'),value=e.data;
+   if(!frame||e.source!==frame.contentWindow||!document.body.classList.contains('indexes-workspace'))return;
+   if(!Number.isSafeInteger(value.localIndexes)||value.localIndexes<0||value.localIndexes>1000000||!Number.isSafeInteger(value.following)||value.following<0||value.following>1000000||value.sharingLocked!==true)return;
+   document.dispatchEvent(new CustomEvent('gateway:index-status',{detail:{localIndexes:value.localIndexes,following:value.following,sharingLocked:true}}));
+   return;
+  }
+  if(e.data?.type==='gateway:navigate'&&typeof e.data.address==='string'){boot.from_satline=e.data.from||'';actionError(navigate(e.data.address));}
+ });
  if(boot.activation)api('/api/v1/activation',{id:boot.activation,stage:'ready',error:''}).catch(()=>{});
  actionError(navigate(boot.address,false));
 })();

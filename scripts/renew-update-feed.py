@@ -54,7 +54,9 @@ def request(url, *, method="GET", token="", data=None, binary=False, limit=MAX_M
         parsed = urllib.parse.urlsplit(url)
         require(parsed.scheme == "https" and parsed.username is None and parsed.password is None,
                 "Network request requires HTTPS without user information")
-        headers = {"Accept": "application/octet-stream" if binary else "application/vnd.github+json",
+        # Uploads send ZIP bytes but return JSON asset metadata. Only binary
+        # GET downloads negotiate an octet-stream response with GitHub.
+        headers = {"Accept": "application/octet-stream" if binary and method == "GET" else "application/vnd.github+json",
                    "User-Agent": "Gateway-approved-renewal", "X-GitHub-Api-Version": "2022-11-28"}
         if token:
             require(parsed.hostname in {"api.github.com", "uploads.github.com"}, "Credential destination rejected")

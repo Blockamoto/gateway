@@ -159,6 +159,29 @@ class ApprovalTests(unittest.TestCase):
 
 
 class NetworkTests(unittest.TestCase):
+    def test_release_upload_sends_raw_zip_but_accepts_json_metadata(self):
+        payload = b"PK\x03\x04fixture zip bytes"
+        name = "gateway-update-feed-v0.7.0-pending-41-2-2.zip"
+        expected = {"id": 42, "name": name, "size": len(payload), "digest": "sha256:" + renewal.digest(payload)}
+        testcase = self
+
+        class Opener:
+            def open(self, req, timeout):
+                # Match GitHub's upload contract: unlike asset GET downloads,
+                # POST returns JSON metadata even though its body is a ZIP.
+                if req.get_header("Accept") != "application/vnd.github+json":
+                    raise urllib.error.HTTPError(req.full_url, 415, "Unsupported response media type", {}, None)
+                testcase.assertEqual(req.get_method(), "POST")
+                testcase.assertEqual(req.get_header("Content-type"), "application/zip")
+                testcase.assertEqual(req.get_header("Authorization"), "Bearer ephemeral-test-token")
+                testcase.assertEqual(req.data, payload)
+                testcase.assertEqual(renewal.urllib.parse.urlsplit(req.full_url).hostname, "uploads.github.com")
+                testcase.assertEqual(renewal.urllib.parse.parse_qs(renewal.urllib.parse.urlsplit(req.full_url).query), {"name": [name]})
+                return io.BytesIO(json.dumps(expected).encode())
+
+        with mock.patch.object(renewal.urllib.request, "build_opener", return_value=Opener()):
+            self.assertEqual(renewal.GitHub("ephemeral-test-token").upload(100, name, payload), expected)
+
     def test_github_credential_does_not_follow_asset_redirect(self):
         calls = []
 
@@ -173,6 +196,7 @@ class NetworkTests(unittest.TestCase):
             result = renewal.request(renewal.API + "/releases/assets/41", token="ephemeral-test-token", binary=True)
         self.assertEqual(result, b"verified public bundle")
         self.assertEqual(calls[0].get_header("Authorization"), "Bearer ephemeral-test-token")
+        self.assertEqual(calls[0].get_header("Accept"), "application/octet-stream")
         self.assertIsNone(calls[1].get_header("Authorization"))
 
     def test_external_redirect_and_credential_destination_rejected(self):

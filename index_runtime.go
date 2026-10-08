@@ -47,6 +47,7 @@ func cloneIndexJob(j indexJob) indexJob {
 }
 
 type indexStatusView struct {
+	Timeline    indexTimelineView   `json:"timeline"`
 	Jobs        []indexJob          `json:"jobs"`
 	Definitions []indexDefinition   `json:"definitions"`
 	Providers   []indexProviderView `json:"providers"`
@@ -143,6 +144,7 @@ func (a *app) indexStatus() indexStatusView {
 			instance.Note = releaseLockReason(id)
 		}
 	}
+	out.Timeline = a.indexTimeline(out.Definitions, out.Providers, out.Instances, out.Errors...)
 	return out
 }
 func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {

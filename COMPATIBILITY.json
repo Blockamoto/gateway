@@ -1,5 +1,5 @@
 {
-  "app_version": "0.7.0",
+  "app_version": "0.7.1",
   "minimum_compatible_app": "0.3.9",
   "wire_protocol": 1,
   "minimum_wire_protocol": 1,

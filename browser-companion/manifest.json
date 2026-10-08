@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Gateway Browser Companion",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Recovers exact Gateway resource addresses when a Chromium browser treats them as searches.",
   "background": {
     "service_worker": "service-worker.js"

@@ -20,14 +20,16 @@ import (
 )
 
 type app struct {
-	updater              *desktopUpdater
-	updateAPIWork        sync.WaitGroup
-	updateBackgroundWork sync.WaitGroup
-	indexMu              sync.Mutex
-	indexLiveMu          sync.Mutex
-	indexLiveControlMu   sync.Mutex // policy changes, pause and supervisor decisions
-	indexLiveLast        string
-	indexLiveRuntime     map[string]indexLiveRuntime
+	updater               *desktopUpdater
+	updateAPIWork         sync.WaitGroup
+	updateBackgroundWork  sync.WaitGroup
+	indexMu               sync.Mutex
+	indexLiveMu           sync.Mutex
+	indexLiveControlMu    sync.Mutex // policy changes, pause and supervisor decisions
+	indexLiveLast         string
+	indexLiveRuntime      map[string]indexLiveRuntime
+	timelineMu            sync.Mutex
+	timelineSourceHeights map[string]timelineHeaderHint
 
 	indexJob           indexJob
 	indexCancel        func()

@@ -90,17 +90,16 @@ async function run() {
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (!request.url().startsWith(endpoint + '/')) external.push(request.url()); });
     await page.goto(endpoint + '/indexes', {waitUntil:'networkidle'});
-    await page.locator('#index-cards .index-card').nth(1).waitFor();
-    assert.equal(await page.locator('#index-cards .index-card').count(), (await (await fetch(endpoint+'/api/v1/index/status')).json()).definitions.filter(x=>!x.locked&&(x.buildable||x.id==='headers')).length);
+    await page.locator('.timeline-track').nth(1).waitFor();
+    assert.equal(await page.locator('.timeline-track').count(), (await (await fetch(endpoint+'/api/v1/index/status')).json()).definitions.length);
     assert.equal(await page.locator('select#index, select#query-index, select#peer-index').count(), 0);
-    await page.screenshot({path:path.join(out, 'cards-desktop.png'), fullPage:true});
+    await page.screenshot({path:path.join(out, 'timeline-desktop.png'), fullPage:true});
 
-    await page.locator('details.index-other').evaluate(el=>el.open=true);
-    const locked=page.locator('[data-index="inscriptions"]');
-    assert.equal(await locked.getByRole('switch',{name:'inscriptions On',exact:true}).isDisabled(),true);
-    await locked.getByRole('button',{name:'🔒 Why is this locked?',exact:true}).click();
-    await locked.getByRole('status').getByText(/locked in this testing build/).waitFor();
+    await page.locator('.timeline-track[data-index="inscriptions"] .timeline-track-select').click();
+    await page.locator('#timeline-inspector').getByText(/locked/i).first().waitFor();
+    assert.equal(await page.locator('#index-workspace').isVisible(),false,'Locked selection hides all working controls');
     await page.screenshot({path:path.join(out,'locked-features.png'),fullPage:true});
+    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     const control = page.getByRole('switch', {name:'blocks On', exact:true});
     const live = page.getByRole('switch', {name:'blocks Live', exact:true});
     await page.evaluate(()=>window.GatewayTheme.ready);assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'light');
@@ -110,27 +109,27 @@ async function run() {
       assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Fresh On does not scan '+id);await on.click();await page.waitForFunction(id=>!document.querySelector('[aria-label="'+id+' On"]').checked,id);
     }
     assert.equal(await live.isDisabled(),false,'Live is selectable before an initial checkpoint');
-    await page.locator('[data-index="blocks"] .index-card-help').getByText(/all applicable history from block 0/).waitFor();
+    await page.locator('#timeline-inspector').getByText(/all applicable history from block 0/).waitFor();
     await control.focus();
     await page.keyboard.press('Space');
     await page.waitForFunction(()=>document.querySelector('[aria-label="blocks On"]').checked);
-    assert.equal(await page.locator('#selected-index-label').isVisible(),false,'On persists permission instead of only highlighting a card');
+    assert.equal(await page.locator('#timeline-details').evaluate(el=>el.open),false,'On persists permission without opening advanced settings');
     assert.equal(fs.existsSync(path.join(profile,'indexes','live.json')),true,'Fresh On must persist before any index exists');
     assert.equal(fs.existsSync(path.join(profile, 'indexes', 'job.json')), false, 'On alone began unbounded work');
     await control.focus();await page.keyboard.press('Space');await page.waitForFunction(()=>!document.querySelector('[aria-label="blocks On"]').checked);
     await live.focus();await page.keyboard.press('Space');await page.waitForFunction(()=>document.querySelector('[aria-label="blocks Live"]').checked&&document.querySelector('[aria-label="blocks On"]').checked);
     assert.equal((await (await fetch(endpoint+'/api/v1/index/status')).json()).live.find(x=>x.index==='blocks').enabled,true,'Live persisted through the real backend');
-    await page.reload({waitUntil:'networkidle'});await page.waitForFunction(()=>document.querySelector('[aria-label="blocks Live"]')?.checked&&document.querySelector('[aria-label="blocks On"]')?.checked);
+    await page.reload({waitUntil:'networkidle'});await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();await page.waitForFunction(()=>document.querySelector('[aria-label="blocks Live"]')?.checked&&document.querySelector('[aria-label="blocks On"]')?.checked);
     await control.focus();await page.keyboard.press('Space');await page.waitForFunction(()=>!document.querySelector('[aria-label="blocks On"]').checked&&document.querySelector('[aria-label="blocks Live"]').checked);
     await live.focus();await page.keyboard.press('Space');await page.waitForFunction(()=>!document.querySelector('[aria-label="blocks Live"]').checked);
-    await page.locator('[data-index="blocks"] button').click();
-    assert.equal(await page.locator('#plan-form').isVisible(), true);assert.equal(await page.locator('#plan-form').evaluate(form=>form.closest('article').dataset.index),'blocks','Expanded settings belong to Blocks card');
+    await page.locator('#timeline-details').evaluate(el=>el.open=true);
+    assert.equal(await page.locator('#plan-form').isVisible(), true);assert.equal(await page.locator('#index').inputValue(),'blocks','Expanded settings belong to the selected Blocks track');
     assert.equal(await page.locator('#selected-index-label').innerText(), 'Bitcoin blocks');
     assert.equal(await page.locator('#build').isDisabled(), true);
     assert.equal(fs.existsSync(path.join(profile, 'indexes', 'job.json')), false, 'Offline Live attempted a network scan');
     await page.setViewportSize({width:390, height:844});
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'Narrow Indexes overflow');
-    await page.screenshot({path:path.join(out, 'cards-narrow.png'), fullPage:true});
+    await page.screenshot({path:path.join(out, 'timeline-narrow.png'), fullPage:true});
     // Exercise the real shell, embedded workspace, address entry and history.
     await page.goto(endpoint + '/', {waitUntil:'networkidle'});
     assert.equal(await page.locator('.sidebar').count(),0);
@@ -149,7 +148,7 @@ async function run() {
     await page.locator('.nav-item[data-route="indexes.gateway"]').click();
     assert.equal(await page.locator('.topbar [data-route="indexes.gateway"]').getAttribute('aria-current'),'page');
     const indexes = page.frameLocator('#indexes-module');
-    await indexes.locator('#index-cards .index-card').nth(1).waitFor();
+    await indexes.locator('.timeline-track').nth(1).waitFor();
     assert.equal(await page.locator('#address').inputValue(), 'indexes.gateway');
     await page.screenshot({path:path.join(out,'shell-indexes-desktop.png'),fullPage:true});
     await page.setViewportSize({width:390,height:844});
@@ -161,12 +160,12 @@ async function run() {
     await page.locator('#home-state').waitFor();
     await page.locator('#address').fill('indexes.gateway');
     await page.locator('#address-form').evaluate(form => form.requestSubmit());
-    await indexes.locator('#index-cards .index-card').nth(1).waitFor();
+    await indexes.locator('.timeline-track').nth(1).waitFor();
     await page.goBack();
     await page.locator('#home-state').waitFor();
     assert.equal(await page.locator('#address').inputValue(), '.gateway');
     await page.goForward();
-    await indexes.locator('#index-cards .index-card').nth(1).waitFor();
+    await indexes.locator('.timeline-track').nth(1).waitFor();
     assert.equal(await page.locator('#address').inputValue(), 'indexes.gateway');
 
     await page.goto(endpoint+'/?resolve=settings.gateway',{waitUntil:'networkidle'});
@@ -178,7 +177,7 @@ async function run() {
     await page.screenshot({path:path.join(out,'settings-dark.png'),fullPage:true});
     await page.locator('.settings-sections').getByRole('button',{name:'Updates',exact:true}).click();await page.screenshot({path:path.join(out,'updates-settings-dark.png'),fullPage:true});
     await page.evaluate(()=>localStorage.clear());await page.reload({waitUntil:'networkidle'});await page.evaluate(()=>window.GatewayTheme.ready);assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'dark','Profile choice survives loss of per-origin browser storage');
-    await page.locator('.nav-item[data-route="indexes.gateway"]').click();await indexes.locator('[data-index="blocks"]').waitFor();assert.equal(await indexes.locator('html').getAttribute('data-theme'),'dark');await page.screenshot({path:path.join(out,'indexes-dark.png'),fullPage:true});
+    await page.locator('.nav-item[data-route="indexes.gateway"]').click();await indexes.locator('.timeline-track[data-index="blocks"]').waitFor();assert.equal(await indexes.locator('html').getAttribute('data-theme'),'dark');await page.screenshot({path:path.join(out,'indexes-dark.png'),fullPage:true});
     await page.locator('.nav-item[data-route="peers.gateway"]').click();await page.locator('#peer-data .panel').waitFor();await page.screenshot({path:path.join(out,'peers-dark.png'),fullPage:true});
     await page.locator('#settings-button').click();await page.locator('#theme-select').waitFor();
     await page.locator('#theme-select').selectOption('light');
@@ -210,7 +209,7 @@ async function run() {
     const finalUpdate = await (await fetch(endpoint+'/api/v1/updates/status')).json();assert.equal(finalUpdate.state,'disabled_offline');assert.equal(finalUpdate.last_checked,undefined,'UI traversal did not start a hosted update check');
     const result = {result:'PASS', scope:'Native offline runtime; actual Chromium DOM/CSP, all available fresh persisted On controls, initial Live enabling On/reload/stop, honest offline no-scan, reviewed bundled updater trust and notification defaults persisted before UI interaction with offline checks paused, top-bar Home/Indexes/Peers/Settings, profile-saved light/dark theme and embedded theme, all three setup stages in both themes at desktop/narrow with pending browser/native readiness preserved, address entry and history; no external-origin requests', version:ping.version, binary:path.resolve(options.binary), binary_sha256:createHash('sha256').update(fs.readFileSync(path.resolve(options.binary))).digest('hex'), update_channel:expectedChannel.id, update_publisher:expectedChannel.publisher_url, browser:executablePath, browser_version:browser.version(), platform:process.platform, page_errors:errors, external_requests:external};
     fs.writeFileSync(path.join(out, 'result.json'), JSON.stringify(result, null, 2));
-    console.log('Index cards browser: PASS (' + result.scope + ').');
+    console.log('Index timeline runtime browser: PASS (' + result.scope + ').');
   } catch (error) {
     fs.writeFileSync(path.join(out, 'result.json'), JSON.stringify({result:'NOT_PASSED', error:String(error.stack || error), page_errors:errors, external_requests:external}, null, 2));
     throw error;

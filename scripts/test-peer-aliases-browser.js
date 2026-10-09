@@ -80,12 +80,25 @@ async function run(){
   const many=await aliases.allTextContents();assert.equal(many.length,new Set(many).size,'Aliases stay distinct when friendly words repeat');
   await page.evaluate(async()=>{window.fixture.connections=[];await window.nextPeers()});
   await page.getByRole('heading',{name:'No active connections'}).waitFor();
+  await page.evaluate(async()=>{window.fixture.listener={enabled:true,requested:true,listen_port:48444,automatic_port:true};await window.nextPeers()});
+  const serving=page.locator('[data-bitcoin-serving-status]');
+  assert.match(await serving.innerText(),/Bitcoin serving is on.*48444/);
+  assert.match(await serving.innerText(),/default port is busy/);
+  assert(!(await serving.innerText()).includes('48333'),'Status must show the actual listening port');
+  await page.evaluate(async()=>{window.fixture.listener={enabled:false,requested:true,listen_port:0,error:'Cannot listen <img src=x onerror="window.injected=true">'};await window.nextPeers()});
+  assert.match(await serving.innerText(),/Bitcoin serving is unavailable/);
+  assert.match(await serving.innerText(),/Cannot listen <img/);
+  assert.equal(await page.locator('#connection-summary img').count(),0,'Listener errors must remain escaped text');
+  assert.equal(await page.evaluate(()=>window.injected),undefined);
+  await page.evaluate(async()=>{window.fixture.listener={enabled:false,requested:false,listen_port:0};await window.nextPeers()});
+  assert.equal(await serving.innerText(),'Bitcoin serving is off');
+  assert.deepEqual(await page.evaluate(()=>window.mutations),[{action:'disconnect',address:ipv6},{action:'refresh'}],'Reading listener status must not change preferences');
   const before=await page.locator('#content').innerHTML();
   await page.evaluate(async()=>{window.current=false;const next=window.nextPeers;window.nextPeers=null;await next()});
   assert.equal(await page.evaluate(()=>window.nextPeers),null,'A departed view does not keep polling');
   assert.equal(await page.locator('#content').innerHTML(),before);
   assert.deepEqual(await page.evaluate(()=>window.notices),[]);assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
-  console.log('Peer aliases browser: PASS (default concealment, keyboard reveal/hide, stable distinct labels, refresh/focus, correct disconnect endpoint, diagnostic disclosure, narrow viewport, escaping, route cancellation; isolated API fixtures).');
+  console.log('Peer aliases browser: PASS (default concealment, keyboard reveal/hide, stable distinct labels, refresh/focus, correct disconnect endpoint, diagnostic disclosure, narrow viewport, actual serving port/failure/off state, escaping, route cancellation; isolated API fixtures).');
  }finally{await browser.close()}
 }
 run().catch(e=>{console.error(e);process.exitCode=1});

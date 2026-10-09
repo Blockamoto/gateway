@@ -31,7 +31,7 @@ async function run(){
     if(body?.action==='complete'){progress.completed=true;settings.onboarded=true}
     return reply(snapshot());
    }
-   if(url.pathname==='/api/v1/settings'){if(body){if(settingsFailure)return reply({error:'Settings could not be saved'},500);settings={...settings,...body}}return reply({settings,core:{connected:false},core_store:{}})}
+   if(url.pathname==='/api/v1/settings'){if(body){if(settingsFailure)return reply({error:'Settings could not be saved'},500);settings={...settings,...body}}return reply({settings,core:{connected:false},core_store:{},bitcoin_p2p:{enabled:settings.serve_data,requested:settings.serve_data,listen_port:settings.serve_data?48444:0,automatic_port:settings.serve_data}})}
    if(url.pathname==='/api/v1/system/status')return reply(system);
    if(url.pathname==='/api/v1/browser/status')return reply(browserState());
    if(url.pathname==='/api/v1/browser/open-setup')return launchFailure?reply({error:'Selected browser launch unavailable'},404):reply({state:'manual_navigation_required',manual_url:'edge://extensions/'});
@@ -69,6 +69,8 @@ async function run(){
   settingsFailure=false;await page.locator('#setup-next').click();await page.locator('#gateway-setup').waitFor({state:'hidden'});assert.equal(progress.completed,true);assert.equal(progress.profile,'Profile 2');assert.equal(settings.privacy_mode,true);assert.equal(settings.serve_data,true);assert.equal(system.run_on_startup,false);
   await page.locator('#settings-button').click();await page.locator('#settings-form').waitFor();assert.equal(await page.locator('#private-mode').getAttribute('role'),'switch');assert.equal(await page.locator('#serve-gateway-data').isDisabled(),true);assert.equal(await page.locator('#serve-data').isChecked(),true);
   await page.getByRole('button',{name:'Privacy & storage',exact:true}).click();if(out)await page.screenshot({path:path.join(out,'settings-privacy-narrow.png'),fullPage:true});await page.locator('#private-mode').uncheck();await page.locator('#serve-data').uncheck();await page.locator('#settings-form button[type="submit"]').click();await page.locator('#settings-form').waitFor();assert.equal(settings.privacy_mode,false);assert.equal(settings.serve_data,false);assert.equal(settings.share_cache,false,'privacy toggle preserves public-cache opt-out');
+  await page.getByRole('button',{name:'Privacy & storage',exact:true}).click();
+  assert.equal(await page.locator('[data-bitcoin-serving-status]').innerText(),'Bitcoin serving is off','Settings reports the saved off state without a fictitious listening port');
   assert.equal(mutations.filter(x=>x.path==='/api/v1/system/startup').length,0);assert.deepEqual(errors,[]);
   console.log('Gateway setup browser: PASS (3 steps, Core-only reuse, explicit routing consent, browser-specific partial failure/retry, read-only polling, launch copy/fallback, independent Bitcoin serving, private switches, preserved choices, cancellation/save failure, reduced motion, narrow scroll containment, direct entry).');
  }finally{await browser.close();await new Promise(r=>server.close(r))}

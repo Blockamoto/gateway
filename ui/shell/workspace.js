@@ -5,6 +5,13 @@ window.GatewayWorkspace = (() => {
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const num=v=>typeof v==='number'?v.toLocaleString('en-GB'):String(v??'unknown');
  const route=(address,label,primary=false)=>`<button class="${primary?'primary':'quiet'}" data-route="${esc(address)}">${esc(label)}</button>`;
+ function servingStatus(view){
+  if(!view)return '';
+  const port=Number.isSafeInteger(view.listen_port)&&view.listen_port>0?view.listen_port:0;
+  const text=view.enabled?'Bitcoin serving is on'+(port?' · port '+port:''):(view.error||view.requested)?'Bitcoin serving is unavailable':'Bitcoin serving is off';
+  const note=view.enabled&&view.automatic_port?'The default port is busy, so Gateway chose an available port.':!view.enabled?String(view.error||''):'';
+  return `<p class="small muted" data-bitcoin-serving-status><strong>${esc(text)}</strong>${note?' '+esc(note):''}</p>`;
+ }
  // Keep labels stable while this shell is open, including refreshes and route
  // changes. Addresses are not written to browser storage. The sequence also
  // makes every alias distinct, even after the friendly words repeat.
@@ -44,7 +51,7 @@ window.GatewayWorkspace = (() => {
   const $=id=>root.querySelector('#'+id);
   const revealed=new Set();
   async function load(){try{const p=await api('/api/v1/peers?core=1');if(!isCurrent())return;const n=p.network||{};
-   $('connection-summary').innerHTML=`<div class="status-cell"><div class="eyebrow">BITCOIN</div><strong>${num(n.connected||0)} connections</strong><small>For headers and requested block data</small></div><div class="status-cell"><div class="eyebrow">GATEWAY PEERHOOD</div><strong>🔒 Locked</strong><small>Unavailable in this testing build</small></div>`;
+   $('connection-summary').innerHTML=`<div class="status-cell"><div class="eyebrow">BITCOIN</div><strong>${num(n.connected||0)} connections</strong><small>For headers and requested block data</small>${servingStatus(p.listener)}</div><div class="status-cell"><div class="eyebrow">GATEWAY PEERHOOD</div><strong>🔒 Locked</strong><small>Unavailable in this testing build</small></div>`;
    const peers=(p.connections||[]).map(x=>({...x,alias:peerAlias(x.address)}));
    const focus=root.ownerDocument.activeElement;
    const focusID=$('peer-data').contains(focus)?focus.id:'';
@@ -75,5 +82,5 @@ window.GatewayWorkspace = (() => {
   groups.forEach((g,i)=>{const b=document.createElement('button');b.type='button';b.textContent=labels[i]||'Advanced';if(g.dataset.settingsSection)b.dataset.settingsSection=g.dataset.settingsSection;b.onclick=()=>select(i);nav.appendChild(b)});
   body.prepend(nav);select(0);
  }
- return {home,connections,jobCard,retentionCards,organizeSettings};
+ return {home,connections,jobCard,retentionCards,organizeSettings,servingStatus};
 })();

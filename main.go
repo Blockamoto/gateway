@@ -280,10 +280,9 @@ func main() {
 	}
 	a.gatewayListen = strings.TrimSpace(*gatewayListenFlag)
 	a.source = newOverlayServer(a)
-	if bitcoinListenerEnabled(a.settings) && !cliOnly {
-		if err := a.source.start(); err != nil {
+	if !cliOnly {
+		if err := a.startBitcoinListener(); err != nil {
 			fmt.Println("P2P share warning:", err)
-			a.settings.ServeData = false
 		}
 	}
 

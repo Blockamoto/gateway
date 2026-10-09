@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -113,6 +115,12 @@ type overlayServer struct {
 	stop chan struct{}
 	id   string
 	app  *app
+	// The default Bitcoin listener can coexist with another Gateway profile.
+	// Explicit bind addresses and Gateway LAN discovery retain their fixed-port
+	// contract. listenTCP is injectable so tests never occupy the user's port.
+	listenTCP     func(string, string) (net.Listener, error)
+	automaticPort bool
+	listenError   string
 
 	connections             chan struct{}
 	standardGetDataRequests uint64
@@ -123,11 +131,27 @@ type overlayServer struct {
 func newOverlayServer(a *app) *overlayServer {
 	var b [6]byte
 	_, _ = rand.Read(b[:])
-	return &overlayServer{id: hex.EncodeToString(b[:]), app: a, connections: make(chan struct{}, 64)}
+	return &overlayServer{id: hex.EncodeToString(b[:]), app: a, connections: make(chan struct{}, 64), listenTCP: net.Listen}
 }
 
 func (s *overlayServer) running() bool  { s.mu.Lock(); defer s.mu.Unlock(); return s.tcp != nil }
 func (s *overlayServer) peerID() string { return s.id }
+
+func listenerAddressInUse(err error) bool {
+	// Winsock returns WSAEADDRINUSE (10048). Go's Windows EADDRINUSE is an
+	// invented application errno, and errors.Is does not map these values.
+	if runtime.GOOS == "windows" {
+		return errors.Is(err, syscall.Errno(10048))
+	}
+	return errors.Is(err, syscall.EADDRINUSE)
+}
+
+func listenerStartError(addr string, err error) error {
+	if listenerAddressInUse(err) {
+		return fmt.Errorf("Bitcoin peer serving cannot use %s because another application is using it; stop that application or choose another --gateway-listen address: %w", addr, err)
+	}
+	return fmt.Errorf("Bitcoin peer serving could not listen on %s; outbound connections and local data remain available: %w", addr, err)
+}
 
 func (s *overlayServer) start() error {
 	s.mu.Lock()
@@ -135,26 +159,42 @@ func (s *overlayServer) start() error {
 	if s.tcp != nil {
 		return nil
 	}
+	s.listenError, s.automaticPort = "", false
 	addr := s.app.gatewayListen
 	if addr == "" {
 		addr = fmt.Sprintf(":%d", overlayTCPPort)
 	}
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		return err
-	}
-	var udp *net.UDPConn
 	s.app.settingsMu.RLock()
 	lanEnabled := s.app.settings.LANDiscovery && releaseFeatureAvailable("gateway-peerhood")
 	s.app.settingsMu.RUnlock()
+	ln, err := s.listenTCP("tcp", addr)
+	automaticPort := false
+	if err != nil && s.app.gatewayListen == "" && !lanEnabled && listenerAddressInUse(err) {
+		// Let the OS allocate a free port instead of guessing or closing another
+		// profile's listener. Port forwarding for 48333 does not follow this port.
+		ln, err = s.listenTCP("tcp", ":0")
+		automaticPort = err == nil
+		if err != nil {
+			addr = ":0"
+		}
+	}
+	if err != nil {
+		err = listenerStartError(addr, err)
+		s.listenError = err.Error()
+		return err
+	}
+	var udp *net.UDPConn
 	if s.app.gatewayListen == "" && lanEnabled {
 		udp, err = net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: overlayUDPPort})
 	}
 	if err != nil {
 		ln.Close()
+		err = fmt.Errorf("Gateway LAN discovery could not listen on UDP port %d: %w", overlayUDPPort, err)
+		s.listenError = err.Error()
 		return err
 	}
 	s.tcp, s.udp, s.stop = ln, udp, make(chan struct{})
+	s.automaticPort = automaticPort
 	go s.acceptLoop(ln, s.stop)
 	if udp != nil {
 		go s.discoveryLoop(udp, s.stop)
@@ -165,6 +205,7 @@ func (s *overlayServer) start() error {
 func (s *overlayServer) stopServer() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.listenError, s.automaticPort = "", false
 	if s.tcp == nil {
 		return
 	}

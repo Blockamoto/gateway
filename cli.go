@@ -82,12 +82,14 @@ func (a *app) cliStatus() map[string]any {
 	settings := a.settings
 	a.settingsMu.RUnlock()
 	cacheBytes, cacheBlocks := a.cacheStats()
+	serving := a.source.bitcoinServingStatus()
 	return map[string]any{
 		"app_version":  appVersion,
 		"headers":      a.getStatus(),
 		"core":         inspectCore(settings),
-		"sharing":      settings.ServeData && a.source.running(),
-		"listen_port":  overlayTCPPort,
+		"sharing":      serving.Enabled,
+		"listen_port":  serving.ListenPort,
+		"bitcoin_p2p":  serving,
 		"cache_bytes":  cacheBytes,
 		"cache_blocks": cacheBlocks,
 		"wire":         bodWireVersion,

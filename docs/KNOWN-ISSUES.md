@@ -2,6 +2,7 @@
 
 Gateway 0.7.1 is a public testing release. See [status](STATUS.md) for completed checks and hosted delivery acceptance.
 
+- **Two copies can compete for Bitcoin serving port 48333 in 0.7.1.** Close the other copy and retry serving in Settings. Source changes after this release choose an available port when the default is busy, report the actual port in Settings and Peers, and preserve your serving preference. These changes are not yet in the published 0.7.1 downloads. An explicitly configured listen address still requires that address to be available.
 - **Windows binaries are unsigned.** Reputation and antivirus results can vary by product and definitions. If blocked, record the file name, SHA-256 and exact alert and stop that check. Do not disable protection to complete testing. A clean local scan or a verdict about another binary does not clear this release.
 - **Browser setup is manual and Windows-specific.** The companion is loaded unpacked and must be approved in the profile you use. External apps cannot reliably open Chromium's internal Extensions page directly, so setup provides a copy-and-open flow.
 - **Bare addresses can become searches.** Search-engine recovery depends on the browser/search page. A provider may see the query first. Compare with explicit `http://0.bitcoin/` and the companion popup. HTTPS-only behavior or another service using local ports 53/80 can interfere with routing.

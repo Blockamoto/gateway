@@ -1,6 +1,6 @@
 # Known issues and limits
 
-Gateway 0.7.1 is prepared as a testing release. Publication and hosted activation are pending; see [status](STATUS.md) for which checks are complete.
+Gateway 0.7.1 is a public testing release. See [status](STATUS.md) for completed checks and hosted delivery acceptance.
 
 - **Windows binaries are unsigned.** Reputation and antivirus results can vary by product and definitions. If blocked, record the file name, SHA-256 and exact alert and stop that check. Do not disable protection to complete testing. A clean local scan or a verdict about another binary does not clear this release.
 - **Browser setup is manual and Windows-specific.** The companion is loaded unpacked and must be approved in the profile you use. External apps cannot reliably open Chromium's internal Extensions page directly, so setup provides a copy-and-open flow.

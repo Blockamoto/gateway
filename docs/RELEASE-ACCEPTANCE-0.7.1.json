@@ -3,7 +3,7 @@
   "version": "0.7.1",
   "repository": "Blockamoto/gateway",
   "recorded_date_utc": "2026-10-09",
-  "status": "prepared-publication-and-hosted-acceptance-pending",
+  "status": "published-hosted-and-renewal-verified",
   "validated_runtime_source_revision": "e508085f34c406f41ded7eadbc33d5ee0ab4324b",
   "scope": {
     "enabled": [
@@ -23,6 +23,20 @@
     ]
   },
   "completed_checks": {
+    "renewed_native_client": {
+      "result": "PASS",
+      "version": "0.7.1",
+      "application_sequence": 5,
+      "header_sequence": 4,
+      "automatic_startup_check": true,
+      "manual_actions": 0,
+      "current": true,
+      "unnecessary_download_or_install_offered": false,
+      "baseline_preserved": true,
+      "production_profile_touched": false,
+      "disposable_profile_removed": true,
+      "scope": "The exact final Windows client automatically accepted both renewed public feeds and reported up to date in a disposable profile, preserving the validated header snapshot."
+    },
     "windows_go": {
       "source_revision": "e508085f34c406f41ded7eadbc33d5ee0ab4324b",
       "result": "PASS",
@@ -52,7 +66,7 @@
         "windows-amd64",
         "linux-amd64"
       ],
-      "scope": "Development application payloads; final release packaging and installer-specific checks remain pending."
+      "scope": "Application payloads built successfully; the final package audit separately identifies the exact released binaries."
     },
     "real_bitcoin_peer_data": {
       "result": "PASS",
@@ -101,38 +115,278 @@
         "light theme and narrow-window layout",
         "unchanged indexing jobs during exploration"
       ]
+    },
+    "final_package_audit": {
+      "result": "PASS",
+      "source_revision": "da673faf517a8ae85f130da6ae3ea89efc64fd6a",
+      "archive_crc_and_member_hashes": "PASS",
+      "installer_payload_equality": "PASS",
+      "bundled_notices": [
+        "LICENSE",
+        "THIRD-PARTY-NOTICES.txt",
+        "GO-LICENSE.txt"
+      ],
+      "headers": {
+        "bytes": 77558400,
+        "count": 969480,
+        "sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "external_to_client": true
+      },
+      "scope": "Final Windows and Linux packages, expected contents, exact executable equality and unchanged header snapshot."
+    },
+    "local_defender": {
+      "result": "LOCAL_DIAGNOSTIC_NO_THREATS",
+      "intelligence_version": "1.459.636.0",
+      "definitions_unchanged": true,
+      "real_time_protection_active": true,
+      "definition_updates_requested": false,
+      "protection_or_exclusion_changes": false,
+      "external_submission_requested": false,
+      "authenticode_signed": false,
+      "scanned_files": [
+        {
+          "file": "GatewayClient.exe",
+          "sha256": "3e5717005dd1ea77fba773d34a30df3d41f61d8545bc1f065771e1b9b8bdf8cb",
+          "result": "LOCAL_DIAGNOSTIC_NO_THREATS",
+          "exact_bytes_unchanged": true
+        },
+        {
+          "file": "GatewayOnDemand.exe",
+          "sha256": "26ace633e4c7c9b33cfeefcbc64c7267d8d67aad1b67e61ef1de0278ac51d55f",
+          "result": "LOCAL_DIAGNOSTIC_NO_THREATS",
+          "exact_bytes_unchanged": true
+        },
+        {
+          "file": "GatewayNativeHost.exe",
+          "sha256": "2168dfa3eb0ef14af2ccb4727960cca9a75394f71539950f943c3d3715fdd46d",
+          "result": "LOCAL_DIAGNOSTIC_NO_THREATS",
+          "exact_bytes_unchanged": true
+        },
+        {
+          "file": "GatewayUpdateHelper.exe",
+          "sha256": "d70d1c419709b5f48fb700738fb25e67f315be7e0ccfcdcf5399c4b5aa01a268",
+          "result": "LOCAL_DIAGNOSTIC_NO_THREATS",
+          "exact_bytes_unchanged": true
+        },
+        {
+          "file": "gateway-client-v0.7.1-installer.exe",
+          "sha256": "862f8ae6f98f570a3e60d522ffc651c70c168147d170c0aed46d553366ee9b5a",
+          "result": "LOCAL_DIAGNOSTIC_NO_THREATS",
+          "exact_bytes_unchanged": true
+        }
+      ],
+      "scope": "Exact final installer and four app components; a local diagnostic result, not cloud or browser-download clearance."
+    },
+    "final_native_ui": {
+      "result": "PASS",
+      "version": "0.7.1",
+      "source_revision": "da673faf517a8ae85f130da6ae3ea89efc64fd6a",
+      "binary_sha256": "3e5717005dd1ea77fba773d34a30df3d41f61d8545bc1f065771e1b9b8bdf8cb",
+      "page_errors": [],
+      "external_requests": [],
+      "scope": "Exact final native Windows runtime offline, desktop and narrow layouts, both themes, setup flow, controls and bundled updater preferences; no system installation or hosted delivery implied by this check."
+    },
+    "initial_public_https": {
+      "result": "PASS",
+      "source_revision": "da673faf517a8ae85f130da6ae3ea89efc64fd6a",
+      "application_sequence": 4,
+      "header_sequence": 3,
+      "application_archives": 2,
+      "header_chunks": 97,
+      "full_header_count": 969480,
+      "full_header_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+      "verified_at_utc": "2026-10-09T15:17:28Z",
+      "scope": "Independent public HTTPS signature, exact size and content checks for both app archives and all header chunks."
+    },
+    "hosted_native_automatic_update": {
+      "result": "PASS",
+      "source_version": "0.7.0",
+      "source_is_synthetic_fixture": false,
+      "installed_version": "0.7.1",
+      "source_revision": "da673faf517a8ae85f130da6ae3ea89efc64fd6a",
+      "update_mode": "automatic",
+      "download_button_pressed": false,
+      "restart_button_pressed": false,
+      "application_sequence": 4,
+      "application_archive_sha256": "eea0ea3fbb2e605affebb041fd51df4f373f97a8b51eb0cddedc267690e47492",
+      "installed_binary_sha256": {
+        "GatewayClient.exe": "3e5717005dd1ea77fba773d34a30df3d41f61d8545bc1f065771e1b9b8bdf8cb",
+        "GatewayUpdateHelper.exe": "d70d1c419709b5f48fb700738fb25e67f315be7e0ccfcdcf5399c4b5aa01a268",
+        "GatewayOnDemand.exe": "26ace633e4c7c9b33cfeefcbc64c7267d8d67aad1b67e61ef1de0278ac51d55f",
+        "GatewayNativeHost.exe": "2168dfa3eb0ef14af2ccb4727960cca9a75394f71539950f943c3d3715fdd46d"
+      },
+      "preserved_files": [
+        "settings.json",
+        "appearance.json",
+        "keep-user-data.txt",
+        "indexes/live.json",
+        "headers/headers.bin"
+      ],
+      "preserved_bootstrap_files": [
+        "headers-mainnet.bin",
+        "headers-mainnet.json"
+      ],
+      "management_origin_preserved": true,
+      "helper_state": "installed",
+      "page_errors": [],
+      "preflight_warmed_publisher": true,
+      "cold_start_measured": false,
+      "scope": "Genuine published 0.7.0 automatically upgraded and restarted into the exact 0.7.1 app package in a disposable profile; no installed production profile or system-wide installation changed."
+    },
+    "hosted_fresh_client": {
+      "result": "PASS",
+      "version": "0.7.1",
+      "automatic_application_and_header_checks": true,
+      "manual_publisher_setup": false,
+      "github_credentials_in_client": false,
+      "header_sequence": 3,
+      "signed_header_count": 969480,
+      "validated_snapshot_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+      "existing_snapshot_prefix_preserved": true,
+      "ordinary_peer_extension_headers": 1169,
+      "final_header_count": 970649,
+      "scope": "Separate fresh native client with bundled public trust; validated snapshot retained while ordinary Bitcoin peers appended newer headers."
+    },
+    "approved_release_renewal": {
+      "result": "PASS",
+      "run_id": 37951160873,
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/37951160873",
+      "approved_release": "0.7.1",
+      "source_revision": "da673faf517a8ae85f130da6ae3ea89efc64fd6a",
+      "application_sequence": 5,
+      "header_sequence": 4,
+      "application_expires_at": "2026-11-08T15:22:35Z",
+      "headers_expires_at": "2026-11-08T15:22:35Z",
+      "verified_at_utc": "2026-10-09T16:23:48+01:00",
+      "public_receipt": "docs/UPDATE-FEED-STATUS.json",
+      "schedule_utc": "Mondays at 06:17 UTC",
+      "scope": "Commissioning refreshed both signed feeds for the explicitly approved release, deployed to Render and verified live responses; future scheduled execution depends on functioning permissions and hosting."
+    },
+    "renewal_tooling_linux_ci": {
+      "result": "PASS",
+      "source_revision": "991a84ab465745af089bbab0feba438075702b2c",
+      "run_id": 37950638326,
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/37950638326",
+      "scope": "Linux development checks for renewal fixture isolation; released application and header bytes remain unchanged."
+    },
+    "independent_renewed_feeds": {
+      "result": "PASS",
+      "version": "0.7.1",
+      "source_revision": "da673faf517a8ae85f130da6ae3ea89efc64fd6a",
+      "application_sequence": 5,
+      "header_sequence": 4,
+      "application_expires_at": "2026-11-08T15:22:35Z",
+      "headers_expires_at": "2026-11-08T15:22:35Z",
+      "canonical_bundle_sha256": "4093122c977035ba2f557e6e52a74b1fb37f08ba01525281ba8e8ee4860a35f6",
+      "canonical_bundle_bytes": 87068054,
+      "immutable_application_archives": 2,
+      "immutable_header_chunks": 97,
+      "immutable_member_count": 99,
+      "only_sequences_and_timestamps_changed": true,
+      "release_notes_exact_utf8": true,
+      "live_manifest_bodies_verified": 2,
+      "verified_at_utc": "2026-10-09T15:25:16Z",
+      "scope": "Independent verification of the renewed canonical signed bundle, current time and pinned keys, unchanged approved package/header members and exact matching application/header bodies from the live public service."
     }
   },
   "publication": {
-    "status": "PENDING",
+    "status": "PUBLISHED_ASSETS_VERIFIED",
     "repository_public": true,
     "release_url": "https://github.com/Blockamoto/gateway/releases/tag/v0.7.1",
     "prerelease": true,
-    "remaining_checks": [
-      "final release package contents and integrity",
-      "exact final Windows installer and executable diagnostic scans",
-      "uploaded release assets and checksums",
-      "published release tag and notes"
-    ]
+    "published_at_utc": "2026-10-09T15:05:30Z",
+    "tag_revision": "da673faf517a8ae85f130da6ae3ea89efc64fd6a",
+    "asset_count": 10,
+    "primary_asset_count": 9,
+    "retained_previous_signed_bundle_count": 1,
+    "immutable_assets": [
+      {
+        "file": "gateway-client-v0.7.1-windows-amd64.zip",
+        "bytes": 13364980,
+        "sha256": "eea0ea3fbb2e605affebb041fd51df4f373f97a8b51eb0cddedc267690e47492",
+        "result": "PASS"
+      },
+      {
+        "file": "gateway-client-v0.7.1-linux-amd64.zip",
+        "bytes": 7631195,
+        "sha256": "b83cd614e1c9e241c469eb0995e091d182037031e0bf38b0cedeb30378c4243e",
+        "result": "PASS"
+      },
+      {
+        "file": "gateway-client-v0.7.1-windows-amd64-fresh.zip",
+        "bytes": 79271784,
+        "sha256": "3af8b1c931264fe9f19402fec0e8a3c7d07353aaabf7fcd64004294a6e2b67bb",
+        "result": "PASS"
+      },
+      {
+        "file": "gateway-client-v0.7.1-linux-amd64-fresh.zip",
+        "bytes": 73537999,
+        "sha256": "43ae4125d9cfc6ed8aea3e75f576990e563d013725b735953f166c1263d567bf",
+        "result": "PASS"
+      },
+      {
+        "file": "gateway-client-v0.7.1-installer.exe",
+        "bytes": 116818432,
+        "sha256": "862f8ae6f98f570a3e60d522ffc651c70c168147d170c0aed46d553366ee9b5a",
+        "result": "PASS"
+      },
+      {
+        "file": "gateway-headers-v0.7.1.zip",
+        "bytes": 65906545,
+        "sha256": "5a602d4897d20032f0e2c201ea38b08e5bd4f2436aae7ab4c36a0ba5c0158155",
+        "result": "PASS"
+      },
+      {
+        "file": "SHA256SUMS.txt",
+        "bytes": 633,
+        "sha256": "d3005a10e4a45547430abd8072535ca3ea36f6f2f9d003b0702a04ad26bec980",
+        "result": "PASS"
+      },
+      {
+        "file": "artifact-manifest.json",
+        "bytes": 1261,
+        "sha256": "119ce9fdcd37ca8f4da933686521694e6d4a8a2b348029f42c8f4566f7623560",
+        "result": "PASS"
+      }
+    ],
+    "initial_signed_delivery_bundle": {
+      "file": "gateway-update-feed-v0.7.1.zip",
+      "retained_current_filename": "gateway-update-feed-v0.7.1-previous-625308694.zip",
+      "bytes": 87082055,
+      "sha256": "63371cf502372049034569bfb20e2f0ab17a3e55c94c8dadbeb5b14871fb618f",
+      "result": "PASS",
+      "application_sequence": 4,
+      "header_sequence": 3
+    },
+    "tag_verified_by": [
+      "anonymous GitHub REST",
+      "public git remote reference"
+    ],
+    "release_notes_verified": true
   },
   "hosted_delivery": {
-    "status": "PENDING_FOR_0.7.1",
+    "status": "VERIFIED",
     "service_url": "https://gateway-updates.onrender.com",
-    "currently_approved_release": "0.7.0",
+    "currently_approved_release": "0.7.1",
     "approved_release_renewal_configured": true,
-    "remaining_checks": [
-      "signed 0.7.1 application and header bundle verification",
-      "explicit approval and hosted activation of 0.7.1",
-      "independent public HTTPS verification",
-      "real hosted update and restart with local data preserved",
-      "fresh-install automatic update check"
-    ]
+    "accepted_initial_application_sequence": 4,
+    "accepted_initial_header_sequence": 3,
+    "remaining_checks": [],
+    "current_application_sequence": 5,
+    "current_header_sequence": 4,
+    "application_expires_at": "2026-11-08T15:22:35Z",
+    "headers_expires_at": "2026-11-08T15:22:35Z",
+    "current_bundle_sha256": "4093122c977035ba2f557e6e52a74b1fb37f08ba01525281ba8e8ee4860a35f6",
+    "current_bundle_bytes": 87068054,
+    "verified_at_utc": "2026-10-09T15:25:16Z"
   },
   "limitations": [
     "Expected skips are not passing checks for unavailable capabilities.",
-    "Fixture-based browser and packaging checks complement actual runtime testing; they do not establish hosted delivery or a real installer result.",
-    "Windows executables are unsigned; final installer diagnostic scans and broader download or antivirus acceptance remain unestablished.",
+    "Fixture-based browser and packaging checks complement actual runtime testing; they do not by themselves establish a real system installation or hosted delivery.",
+    "Windows executables remain unsigned; local diagnostic scans do not establish cloud, browser-download or other antivirus acceptance.",
+    "Hosted client acceptance used a warmed service; idle cold-start latency was not measured.",
     "Gateway verifies block identity, commitments and selected-chain context, not Core's full script and UTXO consensus validation.",
-    "Completed runtime tests identify the source above; publication and delivery checks must identify the exact final release packages."
-  ]
+    "Released tag, application packages and header bytes remain fixed; later documentation and signed-metadata renewal do not change those application bytes."
+  ],
+  "packaged_source_revision": "da673faf517a8ae85f130da6ae3ea89efc64fd6a"
 }

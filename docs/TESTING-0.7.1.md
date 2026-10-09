@@ -1,6 +1,6 @@
 # Gateway 0.7.1 tester guide
 
-This guide covers the 0.7.1 timeline workspace prepared for public testing. Publication and hosted update activation are pending; check [current status](STATUS.md) before downloading or testing delivery. Use a separate test profile. Headers and Bitcoin Blocks are enabled; additional indexes and Gateway sharing remain locked.
+This guide covers the public 0.7.1 timeline testing release. Check [current status](STATUS.md) for validation and hosted delivery acceptance. Use a separate test profile. Headers and Bitcoin Blocks are enabled; additional indexes and Gateway sharing remain locked.
 
 ## Workspace and tracks
 

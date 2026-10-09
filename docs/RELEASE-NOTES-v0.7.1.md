@@ -1,6 +1,6 @@
 # Gateway 0.7.1 — timeline workspace testing release
 
-Gateway's Indexes page now provides a timeline workspace for exploring Bitcoin and preparing indexing ranges. Bitcoin Headers and Bitcoin Blocks remain the enabled indexes. Bitcoin Core is optional. Publication and hosted update activation are pending; see [status](STATUS.md) and the [acceptance record](RELEASE-ACCEPTANCE-0.7.1.json).
+Gateway's Indexes page now provides a timeline workspace for exploring Bitcoin and preparing indexing ranges. Bitcoin Headers and Bitcoin Blocks remain the enabled indexes. Bitcoin Core is optional. The [public testing release](https://github.com/Blockamoto/gateway/releases/tag/v0.7.1) is published, and its hosted updater and renewal passed live acceptance; see [status](STATUS.md) and the [acceptance record](RELEASE-ACCEPTANCE-0.7.1.json).
 
 ## What's changed
 
@@ -26,12 +26,14 @@ Follow [the timeline tester guide](TESTING-0.7.1.md), [Getting started](GETTING-
 
 ## Validation and delivery status
 
-Runtime source `e508085f34c406f41ded7eadbc33d5ee0ab4324b` passed [all 14 Linux CI stages](https://github.com/Blockamoto/gateway/actions/runs/37944091190). The full Windows Go suite passed **858 checks with 54 expected skips and no failures** on 9 October 2026. Windows and Linux development payloads built successfully; final release package checks remain pending.
+Runtime source `e508085f34c406f41ded7eadbc33d5ee0ab4324b` passed [all 14 Linux CI stages](https://github.com/Blockamoto/gateway/actions/runs/37944091190). The full Windows Go suite passed **858 checks with 54 expected skips and no failures** on 9 October 2026. The release tag and packages identify source `da673faf517a8ae85f130da6ae3ea89efc64fd6a`; later publication records do not change those application bytes. Final package contents, archive checksums, license notices and the external 969,480-header snapshot passed audit. All nine GitHub assets, including the initial signed delivery bundle, matched their local sizes and hashes.
 
 Real-data testing used ordinary Bitcoin peers with Core RPC and mounted files disabled. Headers synchronized beyond the bundled snapshot, and blocks 840000, 840001 and 850000 were fetched and retained as two separate coverage ranges. Native browser checks used no API mocks and exercised block 840000's 3,050 transactions, pagination, a known transaction, selection, delayed scrubbing and narrow layout. Browsing did not start indexing jobs, and headers and blocks survived restart.
 
-Windows executables remain unsigned. Final installer scans are pending, and no universal antivirus clearance is claimed. If a file is flagged, stop that check and report the exact filename and alert; do not disable protection to complete testing.
+The exact final installer and four Windows app components had no threats reported by local Defender diagnostic scans with protection active and definitions unchanged at 1.459.636.0. Windows executables remain unsigned, and no cloud, browser-download or universal antivirus clearance is claimed. If a file is flagged, stop that check and report the exact filename and alert; do not disable protection to complete testing.
 
-The existing signed update channel and installer update choices remain supported. Activation and live delivery verification for 0.7.1 are pending; publication alone does not establish that the hosted service offers it. The approved-release renewal workflow refreshes signed metadata without automatically choosing a new application release. See [updates](UPDATES.md) and the [renewal operator guide](../packaging/update-publisher/RENEWAL.md).
+The hosted updater passed an automatic upgrade and restart from the genuine released 0.7.0 Windows client to the exact 0.7.1 package, preserving settings and headers. A separate fresh client checked both feeds and retained its validated snapshot prefix while ordinary peers added newer headers. Independent HTTPS checks verified both app archives and all 97 header chunks. Acceptance used a warmed service; idle cold-start latency was not measured.
+
+The approved-release renewal workflow passed its [commissioning run](https://github.com/Blockamoto/gateway/actions/runs/37951160873), refreshing signed metadata and verifying the live service. Both current feeds expire on 8 November 2026 at 15:22:35 UTC, with weekly renewal configured. Final independent checks verified both renewed live feeds and unchanged application/header bytes. Renewal does not automatically choose a new application release; future scheduled runs depend on functioning permissions and hosting. See the [public renewal receipt](UPDATE-FEED-STATUS.json), [updates](UPDATES.md) and the [renewal operator guide](../packaging/update-publisher/RENEWAL.md).
 
 Gateway's original source uses [MIT](../LICENSE), with [third-party notices](../THIRD-PARTY-NOTICES.md) retained.

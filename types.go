@@ -102,7 +102,7 @@ type inputView struct {
 	Coordinate string   `json:"coordinate,omitempty"`
 	N          int      `json:"n"`
 	PrevTxID   string   `json:"prev_txid,omitempty"`
-	PrevVout   uint32   `json:"prev_vout,omitempty"`
+	PrevVout   uint32   `json:"prev_vout"`
 	ScriptSig  string   `json:"script_sig"`
 	Sequence   uint32   `json:"sequence"`
 	Witness    []string `json:"witness,omitempty"`

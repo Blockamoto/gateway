@@ -1,24 +1,25 @@
 # Gateway roadmap
 
-Gateway 0.7.0 starts with Headers and Bitcoin Blocks. This roadmap describes scope, not promised delivery dates or support for every related protocol draft.
+Gateway 0.7.1 builds on the first public release with a timeline workspace for Headers and Bitcoin Blocks. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for publication and acceptance status.
 
-## Available in 0.7.0
+## Scope in 0.7.1
 
 - Foundational Headers index, selected-chain tracking, validated bootstrap snapshot and ordinary Bitcoin catch-up.
 - Bitcoin Blocks on demand, bounded index jobs, persistent coverage and configurable source retention.
 - Explorer and schema for known blocks, transactions, inputs, outputs and output-relative positions.
+- A docked timeline, resizable Inspector/Block Explorer pane, anchored zoom, playhead navigation and explicit range selection for preparing indexing plans.
 - Optional read-only Bitcoin Core and mounted block sources.
 - Ordinary Bitcoin peer controls and serving, private-cache controls and optional peer address reveal.
 - Windows installer and portable packages, Linux packages, optional Windows browser registration and `.bitcoin` address entry.
 - Signed application and incremental header delivery, with manual, automatic-check and explicitly chosen automatic-install modes.
 
-See [status](STATUS.md) for release acceptance and [the tester guide](TESTING-0.7.0.md) for behavior to verify.
+See [status](STATUS.md) for release acceptance and [the timeline tester guide](TESTING-0.7.1.md) for behavior to verify. The [setup and browser checklist](TESTING-0.7.0.md) covers the other enabled features.
 
-## Next release: design overhaul and feature expansion
+## Next: refine the workspace and expand features
 
-The next release will focus on a substantial app design overhaul alongside additional features. The redesign was deliberately deferred until after the initial 0.7.0 public release. Its detailed design and selected feature set will be defined in the next release brief.
+The timeline is the first step in the design overhaul. Further interaction and index-specific features will be scoped individually as testing informs the next brief.
 
-- Develop the design overhaul and capture its scope in the next release brief.
+- Refine the timeline workspace from tester feedback; dependency visualization and deeper index-specific views remain future work.
 - Roll out additional features, with the individual capabilities selected as that brief takes shape.
 - Act on first public testing feedback, especially onboarding, address entry, data availability and recovery.
 - Continue testing hosted delivery and renewal, including expiration, unavailable-service behavior and idle-service startup.

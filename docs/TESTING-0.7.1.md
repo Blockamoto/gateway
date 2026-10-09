@@ -1,6 +1,6 @@
-# Gateway timeline development testing
+# Gateway 0.7.1 tester guide
 
-This is a local development build for the proposed 0.7.1 update. It has not been published to GitHub or the hosted update service. Use a separate test profile. The current release's index locks still apply.
+This guide covers the 0.7.1 timeline workspace prepared for public testing. Publication and hosted update activation are pending; check [current status](STATUS.md) before downloading or testing delivery. Use a separate test profile. Headers and Bitcoin Blocks are enabled; additional indexes and Gateway sharing remain locked.
 
 ## Workspace and tracks
 
@@ -15,7 +15,7 @@ This is a local development build for the proposed 0.7.1 update. It has not been
 
 ## Navigation
 
-These are Gateway's mappings for this development build.
+These are Gateway's timeline navigation mappings.
 
 | Control | Expected result |
 | --- | --- |
@@ -62,7 +62,7 @@ These are Gateway's mappings for this development build.
 
 ## Other available functionality
 
-The [public tester guide](TESTING-0.7.0.md) still covers header synchronization, block fetching, the Explorer, schema, peers, browser registration and .bitcoin address entry, storage/privacy and update settings. Exercise those paths for regressions using a disposable profile. The local development build is ahead of the public update feed; a public update check does not publish this build.
+The [setup and browser QA checklist](TESTING-0.7.0.md) also covers header synchronization, block fetching, the Explorer, schema, peers, browser registration and .bitcoin address entry, storage/privacy and update settings. Exercise those paths for regressions using a disposable profile. Check [current status](STATUS.md) for this release's hosted delivery acceptance; a published download alone does not establish that the updater offers it.
 
 Dependency visualization, additional index-specific zoom depths, availability colours and the inscriptions viewer are later work. Additional derived indexes remain locked in this iteration.
 

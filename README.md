@@ -2,7 +2,7 @@
 
 Gateway is a Bitcoin block explorer that retrieves the blocks you ask for. Explore blocks, transactions, inputs, outputs and positions within outputs without downloading the whole blockchain. Bitcoin Core is optional.
 
-**0.7.0 is the first public testing release.** Its active indexes are **Headers** and **Bitcoin Blocks**. Additional indexes remain visible but locked while they undergo further validation. See [current status](docs/STATUS.md) for preparation and acceptance status.
+**0.7.1 prepares the timeline workspace for public testing.** Its active indexes are **Headers** and **Bitcoin Blocks**. Additional indexes remain locked while they undergo further validation. See [current status](docs/STATUS.md) for publication and acceptance status.
 
 ## Start here
 
@@ -18,7 +18,7 @@ Try `0.bitcoin` in Gateway's address field. It opens the genesis block. `0.0.bit
 
 Headers establish the selected proof-of-work chain; they do not contain block bodies. Gateway fetches blocks from ordinary Bitcoin peers or optional local sources. Transactions inside a known block need no additional index. An unknown transaction ID may require a containing-block hint.
 
-The schema, explorer, bounded Blocks jobs, source retention, peer controls and optional Windows browser integration are available. [Indexing](docs/INDEXING.md) explains coverage and storage. [CLI.txt](CLI.txt) lists supported command-line examples.
+The Indexes workspace combines a zoomable timeline with Inspector and Block Explorer tabs. The playhead controls exploration; selected ranges prepare indexing work for explicit review and start. The schema, bounded Blocks jobs, source retention, peer controls and optional Windows browser integration remain available. [Indexing](docs/INDEXING.md) explains coverage and storage. [CLI.txt](CLI.txt) lists supported command-line examples.
 
 ## Connections and privacy
 
@@ -34,8 +34,8 @@ Standalone transaction-location, spender/address, Sat/Satline, inscription, Bitm
 
 ## Test, contribute and build
 
-- [QA tester guide](docs/TESTING-0.7.0.md): installation, every enabled feature, browser registration and real `.bitcoin` address entry.
-- [Release notes](docs/RELEASE-NOTES-v0.7.0.md), [updates](docs/UPDATES.md) and [header delivery](docs/HEADER-BASELINE.md).
+- [Timeline tester guide](docs/TESTING-0.7.1.md), plus the [setup and browser QA checklist](docs/TESTING-0.7.0.md) for installation, browser registration and real `.bitcoin` address entry.
+- [Release notes](docs/RELEASE-NOTES-v0.7.1.md), [updates](docs/UPDATES.md) and [header delivery](docs/HEADER-BASELINE.md).
 - [Building](BUILDING.md), [development](DEVELOPMENT.md) and [contributing](CONTRIBUTING.md).
 - [Security reporting](SECURITY.md).
 

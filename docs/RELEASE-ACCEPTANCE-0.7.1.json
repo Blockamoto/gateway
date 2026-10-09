@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "version": "0.7.1",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-09",
+  "status": "prepared-publication-and-hosted-acceptance-pending",
+  "validated_runtime_source_revision": "e508085f34c406f41ded7eadbc33d5ee0ab4324b",
+  "scope": {
+    "enabled": [
+      "Headers",
+      "Bitcoin Blocks",
+      "timeline workspace with Inspector and Block Explorer tabs",
+      "playhead exploration and independent indexing-range selection",
+      "known-block explorer and schema",
+      "ordinary Bitcoin serving",
+      "optional read-only local providers",
+      "Windows browser integration",
+      "signed application and header updates"
+    ],
+    "locked": [
+      "additional indexes",
+      "Gateway-to-Gateway peerhood and sharing"
+    ]
+  },
+  "completed_checks": {
+    "windows_go": {
+      "source_revision": "e508085f34c406f41ded7eadbc33d5ee0ab4324b",
+      "result": "PASS",
+      "passed": 858,
+      "expected_skips": 54,
+      "failed": 0
+    },
+    "linux_ci": {
+      "source_revision": "e508085f34c406f41ded7eadbc33d5ee0ab4324b",
+      "result": "PASS",
+      "run_id": 37944091190,
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/37944091190",
+      "completed_stages": 14,
+      "coverage": [
+        "build",
+        "full Go tests",
+        "vet",
+        "race checks",
+        "browser companion and UI helpers",
+        "packaging",
+        "actual browser UI regressions"
+      ]
+    },
+    "development_payload_builds": {
+      "result": "PASS",
+      "platforms": [
+        "windows-amd64",
+        "linux-amd64"
+      ],
+      "scope": "Development application payloads; final release packaging and installer-specific checks remain pending."
+    },
+    "real_bitcoin_peer_data": {
+      "result": "PASS",
+      "source_revision": "e508085f34c406f41ded7eadbc33d5ee0ab4324b",
+      "core_rpc_enabled": false,
+      "core_mount_enabled": false,
+      "fetched_blocks": [
+        840000,
+        840001,
+        850000
+      ],
+      "raw_block_count": 3,
+      "raw_block_bytes": 6627644,
+      "stored_coverage": [
+        {
+          "start_height": 840000,
+          "end_height": 840001
+        },
+        {
+          "start_height": 850000,
+          "end_height": 850000
+        }
+      ],
+      "headers_extended_beyond_snapshot": true,
+      "headers_and_blocks_survived_restart": true,
+      "scope": "An isolated real-data profile using ordinary Bitcoin peers; no embedded fixture data or Core provider."
+    },
+    "native_timeline_browser": {
+      "source_revision": "e508085f34c406f41ded7eadbc33d5ee0ab4324b",
+      "result": "PASS",
+      "api_mocks": 0,
+      "known_block": 840000,
+      "transaction_count": 3050,
+      "inspected_transaction_index": 40,
+      "transaction_page": "41-80",
+      "previous_output_index_zero_verified": true,
+      "index_mutation_requests": 0,
+      "page_errors": [],
+      "coverage": [
+        "exact stored block ranges",
+        "embedded Explorer and transaction pagination",
+        "known transaction inputs and outputs",
+        "Shift-click inclusive range and Ctrl-click disjoint selection",
+        "playhead independence across tracks",
+        "delayed scrubbing load",
+        "light theme and narrow-window layout",
+        "unchanged indexing jobs during exploration"
+      ]
+    }
+  },
+  "publication": {
+    "status": "PENDING",
+    "repository_public": true,
+    "release_url": "https://github.com/Blockamoto/gateway/releases/tag/v0.7.1",
+    "prerelease": true,
+    "remaining_checks": [
+      "final release package contents and integrity",
+      "exact final Windows installer and executable diagnostic scans",
+      "uploaded release assets and checksums",
+      "published release tag and notes"
+    ]
+  },
+  "hosted_delivery": {
+    "status": "PENDING_FOR_0.7.1",
+    "service_url": "https://gateway-updates.onrender.com",
+    "currently_approved_release": "0.7.0",
+    "approved_release_renewal_configured": true,
+    "remaining_checks": [
+      "signed 0.7.1 application and header bundle verification",
+      "explicit approval and hosted activation of 0.7.1",
+      "independent public HTTPS verification",
+      "real hosted update and restart with local data preserved",
+      "fresh-install automatic update check"
+    ]
+  },
+  "limitations": [
+    "Expected skips are not passing checks for unavailable capabilities.",
+    "Fixture-based browser and packaging checks complement actual runtime testing; they do not establish hosted delivery or a real installer result.",
+    "Windows executables are unsigned; final installer diagnostic scans and broader download or antivirus acceptance remain unestablished.",
+    "Gateway verifies block identity, commitments and selected-chain context, not Core's full script and UTXO consensus validation.",
+    "Completed runtime tests identify the source above; publication and delivery checks must identify the exact final release packages."
+  ]
+}

@@ -296,10 +296,16 @@ class ExecuteRecoveryTests(unittest.TestCase):
                                "GH_TOKEN": "fake-token", "GATEWAY_UPDATE_SIGNING_KEY_JSON": "fake-private-fixture", "GATEWAY_RENDER_DEPLOY_HOOK": "https://api.render.com/deploy/fake?key=fake",
                                "RUNNER_TEMP": temporary}
                 args = SimpleNamespace(publisher=Path("fixture-publisher"), receipt=Path(temporary) / "public" / "receipt.json")
+                # This flow's assets and signer are explicit 0.7.0 fixtures;
+                # release approval in the working repository can advance independently.
+                approval = {"schema": 1, "repository": renewal.REPOSITORY, "version": VERSION, "channel": "stable"}
+                channel = {"publisher_url": "https://updates.example"}
                 with mock.patch.dict(renewal.os.environ, environment), mock.patch.object(renewal, "GitHub", return_value=gh), \
+                        mock.patch.object(renewal, "load_approval", return_value=(approval, channel)) as load_approval, \
                         mock.patch.object(renewal, "tool", side_effect=fake_tool), mock.patch.object(renewal, "request", return_value=b"{}"), \
                         mock.patch.object(renewal, "hosted_matches", return_value=True), mock.patch("builtins.print"):
                     renewal.execute(args)
+                load_approval.assert_called_once_with(renewal.ROOT)
                 expected = 42 if remaining_days > 8 else 43
                 self.assertEqual(gh.assets[expected]["name"], CANONICAL)
                 self.assertNotIn(expected, gh.deleted, "Cleanup deleted the newly canonical signed bundle")

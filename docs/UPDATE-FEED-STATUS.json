@@ -1,17 +1,17 @@
 {
-  "application_expires_at": "2026-11-07T17:30:26Z",
-  "application_manifest_sha256": "6981fca2587cce6f686792338c0dc6eb560d8afe5bb9935404e406982123c089",
-  "application_sequence": 3,
-  "bundle_asset_id": 622515228,
-  "bundle_sha256": "0c8c611939cd8b71ee0bb80c37138d08b7443b36a0c710978a6137b992670085",
-  "header_sequence": 2,
-  "headers_expires_at": "2026-11-07T17:30:26Z",
-  "headers_manifest_sha256": "b6a1697edc40eb5bb2f320ebc52149042a5080674872fb33bf32005bf532ec36",
+  "application_expires_at": "2026-11-08T15:22:35Z",
+  "application_manifest_sha256": "906b445c534daaffc3a6db3ed89b37bf6a1fdf88ca278f52b78ae794446b2523",
+  "application_sequence": 5,
+  "bundle_asset_id": 625348230,
+  "bundle_sha256": "4093122c977035ba2f557e6e52a74b1fb37f08ba01525281ba8e8ee4860a35f6",
+  "header_sequence": 4,
+  "headers_expires_at": "2026-11-08T15:22:35Z",
+  "headers_manifest_sha256": "57d2b4ec12bf8840186ec75749b51b663cf362aa68dead82da46cab4f3edd3c9",
   "publisher_url": "https://gateway-updates.onrender.com",
   "repository": "Blockamoto/gateway",
   "schema": 1,
-  "source_revision": "e7c81ea0aa059e700881eff3fd7f62c3506645f0",
+  "source_revision": "da673faf517a8ae85f130da6ae3ea89efc64fd6a",
   "status": "verified",
-  "verified_at": "2026-10-08T17:31:11+00:00",
-  "version": "0.7.0"
+  "verified_at": "2026-10-09T15:23:48+00:00",
+  "version": "0.7.1"
 }

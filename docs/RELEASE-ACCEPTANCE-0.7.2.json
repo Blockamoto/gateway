@@ -1,16 +1,130 @@
 {
   "schema": 1,
   "version": "0.7.2",
-  "status": "local_preparation",
+  "status": "validated-draft-preparation",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-10",
+  "validated_runtime_source_revision": "51d2de19c9e5ec064cfa7cff25d31612604ac040",
+  "browser_fixture_revision": "b742f35757c9fe8f88a4b0165d0032e67a1f6fcd",
   "release_kind": "prerelease",
   "published": false,
   "enabled_indexes": ["headers", "blocks", "inscriptions"],
   "gated_features": ["tx-locator", "inscription-related-transaction-locators", "gateway-peerhood"],
-  "validation": {},
+  "validation": {
+    "windows_go": {
+      "result": "PASS",
+      "passed": 921,
+      "expected_skips": 46,
+      "failed": 0,
+      "packages": 8,
+      "native_test_binary_sha256": "d96e591b0068d15cbc9bd8896ec12139074790db6964a146e384a5c447409859"
+    },
+    "linux_ci": {
+      "result": "PASS",
+      "source_revision": "b742f35757c9fe8f88a4b0165d0032e67a1f6fcd",
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38054908829",
+      "build_tests_vet_race_helpers_packaging_and_browser_checks": "PASS",
+      "final_diagnostic_artifact_contains_no_generated_profiles_or_runtime_settings": true,
+      "initial_browser_failure": {
+        "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38053126177",
+        "cause": "Legacy browser fixture expected Sat discovery while this inscription stage intentionally keeps it gated.",
+        "correction": "Assert current stage locks and retain future-capability discovery and planner coverage in explicitly mocked capability fixtures.",
+        "production_change_required": false,
+        "corrected_local_browser_regressions": "PASS"
+      },
+      "diagnostic_teardown_failure": {
+        "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38054054197",
+        "cause": "An asynchronous diagnostic header observer rejected after browser closure, interrupting fixture cleanup after the assertions had passed.",
+        "correction": "Catch late diagnostic observer rejection while retaining explicit required-header assertions; exclude generated native profiles from diagnostic artifact uploads.",
+        "failed_run_artifact_removed": true,
+        "production_change_required": false,
+        "corrected_local_native_browser_regressions": "PASS"
+      }
+    },
+    "real_bitcoin_data": {
+      "result": "PASS",
+      "block_height": 840000,
+      "transaction_count": 3050,
+      "lean_inscriptions": 878,
+      "coordinate": "7i0.840000",
+      "content_bytes": 13,
+      "provider": "bitcoin_on_demand_witness",
+      "evidence": "header_anchored",
+      "transaction_locator_stores_present": false,
+      "checkpoint_and_header_snapshot_survived_final_restart": true,
+      "core_rpc_enabled": false,
+      "core_mount_enabled": false,
+      "scope": "Ordinary Bitcoin peer data fetched and locally verified in a separate real-data profile; the exact final executable reopened the retained content and checkpoint."
+    },
+    "native_content_browser": {
+      "result": "PASS",
+      "scope": "Actual native Go runtime and content guards; local Ord adapter fixtures supply provider-reported bytes; synthetic markers test compiled layout.",
+      "separate_content_site": true,
+      "image_audio_video_decoded": true,
+      "uncached_recursive_dependency_without_third_party_cookies": true,
+      "foreign_grant_probes": "denied",
+      "management_and_cancel_with_viewer_token": "denied",
+      "hostile_html_svg": "isolated",
+      "infinite_script_parent_responsive": true,
+      "text_contrast": "white reading surface",
+      "dense_markers": "bounded; chain tracks remain visible",
+      "narrow_workspace": "timeline remains docked"
+    },
+    "native_real_viewport": {
+      "result": "PASS",
+      "coordinate": "7i0.840000",
+      "content_bytes": 13,
+      "block_transaction_count": 3050,
+      "known_inscriptions": 878,
+      "rendered_marker_limit": 128,
+      "indexing_mutations": 0
+    },
+    "local_signed_automatic_upgrade": {
+      "result": "PASS",
+      "current_version": "0.7.1",
+      "target_version": "0.7.2",
+      "tampered_download_rejected": true,
+      "automatic_download_install_and_restart": true,
+      "all_four_components_match_final_build": true,
+      "settings_appearance_index_policy_and_sentinel_preserved": true,
+      "full_header_snapshot_preserved": true,
+      "preserved_header_count": 969480,
+      "preserved_header_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+      "page_errors": [],
+      "external_browser_requests": [],
+      "production_profile_touched": false,
+      "test_signing_material_removed": true,
+      "disposable_profile_removed": false,
+      "cleanup_status": "LOCAL_TEMPORARY_FIXTURE_RETAINED",
+      "scope": "Genuine released 0.7.1 client and exact final 0.7.2 components, local publisher and test-only signing key; no production delivery or system installation."
+    },
+    "local_defender": {
+      "result": "LOCAL_DIAGNOSTIC_NO_THREATS",
+      "intelligence_version": "1.459.653.0",
+      "definitions_unchanged": true,
+      "real_time_protection_active": true,
+      "protection_or_exclusion_changes": false,
+      "external_submissions": false,
+      "scanned_files": ["GatewayClient.exe", "GatewayOnDemand.exe", "GatewayNativeHost.exe", "GatewayUpdateHelper.exe", "gateway-client-v0.7.2-installer.exe"],
+      "limits": "No cloud, browser-download, other-machine or other-antivirus clearance; Windows executables remain unsigned."
+    },
+    "release_binary_structure": {
+      "result": "PASS",
+      "five_windows_icon_and_version_resources": true,
+      "installer_payload_equality": true,
+      "license_and_tester_guide_payload_equality": true,
+      "linux_client_and_helper_format": "ELF",
+      "validated_header_count": 969480,
+      "header_snapshot_external_to_clients": true,
+      "authenticode_signed": false
+    }
+  },
   "hosted_delivery": "not_activated",
   "notes": [
     "The currently approved hosted release remains 0.7.1.",
-    "Results will be filled from checks against this build; previous acceptance is not carried forward.",
+    "The automatic upgrade used a local publisher and test-only key, not production delivery.",
+    "Provider-reported browser fixtures test rendering and authorization; separate real Bitcoin data establishes the recorded reveal evidence.",
+    "Automatic approval review blocked deletion of one synthetic temporary update-test folder. Signing files were removed and processes stopped; the retained folder is outside release inputs.",
     "Windows executables remain unsigned."
   ]
 }

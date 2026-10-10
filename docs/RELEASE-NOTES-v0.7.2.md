@@ -19,4 +19,12 @@ Inscription reveal evidence does not establish global numbering, current ownersh
 
 ## Testing and limits
 
-Use [the inscription tester guide](TESTING-0.7.2.md), [known issues](KNOWN-ISSUES.md), [privacy notes](PRIVACY.md) and [roadmap](GATEWAY-ROADMAP.md). Results for the new build will be recorded after validation. Existing release acceptance does not clear new executable bytes. Windows executables remain unsigned.
+Use [the inscription tester guide](TESTING-0.7.2.md), [known issues](KNOWN-ISSUES.md), [privacy notes](PRIVACY.md) and [roadmap](GATEWAY-ROADMAP.md). The exact Windows build passed 921 Go checks with 46 expected skips and no failures, native viewport/isolation checks, real Bitcoin positional lookup without a transaction index, and a local signed automatic upgrade from 0.7.1 with settings and all bundled headers preserved. The final installer and four app components had no threats reported by local Defender diagnostics with unchanged definitions. These checks do not establish hosted delivery, system installation, global identity evidence, or cloud/other-machine antivirus clearance. [Linux CI](https://github.com/Blockamoto/gateway/actions/runs/38054908829) passed build, tests, static checks, race, helper, packaging and browser checks. Windows executables remain unsigned. See [this build's acceptance record](RELEASE-ACCEPTANCE-0.7.2.json).
+
+## Additional review checks
+
+- Scrubbing the block playhead debounces Block Explorer loading. Inscription marker/address navigation loads the viewport separately; rapid changes must not let obsolete content replace the current selection.
+- Explicit local Ord adapter answers remain provider-reported. They must not acquire native witness, selected-chain, numbering or ownership claims. Renderer fixtures and real Bitcoin reveal verification are separate checks.
+- Use **Inspect saved storage** to compare Lean and Full records, retained source data and the separate content cache. The report counts encoded file bytes within its stated traversal/read limits, shows partial or unavailable results honestly, and must not fetch data or start indexing.
+- Delegated preview content may follow its target; raw/download actions should preserve the requested inscription's own body.
+- If the default Bitcoin serving port is busy, automatic fallback chooses a different available port when Gateway LAN discovery is inactive. An explicitly configured address remains strict.

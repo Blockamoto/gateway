@@ -4,6 +4,14 @@
 
 The source is preparing positional inscription indexing and an isolated content viewport. Related inscription transaction locators, the standalone Transaction Index and Gateway peerhood remain gated for their later stages. This does not change the published release or approved hosted feed. See [the inscription test guide](TESTING-0.7.2.md) and [draft release notes](RELEASE-NOTES-v0.7.2.md); validation is recorded separately for the new build.
 
+## Current draft validation
+
+The exact local 0.7.2 Windows build passed **921 Go checks, 46 expected skips and no failures**, including the final cancellation and coordinate regressions. Native viewport tests separately checked controlled local Ord fixtures and real Bitcoin block 840000: 3,050 transactions, 878 Lean inscription coordinates, and verified positional content without a transaction locator index. The retained checkpoint and header snapshot survived the final-build restart.
+
+A genuine 0.7.1 client automatically upgraded and restarted into the exact final 0.7.2 components through a local signed publisher fixture, preserving settings and all 969,480 headers. Same-size tampered bytes were rejected. This was a local update test, not a production deployment or system installation. The installer and four Windows components had no threats reported by local Defender scans with protection active and unchanged definitions; they remain unsigned. [Linux CI](https://github.com/Blockamoto/gateway/actions/runs/38054908829) passed build, full tests, static checks, race checks, helpers, packaging and actual browser regressions. See the [0.7.2 acceptance record](RELEASE-ACCEPTANCE-0.7.2.json) for exact scope and limits.
+
+The GitHub release remains a draft for review. The production updater and approved weekly renewal still serve 0.7.1.
+
 ## Published baseline
 
 Gateway **0.7.1 is published, and its hosted updater and renewal workflow have passed live acceptance**. The tested build replaces index cards with a timeline workspace and brings Inspector and Block Explorer tabs into its upper pane. Headers and Bitcoin Blocks remain the enabled indexes. Additional indexes and Gateway-to-Gateway sharing remain locked.

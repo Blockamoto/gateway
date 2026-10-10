@@ -39,9 +39,14 @@ func Test050OrdEnvelopeOrderAndBody(t *testing.T) {
 		t.Fatalf("bad envelope extraction %+v", e)
 	}
 }
-func Test050OrdSkipsMalformedOrNonTaprootWitness(t *testing.T) {
+func Test050OrdPinnedWitnessSelectionAndMalformedScript(t *testing.T) {
 	script := ordScript050(nil, []byte("body"))
-	cases := [][]string{{hex.EncodeToString(script), "00"}, {hex.EncodeToString(append(script, 0x4c)), hex.EncodeToString(append([]byte{0xc0}, make([]byte, 32)...))}, {hex.EncodeToString(script)}}
+	// The pinned reference recognizes unversioned witness leaves, rather than
+	// assuming a P2TR prevout or a c0 control block from one reveal transaction.
+	if len(parseOrdEnvelopes(transactionView{Inputs: []inputView{{Witness: []string{hex.EncodeToString(script), "00"}}}})) != 1 {
+		t.Fatal("pinned unversioned witness leaf was rejected")
+	}
+	cases := [][]string{{hex.EncodeToString(append(script, 0x4c)), hex.EncodeToString(append([]byte{0xc0}, make([]byte, 32)...))}, {hex.EncodeToString(script)}}
 	for _, w := range cases {
 		if len(parseOrdEnvelopes(transactionView{Inputs: []inputView{{Witness: w}}})) != 0 {
 			t.Fatal("accepted non tapscript or malformed script")

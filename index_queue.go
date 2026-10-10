@@ -50,6 +50,10 @@ type indexQueueEntry struct {
 }
 
 func cloneIndexBuildRequest(req indexBuildRequest) indexBuildRequest {
+	if req.ConventionalIDs != nil {
+		value := *req.ConventionalIDs
+		req.ConventionalIDs = &value
+	}
 	req.Outputs = append([]string(nil), req.Outputs...)
 	if req.From != nil {
 		from := *req.From
@@ -190,7 +194,7 @@ func (a *app) indexJobsSnapshot() ([]indexJob, error) {
 
 func sameIndexWork(a, b indexBuildRequest) bool {
 	// Range extent is handled separately; retention and mode are user choices.
-	return a.Index == b.Index && a.Mode == b.Mode && a.Retention == b.Retention && a.Live == b.Live && a.LiveConfigured == b.LiveConfigured && a.RetainSatHistory == b.RetainSatHistory && reflect.DeepEqual(a.Outputs, b.Outputs) && a.From != nil && b.From != nil
+	return a.Index == b.Index && a.Mode == b.Mode && a.Retention == b.Retention && a.Live == b.Live && a.LiveConfigured == b.LiveConfigured && a.RetainSatHistory == b.RetainSatHistory && inscriptionIDsEnabled(a.ConventionalIDs) == inscriptionIDsEnabled(b.ConventionalIDs) && reflect.DeepEqual(a.Outputs, b.Outputs) && a.From != nil && b.From != nil
 }
 
 // Caller holds indexLiveControlMu across admission and start, preventing policy
@@ -202,6 +206,7 @@ func (a *app) acceptIndexBuild(req indexBuildRequest) (indexJob, error) {
 	}
 	req.From, req.To, req.Mode, req.Retention = &plan.From, &plan.To, plan.Mode, plan.Retention
 	req.RetainSatHistory, req.SatHistoryConfigured = plan.RetainSatHistory, true
+	req.ConventionalIDs = boolPointer(plan.ConventionalIDs)
 	req.Outputs = normalizedIndexOutputs(req)
 	if req.Index != "blocks" {
 		req.Outputs = nil
@@ -253,7 +258,7 @@ func (a *app) acceptIndexBuild(req indexBuildRequest) (indexJob, error) {
 		a.indexMu.Unlock()
 		return indexJob{}, fmt.Errorf("index queue is full; finish or cancel outstanding work")
 	}
-	j := indexJob{ID: fmt.Sprintf("%d", time.Now().UnixNano()), Index: req.Index, State: "queued", From: plan.From, To: plan.To, Height: plan.From - 1, Mode: plan.Mode, Live: req.Live, Retention: plan.Retention, Outputs: req.Outputs, RetainSatHistory: req.RetainSatHistory}
+	j := indexJob{ID: fmt.Sprintf("%d", time.Now().UnixNano()), Index: req.Index, State: "queued", From: plan.From, To: plan.To, Height: plan.From - 1, Mode: plan.Mode, Live: req.Live, Retention: plan.Retention, Outputs: req.Outputs, RetainSatHistory: req.RetainSatHistory, ConventionalIDs: req.ConventionalIDs}
 	for _, output := range plan.Outputs {
 		j.Progress = append(j.Progress, indexOutputProgress{Index: output.Index, State: "queued", From: output.From, To: output.To, Height: output.From - 1})
 	}

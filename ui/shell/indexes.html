@@ -31,8 +31,9 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 </fieldset>
 <p class="build-range-notes"><small id="from-start-note">Block heights are inclusive. Review the plan before fetching data.</small><small id="from-note">An existing instance resumes from its last committed checkpoint.</small></p>
 <fieldset id="combined-outputs" hidden><legend>Also index these block results</legend><p class="small muted">Share source fetching and decoding. Each result keeps its own coverage and recoverable progress.</p><div id="output-choices"></div></fieldset><details id="advanced-retention"><summary>Advanced retention</summary><label class="check" id="sat-history-field" hidden><input id="retain-sat-history" type="checkbox"><span>Retain movement history for newly indexed blocks<small class="block muted">Enabling this later does not rebuild past movement history; turning it off preserves already recorded history. Sat identity, origin and current placement do not require full movement history.</small></span></label><div class="field"><label for="retention">Source block retention</label><select id="retention"><option value="ephemeral">Ephemeral — use and discard newly fetched source bytes</option><option value="cache">Cache — retain under the cache policy</option><option value="retain">Retain — keep in Gateway-owned storage</option></select><small>Derived records remain. Existing cache policy and external Bitcoin Core files are separate; this choice never deletes Core data.</small></div></details>
-<div class="field"><label for="mode">Result detail</label><select id="mode"><option value="lean">Lean: district, inscription ID and reveal location</option><option value="full">Full — candidates and evidence</option></select><small>Existing indexes resume in their original format. Full records are not a complete contestability audit.</small></div><div class="actions"><button type="submit" id="plan-button">Review plan</button><button type="button" class="primary" id="build" disabled>Start reviewed plan</button></div>
+<div class="field"><label for="mode">Result detail</label><select id="mode"><option value="lean">Lean — positions only</option><option value="full">Full — content and evidence</option></select><small id="mode-note">Existing indexes resume in their original format.</small></div><div id="inscription-enrichment" hidden><label class="index-switch"><span>Also index conventional inscription IDs</span><input id="conventional-ids" type="checkbox" role="switch" checked aria-describedby="enrichment-note"><span class="switch-track" aria-hidden="true"></span></label><p id="enrichment-note" class="small muted">Save sparse transaction hashes for inscription reveals only. Positional resolution works with this off; standalone Transaction Index stays locked.</p><button id="enrich-inscription-ids" type="button" hidden>Build conventional ID locators</button><p class="small muted">Reviewing this action fills missing locator coverage over the saved inscription range. Lean records may need their reveal blocks fetched once per block.</p></div><div class="actions"><button type="submit" id="plan-button">Review plan</button><button type="button" class="primary" id="build" disabled>Start reviewed plan</button></div>
 </form>
+<details id="inscription-storage" hidden><summary>Inspect storage use</summary><p class="small muted">Run a bounded inspection of saved file bytes. Lean coordinates, Full reveal records, related transaction locators, source blocks and resolved content are reported separately. This includes managed files and retained stale commits, not external mounted-node data or filesystem allocation sizes. This does not fetch or index anything.</p><button id="inspect-inscription-storage" type="button">Inspect saved storage</button><p id="inscription-storage-state" class="small" role="status"></p><dl id="inscription-storage-bytes" class="index-meta"></dl><pre id="inscription-storage-json" hidden></pre></details>
 <div id="plan" class="index-section" hidden><h3>Before this build starts</h3><dl id="plan-meta" class="index-meta"></dl><ul id="plan-notes"></ul><p id="plan-buildability" class="small muted"></p><details><summary>Exact plan JSON</summary><pre id="plan-json"></pre></details></div>
 </section>
 
@@ -52,11 +53,15 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <script src="/shell/index-timeline.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-workspace.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/timeline-explorer.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/inscription-viewport.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-semantic.js" nonce="__INDEX_NONCE__"></script>
+<script id="index-bootstrap" type="application/json" nonce="__INDEX_NONCE__">__INDEX_BOOTSTRAP__</script>
 <script nonce="__INDEX_NONCE__">
 'use strict';
 const $ = id => document.getElementById(id);
 if (new URLSearchParams(location.search).get('embedded') === '1') document.body.classList.add('embedded');
-let currentView = "catalog", selectedIndex = "", timeline, explorer, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
+let currentView = "catalog", selectedIndex = "", timeline, explorer, viewport, semantic, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
+let workspaceBoot={};try{workspaceBoot=JSON.parse($('index-bootstrap').textContent);}catch{}
 function selectView(view) {
   currentView = view;
   for (const pane of document.querySelectorAll('[data-pane]')) pane.hidden = pane.dataset.pane !== view;
@@ -77,6 +82,12 @@ function querySummary(result) {
   const count = result.total_known === true ? ' of ' + result.total + ' recorded results' : ' from at least ' + result.total + ' inspected records; the full count is unknown';
   return 'Showing ' + result.rows.length + count + '. Snapshot block ' + result.checkpoint.height + '. Newest first, inspected ' + result.inspected_blocks + ' block batches (maximum 512). Chain state: ' + human(result.chain_state) + '.' + (result.truncated ? ' This view is partial; absence here is not proof of no record.' : '') + (result.next_cursor ? ' Continuation metadata is included in the result JSON.' : '');
 }
+function inscriptionRows(rows){return (rows||[]).flatMap(row=>{
+  if(Array.isArray(row?.inscriptions))return row.inscriptions.map(position=>({reveal_coordinate:position,reveal_height:row.block_height??row.height,transaction_count:row.transaction_count,mode:row.mode}));
+  if(typeof row==='string')return [{reveal_coordinate:row}];
+  return [row];
+});}
+function inscriptionMarker(row){const position=row.reveal_coordinate||window.GatewayInscriptionViewport.coordinate(row),match=/^(\d+)i(\d+)\.(\d+)(?:\.bitcoin)?$/.exec(position);return match?{address:position,txIndex:Number(match[1]),inscriptionIndex:Number(match[2]),height:Number(match[3])}:null;}
 async function api(action, body) {
   if (body !== undefined && action !== 'plan') statusRevision++;
   const options = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)};
@@ -87,7 +98,8 @@ async function api(action, body) {
 }
 function request() {
   if(selectedDefinition()?.locked) throw new Error('This index is locked in this testing build.');
-  const result = {index: $('index').value, retention: $('retention').value, live: $('initial-live').checked, live_configured: true, mode: $('index').value === 'bitmap' ? $('mode').value : 'full'};
+  const result = {index: $('index').value, retention: $('retention').value, live: $('initial-live').checked, live_configured: true, mode: ['bitmap','inscriptions'].includes($('index').value) ? $('mode').value : 'full'};
+  if(result.index==='inscriptions')result.conventional_ids=inscriptionLocatorsAvailable()&&$('conventional-ids').checked;
   for (const field of ['from', 'to']) if (!(field === 'to' && result.live) && $(field).value !== '' && !(field === 'from' && $('index').value === 'bitmap')) {
     const n = Number($(field).value);
     if (!Number.isSafeInteger(n) || n < 0) throw new Error('Block heights must be non-negative integers.');
@@ -99,6 +111,7 @@ function request() {
 }
 function invalidatePlan() { planSerial++; reviewedRequest = ''; $('build').disabled = true; $('plan-button').disabled = false; $('plan').hidden = true; }
 function selectedDefinition() { return definitions.find(x => x.id === $('index').value); }
+function inscriptionLocatorsAvailable(){return definitions.some(x=>x.id==='tx-locator'&&!x.locked);}
 function syncRetainedStart() {
   const d=selectedDefinition(); if(!selectedIndex||!d?.buildable||d.locked)return;
   const instance=status?.instances?.find(x=>x.definition===selectedIndex), saved=instance?.checkpoint?.from;
@@ -110,9 +123,10 @@ function syncRetainedStart() {
   }
 }
 function selectIndex(id, view, initialLive = false) {
-  if(selectedIndex && !selectedDefinition()?.locked){const draft={};for(const key of ['from','to','retention','mode'])draft[key]=$(key).value;draft.live=$('initial-live').checked;draft.history=$('retain-sat-history').checked;draft.outputs=[...$('output-choices').querySelectorAll('input')].filter(x=>x.checked&&!x.disabled).map(x=>x.value);planDrafts.set(selectedIndex,draft)}
+  if(selectedIndex && !selectedDefinition()?.locked){const draft={};for(const key of ['from','to','retention','mode'])draft[key]=$(key).value;draft.live=$('initial-live').checked;draft.history=$('retain-sat-history').checked;draft.conventional_ids=$('conventional-ids').checked;draft.outputs=[...$('output-choices').querySelectorAll('input')].filter(x=>x.checked&&!x.disabled).map(x=>x.value);planDrafts.set(selectedIndex,draft)}
   if(!id){selectedIndex='';timeline.select('');selectView('catalog');return;}
   message('');selectedIndex = id; receivedRecordKeys=new Set();lastRecordReceipt=''; recordSerial++; recordKey = ''; recordLoading = false;
+  $('inscription-storage').hidden=id!=='inscriptions';
   for (const field of ['index', 'query-index', 'peer-index']) $(field).value = id;
   const d = selectedDefinition(), instance = status?.instances?.find(x => x.definition === id);
   if (!d) return; if (d.locked) { invalidatePlan(); $('index-workspace').hidden=true; $('selected-index-label').hidden=true; $('index-details-nav').hidden=true; timeline.select(id); selectView('catalog'); return; }
@@ -122,11 +136,12 @@ function selectIndex(id, view, initialLive = false) {
  $('initial-live').checked = initialLive || Boolean(status?.live?.find(x => x.index === id)?.enabled); syncLiveForm(); $('from').readOnly = Boolean(instance) || !d.arbitrary_start;
   $('to').value = ''; $('retention').value = status?.live?.find(x => x.index === id)?.retention || instance?.retention || 'ephemeral';
   $('mode').value = instance ? instance.mode || 'full' : 'lean'; $('mode').disabled = Boolean(instance); $('retain-sat-history').checked=Boolean(status?.live?.find(x=>x.index===id)?.retain_sat_history??instance?.retain_sat_history);
+  $('conventional-ids').checked=inscriptionLocatorsAvailable()&&(status?.live?.find(x=>x.index===id)?.conventional_ids??instance?.conventional_ids??true);
   for (const tab of document.querySelectorAll('[data-view]')) tab.hidden = tab.dataset.view==='peers'||(!d.buildable && ['build','results'].includes(tab.dataset.view));
   $('query-results').replaceChildren(); $('query-json').textContent = '';
   $('query-summary').textContent = 'Loading local records. This is a bounded preview, not the entire index.';
   $('lookup-json').textContent = ''; $('lookup-summary').textContent = '';
-  invalidatePlan(); showRules();const draft=planDrafts.get(id);if(draft){for(const key of ['from','to','retention','mode'])$(key).value=draft[key];$('initial-live').checked=draft.live;$('retain-sat-history').checked=draft.history;for(const input of $('output-choices').querySelectorAll('input'))input.checked=!input.disabled&&draft.outputs.includes(input.value);syncLiveForm()}timeline.select(id); selectView(view);
+  invalidatePlan(); showRules();const draft=planDrafts.get(id);if(draft){for(const key of ['from','to','retention','mode'])$(key).value=draft[key];$('initial-live').checked=draft.live;$('retain-sat-history').checked=draft.history;$('conventional-ids').checked=inscriptionLocatorsAvailable()&&(draft.conventional_ids??true);for(const input of $('output-choices').querySelectorAll('input'))input.checked=!input.disabled&&draft.outputs.includes(input.value);syncLiveForm()}timeline.select(id); selectView(view);explorer?.setTab('inspector');
   if (d.buildable && view === 'results') loadRecords();
   showSelectedStatus();
   rangePicker.update(d,status);
@@ -134,9 +149,15 @@ function selectIndex(id, view, initialLive = false) {
 function showRules() {
   const d = selectedDefinition(); if (!d || d.locked) return;
   $('current-job-panel').hidden=!d.buildable;const peerSupported=false;$('peer-unavailable').hidden=peerSupported;$('peer-claims').hidden=!peerSupported;$('peer-form').hidden=!peerSupported;
-  $('mode').closest('.field').hidden = d.id !== 'bitmap';
+  $('mode').closest('.field').hidden = !['bitmap','inscriptions'].includes(d.id);
+  $('mode').options[0].textContent=d.id==='inscriptions'?'Lean — positional inscription list':'Lean — accepted district claims';
+  $('mode').options[1].textContent=d.id==='inscriptions'?'Full — content and reveal evidence':'Full — candidates and evidence';
+  $('mode-note').textContent=d.id==='inscriptions'?'Lean saves inscription coordinates; Full retains content and reveal metadata. Neither establishes numbering or current ownership from partial history.':'Existing indexes resume in their original format. Full records are not a complete contestability audit.';
+  $('inscription-enrichment').hidden=d.id!=='inscriptions';$('enrich-inscription-ids').hidden=d.id!=='inscriptions'||!status?.instances?.some(x=>x.definition==='inscriptions'&&x.checkpoint);
+  $('conventional-ids').disabled=!inscriptionLocatorsAvailable();$('enrich-inscription-ids').disabled=!inscriptionLocatorsAvailable();if(!inscriptionLocatorsAvailable())$('conventional-ids').checked=false;
+  $('enrichment-note').textContent=inscriptionLocatorsAvailable()?'Save sparse transaction hashes for inscription reveals only. Positional resolution works with this off; a complete Transaction Index is not required.':'Available in the Transaction stage. Positional inscriptions work now; conventional ID locators and retroactive enrichment remain locked.';
   const fromField = $('from').closest('.field'); if (fromField) fromField.hidden = false;
-  $('definition-summary').textContent = d.theory+(d.id==='inscriptions'?' Canonical inscription numbers are derived automatically only with continuous compatible history and rules. Partial ranges retain stable inscription IDs; a local row count is not a canonical number.':'');
+  $('definition-summary').textContent = d.theory+(d.id==='inscriptions'?' Reveal positions are independent of optional transaction-hash locators. Canonical numbering and current ownership require additional historical evidence.':'');
   $('combined-outputs').hidden=d.id!=='blocks';
   $('sat-history-field').hidden=!['blocks','sat-state'].includes(d.id)||!definitions.some(x=>x.id==='sat-state'&&!x.locked);
   const choices=$('output-choices');choices.replaceChildren();
@@ -219,6 +240,12 @@ function showSelectedStatus(){
  }
 }
 $('job-records').addEventListener('click',()=>{selectView('results');showSelectedStatus();loadRecords()});
+$('inspect-inscription-storage').addEventListener('click',async()=>{
+  const button=$('inspect-inscription-storage');button.disabled=true;$('inscription-storage-state').textContent='Inspecting saved files within the inspection limit…';
+  try{const report=await api('storage?index=inscriptions');const labels={coordinates:'Lean inscription coordinates',full_reveal_records:'Full reveal records',inscription_checkpoint_overhead:'Inscription checkpoint overhead',inscription_reverse_shards:'Inscription reverse lookup shards',unclassified_inscription_commits:'Other inscription commits',related_transaction_records:'Related transaction locator records',related_transaction_reverse_shards:'Related transaction lookup shards',source_block_cache:'Source block cache',resolved_content_cache:'Resolved content cache'};metadata($('inscription-storage-bytes'),Object.entries(report.bytes||{}).map(([key,bytes])=>[labels[key]||human(key),Number.isSafeInteger(bytes)?bytes.toLocaleString()+' bytes':'Unavailable']));$('inscription-storage-state').textContent=human(report.state)+' inspection · '+Number(report.files_inspected||0).toLocaleString()+' files inspected'+(report.file_limit?' (limit '+Number(report.file_limit).toLocaleString()+')':'')+(report.entries_inspected!==undefined?' · '+Number(report.entries_inspected).toLocaleString()+' entries inspected'+(report.entry_limit?' (limit '+Number(report.entry_limit).toLocaleString()+')':''):'')+'. '+(report.limitations||[]).join(' ');$('inscription-storage-json').textContent=pretty(report);}
+  catch(error){$('inscription-storage-state').textContent=error.message;}
+  finally{button.disabled=false;}
+});
 
 async function refresh() {
   if (fetching) { await refreshPromise; return refresh(); }
@@ -237,6 +264,7 @@ async function refresh() {
       // playhead rather than the block that was focused before status loss.
       if(recovering && healthy && selectedIndex && !selectedDefinition()?.locked && timeline.getPlayhead()!==null) explorer?.focus({index:selectedIndex,height:timeline.getPlayhead(),immediate:false});
       explorer?.health(healthy);
+      viewport?.available(healthy&&definitions.some(x=>x.id==='inscriptions'&&!x.locked));
       if (!selectedIndex && definitions.length) {
         const first=definitions.find(d=>d.id==='headers'&&!d.locked)||definitions.find(d=>!d.locked);
         if(first) selectIndex(first.id,first.buildable?'build':'providers');
@@ -260,7 +288,8 @@ async function refresh() {
 }
 function syncLiveForm(){ $('end-field').hidden = $('initial-live').checked; $('to').disabled = $('initial-live').checked; rangePicker.update(selectedDefinition(),status); }
 $('initial-live').addEventListener('change',()=>{syncLiveForm();invalidatePlan();});
-for (const id of ['from', 'to', 'retention', 'mode', 'retain-sat-history']) $(id).addEventListener('input', invalidatePlan);
+for (const id of ['from', 'to', 'retention', 'mode', 'retain-sat-history', 'conventional-ids']) $(id).addEventListener('input', invalidatePlan);
+$('enrich-inscription-ids').addEventListener('click',()=>{const saved=status?.instances?.find(x=>x.definition==='inscriptions')?.checkpoint;if(!saved||selectedIndex!=='inscriptions'||!inscriptionLocatorsAvailable())return;$('conventional-ids').checked=true;$('initial-live').checked=false;$('from').value=String(saved.from);$('to').value=String(saved.height);syncLiveForm();invalidatePlan();message('Conventional ID enrichment selected for the retained inscription range. Review the plan before fetching any missing reveal blocks.');$('plan-button').focus();});
 $('plan-form').addEventListener('submit', async event => {
   event.preventDefault(); invalidatePlan(); const serial=planSerial; $('plan-button').disabled = true;
   try {
@@ -292,6 +321,7 @@ $('resume').addEventListener('click', async () => {
   selectIndex(job.index, 'build');
   $('index').value = job.index; $('from').value = job.from; $('to').value = job.to >= 0 ? job.to : ''; $('retention').value = job.retention;
   $('mode').value = job.mode || 'full';
+  $('conventional-ids').checked=inscriptionLocatorsAvailable()&&(job.conventional_ids??true);
   invalidatePlan(); showRules();$('initial-live').checked=!!job.live;$('retain-sat-history').checked=!!job.retain_sat_history;for(const input of $('output-choices').querySelectorAll('input'))input.checked=(job.outputs||[]).includes(input.value);syncLiveForm(); selectView('build');
   try { const body=request(); $('resume').disabled = true; const resumed=await api('build', body); if(selectedIndex===body.index)showJob(resumed); message('Resuming '+(definitions.find(d=>d.id===body.index)?.name||body.index)+' from the committed checkpoint.'); await refresh(); } catch (error) { message(error.message, true); if(selectedIndex===job.index)$('resume').disabled = false; }
 });
@@ -306,17 +336,19 @@ async function loadRecords() {
     $('query-json').textContent = pretty(result);
     const previous=receivedRecordKeys,keys=new Set(),receipt=new Date().toLocaleTimeString(),hadReceipt=!!lastRecordReceipt;let newRows=0;
     lastRecordReceipt=receipt;
-    $('query-summary').textContent = querySummary(result) + ' Latest 50 within the last 512 block batches; full-history pagination is not available yet.';
+    $('query-summary').textContent = querySummary({...result,rows:id==='inscriptions'?inscriptionRows(result.rows):result.rows}) + ' Latest 50 within the last 512 block batches; full-history pagination is not available yet.';
     const table = element('table', undefined, 'records-table'), head = element('thead'), header = element('tr'), body = element('tbody');
     table.append(element('caption', 'Local stored records. Chain state: ' + human(result.chain_state) + '.'));
     for (const label of [id === 'bitmap' ? 'District' : ['blocks','tx-locator'].includes(id) ? 'Block' : id==='sat-state'?'Sat snapshot':id==='txo-spender'?'Spent output':'Inscription', 'Identifier', 'Block height', ...(['bitmap','inscriptions'].includes(id)?['Inscription number','Sat number']:[]), 'Details']) header.append(element('th', label));
     head.append(header); table.append(head, body);
-    for (let row of (result.rows || []).slice(0,50)) {
-      if (typeof row === 'string') { const i = row.indexOf(':'); row = {district:row.slice(0,i),inscription:row.slice(i+1)}; }
+    const recordRows=id==='inscriptions'?inscriptionRows(result.rows):(result.rows||[]);
+    if(id==='inscriptions')viewport?.setKnown(recordRows.map(row=>row.reveal_coordinate||window.GatewayInscriptionViewport.coordinate(row)||row.inscription||row.id));
+    for (let row of recordRows.slice(0,50)) {
+      if (typeof row === 'string') { const i = row.indexOf(':'); row = i>=0?{district:row.slice(0,i),inscription:row.slice(i+1)}:{reveal_coordinate:row}; }
       const key=String(row.inscription||row.id||(row.txid?row.txid+':'+row.vin:null)||row.block_hash||pretty(row));keys.add(key);const isNew=hadReceipt&&!previous.has(key);if(isNew)newRows++;
       const tr = element('tr',undefined,isNew?'record-received':'');tr.addEventListener('animationend',()=>{tr.className=''});
       tr.append(element('td', id === 'bitmap' ? row.district === undefined ? 'Candidate' : String(row.district) + '.bitmap' : id==='sat-state'?(row.data?.outputs??'Unknown')+' unspent outputs':id==='txo-spender'?row.prev_txid+':'+row.vout:Array.isArray(row.data?.txids)?row.data.txids.length+' transactions':'Reveal'));
-      tr.append(element('td', row.inscription || row.id || row.txid || row.block_hash || 'Unknown', 'record-id'));
+      tr.append(element('td', row.reveal_coordinate || window.GatewayInscriptionViewport.coordinate(row) || row.inscription || row.id || row.txid || row.block_hash || 'Unknown', 'record-id'));
       tr.append(element('td', String(row.reveal_height ?? row.height ?? row.block_height ?? 'Unknown')));
       if(['bitmap','inscriptions'].includes(id)){
        tr.append(element('td',Number.isSafeInteger(row.canonical_number)?String(row.canonical_number):'Not established'));
@@ -324,10 +356,11 @@ async function loadRecords() {
        const foundSat=discoveredSats.get(row.inscription||row.id);if(foundSat?.known)row.sat_number=foundSat.sat_number;
        if(Number.isSafeInteger(row.sat_number))sat.textContent=String(row.sat_number);
        else if(row.numbering_state==='unbound'||row.sat_state==='unbound')sat.textContent='Unbound';
+       else if(id==='inscriptions')sat.textContent='Not established';
        else{const discover=element('button','Discover sat number');discover.type='button';discover.disabled=!(row.inscription||row.id)||satDiscoveryPending.has(row.inscription||row.id);if(satDiscoveryPending.has(row.inscription||row.id))discover.textContent='Discovering…';discover.addEventListener('click',async()=>{discover.disabled=true;discover.textContent='Discovering…';satDiscoveryPending.add(row.inscription||row.id);try{const result=await api('discover-sat',{id:row.inscription||row.id});satDiscoveryPending.delete(row.inscription||row.id);discoveredSats.set(row.inscription||row.id,result);if(id!==selectedIndex)return;if(serial!==recordSerial){await loadRecords();return;}sat.replaceChildren(element('span',result.known&&Number.isSafeInteger(result.sat_number)?String(result.sat_number):result.state==='unbound'?'Unbound':'Not established'));if(result.note)sat.append(element('small',result.note,'block muted'));}catch(error){satDiscoveryPending.delete(row.inscription||row.id);discover.textContent='Retry sat discovery';discover.disabled=false;message(error.message,true)}});sat.append(discover)}
        tr.append(sat);
       }
-      const cell = element('td'); details(cell, 'Evidence', row); tr.append(cell); body.append(tr);
+      const cell = element('td');if(id==='inscriptions'){const open=element('button','View inscription');open.type='button';const position=row.reveal_coordinate||window.GatewayInscriptionViewport.coordinate(row)||row.inscription||row.id;open.disabled=!position;open.onclick=()=>viewport?.open(position);cell.append(open);}details(cell, 'Evidence', row); tr.append(cell); body.append(tr);
     }
     receivedRecordKeys=keys;
     $('query-summary').textContent+=' Received '+receipt+(newRows?' · '+newRows+' newly received record'+(newRows===1?'':'s')+' in this response.':'.');
@@ -392,11 +425,17 @@ function openTimelineEntity(id,height) {
   if(!definition || definition.locked || !Number.isSafeInteger(height) || height<0) return;
   explorer?.focus({index:id,height,immediate:true});
 }
-timeline = window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:prepareTimelineRange,openEntity:openTimelineEntity,onFocus:value=>explorer?.focus(value)});
+let movingEntity=false,markerSerial=0;
+function focusEntity(value){if(!Number.isSafeInteger(value.height)||value.height<0)return;movingEntity=true;try{timeline.focus(value.height,true);}finally{movingEntity=false;}if(value.kind!=='inscription')explorer.entity(value);}
+async function showSemantic(value){if(!value||!Number.isSafeInteger(value.height)||!definitions.some(d=>d.id===value.index&&!d.locked))return;const serial=++markerSerial;semantic.clear();semantic.setMarkers([]);if(value.index!=='inscriptions'){semantic.open(value.height);return;}try{const result=await api('query?index=inscriptions&height='+value.height+'&limit=1000');if(serial!==markerSerial)return;const rows=inscriptionRows(result.rows),markers=rows.map(inscriptionMarker).filter(Boolean);semantic.setMarkers(markers);viewport.setKnown(markers.map(m=>m.address));semantic.open(value.height,{count:result.transaction_count_known?result.transaction_count:undefined});}catch(error){if(serial===markerSerial){message(error.message,true);semantic.open(value.height);}}}
+timeline = window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:prepareTimelineRange,openEntity:openTimelineEntity,onFocus:value=>{if(movingEntity)return;markerSerial++;semantic?.clear();explorer?.focus(value);},onDetail:showSemantic});
 window.GatewayIndexWorkspace.mountLayout($('index-timeline'),$('message'));
 explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message});
+viewport=window.GatewayInscriptionViewport.mount({document,explorer,contentOrigin:workspaceBoot.content_origin,notify:message,onEntity:focusEntity,onNavigate:value=>focusEntity(value)});
+semantic=window.GatewaySemanticTimeline.mount({document,root:document.querySelector('.timeline-editor'),notify:message,onEntity:focusEntity,onInscription:value=>viewport.open(value.address)});
 selectView('catalog');
-refresh();
+refresh().then(()=>{const focus=new URLSearchParams(location.search).get('focus');if(focus&&definitions.some(x=>x.id==='inscriptions'&&!x.locked)){selectIndex('inscriptions','build');viewport.open(focus);}else if(new URLSearchParams(location.search).get('viewer')==='1'&&definitions.some(x=>x.id==='inscriptions'&&!x.locked)){selectIndex('inscriptions','build');explorer.setTab('inscriptions');}});
+window.addEventListener('pagehide',()=>viewport?.teardown());
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 </script>
 </body>

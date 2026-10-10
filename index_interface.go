@@ -53,8 +53,19 @@ func (a *app) handleIndexPage(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("embedded") == "1" {
 		ancestors = "'self'"
 	}
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'self' 'nonce-"+nonce+"'; connect-src 'self'; frame-ancestors "+ancestors+"; base-uri 'none'; form-action 'self'")
-	io.WriteString(w, strings.ReplaceAll(string(body), "__INDEX_NONCE__", nonce))
+	contentSource := ""
+	if content, e := url.Parse(a.contentURL); e == nil && (content.Scheme == "http" || content.Scheme == "https") && content.Host != "" && content.User == nil {
+		contentSource = " " + content.Scheme + "://" + content.Host
+	}
+	frameSource := contentSource
+	if frameSource == "" {
+		frameSource = " 'none'"
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'self' 'nonce-"+nonce+"'; connect-src 'self'; img-src 'self'"+contentSource+"; media-src"+frameSource+"; frame-src"+frameSource+"; object-src 'none'; frame-ancestors "+ancestors+"; base-uri 'none'; form-action 'self'")
+	bootstrap, _ := json.Marshal(map[string]any{"content_origin": a.contentURL})
+	page := strings.ReplaceAll(string(body), "__INDEX_NONCE__", nonce)
+	page = strings.Replace(page, "__INDEX_BOOTSTRAP__", string(bootstrap), 1)
+	io.WriteString(w, page)
 }
 
 func indexMethod(w http.ResponseWriter, r *http.Request, method string) bool {
@@ -130,6 +141,11 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		result = a.indexStatus()
+	case "storage":
+		if !indexMethod(w, r, http.MethodGet) {
+			return
+		}
+		result, err = a.indexStorage(r.Context(), r.URL.Query().Get("index"))
 	case "plan", "build":
 		if !indexMethod(w, r, http.MethodPost) {
 			return
@@ -215,7 +231,17 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 		var limit int
 		limit, err = indexQueryLimit(r.URL.Query().Get("limit"))
 		if err == nil {
-			result, err = a.indexQuery(r.URL.Query().Get("index"), limit)
+			if rawHeight := r.URL.Query().Get("height"); rawHeight != "" {
+				var height int64
+				height, err = strconv.ParseInt(rawHeight, 10, 64)
+				if err == nil && height >= 0 {
+					result, err = a.indexQueryBlock(r.Context(), r.URL.Query().Get("index"), height, limit)
+				} else {
+					err = fmt.Errorf("height must be a non-negative integer")
+				}
+			} else {
+				result, err = a.indexQuery(r.URL.Query().Get("index"), limit)
+			}
 		}
 	case "lookup":
 		if !indexMethod(w, r, http.MethodGet) {
@@ -331,8 +357,13 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 			value, args = args[0], args[1:]
 		}
 		if c.Action == "live" {
+			if key == "--conventional-ids" && (value == "true" || value == "false") {
+				v := value == "true"
+				c.Request.ConventionalIDs = &v
+				continue
+			}
 			if key != "--retention" || value == "" || !validIndexRetention(value) {
-				return c, fmt.Errorf("index live only accepts --retention ephemeral|cache|retain")
+				return c, fmt.Errorf("index live accepts --retention ephemeral|cache|retain and --conventional-ids true|false")
 			}
 			c.Request.Retention = value
 			continue
@@ -349,6 +380,12 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 			continue
 		}
 		switch key {
+		case "--conventional-ids":
+			if value != "true" && value != "false" {
+				return c, fmt.Errorf("conventional-ids requires true or false")
+			}
+			v := value == "true"
+			c.Request.ConventionalIDs = &v
 		case "--outputs":
 			if value == "" {
 				return c, fmt.Errorf("outputs requires comma-separated index IDs")
@@ -402,7 +439,7 @@ func (a *app) runIndexCLI(args []string) (any, error) {
 	case "pause":
 		return a.pauseIndexBuild()
 	case "live":
-		return a.setIndexLivePolicy(indexLiveRequest{Index: c.Request.Index, Action: c.LiveAction, Retention: c.Request.Retention})
+		return a.setIndexLivePolicy(indexLiveRequest{Index: c.Request.Index, Action: c.LiveAction, Retention: c.Request.Retention, ConventionalIDs: c.Request.ConventionalIDs})
 	case "query":
 		return a.indexQuery(c.Request.Index, c.Limit)
 	case "lookup":
@@ -584,7 +621,7 @@ func forwardIndexCLI(ctx context.Context, dataDir string, command indexCLIComman
 	case "pause":
 		body = struct{}{}
 	case "live":
-		body = indexLiveRequest{Index: command.Request.Index, Action: command.LiveAction, Retention: command.Request.Retention}
+		body = indexLiveRequest{Index: command.Request.Index, Action: command.LiveAction, Retention: command.Request.Retention, ConventionalIDs: command.Request.ConventionalIDs}
 	case "publish", "unpublish":
 		body = struct {
 			Index string `json:"index"`

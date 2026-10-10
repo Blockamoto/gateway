@@ -96,8 +96,9 @@ async function run() {
     await page.screenshot({path:path.join(out, 'timeline-desktop.png'), fullPage:true});
 
     await page.locator('#timeline-add-index').click();
-    assert.equal(await page.locator('#timeline-index-picker [data-index="inscriptions"]').isDisabled(),true,'Locked indexes remain disabled in the chooser');
-    assert.equal(await page.locator('.timeline-track[data-index="inscriptions"]').count(),0,'Unadded locked indexes do not occupy tracks');
+    assert.equal(await page.locator('#timeline-index-picker [data-index="inscriptions"]').isDisabled(),false,'The inscription stage permits adding its track');
+    assert.equal(await page.locator('#timeline-index-picker [data-index="tx-locator"]').isDisabled(),true,'The later transaction stage remains locked');
+    assert.equal(await page.locator('.timeline-track[data-index="inscriptions"]').count(),0,'An available index does not occupy a track until added');
     await page.screenshot({path:path.join(out,'locked-features.png'),fullPage:true});
     await page.locator('#timeline-add-index').click();
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();

@@ -1,6 +1,6 @@
 # Development
 
-Gateway's first public testing scope is Headers and Bitcoin Blocks. See [the roadmap](docs/GATEWAY-ROADMAP.md) and [index behavior](docs/INDEXING.md) before changing feature availability.
+The published baseline is Headers and Bitcoin Blocks. The working inscription stage adds positional indexing and content viewing, while transaction enrichment and Gateway peers remain gated. See [the roadmap](docs/GATEWAY-ROADMAP.md) and [index behavior](docs/INDEXING.md) before changing feature availability.
 
 The Go application owns resolution, validation, local storage, peer connections and the local API. The browser UI presents that state. The Windows installer, native host, browser companion and update helper are separate entry points with narrow responsibilities. Use [BUILDING.md](BUILDING.md) for build and check commands.
 

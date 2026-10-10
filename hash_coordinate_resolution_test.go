@@ -172,7 +172,7 @@ func Test063HashInscriptionUsesSingleBitcoinBlock(t *testing.T) {
 	if requests.Load() != 2 {
 		t.Fatalf("wrong-height request escaped its block: %d", requests.Load())
 	}
-	if _, err := a.resolveLocalTarget(hashCoordinateFixtureID + "i2147483647.792435.bitcoin"); err == nil || !strings.Contains(err.Error(), "does not exist") {
+	if _, err := a.resolveLocalTarget(hashCoordinateFixtureID + "i2147483647.792435.bitcoin"); err == nil || !strings.Contains(err.Error(), "is absent") || !strings.Contains(err.Error(), "selected reveal transaction") {
 		t.Fatalf("absent envelope was not rejected: %v", err)
 	}
 	if files, _ := filepath.Glob(filepath.Join(a.dataDir, "blocks", "raw", "*.block")); len(files) != 0 {

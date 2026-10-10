@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "version": "0.7.2",
+  "status": "local_preparation",
+  "release_kind": "prerelease",
+  "published": false,
+  "enabled_indexes": ["headers", "blocks", "inscriptions"],
+  "gated_features": ["tx-locator", "inscription-related-transaction-locators", "gateway-peerhood"],
+  "validation": {},
+  "hosted_delivery": "not_activated",
+  "notes": [
+    "The currently approved hosted release remains 0.7.1.",
+    "Results will be filled from checks against this build; previous acceptance is not carried forward.",
+    "Windows executables remain unsigned."
+  ]
+}

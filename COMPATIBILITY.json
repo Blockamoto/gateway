@@ -1,5 +1,5 @@
 {
-  "app_version": "0.7.1",
+  "app_version": "0.7.2",
   "minimum_compatible_app": "0.3.9",
   "wire_protocol": 1,
   "minimum_wire_protocol": 1,
@@ -29,8 +29,8 @@
   "derived_recheck_required": true,
   "ord_storage_schema": 1,
   "archive_storage_schema": 1,
-  "note": "Headers and Blocks testing client. Additional indexes and Gateway peerhood are locked; existing data and rule identities are retained without reactivating jobs or serving. Fresh installs carry a separate validated header snapshot; application updates omit it and signed header chunks extend it independently. Hosted update readiness and public-network soak are recorded separately in release acceptance.",
+  "note": "Headers, Blocks and Inscriptions testing client. Related inscription transaction locators, the standalone Transaction Index and Gateway peerhood remain locked for separate stages. Fresh installs carry a separate validated header snapshot; application updates omit it and signed header chunks extend it independently. Inscription reveal evidence does not establish global numbering, current ownership or parent-child provenance. Hosted update readiness is recorded separately in release acceptance.",
   "satline_wire": 1,
   "satline_publication_schema": 1,
-  "release_status": "public_testing"
+  "release_status": "prerelease_preparation"
 }

@@ -108,9 +108,9 @@ func TestTimelineKeepsCheckpointAndProviderRangesSeparateFromRawPossession(t *te
 	if len(blocks.Coverage) != 0 || !reflect.DeepEqual(blocks.RecordedCoverage, []heightInterval{{0, 4}}) || !reflect.DeepEqual(blocks.ReportedCoverage, []heightInterval{{0, 1000}}) {
 		t.Fatal(blocks)
 	}
-	locked := timelineTrack(t, view, "inscriptions")
-	if !locked.Locked || !reflect.DeepEqual(locked.Coverage, []heightInterval{{2, 4}}) || releaseFeatureAvailable("inscriptions") {
-		t.Fatal(locked)
+	inscriptions := timelineTrack(t, view, "inscriptions")
+	if inscriptions.Locked || !reflect.DeepEqual(inscriptions.Coverage, []heightInterval{{2, 4}}) || !releaseFeatureAvailable("inscriptions") {
+		t.Fatal(inscriptions)
 	}
 	instances[0].Checkpoint.BlockHash = strings.Repeat("f", 64)
 	view = a.indexTimeline(indexDefinitions(), providers, instances)

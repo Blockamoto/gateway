@@ -62,6 +62,7 @@ type indexCheckpoint struct {
 }
 
 type indexBuildRequest struct {
+	ConventionalIDs      *bool    `json:"conventional_ids,omitempty"`
 	SatHistoryConfigured bool     `json:"sat_history_configured,omitempty"`
 	RetainSatHistory     bool     `json:"retain_sat_history,omitempty"`
 	Outputs              []string `json:"outputs,omitempty"`
@@ -75,6 +76,7 @@ type indexBuildRequest struct {
 }
 
 type indexPlan struct {
+	ConventionalIDs  bool              `json:"conventional_ids"`
 	RetainSatHistory bool              `json:"retain_sat_history,omitempty"`
 	Outputs          []indexPlanOutput `json:"outputs,omitempty"`
 	Live             bool              `json:"live"`
@@ -114,6 +116,9 @@ func indexDefinitions() []indexDefinition {
 		if d.ID == "bitmap" {
 			d.OutputSchema = 2
 		}
+		if d.ID == "inscriptions" || d.ID == "tx-locator" {
+			d.Version, d.OutputSchema = 2, 2
+		}
 		d.CanonicalEncoding = "ordered Go JSON struct fields; UTF-8; no whitespace; ordered records; SHA-256"
 		if d.Rules == nil {
 			d.Rules = []string{d.Theory}
@@ -136,7 +141,7 @@ func indexDefinitions() []indexDefinition {
 			Parser, Reference string
 		}{semanticDefinition, inscriptionParserProfile, inscriptionReferenceCommit})
 		if d.ID == "inscriptions" {
-			d.Theory = "Inscriptions and content from verified blocks. Canonical numbers derive automatically with continuous compatible history; partial ranges keep stable IDs."
+			d.Theory = "Verified positional inscription coordinates. Lean retains positions and block counts; Full additionally retains reveal content. Numbering and ownership require separate explicit historical work."
 		}
 		// Availability is presentation policy, not part of the persisted recipe.
 		d.Locked = !releaseFeatureAvailable(d.ID)
@@ -156,10 +161,25 @@ func indexDigest(v any) string {
 	return hex.EncodeToString(h[:])
 }
 func findIndexDefinition(id string) (indexDefinition, error) {
+	if id == inscriptionLocatorIndex {
+		d, err := findIndexDefinition("tx-locator")
+		if err != nil {
+			return d, err
+		}
+		d.ID, d.Name = id, "Conventional inscription ID locators"
+		d.Dependencies = []string{"inscriptions"}
+		d.Theory = "Private sparse transaction positions for inscription reveals, bound to committed inscription coverage."
+		d.Rules = []string{d.Theory, "Selection inscription_reveals; actual Bitcoin transaction positions; empty evaluated blocks are explicit."}
+		d.Locked, d.LockReason = true, "Internal inscription-scoped derivation; not a standalone public index."
+		semantic := d
+		semantic.Locked, semantic.LockReason, semantic.RuleHash = false, "", ""
+		d.RuleHash = indexDigest(semantic)
+		return d, nil
+	}
 	if id == "inscription-numbering" {
-		// Compatibility lookup only: numbering is now automatic enrichment of
-		// Inscriptions, never a second top-level selectable index.
-		d := indexDefinition{ID: id, Name: "Canonical inscription numbering", Version: 1, Network: "bitcoin-mainnet", Theory: "Canonical numbering is integrated into Inscriptions when continuous history and verified dependencies are available. Build the Inscriptions index.", Dependencies: []string{"inscriptions"}, CheckpointSchema: 1, OutputSchema: 1}
+		// Historical compatibility lookup only. Positional inscription builds
+		// never silently begin canonical numbering or its historical input work.
+		d := indexDefinition{ID: id, Name: "Canonical inscription numbering", Version: 1, Network: "bitcoin-mainnet", Theory: "Historical numbering records remain readable; canonical numbering is not part of positional Lean/Full inscription builds.", Dependencies: []string{"inscriptions"}, CheckpointSchema: 1, OutputSchema: 1}
 		d.Rules = []string{inscriptionNumberingProfile}
 		d.RuleHash = indexDigest(d)
 		d.Locked, d.LockReason = true, releaseLockReason(id)
@@ -220,11 +240,12 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 	p := indexPlan{Live: req.Live, Mode: mode, Definition: d, From: from, To: to, Retention: retention, Sequential: !d.ArbitraryStart, Dependencies: []indexDefinition{}, SourceBytes: retention, StorageEstimate: "Unknown until source coverage is examined; derived records grow with the selected range.", Verification: "Locally checked Bitcoin block and witness evidence anchored to selected headers or Core active chain.", Notes: []string{"Core and Ord are optional providers, not required installations.", "Peer claims never become locally verified state without evidence.", "All new derived index records are private until explicitly published.", "A negative end height snapshots the available verified tip when work starts."}}
 	seen := map[string]bool{}
 	p.RetainSatHistory = req.RetainSatHistory
+	p.ConventionalIDs = inscriptionIDsEnabled(req.ConventionalIDs)
 	if d.ID == "sat-state" {
 		p.Notes = append(p.Notes, "Sat identity requires continuous history from genesis; isolated ranges cannot establish current sat placement.", "Retaining raw blocks and retaining full movement history are separate choices. Recent recovery roots are essential state.")
 	}
 	if d.ID == "inscriptions" {
-		p.Notes = append(p.Notes, "Canonical numbering is automatic only for continuous history beginning no later than mainnet block 767430, with verified input values and the pinned historical rules. Partial scans keep stable IDs and explicitly unknown canonical numbers.")
+		p.Notes = append(p.Notes, "Lean retains compact inscription positions and transaction counts; Full also retains authenticated reveal bodies. Neither starts numbering or unrelated historical input work.", "Conventional-ID enrichment is independently committed and can be disabled without deleting existing locators.")
 	}
 	var visit func(string) error
 	visit = func(id string) error {

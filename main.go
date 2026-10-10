@@ -75,6 +75,8 @@ type app struct {
 	migrationCancel   func()
 	migration         migrationJob
 	ordMu             sync.Mutex
+	ordViewerMu       sync.Mutex
+	ordViewers        map[string]*ordViewerSession
 	headerSyncMu      sync.Mutex
 
 	settingsMu      sync.RWMutex

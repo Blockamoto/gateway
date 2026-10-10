@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -44,12 +45,21 @@ func inspectCore(s appSettings) coreStatus {
 }
 
 type objectFetch struct {
-	done chan struct{}
-	v    blockView
-	e    error
+	done    chan struct{}
+	v       blockView
+	e       error
+	cancel  context.CancelFunc
+	waiters int
 }
 
 func (a *app) coalescedBlock(t blockTarget) (blockView, error) {
+	return a.coalescedBlockContext(context.Background(), t)
+}
+
+func (a *app) coalescedBlockContext(ctx context.Context, t blockTarget) (blockView, error) {
+	if err := ctx.Err(); err != nil {
+		return blockView{}, err
+	}
 	// Key includes anchor authority. Reorg membership is checked by target resolution,
 	// never inferred from an old decoded object.
 	key := fmt.Sprintf("%s:%d:%s:%t:%x", t.HashDisplay, t.Height, t.ChainAuthority, t.ConsensusAuthority, t.ExpectedHeader)
@@ -63,17 +73,46 @@ func (a *app) coalescedBlock(t blockTarget) (blockView, error) {
 		return v, nil
 	}
 	if f, ok := a.objects[key]; ok {
+		f.waiters++
 		a.objectsMu.Unlock()
-		<-f.done
-		return f.v, f.e
+		return a.waitForBlockObject(ctx, key, f)
 	}
-	f := &objectFetch{done: make(chan struct{})}
+	// Work belongs to the set of consumers, rather than the first caller's
+	// request. An obsolete viewer cannot cancel a still-interested index job.
+	work, cancel := context.WithCancel(context.Background())
+	f := &objectFetch{done: make(chan struct{}), cancel: cancel, waiters: 1}
 	a.objects[key] = f
 	a.objectsMu.Unlock()
-	f.v, f.e = a.fetchAndDecodeTargetUncached(t)
+	go a.fetchBlockObject(work, key, f, t)
+	return a.waitForBlockObject(ctx, key, f)
+}
+
+func (a *app) waitForBlockObject(ctx context.Context, key string, f *objectFetch) (blockView, error) {
+	select {
+	case <-ctx.Done():
+		a.objectsMu.Lock()
+		f.waiters--
+		if f.waiters == 0 && a.objects[key] == f {
+			delete(a.objects, key)
+			f.cancel()
+		}
+		a.objectsMu.Unlock()
+		return blockView{}, ctx.Err()
+	case <-f.done:
+		return f.v, f.e
+	}
+}
+
+func (a *app) fetchBlockObject(ctx context.Context, key string, f *objectFetch, t blockTarget) {
+	defer f.cancel()
+	f.v, f.e = a.fetchAndDecodeTargetUncachedContext(ctx, t)
 	a.objectsMu.Lock()
-	delete(a.objects, key)
-	if f.e == nil {
+	// The final waiter may already have abandoned this object and a fresh
+	// consumer may have started a replacement. Never delete that new fetch.
+	if a.objects[key] == f {
+		delete(a.objects, key)
+	}
+	if f.e == nil && ctx.Err() == nil {
 		a.decoded[key] = f.v
 		a.decodedOrder = append(a.decodedOrder, key)
 		for len(a.decodedOrder) > 4 {
@@ -83,7 +122,6 @@ func (a *app) coalescedBlock(t blockTarget) (blockView, error) {
 	}
 	close(f.done)
 	a.objectsMu.Unlock()
-	return f.v, f.e
 }
 func (a *app) scheduleKnowledgeSave() {
 	a.knowledgeMu.Lock()

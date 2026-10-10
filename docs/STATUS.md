@@ -1,4 +1,10 @@
-# Gateway 0.7.1 status
+# Gateway status
+
+## Working source: 0.7.2 inscription prerelease preparation
+
+The source is preparing positional inscription indexing and an isolated content viewport. Related inscription transaction locators, the standalone Transaction Index and Gateway peerhood remain gated for their later stages. This does not change the published release or approved hosted feed. See [the inscription test guide](TESTING-0.7.2.md) and [draft release notes](RELEASE-NOTES-v0.7.2.md); validation is recorded separately for the new build.
+
+## Published baseline
 
 Gateway **0.7.1 is published, and its hosted updater and renewal workflow have passed live acceptance**. The tested build replaces index cards with a timeline workspace and brings Inspector and Block Explorer tabs into its upper pane. Headers and Bitcoin Blocks remain the enabled indexes. Additional indexes and Gateway-to-Gateway sharing remain locked.
 

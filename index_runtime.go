@@ -12,6 +12,7 @@ import (
 )
 
 type indexJob struct {
+	ConventionalIDs  *bool                 `json:"conventional_ids,omitempty"`
 	Limitations      []string              `json:"limitations,omitempty"`
 	QueueManaged     bool                  `json:"queue_managed,omitempty"`
 	Outputs          []string              `json:"outputs,omitempty"`
@@ -37,6 +38,10 @@ type indexJob struct {
 // indexMu protects publication, but cannot protect JSON encoding after a
 // snapshot is returned or the worker's next progress update outside that lock.
 func cloneIndexJob(j indexJob) indexJob {
+	if j.ConventionalIDs != nil {
+		value := *j.ConventionalIDs
+		j.ConventionalIDs = &value
+	}
 	j.Outputs = append([]string(nil), j.Outputs...)
 	j.Limitations = append([]string(nil), j.Limitations...)
 	j.Progress = append([]indexOutputProgress(nil), j.Progress...)
@@ -198,6 +203,7 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 		return indexJob{}, e
 	}
 	req.RetainSatHistory, req.SatHistoryConfigured = p.RetainSatHistory, true
+	req.ConventionalIDs = boolPointer(p.ConventionalIDs)
 	if !p.Definition.Buildable {
 		return indexJob{}, fmt.Errorf("%s has no derivation executor; inspect its provider capabilities", req.Index)
 	}
@@ -222,6 +228,7 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 		policy := policies[req.Index]
 		policy.Index, policy.Retention = req.Index, p.Retention
 		policy.Outputs, policy.RetainSatHistory = req.Outputs, req.RetainSatHistory
+		policy.ConventionalIDs = req.ConventionalIDs
 		policy.SatHistoryConfigured = true
 		if !live && req.LiveConfigured {
 			// An explicitly reviewed fixed-range build turns following off.
@@ -244,7 +251,7 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 	if e := a.clearIndexPause(id); e != nil {
 		return indexJob{}, e
 	}
-	j := indexJob{Live: live, Mode: p.Mode, ID: id, Index: req.Index, State: "running", From: p.From, To: p.To, Height: p.From - 1, Retention: p.Retention, Outputs: req.Outputs, RetainSatHistory: req.RetainSatHistory}
+	j := indexJob{Live: live, Mode: p.Mode, ID: id, Index: req.Index, State: "running", From: p.From, To: p.To, Height: p.From - 1, Retention: p.Retention, Outputs: req.Outputs, RetainSatHistory: req.RetainSatHistory, ConventionalIDs: req.ConventionalIDs}
 	if s.checkpoint != nil {
 		j.Height = s.checkpoint.Height
 	}
@@ -259,7 +266,7 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 		a.indexCancel = nil
 		return j, err
 	}
-	if len(req.Outputs) > 0 || req.Index == "sat-state" || req.Index == "txo-spender" {
+	if len(req.Outputs) > 0 || req.Index == "sat-state" || req.Index == "txo-spender" || req.Index == "inscriptions" && p.ConventionalIDs {
 		go a.runSharedIndexBuild(ctx, cloneIndexJob(j))
 	} else {
 		go a.runIndexBuild(ctx, cloneIndexJob(j), s)
@@ -381,7 +388,7 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 			}
 		}
 	}
-	if err := requireReleaseIndexRequest(indexBuildRequest{Index: j.Index, Outputs: j.Outputs}); err != nil {
+	if err := requireReleaseIndexRequest(indexBuildRequest{Index: j.Index, Outputs: j.Outputs, ConventionalIDs: j.ConventionalIDs}); err != nil {
 		finish("paused", err)
 		return
 	}
@@ -400,7 +407,6 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 	s.head.Mode = j.Mode
 	s.retainSatHistory = j.RetainSatHistory
 	liveBlocksProcessed := int64(0)
-	numberingRepairAttempted := false
 	retryDelay := 2 * time.Second
 	wait := func(e error) bool {
 		if j.Live {
@@ -462,16 +468,6 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 				return
 			}
 			continue
-		}
-		if s.definition.ID == "inscriptions" && !numberingRepairAttempted {
-			numberingRepairAttempted = true
-			if e := a.repairIndexNumbering(ctx, s, j.To); e != nil {
-				if ctx.Err() != nil {
-					finish("paused", nil)
-					return
-				}
-				j.Limitations = append(j.Limitations, "Canonical numbering is pending: "+e.Error()+". Occurrence coverage remains useful; resume the reviewed plan to retry enrichment.")
-			}
 		}
 		j.Height = j.From - 1
 		next := j.From
@@ -535,7 +531,6 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		if current.HashDisplay != block.Hash {
 			continue
 		}
-		s.numberingValues = a.indexNumberingBlockValues(ctx, block)
 		if e = s.appendBlock(block, j.From, j.Retention); e != nil {
 			finish("failed", e)
 			return
@@ -578,6 +573,9 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 				Data   *satIndexSnapshot `json:"data"`
 			}{b.Checkpoint.Height, b.Checkpoint.BlockHash, b.Sats})
 			total++
+		} else if b.TransactionLocator != nil {
+			rows = append(rows, b.TransactionLocator)
+			total++
 		} else if b.Bitcoin != nil {
 			rows = append(rows, struct {
 				Height int64              `json:"block_height"`
@@ -602,6 +600,15 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 					rows = append(rows, bitmapQueryRecord{r, bitmapCompatibility(r)})
 				}
 			}
+		} else if id == "inscriptions" {
+			coordinates := inscriptionBatchCoordinates(b)
+			rows = append(rows, struct {
+				Inscriptions     []string `json:"inscriptions"`
+				Height           int64    `json:"block_height"`
+				TransactionCount *uint32  `json:"transaction_count,omitempty"`
+				Mode             string   `json:"mode"`
+			}{coordinates, b.Checkpoint.Height, inscriptionBatchCount(b), inscriptionBatchMode(b)})
+			total += len(coordinates)
 		} else {
 			for i := len(b.Inscriptions) - 1; i >= 0; i-- {
 				r := b.Inscriptions[i]

@@ -56,6 +56,14 @@ func normalizedIndexOutputs(req indexBuildRequest) []string {
 // Planning examines only local manifests and current chain authority. It never
 // downloads a block, enables an index, or repairs incompatible stores.
 func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
+	for _, id := range req.Outputs {
+		if id == inscriptionLocatorIndex {
+			return indexPlan{}, fmt.Errorf("conventional inscription locators belong to the inscription build option")
+		}
+	}
+	if req.Index == inscriptionLocatorIndex {
+		return indexPlan{}, fmt.Errorf("conventional inscription locators are internal inscription outputs")
+	}
 	if err := requireReleaseIndexRequest(req); err != nil {
 		return indexPlan{}, err
 	}
@@ -91,8 +99,11 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 		return p, fmt.Errorf("%s has no derivation executor", req.Index)
 	}
 	ids := append([]string{req.Index}, normalizedIndexOutputs(req)...)
+	if req.Index == "inscriptions" && p.ConventionalIDs {
+		ids = append(ids, inscriptionLocatorIndex)
+	}
 	for _, id := range ids {
-		if id != req.Index && id != "sat-state" && id != "tx-locator" && id != "inscriptions" && id != "bitmap" && id != "txo-spender" {
+		if id != req.Index && id != inscriptionLocatorIndex && id != "sat-state" && id != "tx-locator" && id != "inscriptions" && id != "bitmap" && id != "txo-spender" {
 			return p, fmt.Errorf("unsupported combined output %q", id)
 		}
 		store, e := indexStoreHead(a.dataDir, id)
@@ -160,14 +171,6 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 		}
 		if out.To >= out.From {
 			out.Add = indexCoverageGaps(out.Reuse, out.From, out.To)
-		}
-		if id == "inscriptions" {
-			if repair, e := store.numberingNeedsRepair(); e != nil {
-				return p, e
-			} else if repair {
-				out.Recovery = "derive_missing_numbering"
-				out.Reason += " Canonical numbering will replay missing historical state using retained occurrences and local evidence first; existing occurrence records remain intact."
-			}
 		}
 		p.Outputs = append(p.Outputs, out)
 	}
@@ -237,7 +240,7 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 	}
 	// Re-plan at execution time because an earlier queued job may have added
 	// reusable coverage after this request was reviewed.
-	plan, err := a.planIndexBuild(indexBuildRequest{Index: j.Index, From: &j.From, To: &j.To, Mode: j.Mode, Retention: j.Retention, Outputs: j.Outputs, RetainSatHistory: j.RetainSatHistory, SatHistoryConfigured: true})
+	plan, err := a.planIndexBuild(indexBuildRequest{Index: j.Index, From: &j.From, To: &j.To, Mode: j.Mode, Retention: j.Retention, Outputs: j.Outputs, RetainSatHistory: j.RetainSatHistory, SatHistoryConfigured: true, ConventionalIDs: j.ConventionalIDs})
 	if err != nil {
 		finish("failed", err)
 		return
@@ -288,7 +291,6 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 	}
 	committed := int64(0)
 	initialReusable := map[string]int64{}
-	repairAttempted := map[string]bool{}
 	for {
 		if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
 			finish("paused", nil)
@@ -319,17 +321,6 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 			if err := s.reconcile(func(h int64) (string, error) { t, e := a.indexTarget(h); return t.HashDisplay, e }); err != nil {
 				p.State, p.Error = "waiting", err.Error()
 				continue
-			}
-			if p.Index == "inscriptions" && !repairAttempted[p.Index] {
-				repairAttempted[p.Index] = true
-				if e := a.repairIndexNumbering(ctx, s, j.To); e != nil {
-					if ctx.Err() != nil {
-						finish("paused", nil)
-						return
-					}
-					p.Limitations = append(p.Limitations, "Canonical numbering is pending: "+e.Error()+". Occurrence coverage remains useful; resume the reviewed plan to retry enrichment.")
-					j.Limitations = append(j.Limitations, p.Limitations[len(p.Limitations)-1])
-				}
 			}
 			p.Height = p.From - 1
 			if s.checkpoint != nil {
@@ -397,6 +388,30 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 			}
 			continue
 		}
+		// A lagging related-ID output can reuse committed occurrence coverage.
+		// Full records and evaluated-empty Lean blocks need no source fetch.
+		if len(pending) == 1 && j.Progress[pending[0]].Index == inscriptionLocatorIndex {
+			source, available, err := a.committedInscriptionBatch(ctx, next, target.HashDisplay)
+			if err != nil {
+				finish("failed", err)
+				return
+			}
+			if available && (len(inscriptionBatchCoordinates(source)) == 0 || len(source.Inscriptions) == len(inscriptionBatchCoordinates(source))) {
+				p := &j.Progress[pending[0]]
+				if err = stores[p.Index].appendInscriptionLocators(source, nil, p.From, j.Retention); err != nil {
+					p.State, p.Error = "failed", err.Error()
+				} else {
+					p.Height, p.AddedBlocks = next, p.AddedBlocks+1
+				}
+				committed++
+				j.BlocksChecked = int(committed)
+				if err = a.saveIndexJob(j); err != nil {
+					finish("failed", err)
+					return
+				}
+				continue
+			}
+		}
 		block, e := a.indexSourceBlock(ctx, target, j.Retention)
 		if e != nil {
 			var unavailable blockUnavailableError
@@ -448,11 +463,21 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 				finish("paused", nil)
 				return
 			}
-			if p.Index == "inscriptions" {
-				stores[p.Index].numberingValues = a.indexNumberingBlockValues(ctx, block)
+			var appendErr error
+			if p.Index == inscriptionLocatorIndex {
+				source, available, err := a.committedInscriptionBatch(ctx, next, block.Hash)
+				if err != nil {
+					appendErr = err
+				} else if !available {
+					appendErr = fmt.Errorf("inscription output at height %d has not committed; resume its related locator output", next)
+				} else {
+					appendErr = stores[p.Index].appendInscriptionLocators(source, &block, p.From, j.Retention)
+				}
+			} else {
+				appendErr = stores[p.Index].appendPreparedBlock(block, p.From, j.Retention, extracted)
 			}
-			if e := stores[p.Index].appendPreparedBlock(block, p.From, j.Retention, extracted); e != nil {
-				p.State, p.Error = "failed", e.Error()
+			if appendErr != nil {
+				p.State, p.Error = "failed", appendErr.Error()
 				continue
 			}
 			p.Height = next

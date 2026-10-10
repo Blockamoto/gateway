@@ -4,6 +4,8 @@ Gateway is a Bitcoin block explorer that retrieves the blocks you ask for. Explo
 
 **0.7.1 is a public testing release with a timeline workspace.** Its active indexes are **Headers** and **Bitcoin Blocks**. Additional indexes remain locked while they undergo further validation. See [current status](docs/STATUS.md) for validation and hosted delivery status.
 
+The working source is **0.7.2**, preparing the inscription prerelease. It adds positional inscription indexing and an isolated content viewport; related transaction locators, the complete Transaction Index and Gateway peerhood remain gated. This source version has not replaced the published downloads or hosted update feed. See [the inscription test guide](docs/TESTING-0.7.2.md).
+
 ## Start here
 
 Use the Windows installer for a managed installation, or extract a Windows/Linux **fresh** ZIP for a portable first run. On Windows, launch **Gateway On Demand**; `GatewayClient.exe` is the application, not the installer. Fresh packages include a validated header snapshot separately from the executable.
@@ -30,7 +32,7 @@ The Peers page uses aliases until you reveal an address. Aliases are a display c
 
 Gateway verifies block identity, proof of work, transaction and witness commitments and selected-chain context. It does not replace Bitcoin Core's full script and UTXO consensus validation. Missing data is not proof of nonexistence, and a position inside an output is not proof of current ownership.
 
-Standalone transaction-location, spender/address, Sat/Satline, inscription, Bitmap and **Bitmap: Terrain Claim Chains** features are locked. Their presence in the source does not make them supported features. The [roadmap](docs/GATEWAY-ROADMAP.md) separates available work from future work without promising release dates.
+The inscription source stage enables Lean positional records and optional Full reveal records. It does not infer global inscription numbers, sat identity, current ownership or parent-child provenance. Standalone transaction-location, related inscription transaction locators, spender/address, Sat/Satline, Bitmap and **Bitmap: Terrain Claim Chains** features remain gated. Their presence in the source does not make them supported features. The [roadmap](docs/GATEWAY-ROADMAP.md) separates available work from future work without promising release dates.
 
 ## Test, contribute and build
 

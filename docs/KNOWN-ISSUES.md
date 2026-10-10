@@ -2,6 +2,8 @@
 
 Gateway 0.7.1 is a public testing release. See [status](STATUS.md) for completed checks and hosted delivery acceptance.
 
+The working 0.7.2 inscription build is separate from those published downloads. Its content viewport and Lean/Full indexing require their own validation. Related transaction locator construction and Gateway peers remain gated; a conventional inscription ID or recursive reference may have no known block location. Positional content retrieval does not prove global numbering, ownership or parent-child provenance. See [the new test guide](TESTING-0.7.2.md).
+
 - **Two copies can compete for Bitcoin serving port 48333 in 0.7.1.** Close the other copy and retry serving in Settings. Source changes after this release choose an available port when the default is busy, report the actual port in Settings and Peers, and preserve your serving preference. These changes are not yet in the published 0.7.1 downloads. An explicitly configured listen address still requires that address to be available.
 - **Windows binaries are unsigned.** Reputation and antivirus results can vary by product and definitions. If blocked, record the file name, SHA-256 and exact alert and stop that check. Do not disable protection to complete testing. A clean local scan or a verdict about another binary does not clear this release.
 - **Browser setup is manual and Windows-specific.** The companion is loaded unpacked and must be approved in the profile you use. External apps cannot reliably open Chromium's internal Extensions page directly, so setup provides a copy-and-open flow.

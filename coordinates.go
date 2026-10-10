@@ -118,8 +118,8 @@ func parseBODCoordinate(s string) (bodCoordinate, bool) {
 		tx, ok1 := parseNonNeg(parts[0])
 		idx, ok2 := parseNonNeg(strings.TrimPrefix(parts[1], "i"))
 		h, ok3 := parseNonNeg(parts[2])
-		if ok1 && ok2 && ok3 && tx <= maxInt && idx <= maxInt {
-			return bodCoordinate{Kind: coordInscription, Height: h, TxIndex: int(tx), InscriptionIndex: int(idx), IOIndex: -1, Raw: raw}, true
+		if ok1 && ok2 && ok3 && tx <= maxInt && idx <= maxInt && tx <= int64(^uint32(0)) && idx <= int64(^uint32(0)) {
+			return bodCoordinate{Kind: coordInscription, Height: h, TxIndex: int(tx), InscriptionIndex: int(idx), IOIndex: -1, Raw: inscriptionCoordinate(uint32(tx), uint32(idx), h)}, true
 		}
 	}
 	return bodCoordinate{}, false

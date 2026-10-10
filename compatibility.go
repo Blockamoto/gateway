@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	appVersion              = "0.7.1"
+	appVersion              = "0.7.2"
 	bodWireVersion          = 1
 	minBODWireVersion       = 1
 	overlayProtocolVersion  = bodWireVersion
@@ -86,7 +86,7 @@ func currentCompatibility() compatibilityView {
 		MinimumOverlayProtocol: minBODWireVersion,
 		StorageIndexRebuild:    false,
 		BlockVerifier:          blockVerifierVersion, DerivedRecheck: true, OrdStorage: 1, ArchiveStorage: 1,
-		Note: "Headers and Blocks testing client. Additional indexes and Gateway peerhood are locked; existing data and rule identities are retained without reactivating jobs or serving. Fresh installs carry a separate validated header snapshot; application updates omit it and signed header chunks extend it independently. Hosted update readiness and public-network soak are recorded separately in release acceptance.",
+		Note: "Headers, Blocks and Inscriptions testing client. Related inscription transaction locators, the standalone Transaction Index and Gateway peerhood remain locked for separate stages. Fresh installs carry a separate validated header snapshot; application updates omit it and signed header chunks extend it independently. Inscription reveal evidence does not establish global numbering, current ownership or parent-child provenance. Hosted update readiness is recorded separately in release acceptance.",
 	}
 }
 

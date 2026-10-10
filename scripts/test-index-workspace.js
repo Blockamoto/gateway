@@ -28,7 +28,11 @@ let timelineOptions,selectedTimeline='',timelineSnapshot={},navigation=[],explor
 const drawer=new Node('details');drawer.open=false;nodes.set('timeline-details',drawer);
 const inspector=new Node('section');inspector.scrollTo=()=>{};nodes.set('timeline-inspector',inspector);
 nodes.set('timeline-inspector-panel',inspector);
-const window={GatewayTimelineExplorer:{mount(){return {focus:value=>explorerFocus.push(value),health(){}}}},GatewayIndexWorkspace:{mountLayout(){},mountRange(){return {update(){},sync(){}}}},GatewayIndexTimeline:{mount(options){timelineOptions=options;return {
+// Child components own their browser DOM; this controller fixture supplies the
+// mount boundary only. Their real layout and sandbox are tested in Chromium.
+const timelineEditor=new Node('section');doc.querySelector=selector=>selector==='.timeline-editor'?timelineEditor:doc.querySelectorAll(selector)[0]||null;
+nodes.get('mode').options=[...html.match(/<select id="mode">([\s\S]*?)<\/select>/)[1].matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g)].map(match=>{const option=new Node('option');option.value=match[1];option.textContent=match[2];return option;});
+const window={addEventListener(){},GatewayInscriptionViewport:{coordinate:record=>record?.reveal_coordinate||'',mount(){return {available(){},setKnown(){},open(){},teardown(){}}}},GatewaySemanticTimeline:{mount(){return {clear(){},open(){},setMarkers(){}}}},GatewayTimelineExplorer:{mount(){return {focus:value=>explorerFocus.push(value),health(){},setTab(){}}}},GatewayIndexWorkspace:{mountLayout(){},mountRange(){return {update(){},sync(){}}}},GatewayIndexTimeline:{mount(options){timelineOptions=options;return {
  render(value){timelineSnapshot=value}, health(){},
  select(id){selectedTimeline=id;options.workspace.hidden=!id||!!definitions.find(d=>d.id===id)?.locked},
  model(id){return window.GatewayIndexCards.model(definitions.find(d=>d.id===id)||{id},timelineSnapshot)}
@@ -38,7 +42,7 @@ vm.runInContext(fs.readFileSync('ui/shell/index-cards.js','utf8'),context);
 vm.runInContext(html.match(/<script nonce="__INDEX_NONCE__">([\s\S]*?)<\/script>/)[1],context);
 const flush=()=>new Promise(r=>setImmediate(r));
 (async()=>{
- await flush();assert.equal(timelineSnapshot.definitions.length,4);assert.equal(selectedTimeline,'headers','Headers is the foundational default selection');
+ await flush();assert.equal(timelineSnapshot.definitions.length,4);assert.equal(selectedTimeline,'headers','Headers is the foundational default selection: '+nodes.get('message').textContent);
  assert.equal(nodes.has('index-cards'),false,'Cards are fully replaced by the timeline root');
  assert.equal(nodes.has('capability-cards'),false,'Locked capabilities use the same timeline');
  for(const id of ['index','query-index','peer-index'])assert.equal(nodes.get(id).tagName,'input','index selection belongs to timeline, not dropdowns');

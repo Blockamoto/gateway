@@ -9,7 +9,13 @@ import (
 // state. Upgrading a profile cannot opt a testing build into unreleased work.
 // Keep the derivation recipes and data formats unchanged for future promotion.
 func releaseFeatureAvailable(id string) bool {
-	return id == "headers" || id == "blocks"
+	return id == "headers" || id == "blocks" || id == "inscriptions"
+}
+
+// Related inscription transaction locators ship with the transaction stage,
+// including their optional scan and retroactive enrichment controls.
+func releaseInscriptionLocatorsAvailable() bool {
+	return releaseFeatureAvailable("tx-locator")
 }
 
 func releaseAvailability() map[string]bool {
@@ -21,7 +27,7 @@ func releaseAvailability() map[string]bool {
 }
 
 func releaseLockReason(id string) string {
-	return fmt.Sprintf("%s is locked in this testing build. Headers and Bitcoin Blocks are available; additional features will be enabled after separate validation. Saved data is retained.", id)
+	return fmt.Sprintf("%s is locked in this testing build. Headers, Bitcoin Blocks and Inscriptions are available; additional features will be enabled after separate validation. Saved data is retained.", id)
 }
 
 func requireReleaseFeature(id string) error {
@@ -32,6 +38,9 @@ func requireReleaseFeature(id string) error {
 }
 
 func requireReleaseIndexRequest(req indexBuildRequest) error {
+	if req.Index == "inscriptions" && req.ConventionalIDs != nil && *req.ConventionalIDs && !releaseInscriptionLocatorsAvailable() {
+		return fmt.Errorf("Related transaction locators are locked until the Transaction Index stage. Positional inscription indexing remains available.")
+	}
 	if req.RetainSatHistory {
 		if err := requireReleaseFeature("sat-state"); err != nil {
 			return err

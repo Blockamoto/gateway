@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -93,6 +94,12 @@ func looksLikeAddress(q string) bool {
 }
 
 func (a *app) searchQuery(q string) (searchResponse, error) {
+	return a.searchQueryContext(context.Background(), q)
+}
+func (a *app) searchQueryContext(ctx context.Context, q string) (searchResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return searchResponse{}, err
+	}
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return searchResponse{}, fmt.Errorf("search a block height, block hash, transaction ID, Gateway coordinate, or Bitcoin address")
@@ -101,7 +108,7 @@ func (a *app) searchQuery(q string) (searchResponse, error) {
 	var out searchResponse
 	out.Query = q
 	if c, ok := parseBODCoordinate(q); ok {
-		r, err := a.resolveCoordinate(c)
+		r, err := a.resolveCoordinateContext(ctx, c)
 		if err != nil {
 			return searchResponse{}, err
 		}
@@ -119,7 +126,7 @@ func (a *app) searchQuery(q string) (searchResponse, error) {
 		}
 		out.Kind, out.Address = "address", &v
 	} else if _, err := strconv.ParseInt(q, 10, 64); err == nil || strings.EqualFold(q, "tip") || strings.EqualFold(q, "latest") {
-		v, err := a.fetchAndDecode(q)
+		v, err := a.fetchAndDecodeContext(ctx, q)
 		if err != nil {
 			return searchResponse{}, err
 		}
@@ -127,7 +134,7 @@ func (a *app) searchQuery(q string) (searchResponse, error) {
 	} else if validHash(q) {
 		// If it is already in our local header chain, it is definitely a block hash.
 		if _, _, err := a.findSelectedHeader(strings.ToLower(q)); err == nil {
-			v, err := a.fetchAndDecode(q)
+			v, err := a.fetchAndDecodeContext(ctx, q)
 			if err != nil {
 				return searchResponse{}, err
 			}
@@ -139,7 +146,7 @@ func (a *app) searchQuery(q string) (searchResponse, error) {
 			// local headers catch up. If this is a transaction and no BOD peer can
 			// locate it, the final error is deliberately explicit rather than
 			// treating peer ignorance as a proven negative.
-			v, berr := a.fetchAndDecode(q)
+			v, berr := a.fetchAndDecodeContext(ctx, q)
 			if berr != nil {
 				return searchResponse{}, fmt.Errorf("64-character value did not resolve as a transaction or block: %v", berr)
 			}

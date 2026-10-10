@@ -143,11 +143,12 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 		var retained *transactionView
 		ambiguous := false
 		visit := func(b indexBatch) error {
-			if b.Bitcoin == nil || beforeHeight >= 0 && b.Checkpoint.Height > beforeHeight {
+			if b.Bitcoin == nil && b.TransactionLocator == nil || beforeHeight >= 0 && b.Checkpoint.Height > beforeHeight {
 				return nil
 			}
-			for i, value := range b.Bitcoin.TxIDs {
-				if value != txid {
+			for _, entry := range transactionBatchEntries(b) {
+				i := int(entry.TxIndex)
+				if entry.TxID != txid {
 					continue
 				}
 				if candidate != nil && (candidate.BlockHash != b.Checkpoint.BlockHash || candidate.Height != b.Checkpoint.Height || candidate.TxIndex != i) {
@@ -163,7 +164,7 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 					retained = nil
 				}
 				candidate = &txLocation{TxID: txid, Height: b.Checkpoint.Height, BlockHash: b.Checkpoint.BlockHash, TxIndex: i}
-				if reusableBitcoinEvidence(b.Bitcoin) && len(b.Bitcoin.Transactions) == len(b.Bitcoin.TxIDs) {
+				if b.Bitcoin != nil && reusableBitcoinEvidence(b.Bitcoin) && len(b.Bitcoin.Transactions) == len(b.Bitcoin.TxIDs) {
 					copy := b.Bitcoin.Transactions[i]
 					if copy.TxID != txid {
 						return fmt.Errorf("indexed transaction identity mismatch")
@@ -196,7 +197,8 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 				if !current {
 					continue
 				}
-				if b.Bitcoin == nil || record.TxIndex >= len(b.Bitcoin.TxIDs) || b.Bitcoin.TxIDs[record.TxIndex] != txid {
+				entries := transactionBatchEntries(b)
+				if record.TxIndex >= len(entries) || entries[record.TxIndex].TxID != txid {
 					err = fmt.Errorf("locator pointer does not match committed transaction position")
 					break
 				}
@@ -297,6 +299,11 @@ func (a *app) indexedInscription(ctx context.Context, id string) (ordRecord, boo
 	if s.checkpoint == nil || a.indexChainState(s.checkpoint) != "selected_chain" {
 		return ordRecord{}, false, nil
 	}
+	// Lean has no retained hashes/bodies to answer a conventional ID. Do not
+	// scan its positional history before the scoped location/provider union.
+	if s.head.Mode == "lean" {
+		return ordRecord{}, false, nil
+	}
 	if err = s.ensureIndexLocators(ctx); err != nil {
 		return ordRecord{}, false, err
 	}
@@ -318,7 +325,8 @@ func (a *app) indexedInscription(ctx context.Context, id string) (ordRecord, boo
 			}
 			env := o.Envelope
 			env.Body = o.Body
-			r := ordRecord{Schema: 1, VerifierVersion: blockVerifierVersion, ID: o.ID, TxID: o.TxID, Index: int(o.Index), BlockHash: o.BlockHash, Height: o.BlockHeight, Envelope: env, Size: len(o.Body), SHA256: o.ContentSHA256, Evidence: "header_anchored", Provider: "local_occurrence_index", Profile: o.ParserProfile, Interpretation: "indexed_occurrence", InitialState: "not_resolved", ContentURL: a.ordContentURL(o.ID), Note: "Content retained by the local occurrence index. Canonical numbering and ownership are not inferred."}
+			position := o.TxIndex
+			r := ordRecord{Schema: 1, VerifierVersion: blockVerifierVersion, ID: o.ID, TxID: o.TxID, Index: int(o.Index), BlockHash: o.BlockHash, Height: o.BlockHeight, TxIndex: &position, RevealCoordinate: inscriptionCoordinate(uint32(o.TxIndex), o.Index, o.BlockHeight), ResolutionState: "resolved", ParserFlags: append([]string(nil), o.ParserFlags...), Envelope: env, Size: len(o.Body), SHA256: o.ContentSHA256, Evidence: "header_anchored", Provider: "local_occurrence_index", Profile: o.ParserProfile, Interpretation: "indexed_occurrence", InitialState: "not_resolved", ContentURL: a.ordContentURL(o.ID), Note: "Content retained by the local occurrence index. Canonical numbering and ownership are not inferred."}
 			if found != nil && !strings.EqualFold(found.BlockHash, r.BlockHash) {
 				return fmt.Errorf("ambiguous indexed inscription; supply a reveal block")
 			}

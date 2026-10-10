@@ -22,6 +22,14 @@ Windows browser routing and browser-companion approval are optional. The compani
 
 A browser may submit bare `.bitcoin` text to its search provider before the companion recognizes and redirects it. Use the companion popup or explicit local HTTP entry when avoiding that search fallback matters. Local routing is not anonymous DNS or an encrypted tunnel. Other pages should not be treated as trusted merely because they can link to a local resource.
 
+## Inscription content
+
+Inscriptions are untrusted content. The viewport uses a dedicated local content origin with sandbox and network restrictions, separate from Gateway's settings and management API. Viewing or resolving a referenced inscription can request another Bitcoin block when its location is known. An unresolved reference is not silently sent to a public web explorer.
+
+In the first inscription stage, Gateway peer lookup and related transaction locator construction are gated. The later peer stage requires explicit networking and publication permissions; private locator knowledge must not be served. Lean inscription indexing records positions rather than keeping every content body. On-demand content caching is separate from committed index coverage. That cache is limited to 256 MiB of content and 4,096 records; older on-demand writes are evicted when needed. Committed Full index records and retained Bitcoin sources are not deleted by this cache policy.
+
+An intended viewport receives a short-lived, read-only capability for bounded inscription dependency requests. Content can see that viewer capability, but it does not receive Gateway's management credential. The content origin restricts outgoing requests, and same-origin session recovery never sends the capability to an external destination. Closing or changing the viewer cancels its outstanding dependency work.
+
 ## Hosted updates and reports
 
 The hosted update service and its infrastructure can observe your IP address, request timing and requested metadata/artifacts, as with other HTTPS downloads. Gateway checks its configured publisher; a custom publisher has its own operational practices. Publisher credentials and private signing keys are not required for ordinary public-client use.

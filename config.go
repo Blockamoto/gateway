@@ -96,7 +96,7 @@ func (s appSettings) public() publicSettings {
 }
 
 func defaultSettings() appSettings {
-	return appSettings{CacheBlocks: true, ShareCache: true, ServeData: true, StorageCapMB: 1024, BitcoinDataDir: detectBitcoinDataDir(), RPCAuthMode: "auto"}
+	return appSettings{CacheBlocks: true, ShareCache: true, ServeData: true, OrdEnabled: true, StorageCapMB: 1024, BitcoinDataDir: detectBitcoinDataDir(), RPCAuthMode: "auto"}
 }
 
 func (a *app) settingsPath() string { return filepath.Join(a.dataDir, "settings.json") }

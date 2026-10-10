@@ -77,6 +77,7 @@ func (a *app) startLiveIndexRuntime(id string) {
 }
 
 type indexLivePolicy struct {
+	ConventionalIDs      *bool    `json:"conventional_ids,omitempty"`
 	SatHistoryConfigured bool     `json:"sat_history_configured,omitempty"`
 	Outputs              []string `json:"outputs,omitempty"`
 	RetainSatHistory     bool     `json:"retain_sat_history,omitempty"`
@@ -96,12 +97,14 @@ type indexLiveState struct {
 }
 
 type indexLiveRequest struct {
-	Index     string `json:"index"`
-	Action    string `json:"action"`
-	Retention string `json:"retention,omitempty"`
+	ConventionalIDs *bool  `json:"conventional_ids,omitempty"`
+	Index           string `json:"index"`
+	Action          string `json:"action"`
+	Retention       string `json:"retention,omitempty"`
 }
 
 type indexLiveView struct {
+	ConventionalIDs  *bool    `json:"conventional_ids,omitempty"`
 	Outputs          []string `json:"outputs,omitempty"`
 	RetainSatHistory bool     `json:"retain_sat_history"`
 	InitialFrom      int64    `json:"initial_from"`
@@ -241,7 +244,14 @@ func (a *app) setIndexLivePolicy(req indexLiveRequest) (indexLiveView, error) {
 	if !exists {
 		policy = indexLivePolicy{Index: req.Index, Retention: s.head.Retention}
 	}
-	if err := requireReleaseIndexRequest(indexBuildRequest{Index: req.Index, Outputs: policy.Outputs, RetainSatHistory: policy.RetainSatHistory}); err != nil {
+	if req.ConventionalIDs != nil {
+		if req.Index != "inscriptions" {
+			return indexLiveView{}, fmt.Errorf("related transaction locators belong to Inscriptions")
+		}
+		value := *req.ConventionalIDs
+		policy.ConventionalIDs = &value
+	}
+	if err := requireReleaseIndexRequest(indexBuildRequest{Index: req.Index, Outputs: policy.Outputs, RetainSatHistory: policy.RetainSatHistory, ConventionalIDs: policy.ConventionalIDs}); err != nil {
 		return indexLiveView{}, err
 	}
 	if !validIndexRetention(policy.Retention) {
@@ -337,12 +347,13 @@ func (a *app) indexTipFreshness() (chainAuthorityView, bool, string) {
 
 func (a *app) indexLiveView(id string, policy indexLivePolicy) indexLiveView {
 	view := indexLiveView{Stopped: policy.Stopped, Index: id, Enabled: policy.Enabled, Paused: policy.Paused, Retention: policy.Retention, State: "off", CheckpointHeight: -1, TipHeight: -1, Updated: policy.Updated}
-	if err := requireReleaseIndexRequest(indexBuildRequest{Index: id, Outputs: policy.Outputs, RetainSatHistory: policy.RetainSatHistory}); err != nil {
+	if err := requireReleaseIndexRequest(indexBuildRequest{Index: id, Outputs: policy.Outputs, RetainSatHistory: policy.RetainSatHistory, ConventionalIDs: policy.ConventionalIDs}); err != nil {
 		view.Enabled, view.On, view.Paused = false, false, true
 		view.State, view.Reason = "locked", err.Error()
 		return view
 	}
 	view.Outputs, view.RetainSatHistory = policy.Outputs, policy.RetainSatHistory
+	view.ConventionalIDs = policy.ConventionalIDs
 	if !policy.SatHistoryConfigured && (id == "sat-state" || id == "blocks") {
 		if sat, err := indexStoreHead(a.dataDir, "sat-state"); err == nil && sat.checkpoint != nil {
 			if batch, err := sat.readBatch(sat.checkpoint.Commitment); err == nil && batch.Sats != nil {
@@ -483,7 +494,7 @@ func (a *app) liveIndexTick() {
 	}
 	ids := make([]string, 0, len(policies))
 	for id, policy := range policies {
-		if policy.Enabled && !policy.Paused && !policy.Stopped && requireReleaseIndexRequest(indexBuildRequest{Index: id, Outputs: policy.Outputs, RetainSatHistory: policy.RetainSatHistory}) == nil {
+		if policy.Enabled && !policy.Paused && !policy.Stopped && requireReleaseIndexRequest(indexBuildRequest{Index: id, Outputs: policy.Outputs, RetainSatHistory: policy.RetainSatHistory, ConventionalIDs: policy.ConventionalIDs}) == nil {
 			ids = append(ids, id)
 		}
 	}
@@ -540,6 +551,10 @@ func (a *app) liveIndexTick() {
 				outputs = append(outputs, output)
 			}
 		}
+		workOutputs := append([]string(nil), outputs...)
+		if id == "inscriptions" && inscriptionIDsEnabled(policy.ConventionalIDs) {
+			workOutputs = append(workOutputs, inscriptionLocatorIndex)
+		}
 		d, err := findIndexDefinition(id)
 		if err != nil || !d.Buildable {
 			a.failLiveIndexRuntime(id, fmt.Errorf("index is not continuously maintainable"))
@@ -570,7 +585,7 @@ func (a *app) liveIndexTick() {
 			if chainState == "anchor_unavailable" {
 				continue
 			}
-			if chainState == "selected_chain" && s.checkpoint.Height >= authority.Height && !a.sharedLiveNeedsWork(outputs, authority.Height) {
+			if chainState == "selected_chain" && s.checkpoint.Height >= authority.Height && !a.sharedLiveNeedsWork(workOutputs, authority.Height) {
 				continue
 			}
 			from, next, mode = s.checkpoint.From, s.checkpoint.Height+1, s.head.Mode
@@ -594,7 +609,7 @@ func (a *app) liveIndexTick() {
 		}
 		a.indexLiveLast = id
 		a.startLiveIndexRuntime(id)
-		if _, err := a.startIndexBuildInternal(indexBuildRequest{Index: id, From: &from, To: &to, Mode: mode, Retention: retention, Outputs: outputs, RetainSatHistory: policy.RetainSatHistory, SatHistoryConfigured: policy.SatHistoryConfigured}, true); err != nil {
+		if _, err := a.startIndexBuildInternal(indexBuildRequest{Index: id, From: &from, To: &to, Mode: mode, Retention: retention, Outputs: outputs, RetainSatHistory: policy.RetainSatHistory, SatHistoryConfigured: policy.SatHistoryConfigured, ConventionalIDs: policy.ConventionalIDs}, true); err != nil {
 			a.failLiveIndexRuntime(id, err)
 			continue
 		}

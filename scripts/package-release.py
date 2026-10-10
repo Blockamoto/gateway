@@ -114,9 +114,10 @@ source change waits for staged-update or recovery work to retain its original
 verification authority. Access credentials are configured only in Settings.
 No publisher signing secrets or GitHub credentials belong in a client package.
 
-This public testing release enables Headers and Bitcoin Blocks. The shared schema
-and block explorer remain available. Capabilities requiring additional indexes,
-and Gateway-to-Gateway peerhood, are locked until separately promoted.
+This prerelease enables Headers, Bitcoin Blocks and Inscriptions. The shared
+schema, block explorer and positional inscription viewport remain available.
+Related inscription transaction locator construction, the complete Transaction
+Index and Gateway-to-Gateway peerhood remain gated until separately promoted.
 Ordinary Bitcoin peer header and block access remains available.
 Read TESTING-{version}.md for the QA checklist, including browser registration
 and typing .bitcoin resource addresses in your browser's address bar.

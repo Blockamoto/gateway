@@ -181,7 +181,7 @@ func (a *app) handleModules(w http.ResponseWriter, r *http.Request) {
 	mods = append(mods, a.discoverModuleManifests()...)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"client": "Gateway Client", "host_api": moduleHostAPIVersion,
-		"status":  "Headers and Bitcoin Blocks are available for testing. Additional indexes, Satline, Inscriptions and Gateway peerhood are locked until separately validated.",
+		"status":  "Headers, Bitcoin Blocks and Inscriptions are available for testing. Related transaction locators, additional indexes, Satline and Gateway peerhood remain locked until separately validated.",
 		"modules": mods,
 	})
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -124,6 +125,12 @@ func (a *app) targetFromLocation(loc blockLocation, peer string) (blockTarget, e
 }
 
 func (a *app) resolveBlockTarget(query string) (blockTarget, error) {
+	return a.resolveBlockTargetContext(context.Background(), query)
+}
+func (a *app) resolveBlockTargetContext(ctx context.Context, query string) (blockTarget, error) {
+	if err := ctx.Err(); err != nil {
+		return blockTarget{}, err
+	}
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return blockTarget{}, fmt.Errorf("enter a block height or block hash")
@@ -133,14 +140,14 @@ func (a *app) resolveBlockTarget(query string) (blockTarget, error) {
 		// A live Bitcoin Core node already owns a consensus-validated active-chain
 		// view. Prefer it immediately; the independent BOD header mirror is an
 		// independence provider, not a gate in front of Core.
-		a.settingsMu.RLock()
-		settings := a.settings
-		a.settingsMu.RUnlock()
-		if core := inspectCore(settings); core.Connected && core.Height >= 0 && validHash(core.BestBlockHash) {
-			return a.coreTargetByHeight(core.Height)
+		if core, err := a.coreTipTargetContext(ctx); err == nil {
+			return core, nil
+		}
+		if err := ctx.Err(); err != nil {
+			return blockTarget{}, err
 		}
 		// Without Core authority, ask the BOD network for the highest advertised validated tip.
-		peers := a.getOverlayPeers()
+		peers := a.cachedOverlayPeers()
 		var best *overlayPeer
 		for i := range peers {
 			if peers[i].HeaderHeight >= 0 && (best == nil || peers[i].HeaderHeight > best.HeaderHeight) {
@@ -148,10 +155,13 @@ func (a *app) resolveBlockTarget(query string) (blockTarget, error) {
 			}
 		}
 		if best != nil && best.HeaderHeight > st.HeaderHeight {
-			resp, err := a.queryGatewayPeer(*best, overlayRequest{Version: overlayProtocolVersion, Type: "blockloc", Height: best.HeaderHeight})
+			resp, err := a.queryGatewayPeerContext(ctx, *best, overlayRequest{Version: overlayProtocolVersion, Type: "blockloc", Height: best.HeaderHeight})
 			if err == nil && resp.BlockLocation != nil {
 				return a.targetFromLocation(*resp.BlockLocation, best.Addr)
 			}
+		}
+		if err := ctx.Err(); err != nil {
+			return blockTarget{}, err
 		}
 		if st.Syncing && !st.Ready {
 			return blockTarget{}, fmt.Errorf("Bitcoin headers are still syncing; use a known block hash or a height already covered by local headers")
@@ -165,14 +175,20 @@ func (a *app) resolveBlockTarget(query string) (blockTarget, error) {
 		if n < 0 {
 			return blockTarget{}, fmt.Errorf("block height cannot be negative")
 		}
-		if t, err := a.coreTargetByHeight(n); err == nil {
+		if t, err := a.coreTargetByHeightContext(ctx, n); err == nil {
 			return t, nil
+		}
+		if err := ctx.Err(); err != nil {
+			return blockTarget{}, err
 		}
 		if n < st.HeaderCount {
 			return a.localBlockTarget(n)
 		}
 		a.needHeaders(n)
-		resp, peer, err := a.queryPeers(overlayRequest{Version: overlayProtocolVersion, Type: "blockloc", Height: n}, "blockloc")
+		resp, peer, err := a.queryBlockLocationContext(ctx, overlayRequest{Version: overlayProtocolVersion, Type: "blockloc", Height: n})
+		if err := ctx.Err(); err != nil {
+			return blockTarget{}, err
+		}
 		if err != nil || resp.BlockLocation == nil {
 			if err != nil {
 				return blockTarget{}, fmt.Errorf("WAITING_FOR_HEADERS: block %d needs its Bitcoin header; selected local headers reach %d. Header synchronization has been requested. A known block hash can still be fetched directly.", n, st.HeaderHeight)
@@ -184,18 +200,27 @@ func (a *app) resolveBlockTarget(query string) (blockTarget, error) {
 	if len(query) == 64 {
 		if _, err := hex.DecodeString(query); err == nil {
 			wanted := strings.ToLower(query)
-			if t, err := a.coreTargetByHash(wanted); err == nil {
+			if t, err := a.coreTargetByHashContext(ctx, wanted); err == nil {
 				return t, nil
 			}
+			if err := ctx.Err(); err != nil {
+				return blockTarget{}, err
+			}
 			if st.HeaderCount > 0 {
-				if height, h, err := a.findSelectedHeader(wanted); err == nil {
+				if height, h, err := a.findSelectedHeaderContext(ctx, wanted); err == nil {
 					raw := hash256(h)
 					return blockTarget{Height: height, HashDisplay: wanted, HashRaw: raw, ExpectedHeader: h, LocalHeader: true, LocatorPeer: "local headers", ChainAuthority: "bod_headers"}, nil
 				}
 			}
+			if err := ctx.Err(); err != nil {
+				return blockTarget{}, err
+			}
 			// A BOD peer can map a hash back to height if its header chain covers it.
-			if resp, peer, err := a.queryPeers(overlayRequest{Version: overlayProtocolVersion, Type: "hashloc", BlockHash: wanted}, "blockloc"); err == nil && resp.BlockLocation != nil {
+			if resp, peer, err := a.queryBlockLocationContext(ctx, overlayRequest{Version: overlayProtocolVersion, Type: "hashloc", BlockHash: wanted}); err == nil && resp.BlockLocation != nil {
 				return a.targetFromLocation(*resp.BlockLocation, peer.Addr)
+			}
+			if err := ctx.Err(); err != nil {
+				return blockTarget{}, err
 			}
 			raw, err := displayHashRaw(wanted)
 			if err != nil {
@@ -209,29 +234,47 @@ func (a *app) resolveBlockTarget(query string) (blockTarget, error) {
 }
 
 func (a *app) fetchAndDecode(query string) (blockView, error) {
-	target, err := a.resolveBlockTarget(query)
+	return a.fetchAndDecodeContext(context.Background(), query)
+}
+func (a *app) fetchAndDecodeContext(ctx context.Context, query string) (blockView, error) {
+	if err := ctx.Err(); err != nil {
+		return blockView{}, err
+	}
+	target, err := a.resolveBlockTargetContext(ctx, query)
 	if err != nil {
 		return blockView{}, err
 	}
-	return a.fetchAndDecodeTarget(target)
+	return a.fetchAndDecodeTargetContext(ctx, target)
 }
 
 func (a *app) fetchBlockAtLocation(height int64, hash string, locatorPeer string) (blockView, error) {
+	return a.fetchBlockAtLocationContext(context.Background(), height, hash, locatorPeer)
+}
+func (a *app) fetchBlockAtLocationContext(ctx context.Context, height int64, hash string, locatorPeer string) (blockView, error) {
+	if err := ctx.Err(); err != nil {
+		return blockView{}, err
+	}
 	target, err := a.targetFromLocation(blockLocation{Height: height, BlockHash: hash}, locatorPeer)
 	if err != nil {
 		return blockView{}, err
 	}
-	if core, e := a.coreTargetByHash(hash); e == nil && core.Height == height {
+	if core, e := a.coreTargetByHashContext(ctx, hash); e == nil && core.Height == height {
 		target = core
 	}
-	return a.fetchAndDecodeTarget(target)
+	return a.fetchAndDecodeTargetContext(ctx, target)
 }
 
 func (a *app) fetchAndDecodeTarget(target blockTarget) (blockView, error) {
-	return a.coalescedBlock(target)
+	return a.fetchAndDecodeTargetContext(context.Background(), target)
+}
+func (a *app) fetchAndDecodeTargetContext(ctx context.Context, target blockTarget) (blockView, error) {
+	return a.coalescedBlockContext(ctx, target)
 }
 func (a *app) fetchAndDecodeTargetUncached(target blockTarget) (blockView, error) {
-	return a.fetchBlockWithPolicy(target, "legacy")
+	return a.fetchAndDecodeTargetUncachedContext(context.Background(), target)
+}
+func (a *app) fetchAndDecodeTargetUncachedContext(ctx context.Context, target blockTarget) (blockView, error) {
+	return a.fetchBlockWithPolicyContext(ctx, target, "legacy")
 }
 
 // Index jobs select source retention without changing global settings or
@@ -240,6 +283,12 @@ func (a *app) fetchAndDecodeTargetUncached(target blockTarget) (blockView, error
 type blockUnavailableError struct{ error }
 
 func (a *app) fetchBlockWithPolicy(target blockTarget, policy string) (blockView, error) {
+	return a.fetchBlockWithPolicyContext(context.Background(), target, policy)
+}
+func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarget, policy string) (blockView, error) {
+	if err := ctx.Err(); err != nil {
+		return blockView{}, err
+	}
 
 	prefixHeight := target.Height
 	if prefixHeight < 0 {
@@ -269,7 +318,7 @@ func (a *app) fetchBlockWithPolicy(target blockTarget, policy string) (blockView
 	// mount and the BOD cache are one logical local store. Core bytes are read
 	// in place and are never duplicated merely because BOD accessed a block.
 	if payload == nil {
-		if hit, err := a.localStorageBlock(target); err == nil && len(hit.Raw) >= 81 {
+		if hit, err := a.localStorageBlockContext(ctx, target); err == nil && len(hit.Raw) >= 81 {
 			got := hash256(hit.Raw[:80])
 			if got == target.HashRaw && (len(target.ExpectedHeader) != 80 || bytes.Equal(hit.Raw[:80], target.ExpectedHeader)) {
 				payload, source, sourceNetwork, fromCache = hit.Raw, hit.Source, hit.Network, hit.FromCache
@@ -280,6 +329,9 @@ func (a *app) fetchBlockWithPolicy(target blockTarget, policy string) (blockView
 		}
 	}
 	if payload == nil {
+		if err := ctx.Err(); err != nil {
+			return blockView{}, err
+		}
 		var err error
 		a.settingsMu.RLock()
 		offline := a.settings.NetworkDisabled
@@ -288,15 +340,18 @@ func (a *app) fetchBlockWithPolicy(target blockTarget, policy string) (blockView
 			return blockView{}, blockUnavailableError{fmt.Errorf("verified block bytes are unavailable locally while peer networking is disabled")}
 		}
 		if a.network != nil {
-			payload, source, err = a.network.fetchBlock(target.HashRaw, target.ExpectedHeader)
+			payload, source, err = a.network.fetchBlockContext(ctx, target.HashRaw, target.ExpectedHeader)
 		} else {
-			payload, source, err = fetchBlock(target.HashRaw, target.ExpectedHeader, a.preferred)
+			payload, source, err = fetchBlockContext(ctx, target.HashRaw, target.ExpectedHeader, a.preferred)
 		}
 		if err == nil {
 			sourceNetwork = "bitcoin"
 		} else {
+			if e := ctx.Err(); e != nil {
+				return blockView{}, e
+			}
 			// Bitcoin is the preferred remote body source. A verified BOD peer is the fallback.
-			if bd, peer, e2 := a.fetchBlockFromOverlay(target.HashDisplay); e2 == nil {
+			if bd, peer, e2 := a.fetchBlockFromOverlayContext(ctx, target.HashDisplay); e2 == nil {
 				payload, source, sourceNetwork = bd.Raw, peer.Addr, "bod"
 				if target.Height < 0 && bd.Height >= 0 {
 					target.Height = bd.Height
@@ -305,6 +360,9 @@ func (a *app) fetchBlockWithPolicy(target blockTarget, policy string) (blockView
 				return blockView{}, blockUnavailableError{fmt.Errorf("Bitcoin peers did not serve the block (%v); Gateway peer fallback also failed (%v)", err, e2)}
 			}
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return blockView{}, err
 	}
 
 	// Keep the existing raw-object path when a hash-only cache entry later gets

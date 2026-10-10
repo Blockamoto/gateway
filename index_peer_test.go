@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -337,6 +339,9 @@ func TestIndexPeerOversizedWholeBatchFailsWithoutPartialCoverage(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.Inscriptions[0].Body = []byte(strings.Repeat("x", maxIndexPeerBatchBytes))
+	b.Inscriptions[0].Envelope.Body = b.Inscriptions[0].Body
+	digest := sha256.Sum256(b.Inscriptions[0].Body)
+	b.Inscriptions[0].ContentSHA256 = hex.EncodeToString(digest[:])
 	b.Checkpoint.RecordsHash = batchRecordsHash(b)
 	b.Checkpoint.Commitment = checkpointHash(b.Checkpoint)
 	if err = atomicWriteJSON(filepath.Join(s.dir, "commits", b.Checkpoint.Commitment+".json"), b); err != nil {

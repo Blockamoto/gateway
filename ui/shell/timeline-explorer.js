@@ -20,20 +20,20 @@ window.GatewayTimelineExplorer = (() => {
     const inspectorTab = element('button','Inspector'); inspectorTab.id='timeline-inspector-tab'; inspectorTab.type='button'; inspectorTab.setAttribute('role','tab'); inspectorTab.setAttribute('aria-controls',inspector.id);
     const explorerTab = element('button','Block Explorer'); explorerTab.id='timeline-explorer-tab'; explorerTab.type='button'; explorerTab.setAttribute('role','tab'); explorerTab.setAttribute('aria-controls',explorer.id);
     tabs.append(inspectorTab,explorerTab); root.append(tabs,inspector,explorer); root.classList.add('timeline-tabbed-inspector');
-    let active='inspector', explicitTab=false, dead=false, available=true, pending=null, focused=null, loaded=null, generation=0, txGeneration=0, pageGeneration=0, timer=null;
+    const panes=new Map([['inspector',{panel:inspector,tab:inspectorTab}],['explorer',{panel:explorer,tab:explorerTab}]]);
+    let active='inspector', explicitTab=false, dead=false, available=true, pending=null, focused=null, loaded=null, generation=0, txGeneration=0, pageGeneration=0, timer=null,pendingEntity=null;
     const requests=new Set();
     const setTab = (name, explicit=true) => {
       if(dead)return;
-      active=name==='explorer'?'explorer':'inspector'; if(explicit)explicitTab=true;
-      inspector.hidden=active!=='inspector'; explorer.hidden=active!=='explorer';
-      for(const [name,node] of [['inspector',inspectorTab],['explorer',explorerTab]]) { const selected=name===active; node.setAttribute('aria-selected',String(selected)); node.tabIndex=selected?0:-1; }
+      active=panes.has(name)?name:'inspector'; if(explicit)explicitTab=true;
+      for(const [key,{panel,tab}] of panes) { const selected=key===active;panel.hidden=!selected;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1; }
       root.dataset.activePane=active;
     };
     inspectorTab.addEventListener('click',()=>setTab('inspector'));
     explorerTab.addEventListener('click',()=>setTab('explorer'));
     tabs.addEventListener('keydown',event=>{
       if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
-      event.preventDefault(); const name=event.key==='Home'?'inspector':event.key==='End'?'explorer':active==='inspector'?'explorer':'inspector'; setTab(name); (name==='inspector'?inspectorTab:explorerTab).focus();
+      event.preventDefault();const keys=[...panes.keys()],at=keys.indexOf(active),name=event.key==='Home'?keys[0]:event.key==='End'?keys.at(-1):keys[(at+(event.key==='ArrowLeft'?-1:1)+keys.length)%keys.length];setTab(name);panes.get(name).tab.focus();
     });
     setTab('inspector',false);
 
@@ -83,6 +83,7 @@ window.GatewayTimelineExplorer = (() => {
     function focus(value) {
       if(dead || !value || !validHeight(value.height))return;
       const next={index:String(value.index || 'blocks'),height:value.height};
+      if(!value.preserveEntity)pendingEntity=null;
       if(!available) {
         cancel();focused=next;loaded=null;pending=null;
         blank('Local index status is unavailable. Block loading is paused until status recovers.','paused');
@@ -147,6 +148,7 @@ window.GatewayTimelineExplorer = (() => {
         }
       }
       prev.onclick=()=>page(-40);next.onclick=()=>page(40);
+      if(pendingEntity?.height===block.height&&validHeight(pendingEntity.txIndex))loadTransaction(pendingEntity.txIndex,block,ticket);
     }
     function evidence(block) {
       const record=block.evidence||{};
@@ -171,6 +173,7 @@ window.GatewayTimelineExplorer = (() => {
       const tx=record.transaction;
       detail.innerHTML='<section class="panel"><div class="section-head"><h3>Transaction '+esc(number(tx.index))+'</h3><button type="button" id="timeline-explorer-close-tx">Close details</button></div><p class="small muted">Block '+esc(number(block.height))+' · '+esc(record.verification_state||'Unknown verification')+'</p><p class="mono">'+esc(tx.txid)+'</p><div class="actions"><button type="button" data-explorer-copy="'+esc(tx.txid)+'">Copy transaction ID</button><button type="button" id="timeline-explorer-flow">Show value flow</button></div><div id="timeline-explorer-flow-result" class="flow-box" hidden></div><p id="timeline-explorer-flow-note" class="small muted" role="status" hidden></p>'+pairs([['Version',tx.version],['Lock time',tx.lock_time],['Size',bytes(tx.size)],['Weight',tx.weight],['Virtual size',tx.vsize],['Segwit',tx.segwit?'Yes':'No'],['Coinbase',tx.coinbase?'Yes':'No']])+'</section><div class="io-grid"><section><div class="eyebrow">INPUTS · '+esc((tx.inputs||[]).length)+'</div>'+(tx.inputs||[]).map(input=>'<article class="io"><div class="io-title"><strong>Input '+esc(input.n)+'</strong><span class="muted">'+(input.coinbase?'Coinbase':'Previous output')+'</span></div><p class="mono">'+(input.coinbase?'Subsidy and block fees':esc(input.prev_txid+':'+input.prev_vout))+'</p>'+(!input.coinbase?'<button type="button" data-explorer-copy="'+esc(input.prev_txid+':'+input.prev_vout)+'">Copy previous outpoint</button>':'')+'<details><summary>Input evidence</summary><pre>'+esc(JSON.stringify(input,null,2))+'</pre></details></article>').join('')+'</section><section><div class="eyebrow">OUTPUTS · '+esc((tx.outputs||[]).length)+'</div>'+(tx.outputs||[]).map(output=>'<article class="io"><div class="io-title"><strong>Output '+esc(output.n)+'</strong><span>'+esc(number(output.value_sats))+' sats</span></div><p class="mono muted">'+esc(output.address||output.type||'script')+'</p><div class="io-actions"><button type="button" data-explorer-copy="'+esc(tx.txid+':'+output.n)+'">Copy outpoint</button><button type="button" disabled title="Requires a later index">🔒 Spender</button><button type="button" disabled title="Requires a later index">🔒 Satline</button></div><details><summary>Output evidence</summary><pre>'+esc(JSON.stringify(output,null,2))+'</pre></details></article>').join('')+'</section></div><details class="panel"><summary>Full transaction evidence</summary><pre>'+esc(JSON.stringify(tx,null,2))+'</pre></details>';
       detail.querySelector('#timeline-explorer-close-tx').onclick=()=>{txGeneration++;detail.hidden=true;detail.replaceChildren();};
+      if(pendingEntity?.height===block.height&&pendingEntity.txIndex===tx.index){const value=pendingEntity;detail.dataset.focusKind=value.kind||'transaction';if(validHeight(value.outputIndex)){const articles=[...detail.querySelectorAll('.io-grid>section:last-child .io')],output=articles.find((item,index)=>tx.outputs[index]?.n===value.outputIndex);output?.classList.add('focused');if(validHeight(value.satOffset))output?.append(element('p','Output-local sat offset: '+number(value.satOffset),'sat-focus'));}pendingEntity=null;}
       detail.querySelectorAll('[data-explorer-copy]').forEach(button=>button.onclick=async()=>{try{await win.navigator.clipboard.writeText(button.dataset.explorerCopy);notify?.('Copied to clipboard.');}catch{notify?.('Clipboard access is unavailable. Select the displayed text to copy it.',true);}});
       const flowButton=detail.querySelector('#timeline-explorer-flow'),flow=detail.querySelector('#timeline-explorer-flow-result'),flowNote=detail.querySelector('#timeline-explorer-flow-note');
       flowButton.onclick=async()=>{
@@ -194,9 +197,16 @@ window.GatewayTimelineExplorer = (() => {
     function teardown() {
       if(dead)return;cancel();dead=true;
       while(inspector.firstChild)root.insertBefore(inspector.firstChild,tabs);
-      tabs.remove();inspector.remove();explorer.remove();root.classList.remove('timeline-tabbed-inspector');delete root.dataset.activePane;
+      tabs.remove();for(const {panel} of panes.values())panel.remove();root.classList.remove('timeline-tabbed-inspector');delete root.dataset.activePane;
     }
-    return {focus,health,teardown,setTab:name=>setTab(name),state:()=>({active,height:focused?.height,index:focused?.index,healthy:available,loading:explorer.dataset.state,loadedHeight:loaded?.block.height})};
+    function addPane(name,label,panel) {
+      if(dead||panes.has(name))throw Error('Duplicate timeline pane.');
+      const tab=element('button',label);tab.type='button';tab.id='timeline-'+name+'-tab';tab.setAttribute('role','tab');tab.setAttribute('aria-controls',panel.id);tab.setAttribute('aria-selected','false');tab.tabIndex=-1;
+      panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby',tab.id);panel.hidden=true;panes.set(name,{tab,panel});tabs.append(tab);root.append(panel);tab.onclick=()=>setTab(name);
+      return tab;
+    }
+    function entity(value){if(!validHeight(value?.height))return;const saved=value;focus({...value,immediate:true,preserveEntity:true});pendingEntity=saved;setTab('explorer');if(loaded?.block.height===saved.height&&validHeight(saved.txIndex))loadTransaction(saved.txIndex,loaded.block,generation);}
+    return {focus,entity,health,teardown,addPane,setTab:name=>setTab(name),state:()=>({active,height:focused?.height,index:focused?.index,healthy:available,loading:explorer.dataset.state,loadedHeight:loaded?.block.height})};
   }
   return {mount};
 })();

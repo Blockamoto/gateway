@@ -271,7 +271,7 @@ func (a *app) peerCapabilitiesLegacy() ([]string, int64, string, int) {
 			}
 		}
 		a.cacheMu.RUnlock()
-		if has {
+		if has || a.publishedInscriptionLocatorAvailable() {
 			caps = append(caps, "txloc")
 		}
 	}
@@ -745,6 +745,16 @@ func (a *app) answerBODRequest(req overlayRequest) (overlayResponse, string) {
 		}
 		var loc txLocation
 		var err error
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		committed, found, lookupErr := a.publishedInscriptionTransactionContext(ctx, req.TxID, "")
+		cancel()
+		if lookupErr != nil {
+			return unknown(lookupErr)
+		}
+		if found {
+			resp.OK, resp.TxLocation = true, &committed
+			return resp, "ok"
+		}
 		st := inspectCore(settings)
 		if st.Connected && st.TxIndex {
 			loc, err = coreTxLocation(settings, req.TxID)
@@ -928,13 +938,19 @@ func bodInternalType(wire string) string {
 }
 
 func queryOverlayPeer(peer overlayPeer, req overlayRequest) (overlayResponse, error) {
+	return queryOverlayPeerContext(context.Background(), peer, req)
+}
+func queryOverlayPeerContext(ctx context.Context, peer overlayPeer, req overlayRequest) (overlayResponse, error) {
 	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
 		return overlayResponse{}, err
 	}
-	c, err := net.DialTimeout("tcp", peer.Addr, 4*time.Second)
+	c, err := (&net.Dialer{Timeout: 4 * time.Second}).DialContext(ctx, "tcp", peer.Addr)
 	if err != nil {
 		return overlayResponse{}, err
 	}
+	defer c.Close()
+	stop := context.AfterFunc(ctx, func() { _ = c.Close() })
+	defer stop()
 	p, err := handshakeOutbound(c, peer.Addr)
 	if err != nil {
 		return overlayResponse{}, err

@@ -230,8 +230,8 @@ func parseResourceAddress(raw string) (resolverTarget, error) {
 		return resolverTarget{Namespace: "bitcoin", Kind: kind, Input: raw, SearchQuery: c.Raw, Friendly: f, CanonicalURI: godURI(f), TxID: c.TxID}, nil
 	}
 	if c, ok := parseBODCoordinate(stem); ok && c.Kind == coordInscription {
-		f := fmt.Sprintf("%d.i%d.%d.bitcoin", c.TxIndex, c.InscriptionIndex, c.Height)
-		return resolverTarget{Namespace: "bitcoin", Kind: "inscription_coordinate", Input: raw, SearchQuery: fmt.Sprintf("%d.i%d.%d", c.TxIndex, c.InscriptionIndex, c.Height), Friendly: f, CanonicalURI: godURI(f)}, nil
+		f := c.Raw + ".bitcoin"
+		return resolverTarget{Namespace: "bitcoin", Kind: "inscription_coordinate", Input: raw, SearchQuery: c.Raw, Friendly: f, CanonicalURI: godURI(f)}, nil
 	}
 	if t, m, e := parseBitcoinFriendly(raw); m {
 		return t, e
@@ -263,6 +263,12 @@ func parseResourceAddress(raw string) (resolverTarget, error) {
 	return resolverTarget{}, fmt.Errorf("unregistered Gateway address")
 }
 func (a *app) resolveLocalTarget(input string) (localResolveResponse, error) {
+	return a.resolveLocalTargetContext(context.Background(), input)
+}
+func (a *app) resolveLocalTargetContext(ctx context.Context, input string) (localResolveResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return localResolveResponse{}, err
+	}
 	t, e := parseLocalResolverTarget(input)
 	if e != nil {
 		return localResolveResponse{}, e
@@ -283,13 +289,13 @@ func (a *app) resolveLocalTarget(input string) (localResolveResponse, error) {
 		if lookup.ChainState != "selected_chain" {
 			return localResolveResponse{}, fmt.Errorf("Bitmap index chain anchor is %s; sync headers or resume the index", lookup.ChainState)
 		}
-		rec, err := a.resolveInscription(context.Background(), lookup.Record.Inscription, lookup.RevealBlockHash)
+		rec, err := a.resolveInscription(ctx, lookup.Record.Inscription, lookup.RevealBlockHash)
 		if err != nil {
 			return localResolveResponse{}, err
 		}
 		result = searchResponse{Kind: "inscription", Ord: &rec}
 	case t.Namespace == "ord":
-		rec, e := a.resolveInscription(context.Background(), t.SearchQuery, "")
+		rec, e := a.resolveInscription(ctx, t.SearchQuery, "")
 		if e != nil {
 			return localResolveResponse{}, e
 		}
@@ -314,7 +320,7 @@ func (a *app) resolveLocalTarget(input string) (localResolveResponse, error) {
 			result.FocusOffset = t.SatOffset
 		}
 	default:
-		result, e = a.searchQuery(t.SearchQuery)
+		result, e = a.searchQueryContext(ctx, t.SearchQuery)
 		if e != nil {
 			return localResolveResponse{}, e
 		}
@@ -323,11 +329,14 @@ func (a *app) resolveLocalTarget(input string) (localResolveResponse, error) {
 	return localResolveResponse{Target: t, Result: result}, nil
 }
 func (a *app) resolveSearchInput(input string) (searchResponse, error) {
+	return a.resolveSearchInputContext(context.Background(), input)
+}
+func (a *app) resolveSearchInputContext(ctx context.Context, input string) (searchResponse, error) {
 	if _, e := parseLocalResolverTarget(input); e == nil {
-		x, e := a.resolveLocalTarget(input)
+		x, e := a.resolveLocalTargetContext(ctx, input)
 		return x.Result, e
 	}
-	return a.searchQuery(strings.TrimSpace(input))
+	return a.searchQueryContext(ctx, strings.TrimSpace(input))
 }
 func (a *app) handleLocalResolve(w http.ResponseWriter, r *http.Request) {
 	var target string
@@ -358,10 +367,15 @@ func (a *app) handleLocalResolve(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 400, fmt.Errorf("target is required"))
 		return
 	}
-	out, err := a.resolveLocalTarget(target)
+	out, err := a.resolveLocalTargetContext(r.Context(), target)
 	if err != nil {
 		jsonError(w, 400, err)
 		return
+	}
+	if out.Result.Ord != nil {
+		if !a.attachOrdViewerForRequest(r, out.Result.Ord) {
+			return
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)

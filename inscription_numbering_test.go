@@ -110,7 +110,10 @@ func TestInscriptionNumberingFeeOrderingAndMissingValues(t *testing.T) {
 }
 func commitNumberingFixture(t *testing.T, s *indexStore, b blockView, state *inscriptionNumberingSnapshot) {
 	t.Helper()
-	batch := indexBatch{Numbering: state, Checkpoint: indexCheckpoint{Schema: s.definition.CheckpointSchema, Definition: s.definition.ID, Version: s.definition.Version, RuleHash: s.definition.RuleHash, Network: s.definition.Network, From: firstMainnetInscriptionHeight, Height: b.Height, BlockHash: b.Hash}}
+	// These fixtures exercise the historical numbering format, which predates
+	// the positional Lean/Full recipe and its authenticated block denominator.
+	d := legacyIndexDefinition(s.definition)
+	batch := indexBatch{Numbering: state, Checkpoint: indexCheckpoint{Schema: d.CheckpointSchema, Definition: d.ID, Version: d.Version, RuleHash: d.RuleHash, Network: d.Network, From: firstMainnetInscriptionHeight, Height: b.Height, BlockHash: b.Hash}}
 	batch.Checkpoint.RecordsHash = batchRecordsHash(batch)
 	batch.Checkpoint.Commitment = checkpointHash(batch.Checkpoint)
 	if e := atomicWriteJSON(filepath.Join(s.dir, "commits", batch.Checkpoint.Commitment+".json"), batch); e != nil {

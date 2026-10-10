@@ -80,8 +80,8 @@ func TestOrdContentRepairNavigationAndCachedRecursion(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatal("same-origin GET without Origin failed")
 	}
-	js, err := gatewayShell.ReadFile("ui/shell/app.js")
-	if err != nil || !strings.Contains(string(js), `sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"`) {
+	js, err := gatewayShell.ReadFile("ui/shell/inscription-viewport.js")
+	if err != nil || !strings.Contains(string(js), `view.setAttribute('sandbox','allow-scripts allow-same-origin')`) || !strings.Contains(string(js), `view.referrerPolicy='no-referrer'`) {
 		t.Fatal("Gateway iframe sandbox does not match the isolated content origin")
 	}
 }

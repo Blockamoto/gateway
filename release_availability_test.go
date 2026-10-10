@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,10 +10,10 @@ import (
 	"testing"
 )
 
-func Test066IndexReleaseAvailability(t *testing.T) {
+func Test072IndexReleaseAvailability(t *testing.T) {
 	a := independentTestApp(t)
 	for _, d := range indexDefinitions() {
-		available := d.ID == "headers" || d.ID == "blocks"
+		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions"
 		if d.Locked == available || releaseFeatureAvailable(d.ID) != available {
 			t.Fatalf("wrong release availability: %+v", d)
 		}
@@ -54,9 +53,9 @@ func Test066ManualIndexAndModuleRequestsAreLocked(t *testing.T) {
 	a := independentTestApp(t)
 	h := indexInterfaceHandler(a)
 	for _, tc := range []struct{ method, path, body string }{
-		{"POST", "plan", `{"index":"bitmap"}`}, {"POST", "build", `{"index":"blocks","outputs":["inscriptions"]}`},
+		{"POST", "plan", `{"index":"bitmap"}`}, {"POST", "build", `{"index":"blocks","outputs":["tx-locator"]}`},
 		{"POST", "build", `{"index":"blocks","retain_sat_history":true}`},
-		{"POST", "live", `{"index":"sat-state","action":"enable"}`}, {"GET", "query?index=inscriptions", ""},
+		{"POST", "live", `{"index":"sat-state","action":"enable"}`}, {"GET", "query?index=tx-locator", ""},
 		{"GET", "lookup?index=bitmap&key=0", ""}, {"GET", "sat?sat=0", ""}, {"POST", "discover-sat", `{"id":"anything"}`},
 	} {
 		r := indexInterfaceCall(h, tc.method, "/api/v1/index/"+tc.path, tc.body)
@@ -64,18 +63,56 @@ func Test066ManualIndexAndModuleRequestsAreLocked(t *testing.T) {
 			t.Fatalf("%s bypass: %d %s", tc.path, r.Code, r.Body.String())
 		}
 	}
-	for _, handler := range []http.HandlerFunc{a.handleOrdResolve, a.handleOrdFollow, a.serveOrdContent, a.handleSatlineResolve, a.handleSatlineFollow, a.handleSatlineRun, a.handleGraphBuild, a.handleResolveSpender, a.handleAddressUTXOs, a.handleJobs} {
+	for _, handler := range []http.HandlerFunc{a.handleOrdFollow, a.handleSatlineResolve, a.handleSatlineFollow, a.handleSatlineRun, a.handleGraphBuild, a.handleResolveSpender, a.handleAddressUTXOs, a.handleJobs} {
 		w := httptest.NewRecorder()
 		handler(w, httptest.NewRequest("POST", "/", strings.NewReader(`{}`)))
 		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "locked") {
 			t.Fatalf("handler bypass: %d %s", w.Code, w.Body.String())
 		}
 	}
-	if _, err := a.resolveInscription(context.Background(), strings.Repeat("a", 64)+"i0", ""); err == nil {
-		t.Fatal("known-id bypass")
+}
+
+func Test072RelatedInscriptionLocatorsStayGated(t *testing.T) {
+	if !releaseFeatureAvailable("inscriptions") || releaseInscriptionLocatorsAvailable() || releaseFeatureAvailable("gateway-peerhood") {
+		t.Fatal("wrong staged release capabilities")
 	}
-	if _, err := a.resolveCoordinate(bodCoordinate{Kind: coordInscription}); err == nil || !strings.Contains(err.Error(), "locked") {
-		t.Fatal("positional inscription bypass", err)
+	a := independentTestApp(t)
+	on, off := true, false
+	for _, req := range []indexBuildRequest{
+		{Index: "inscriptions", ConventionalIDs: &on},
+		{Index: "inscriptions", Outputs: []string{"inscription-tx-locator"}, ConventionalIDs: &off},
+		{Index: "inscriptions", Outputs: []string{"tx-locator"}, ConventionalIDs: &off},
+	} {
+		if _, err := a.planIndexBuild(req); err == nil {
+			t.Fatal("gated locator work accepted", req, err)
+		}
+	}
+	for _, choice := range []*bool{nil, &off} {
+		plan, err := a.planIndexBuild(indexBuildRequest{Index: "inscriptions", ConventionalIDs: choice})
+		if err != nil || plan.ConventionalIDs {
+			t.Fatal("positional-only plan did not honor first-stage gate", plan, err)
+		}
+		for _, output := range plan.Outputs {
+			if output.Index == "inscription-tx-locator" || output.Index == "tx-locator" {
+				t.Fatal("positional-only plan derived transaction locators", output)
+			}
+		}
+	}
+	if _, err := os.Stat(filepath.Join(a.dataDir, "indexes", "inscription-tx-locator")); !os.IsNotExist(err) {
+		t.Fatal("checking a gated choice touched locator storage", err)
+	}
+}
+
+func Test072InscriptionDefaultsPreserveExplicitChoice(t *testing.T) {
+	a := &app{dataDir: t.TempDir()}
+	if !a.loadSettings().OrdEnabled {
+		t.Fatal("fresh inscription profile did not enable viewing")
+	}
+	if err := os.WriteFile(a.settingsPath(), []byte(`{"ord_enabled":false}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if a.loadSettings().OrdEnabled {
+		t.Fatal("upgrade overrode an explicit disabled choice")
 	}
 }
 

@@ -143,6 +143,9 @@ func (a *app) enrichBitmapIdentity(row *bitmapRecord, hash string) {
 	row.CanonicalNumber = rec.CanonicalNumber
 }
 func (a *app) discoverInscriptionSat(ctx context.Context, id string) (inscriptionSatResult, error) {
+	if err := requireReleaseFeature("sat-state"); err != nil {
+		return inscriptionSatResult{}, err
+	}
 	if err := requireReleaseFeature("inscriptions"); err != nil {
 		return inscriptionSatResult{}, err
 	}
@@ -506,7 +509,7 @@ func (a *app) localIndexedReveal(id string, height int64, hash string) *ordRecor
 	return nil
 }
 func (a *app) handleInscriptionDiscoverSat(w http.ResponseWriter, r *http.Request) {
-	if !releaseHTTPFeature(w, "inscriptions") {
+	if !releaseHTTPFeature(w, "inscriptions") || !releaseHTTPFeature(w, "sat-state") {
 		return
 	}
 	if !indexMethod(w, r, http.MethodPost) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -64,12 +65,18 @@ type message struct {
 }
 
 func fetchBlock(hash [32]byte, expectedHeader []byte, preferred []string) ([]byte, string, error) {
+	return fetchBlockContext(context.Background(), hash, expectedHeader, preferred)
+}
+func fetchBlockContext(ctx context.Context, hash [32]byte, expectedHeader []byte, preferred []string) ([]byte, string, error) {
 	candidates := append([]string{}, preferred...)
-	discovered, _ := discoverPeers()
+	discovered, _ := discoverPeersContext(ctx)
 	candidates = append(candidates, discovered...)
 	seen := map[string]bool{}
 	attempts := 0
 	for _, addr := range candidates {
+		if err := ctx.Err(); err != nil {
+			return nil, "", err
+		}
 		if seen[addr] {
 			continue
 		}
@@ -78,14 +85,22 @@ func fetchBlock(hash [32]byte, expectedHeader []byte, preferred []string) ([]byt
 		if attempts > 64 {
 			break
 		}
-		p, err := connectPeer(addr)
+		c, err := (&net.Dialer{Timeout: 6 * time.Second}).DialContext(ctx, "tcp", addr)
 		if err != nil {
+			continue
+		}
+		stop := context.AfterFunc(ctx, func() { _ = c.Close() })
+		p, err := handshakeOutbound(c, addr)
+		if err != nil {
+			stop()
+			_ = c.Close()
 			continue
 		}
 		// Standard archival Bitcoin peers advertise NODE_NETWORK. BOD sparse
 		// peers are tried separately by fetchBlockFromOverlay and need not lie
 		// about NODE_NETWORK just to serve a cached block.
 		if p.services&nodeNetworkService == 0 {
+			stop()
 			_ = p.conn.Close()
 			continue
 		}
@@ -98,10 +113,12 @@ func fetchBlock(hash [32]byte, expectedHeader []byte, preferred []string) ([]byt
 		_ = binary.Write(&req, binary.LittleEndian, invType)
 		req.Write(hash[:])
 		if err = writeMessage(p.conn, "getdata", req.Bytes()); err != nil {
+			stop()
 			_ = p.conn.Close()
 			continue
 		}
 		msg, err := waitForBlockOrNotFound(p, 22*time.Second)
+		stop()
 		_ = p.conn.Close()
 		if err != nil {
 			continue
@@ -173,9 +190,15 @@ func connectAnyPeer(preferred []string, requireArchive bool) (*peerConn, error) 
 }
 
 func discoverPeers() ([]string, error) {
+	return discoverPeersContext(context.Background())
+}
+func discoverPeersContext(ctx context.Context) ([]string, error) {
 	var all []string
 	for _, seed := range dnsSeeds {
-		ips, err := net.LookupIP(seed)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", seed)
 		if err != nil {
 			continue
 		}

@@ -53,7 +53,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CGO_ENABLED=1 go test -race -count=1 -json -run '^Test(063|064|065|066|068|069|Release|Header|Bitcoin|Integration|IndexLocator|SatIndex|SatReverse|Ordinal|InscriptionNumbering)' -timeout=900s . | tee "$RUNNER_TEMP/gateway-checks/race-tests.jsonl"
+          CGO_ENABLED=1 go test -race -count=1 -json -run '^Test(063|064|065|066|068|069|072|Release|Header|Bitcoin|Integration|IndexLocator|SatIndex|SatReverse|Ord|Inscription|Positional|Sparse)' -timeout=900s . | tee "$RUNNER_TEMP/gateway-checks/race-tests.jsonl"
           CGO_ENABLED=1 go test -race -count=1 -json -timeout=240s ./internal/updates ./internal/updatepublisher ./internal/updateapply | tee "$RUNNER_TEMP/gateway-checks/update-race-tests.jsonl"
       - name: Browser companion and UI helper tests
         if: ${{ !cancelled() }}
@@ -77,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           export NODE_PATH="$RUNNER_TEMP/gateway-browser/node_modules"
-          { node scripts/test-updates-ui.js; node scripts/test-theme-ui.js; node scripts/test-shell-navigation.js; node scripts/test-setup-browser.js; node scripts/test-peer-aliases-browser.js; node scripts/test-legacy-serving-browser.js; node scripts/test-index-workspace-browser.js; node scripts/test-index-timeline-browser.js; node scripts/test-index-timeline-workspace-browser.js; node scripts/test-index-timeline-selection-browser.js; node scripts/test-timeline-explorer-browser.js; node scripts/test-index-cards-browser.js --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/browser-indexes"; } 2>&1 | tee "$RUNNER_TEMP/gateway-checks/browser-ui.txt"
+          { node scripts/test-updates-ui.js; node scripts/test-theme-ui.js; node scripts/test-shell-navigation.js; node scripts/test-setup-browser.js; node scripts/test-peer-aliases-browser.js; node scripts/test-legacy-serving-browser.js; node scripts/test-index-workspace-browser.js; node scripts/test-index-timeline-browser.js; node scripts/test-index-timeline-workspace-browser.js; node scripts/test-index-timeline-selection-browser.js; node scripts/test-timeline-explorer-browser.js; node scripts/test-inscription-workspace-browser.js; node scripts/test-inscription-native-browser.js --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/browser-inscriptions"; node scripts/test-index-cards-browser.js --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/browser-indexes"; } 2>&1 | tee "$RUNNER_TEMP/gateway-checks/browser-ui.txt"
       - name: Preserve test evidence and source snapshot
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

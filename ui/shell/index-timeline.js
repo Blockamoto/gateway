@@ -92,7 +92,7 @@ window.GatewayIndexTimeline = (() => {
     }
     return marks.sort((a,b)=>a.height-b.height);
   }
-  function mount({document:doc,root,workspace,api,refresh,select,notify,buildRange,openEntity,onFocus}) {
+  function mount({document:doc,root,workspace,api,refresh,select,notify,buildRange,openEntity,onFocus,onDetail}) {
     const el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
     const button=(text,id,title,action)=>{const n=el('button',text);n.type='button';if(id)n.id=id;if(title){n.title=title;n.setAttribute('aria-label',title);}n.addEventListener('click',action);return n;};
     const entries=new Map(),indexSelections=new Map();let snapshot={},selected='',selection=null,playhead=null,healthy=false,busy=false,view={from:0,to:0},extent=0,fit=true,drawing=false,selectionChanging=false,pendingMarkerFocus=null;
@@ -183,7 +183,7 @@ window.GatewayIndexTimeline = (() => {
       const placeholder=el('span','','timeline-track-placeholder'),markers=el('div',undefined,'timeline-selection-markers');trackBody.append(canvas,markers,placeholder);row.append(heading,trackBody);tracks.insertBefore(row,addRow);
       const e={row,head,remove,number,name,state,detail,canvas,markers,placeholder,d};entries.set(d.id,e);
       canvas.addEventListener('click',event=>hit(e,event));
-      canvas.addEventListener('dblclick',()=>{if(selection?.id===d.id)focusSelection();});
+      canvas.addEventListener('dblclick',()=>{if(selection?.id===d.id){if(view.to-view.from<64&&height(playhead))onDetail?.({index:d.id,height:playhead});else focusSelection();}});
       canvas.addEventListener('keydown',event=>{
         if(event.key==='+'||event.key==='='){event.preventDefault();zoom(.25);}else if(event.key==='-'){event.preventDefault();zoom(2);}else if(event.key==='Home'){event.preventDefault();fit=true;redraw();}else if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();if(view.to-view.from<64&&selection?.kind==='block'&&selection.id===d.id){const n=Math.max(0,Math.min(extent,selection.from+(event.key==='ArrowLeft'?-1:1)));choose({id:d.id,kind:'block',from:n,to:n});focusBlock(n,true);if(n<view.from||n>view.to){view=clampView({from:Math.max(0,n-16),to:Math.max(0,n-16)+32},extent);fit=false;redraw();}}else pan(event.key==='ArrowLeft'?-.6:.6);}else if(event.key==='Enter'){event.preventDefault();activateLane(e);}
       });
@@ -212,7 +212,7 @@ window.GatewayIndexTimeline = (() => {
     function choose(value){if(!value.id)return;chooseSet(value.id,[{from:value.from,to:value.to}],value.from);}
     function showTooltip(e,event){const s=projectHit(e,event),m=trackModel(e.d,snapshot),present=count(intersect(m.coverage,s));tooltip.textContent=m.locked?'Locked · '+(e.d.lock_reason||'Available in a later release'):s.kind==='block'?'Block '+format(s.from)+' · '+(present?'available locally':m.complete?'not stored locally':'not established locally'):'Blocks '+labelRange(s)+' · '+format(present)+' available';const rect=editor.getBoundingClientRect();tooltip.style.left=Math.max(8,Math.min(rect.width-280,event.clientX-rect.left+12))+'px';tooltip.style.top=Math.max(8,event.clientY-rect.top-42)+'px';tooltip.hidden=false;}
     const intersect=(ranges,r)=>ranges.filter(x=>x.from<=r.to&&x.to>=r.from).map(x=>({from:Math.max(r.from,x.from),to:Math.min(r.to,x.to)}));
-    function zoom(factor,anchor=.5){dimensions();const span=view.to-view.from+1,target=Math.max(1,Math.min(extent+1,Math.round(span*factor))),center=view.from+span*anchor;view=clampView({from:Math.max(0,Math.round(center-target*anchor)),to:Math.max(0,Math.round(center-target*anchor))+target-1},extent);fit=false;redraw();}
+    function zoom(factor,anchor=.5){dimensions();const span=view.to-view.from+1;if(span===1&&factor<1){onDetail?.({index:selected,height:view.from});return;}const target=Math.max(1,Math.min(extent+1,Math.round(span*factor))),center=view.from+span*anchor;view=clampView({from:Math.max(0,Math.round(center-target*anchor)),to:Math.max(0,Math.round(center-target*anchor))+target-1},extent);fit=false;redraw();}
     function pan(fraction){const span=view.to-view.from+1,from=Math.max(0,view.from+Math.round(span*fraction));view=clampView({from,to:from+span-1},extent);fit=false;redraw();}
     const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
     function pointerAnchor(x){const rect=ruler.getBoundingClientRect();return clamp((x-rect.left)/Math.max(1,rect.width),0,1);}

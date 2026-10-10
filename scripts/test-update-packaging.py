@@ -172,7 +172,7 @@ class PackagingTests(unittest.TestCase):
                 self.assertEqual(source_record.splitlines()[0], 'Repository: https://github.com/Blockamoto/gateway')
                 self.assertNotIn('gateway-dev', source_record)
                 readme = archive.read(package_root + '/README.txt').decode()
-                self.assertIn('public testing release', readme)
+                self.assertIn('prerelease', readme)
                 self.assertNotIn('internal development', readme)
                 self.assertIsNone(archive.testzip())
                 for name in archive.namelist():

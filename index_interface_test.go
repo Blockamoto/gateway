@@ -261,7 +261,7 @@ func TestIndexInterfaceManagementIsolationAndPageCSP(t *testing.T) {
 	if embedded.Code != 200 || !strings.Contains(embedded.Header().Get("Content-Security-Policy"), "frame-ancestors 'self'") {
 		t.Fatal("same-origin index workspace cannot embed", embedded.Code)
 	}
-	if first.Header().Get("Cache-Control") != "no-store" || !strings.Contains(strings.ToLower(first.Body.String()), "canonical inscription numbers") {
+	if first.Header().Get("Cache-Control") != "no-store" || !strings.Contains(strings.ToLower(first.Body.String()), "numbering or current ownership from partial history") {
 		t.Fatal("cache policy or numbering caveat missing")
 	}
 }

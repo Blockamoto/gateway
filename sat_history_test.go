@@ -153,8 +153,8 @@ func TestSatInscriptionIdentitySurvivesPruningWithoutNumberingOrHistory(t *testi
 		if identity == nil || !identity.Known || identity.SatNumber == nil || *identity.SatNumber != firstSatAtHeight(1) {
 			t.Fatal(id, identity)
 		}
-		if _, e := a.discoverInscriptionSat(context.Background(), id); e == nil {
-			t.Fatal("stored identity bypassed the inscription release lock")
+		if _, e := a.discoverInscriptionSat(context.Background(), id); e == nil || e.Error() != releaseLockReason("sat-state") {
+			t.Fatal("stored identity bypassed the independent Sat Index release lock", e)
 		}
 	}
 	identity := a.indexedSatIdentity(two+"i1", 2, reveal.Hash)

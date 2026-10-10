@@ -283,7 +283,7 @@ func (s *indexStore) activeLocatorCommitContext(ctx context.Context, height int6
 }
 
 func (s *indexStore) writeActiveLocatorHead(c *indexCheckpoint) error {
-	if s.definition.ID != "blocks" && s.definition.ID != "tx-locator" && s.definition.ID != "inscriptions" && s.definition.ID != "txo-spender" && s.definition.ID != "sat-state" {
+	if s.definition.ID != "blocks" && s.definition.ID != "tx-locator" && s.definition.ID != inscriptionLocatorIndex && s.definition.ID != "inscriptions" && s.definition.ID != "txo-spender" && s.definition.ID != "sat-state" {
 		return nil
 	}
 	path := s.locatorActivePath()
@@ -484,23 +484,9 @@ func (s *indexStore) writeIndexLocatorRows(b indexBatch, repair bool) error {
 	if err := updateapply.CheckPath(s.dir); err != nil {
 		return err
 	}
-	keys := []string{}
-	if b.Bitcoin != nil {
-		keys = b.Bitcoin.TxIDs
-	} else if b.Sats != nil {
-		keys = satHistoryLocatorKeys(b.Sats)
-	} else if b.Spenders != nil {
-		for _, r := range b.Spenders.Rows {
-			keys = append(keys, indexSpendKey(r.PrevTxID, r.Vout))
-		}
-	} else if s.definition.ID == "inscriptions" {
-		for _, occurrence := range b.Inscriptions {
-			if _, _, err := inscriptionParts(occurrence.ID); err != nil {
-				return err
-			}
-			sum := sha256.Sum256([]byte(occurrence.ID))
-			keys = append(keys, hex.EncodeToString(sum[:]))
-		}
+	keys, err := s.indexBatchLocatorKeys(b)
+	if err != nil {
+		return err
 	}
 	groups := map[string][][]byte{}
 	for i, txid := range keys {
@@ -515,7 +501,10 @@ func (s *indexStore) writeIndexLocatorRows(b indexBatch, repair bool) error {
 		groups[path] = append(groups[path], raw)
 	}
 	for path, records := range groups {
-		if repair {
+		// Only repair/replay scans the bounded shard. Ordinary append retains
+		// its incremental hash path, while interrupted retries cannot grow
+		// identical acknowledged pointers indefinitely.
+		if repair || s.locatorReplay {
 			var err error
 			records, err = unwrittenIndexLocatorRecords(path, records)
 			if err != nil {
@@ -530,6 +519,30 @@ func (s *indexStore) writeIndexLocatorRows(b indexBatch, repair bool) error {
 		}
 	}
 	return nil
+}
+
+func (s *indexStore) indexBatchLocatorKeys(b indexBatch) ([]string, error) {
+	keys := []string{}
+	if b.Bitcoin != nil || b.TransactionLocator != nil {
+		for _, entry := range transactionBatchEntries(b) {
+			keys = append(keys, entry.TxID)
+		}
+	} else if b.Sats != nil {
+		keys = satHistoryLocatorKeys(b.Sats)
+	} else if b.Spenders != nil {
+		for _, r := range b.Spenders.Rows {
+			keys = append(keys, indexSpendKey(r.PrevTxID, r.Vout))
+		}
+	} else if s.definition.ID == "inscriptions" {
+		for _, occurrence := range b.Inscriptions {
+			if _, _, err := inscriptionParts(occurrence.ID); err != nil {
+				return nil, err
+			}
+			sum := sha256.Sum256([]byte(occurrence.ID))
+			keys = append(keys, hex.EncodeToString(sum[:]))
+		}
+	}
+	return keys, nil
 }
 
 func (s *indexStore) appendBitcoinLocatorRecords(path string, records [][]byte) error {
@@ -687,23 +700,9 @@ func (s *indexStore) rebuildIndexLocatorShard(ctx context.Context, path string) 
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		keys := []string{}
-		if b.Bitcoin != nil {
-			keys = b.Bitcoin.TxIDs
-		} else if b.Sats != nil {
-			keys = satHistoryLocatorKeys(b.Sats)
-		} else if b.Spenders != nil {
-			for _, r := range b.Spenders.Rows {
-				keys = append(keys, indexSpendKey(r.PrevTxID, r.Vout))
-			}
-		} else if s.definition.ID == "inscriptions" {
-			for _, o := range b.Inscriptions {
-				if _, _, err := inscriptionParts(o.ID); err != nil {
-					return err
-				}
-				sum := sha256.Sum256([]byte(o.ID))
-				keys = append(keys, hex.EncodeToString(sum[:]))
-			}
+		keys, err := s.indexBatchLocatorKeys(b)
+		if err != nil {
+			return err
 		}
 		for i, key := range keys {
 			if err := ctx.Err(); err != nil {
@@ -812,7 +811,7 @@ func unwrittenIndexLocatorRecords(path string, records [][]byte) ([][]byte, erro
 // The old head and payload bytes remain untouched; an interrupted partial
 // pointer backfill is harmless and is retried before a ready table is published.
 func (s *indexStore) ensureIndexLocators(ctx context.Context) error {
-	if s.checkpoint == nil || (s.definition.ID != "blocks" && s.definition.ID != "tx-locator" && s.definition.ID != "inscriptions" && s.definition.ID != "txo-spender" && s.definition.ID != "sat-state") {
+	if s.checkpoint == nil || (s.definition.ID != "blocks" && s.definition.ID != "tx-locator" && s.definition.ID != inscriptionLocatorIndex && s.definition.ID != "inscriptions" && s.definition.ID != "txo-spender" && s.definition.ID != "sat-state") {
 		return nil
 	}
 	if _, ready, err := s.activeLocatorCommitContext(ctx, s.checkpoint.Height); err == nil && ready {

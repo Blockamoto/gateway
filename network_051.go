@@ -494,8 +494,13 @@ func (n *bitcoinNetwork) waitSession(ctx context.Context, archive bool) (*bitcoi
 	}
 }
 func (n *bitcoinNetwork) fetchBlock(hash [32]byte, header []byte) ([]byte, string, error) {
-	ctx, cancel := context.WithTimeout(n.ctx, 45*time.Second)
+	return n.fetchBlockContext(n.ctx, hash, header)
+}
+func (n *bitcoinNetwork) fetchBlockContext(parent context.Context, hash [32]byte, header []byte) ([]byte, string, error) {
+	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
 	defer cancel()
+	stop := context.AfterFunc(n.ctx, cancel)
+	defer stop()
 	var last error
 	tried := map[string]bool{}
 	for attempt := 0; attempt < 4; attempt++ {
@@ -570,6 +575,9 @@ func (n *bitcoinNetwork) gatewayPeers() []overlayPeer {
 	return out
 }
 func (n *bitcoinNetwork) query(peer overlayPeer, req overlayRequest) (overlayResponse, error) {
+	return n.queryContext(n.ctx, peer, req)
+}
+func (n *bitcoinNetwork) queryContext(parent context.Context, peer overlayPeer, req overlayRequest) (overlayResponse, error) {
 	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
 		return overlayResponse{}, err
 	}
@@ -582,8 +590,10 @@ func (n *bitcoinNetwork) query(peer overlayPeer, req overlayRequest) (overlayRes
 	if s == nil {
 		return overlayResponse{}, fmt.Errorf("Gateway peer is no longer connected")
 	}
-	ctx, cancel := context.WithTimeout(n.ctx, bodRequestTimeout)
+	ctx, cancel := context.WithTimeout(parent, bodRequestTimeout)
 	defer cancel()
+	stop := context.AfterFunc(n.ctx, cancel)
+	defer stop()
 	return s.bodRequest(ctx, req)
 }
 func (n *bitcoinNetwork) snapshot() map[string]any { return n.bitcoinSnapshot() }
@@ -641,6 +651,12 @@ func (n *bitcoinNetwork) disconnect(addr string) bool {
 }
 
 func (n *bitcoinNetwork) fetchModuleBlock(hash string) (blockData, overlayPeer, error) {
+	return n.fetchModuleBlockContext(n.ctx, hash)
+}
+func (n *bitcoinNetwork) fetchModuleBlockContext(parent context.Context, hash string) (blockData, overlayPeer, error) {
+	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
+		return blockData{}, overlayPeer{}, err
+	}
 	if !n.enabled() {
 		return blockData{}, overlayPeer{}, fmt.Errorf("WAITING_FOR_PEERS: outbound networking disabled")
 	}
@@ -667,9 +683,11 @@ func (n *bitcoinNetwork) fetchModuleBlock(hash string) (blockData, overlayPeer, 
 		}
 		_ = binary.Write(&req, binary.LittleEndian, inv)
 		req.Write(raw[:])
-		ctx, cancel := context.WithTimeout(n.ctx, 15*time.Second)
+		ctx, cancel := context.WithTimeout(parent, 15*time.Second)
+		stop := context.AfterFunc(n.ctx, cancel)
 		m, e := s.request(ctx, "getdata", req.Bytes(), func(m message) bool { return m.command == "block" || m.command == "notfound" })
 		cancel()
+		stop()
 		if e != nil {
 			last = e
 			continue

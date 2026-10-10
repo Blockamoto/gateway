@@ -30,15 +30,18 @@ type bitmapRecord struct {
 	ParserFlags     []string `json:"parser_flags,omitempty"`
 }
 type indexBatch struct {
-	Spenders          *indexSpenderBlock                `json:"spenders,omitempty"`
-	Sats              *satIndexSnapshot                 `json:"sats,omitempty"`
-	Numbering         *inscriptionNumberingSnapshot     `json:"numbering,omitempty"`
-	Bitcoin           *bitcoinIndexBlock                `json:"bitcoin,omitempty"`
-	Checkpoint        indexCheckpoint                   `json:"checkpoint"`
-	PreviousBlockHash string                            `json:"previous_block_hash"`
-	Inscriptions      []inscriptionOccurrence           `json:"inscriptions,omitempty"`
-	Bitmap            []bitmapRecord                    `json:"bitmap,omitempty"`
-	Diagnostics       []inscriptionExtractionDiagnostic `json:"diagnostics,omitempty"`
+	InscriptionCoordinates []string                          `json:"inscriptions,omitempty"`
+	InscriptionBlock       *inscriptionBlockMetadata         `json:"inscription_block,omitempty"`
+	TransactionLocator     *transactionLocatorPayload        `json:"transactions,omitempty"`
+	Spenders               *indexSpenderBlock                `json:"spenders,omitempty"`
+	Sats                   *satIndexSnapshot                 `json:"sats,omitempty"`
+	Numbering              *inscriptionNumberingSnapshot     `json:"numbering,omitempty"`
+	Bitcoin                *bitcoinIndexBlock                `json:"bitcoin,omitempty"`
+	Checkpoint             indexCheckpoint                   `json:"checkpoint"`
+	PreviousBlockHash      string                            `json:"previous_block_hash"`
+	Inscriptions           []inscriptionOccurrence           `json:"full_inscriptions,omitempty"`
+	Bitmap                 []bitmapRecord                    `json:"bitmap,omitempty"`
+	Diagnostics            []inscriptionExtractionDiagnostic `json:"diagnostics,omitempty"`
 }
 type indexHead struct {
 	Mode       string `json:"mode,omitempty"`
@@ -57,6 +60,7 @@ type indexStore struct {
 	locatorContext           context.Context
 	locatorSyncDirectory     func(string) error
 	locatorDirectoriesSynced map[string]bool
+	locatorReplay            bool
 }
 
 func openIndexStore(root, id string) (*indexStore, error) {
@@ -146,6 +150,12 @@ func (s *indexStore) walk(visit func(indexBatch) error) error {
 }
 
 func batchRecordsHash(b indexBatch) string {
+	if b.TransactionLocator != nil {
+		return indexDigest(struct {
+			Previous     string
+			Transactions *transactionLocatorPayload
+		}{b.PreviousBlockHash, b.TransactionLocator})
+	}
 	if b.Spenders != nil {
 		return indexDigest(struct {
 			Previous string
@@ -186,6 +196,19 @@ func batchRecordsHash(b indexBatch) string {
 		normalized[i].Verification = verificationView{}
 		normalized[i].VerificationState = ""
 	}
+	if b.InscriptionBlock != nil {
+		coordinates := b.InscriptionCoordinates
+		if coordinates == nil {
+			coordinates = []string{}
+		}
+		return indexDigest(struct {
+			Previous     string
+			Metadata     *inscriptionBlockMetadata
+			Inscriptions []string
+			Full         []inscriptionOccurrence
+			Diagnostics  []inscriptionExtractionDiagnostic
+		}{b.PreviousBlockHash, b.InscriptionBlock, coordinates, normalized, b.Diagnostics})
+	}
 	return indexDigest(struct {
 		Previous     string
 		Inscriptions []inscriptionOccurrence
@@ -214,7 +237,25 @@ func (s *indexStore) readBatch(commit string) (indexBatch, error) {
 	if e = json.Unmarshal(data, &b); e != nil {
 		return b, e
 	}
-	bitcoin := s.definition.ID == "blocks" || s.definition.ID == "tx-locator"
+	bitcoin := s.definition.ID == "blocks" || s.definition.ID == "tx-locator" && b.TransactionLocator == nil
+	transactionLocator := s.definition.ID == inscriptionLocatorIndex || s.definition.ID == "tx-locator" && b.TransactionLocator != nil
+	if transactionLocator {
+		if b.Bitcoin != nil || b.Spenders != nil || b.Sats != nil || b.Numbering != nil || b.InscriptionBlock != nil || len(b.Inscriptions) != 0 || len(b.InscriptionCoordinates) != 0 || len(b.Bitmap) != 0 || len(b.Diagnostics) != 0 {
+			return b, fmt.Errorf("mixed transaction locator payload")
+		}
+		if e = validateTransactionPayload(b, s.definition.ID); e != nil {
+			return b, e
+		}
+	} else if b.TransactionLocator != nil {
+		return b, fmt.Errorf("unexpected transaction locator payload")
+	}
+	if s.definition.ID == "inscriptions" {
+		if e = validateInscriptionPayload(b); e != nil {
+			return b, e
+		}
+	} else if b.InscriptionBlock != nil || len(b.InscriptionCoordinates) != 0 {
+		return b, fmt.Errorf("unexpected inscription positions")
+	}
 	if (s.definition.ID == "txo-spender") != (b.Spenders != nil) {
 		return b, fmt.Errorf("spender index record type mismatch")
 	}
@@ -258,6 +299,9 @@ func (s *indexStore) readBatch(commit string) (indexBatch, error) {
 	}
 	c := b.Checkpoint
 	d := s.definition
+	if c.Version == 1 && d.Version == 2 && (d.ID == "inscriptions" || d.ID == "tx-locator") {
+		d = legacyIndexDefinition(d)
+	}
 	if c.Commitment != commit || checkpointHash(c) != commit || c.RecordsHash != batchRecordsHash(b) || c.RuleHash != d.RuleHash || c.Definition != d.ID || c.Version != d.Version || c.Schema != d.CheckpointSchema || c.Network != d.Network || !validHash(c.BlockHash) || c.Height < c.From || c.From < d.StartHeight {
 		return b, fmt.Errorf("invalid or incompatible index checkpoint")
 	}
@@ -405,6 +449,8 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 		if e != nil {
 			return e
 		}
+	} else if s.definition.ID == "tx-locator" && s.head.Mode != "" {
+		b.TransactionLocator = transactionLocatorFromBlock(block)
 	} else if s.definition.ID == "blocks" || s.definition.ID == "tx-locator" {
 		b.Bitcoin = &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: []string{}}
 		for _, tx := range block.Transactions {
@@ -416,10 +462,27 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 	} else if s.definition.ID == "bitmap" {
 		b.Bitmap = bitmapCandidatesLookup(extracted.Occurrences, func(n uint64) (string, bool) { v, ok := s.winners[n]; return v, ok })
 	} else {
-		b.Inscriptions = append([]inscriptionOccurrence(nil), extracted.Occurrences...)
-		b.Numbering, e = s.deriveInscriptionNumbering(block, from, b.Inscriptions)
-		if e != nil {
-			return e
+		mode := s.head.Mode
+		if mode == "" {
+			mode = "full"
+		} // Explicit legacy/test stores retain their richer format.
+		b.InscriptionBlock = &inscriptionBlockMetadata{Mode: mode, TransactionCount: uint32(len(block.Transactions))}
+		b.InscriptionCoordinates = make([]string, 0, len(extracted.Occurrences))
+		for _, occurrence := range extracted.Occurrences {
+			b.InscriptionCoordinates = append(b.InscriptionCoordinates, inscriptionCoordinate(uint32(occurrence.TxIndex), occurrence.Index, block.Height))
+		}
+		if mode == "full" {
+			b.Inscriptions = append([]inscriptionOccurrence(nil), extracted.Occurrences...)
+		} else {
+			b.Diagnostics = nil
+		}
+		// New Lean and Full jobs never perform hidden history/UTXO work. The
+		// legacy explicit numbering executor remains available for its fixtures.
+		if s.head.Mode == "" {
+			b.Numbering, e = s.deriveInscriptionNumbering(block, from, b.Inscriptions)
+			if e != nil {
+				return e
+			}
 		}
 	}
 	if s.definition.ID == "bitmap" && s.head.Mode == "lean" {
@@ -433,12 +496,40 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 		b.Bitmap = lean
 		b.Diagnostics = nil
 	}
-	c := indexCheckpoint{Schema: s.definition.CheckpointSchema, Definition: s.definition.ID, Version: s.definition.Version, RuleHash: s.definition.RuleHash, Network: s.definition.Network, From: from, Height: block.Height, BlockHash: block.Hash, DependencyFingerprint: indexDigest(struct{ Block, Parser, Reference string }{block.Hash, inscriptionParserProfile, inscriptionReferenceCommit}), RecordsHash: batchRecordsHash(b)}
+	return s.commitPreparedIndexBatch(b, block.Height, block.Hash, from, retention)
+}
+
+func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash string, from int64, retention string) error {
+	if s.checkpoint != nil {
+		if height != s.checkpoint.Height+1 || b.PreviousBlockHash != s.checkpoint.BlockHash {
+			return fmt.Errorf("nonsequential index block")
+		}
+		from = s.checkpoint.From
+	} else if height != from || (!s.definition.ArbitraryStart && from != s.definition.StartHeight) {
+		return fmt.Errorf("invalid initial index height")
+	}
+	c := indexCheckpoint{Schema: s.definition.CheckpointSchema, Definition: s.definition.ID, Version: s.definition.Version, RuleHash: s.definition.RuleHash, Network: s.definition.Network, From: from, Height: height, BlockHash: hash, DependencyFingerprint: indexDigest(struct{ Block, Parser, Reference string }{hash, inscriptionParserProfile, inscriptionReferenceCommit}), RecordsHash: batchRecordsHash(b)}
+	if b.TransactionLocator != nil {
+		c.DependencyFingerprint = indexDigest(struct{ Block, Selection, Source string }{hash, b.TransactionLocator.Selection, b.TransactionLocator.SourceCommitment})
+	}
 	if s.checkpoint != nil {
 		c.PreviousCommitment = s.checkpoint.Commitment
 	}
 	c.Commitment = checkpointHash(c)
 	b.Checkpoint = c
+	if s.definition.ID == "inscriptions" {
+		if e := validateInscriptionPayload(b); e != nil {
+			return e
+		}
+	}
+	if b.TransactionLocator != nil {
+		if e := validateTransactionPayload(b, s.definition.ID); e != nil {
+			return e
+		}
+	}
+	var e error
+	_, existingCommit := os.Stat(filepath.Join(s.dir, "commits", c.Commitment+".json"))
+	s.locatorReplay = existingCommit == nil
 	if e = atomicWriteJSON(filepath.Join(s.dir, "commits", c.Commitment+".json"), b); e != nil {
 		return e
 	}

@@ -255,12 +255,36 @@ type coordinateResolution struct {
 }
 
 func (a *app) resolveCoordinate(c bodCoordinate) (coordinateResolution, error) {
+	return a.resolveCoordinateContext(context.Background(), c)
+}
+func (a *app) resolveCoordinateContext(ctx context.Context, c bodCoordinate) (coordinateResolution, error) {
 	if c.Kind == coordInscription {
 		if err := requireReleaseFeature("inscriptions"); err != nil {
 			return coordinateResolution{}, err
 		}
+		a.settingsMu.RLock()
+		enabled := a.settings.OrdEnabled
+		a.settingsMu.RUnlock()
+		if !enabled {
+			return coordinateResolution{}, fmt.Errorf("Inscriptions module is disabled")
+		}
+		if c.TxID == "" {
+			if occurrence, found, err := a.indexedInscriptionPositionContext(ctx, c.Height, c.TxIndex, c.InscriptionIndex); found || err != nil {
+				if err != nil {
+					return coordinateResolution{}, err
+				}
+				rec, err := a.ordRecordFromOccurrence(occurrence, "local_occurrence_index")
+				if err != nil {
+					return coordinateResolution{}, err
+				}
+				if err = a.saveOrdRecord(rec, occurrence.Body); err != nil {
+					return coordinateResolution{}, err
+				}
+				return coordinateResolution{Inscription: &rec, Coordinate: c.Raw}, nil
+			}
+		}
 	}
-	block, err := a.fetchAndDecode(strconv.FormatInt(c.Height, 10))
+	block, err := a.fetchAndDecodeContext(ctx, strconv.FormatInt(c.Height, 10))
 	if err != nil {
 		return coordinateResolution{}, err
 	}
@@ -285,7 +309,7 @@ func (a *app) resolveCoordinate(c bodCoordinate) (coordinateResolution, error) {
 		// The reveal is resolved from the authenticated Bitcoin block. The
 		// resulting record is the same native witness evidence used by the
 		// known-ID resolver, but the lookup starts from a human path.
-		rec, err := a.resolveInscriptionInBlock(context.Background(), block, tx.TxID, c.InscriptionIndex)
+		rec, err := a.resolveInscriptionInBlock(ctx, block, tx.TxID, c.InscriptionIndex)
 		if err != nil {
 			return coordinateResolution{}, err
 		}

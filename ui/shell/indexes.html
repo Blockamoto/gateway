@@ -431,7 +431,7 @@ function openTimelineEntity(id,height) {
 let movingEntity=false;
 function focusedAddress(value){return value.address||value.query||(value.kind==='transaction'&&Number.isSafeInteger(value.txIndex)?value.txIndex+'.'+value.height+'.bitcoin':value.height+'.bitcoin');}
 function publishFocus(value){if(parent!==window&&Number.isSafeInteger(value.height)&&value.height>=0)parent.postMessage({type:'gateway:workspace-focused',address:focusedAddress(value),resolved:value.resolved===true},location.origin);}
-function syncFocusedEntity(value){if(!value||!Number.isSafeInteger(value.height)||value.height<0)return;movingEntity=true;try{timeline.focus(value.height,true);timeline.acceptResource(value,value.metadata);}finally{movingEntity=false;}publishFocus(value);}
+function syncFocusedEntity(value){if(!value||!Number.isSafeInteger(value.height)||value.height<0)return;movingEntity=true;try{timeline.syncResource(value,value.metadata);}finally{movingEntity=false;}publishFocus(value);}
 function focusEntity(value,options={}){if(!value?.address)return;explorer.navigate(value.address).catch(error=>message(error.message,true));}
 let workspaceReady=false,pendingAddress=null;
 function isInscriptionAddress(value){return /^(?:[0-9]+|[0-9a-f]{64})(?:\.)?i[0-9]+(?:\.[0-9]+(?:\.bitcoin)?)?$/i.test(value)||value.endsWith('.ord');}
@@ -446,8 +446,8 @@ window.addEventListener('message',event=>{if(event.source!==parent||event.origin
 function showSemantic(){timeline.zoomIntoFocus();}
 timeline = window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:prepareTimelineRange,openEntity:openTimelineEntity,onFocus:value=>{if(movingEntity)return;explorer?.focus(value);if(value.immediate!==false)publishFocus({...value,kind:'block'});},onDetail:showSemantic,onEntity:focusEntity,loadHierarchy:(entity,options)=>explorer.loadHierarchy(entity,options),loadRevealMarkers:async(value,{signal})=>{const result=await api('query?index=inscriptions&height='+value.height+'&limit=1000',undefined,{signal});return {markers:inscriptionRows(result.rows).map(inscriptionMarker).filter(Boolean),known:result.known===true,truncated:result.truncated};},onInscription:marker=>viewport.open(marker.address)});
 window.GatewayIndexWorkspace.mountLayout($('index-timeline'),$('message'));
-explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message,viewport:$('workspace-viewport-body'),onEntity:syncFocusedEntity,onNavigate:navigateWorkspace});
-viewport=window.GatewayInscriptionViewport.mount({document,explorer,viewport:$('workspace-viewport-body'),contentOrigin:workspaceBoot.content_origin,notify:message,onEntity:syncFocusedEntity,onNavigate:navigateWorkspace});
+explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message,viewport:$('workspace-viewport-body'),onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:()=>timeline.cancelPendingNavigation()});
+viewport=window.GatewayInscriptionViewport.mount({document,explorer,viewport:$('workspace-viewport-body'),contentOrigin:workspaceBoot.content_origin,notify:message,onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:()=>timeline.cancelPendingNavigation()});
 selectView('catalog');
 refresh().then(()=>{workspaceReady=true;const focus=new URLSearchParams(location.search).get('focus'),request=pendingAddress||{address:focus|| (new URLSearchParams(location.search).get('viewer')==='1'?'ord.gateway':''),options:{}};pendingAddress=null;if(request.address)return navigateWorkspace(request.address,request.options);}).catch(error=>message(error.message,true));
 window.addEventListener('pagehide',()=>{viewport?.teardown();explorer?.teardown();});

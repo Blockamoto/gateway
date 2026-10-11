@@ -1,4 +1,4 @@
-# The transaction update
+# The transactions update
 
 Gateway 0.7.3 is prepared as a draft for review. It is not a published release and does not replace the approved hosted updater release.
 
@@ -16,6 +16,7 @@ Gateway 0.7.3 is prepared as a draft for review. It is not a published release a
 - Wheel zoom anchors to the pointer; horizontal trackpad movement and Shift-wheel pan. Plain lane dragging pans, while a click moves the playhead without replacing indexing selections. Shift-click and Ctrl/Command-click edit indexing selections. Ruler scrubbing waits for the final position to settle.
 - Map and flow navigation supports zoom, diagonal dragging, remembered views and **Fit view**. Returning to the containing block preserves the block's own view. Fullscreen and narrow layouts preserve timeline state.
 - The global address field stays shared with the workspace. Missing inscription locations offer a reveal-block hint; known locations with unavailable bytes remain distinguishable from unknown locations. Status lives in the top-bar popover.
+- A delayed same-block transaction or inscription response preserves a newer hierarchy zoom. Actual navigation, different-block responses and changed block anchors still cancel obsolete descent requests.
 
 ## Validation and limits
 

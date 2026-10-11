@@ -10,7 +10,7 @@ window.GatewayInscriptionViewport = (() => {
       return url;
     } catch {return null;}
   }
-  function mount({document:doc,explorer,contentOrigin,notify,onEntity,onNavigate,viewport}) {
+  function mount({document:doc,explorer,contentOrigin,notify,onEntity,onNavigate,onNavigateIntent,viewport}) {
     const win=doc.defaultView,el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
     const panel=el('section',undefined,'timeline-inscription-panel');panel.id='timeline-inscription-panel';
     const address={value:''},blockHint={value:''};
@@ -60,8 +60,9 @@ window.GatewayInscriptionViewport = (() => {
       }catch(error){if(ticket===generation){dependency.hidden=false;dependency.replaceChildren(el('p',error.name==='AbortError'?'Dependency status took too long; retrying.':error.message,'small muted'));}}finally{win.clearTimeout(timer);if(pollController===abort)pollController=null;}
       if(!dead&&ticket===generation)poll=win.setTimeout(()=>pollDependencies(session,ticket),1500);
     }
-    async function open(value,{record,block,activate=true}={}){
+    async function open(value,{record,block,activate=true,intent=true}={}){
       if(dead||!enabled)return;const query=String(value||coordinate(record)||record?.id||'').trim();if(!query)return;
+      if(intent)onNavigateIntent?.({kind:'inscription',address:query});
       explorer.activateResource?.('inscriptions');cancel();const ticket=generation;current=null;address.value=query;blockHint.value=String(block??'');if(activate)explorer.setTab('inscriptions');state('Resolving locally first. Missing block data may be fetched from Bitcoin peers.','loading');
       try{
         let rec=record;

@@ -1,8 +1,8 @@
 # Gateway status
 
-## Working source: 0.7.3 The transaction update
+## Working source: 0.7.3 The transactions update
 
-The source enables the Transaction Index and inscription-related locator builds. Independent opt-in browsing indexes store exact processed blocks without advancing sequential checkpoints. The workspace has context-aware Details and Inspector, a square shared viewport, complete BitFeed-style block maps, automatic transaction flow and a collapsible timeline. Gateway peers remain gated. The user-approved local build is moving to main, with an unpublished draft release prepared separately. The published release and hosted update feed remain unchanged. See [the transaction test guide](TESTING-0.7.3.md).
+The source enables the Transaction Index and inscription-related locator builds. Independent opt-in browsing indexes store exact processed blocks without advancing sequential checkpoints. The workspace has context-aware Details and Inspector, a square shared viewport, complete BitFeed-style block maps, automatic transaction flow and a collapsible timeline. Gateway peers remain gated. The user-approved local build is on main with an unpublished draft release. A focused correction preserves newer same-block hierarchy navigation when older responses arrive; actual navigation and block-anchor changes still cancel obsolete work. The deterministic regression and affected workspace checks passed; the draft refresh requires fresh exact-package and committed-source CI checks. The published release and hosted update feed remain unchanged. See [the transaction test guide](TESTING-0.7.3.md).
 
 ## Previous source: 0.7.2 inscription prerelease preparation
 

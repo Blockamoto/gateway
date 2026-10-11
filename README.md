@@ -4,7 +4,7 @@ Gateway is a Bitcoin block explorer that retrieves the blocks you ask for. Explo
 
 **0.7.1 is a public testing release with a timeline workspace.** Its active indexes are **Headers** and **Bitcoin Blocks**. Additional indexes remain locked while they undergo further validation. See [current status](docs/STATUS.md) for validation and hosted delivery status.
 
-The working source is **0.7.3**, The transaction update, approved after local review. A draft release is being prepared separately. It enables transaction locators and optional inscription-related locators, with independent "Index as you browse" settings. The shared workspace shows block maps, transaction flows and isolated inscription content. This source version has not replaced the published downloads or hosted update feed. See [the transaction test guide](docs/TESTING-0.7.3.md).
+The working source is **0.7.3**, The transactions update, approved after local review. A draft release is being prepared separately. It enables transaction locators and optional inscription-related locators, with independent "Index as you browse" settings. The shared workspace shows block maps, transaction flows and isolated inscription content. This source version has not replaced the published downloads or hosted update feed. See [the transaction test guide](docs/TESTING-0.7.3.md).
 
 ## Start here
 

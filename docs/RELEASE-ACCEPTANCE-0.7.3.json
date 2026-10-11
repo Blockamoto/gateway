@@ -1,13 +1,13 @@
 {
   "schema": 1,
   "version": "0.7.3",
-  "title": "The transaction update",
+  "title": "The transactions update",
   "status": "approved-local-review-draft-preparation",
   "repository": "Blockamoto/gateway",
   "recorded_date_utc": "2026-10-11",
   "published": false,
   "release_kind": "draft",
-  "source_identity": "SOURCE-REVISION.txt and artifact-manifest.json identify the final committed packaging source. The validated local runtime was built from the approved source tree before its documentation commit.",
+  "source_identity": "SOURCE-REVISION.txt and artifact-manifest.json identify the final committed packaging source. Earlier development-runtime results remain attributed to their exact hashes; the CI navigation correction requires refreshed draft packages and independent exact-binary checks.",
   "enabled_indexes": ["headers", "blocks", "inscriptions", "tx-locator"],
   "related_inscription_locator_construction_available": true,
   "gated_features": ["gateway-peerhood", "sat-state", "satline", "txo-spender", "bitmap", "bitmap-compatibility", "address-history", "address-state"],
@@ -19,13 +19,30 @@
       "failed": 0,
       "scope": "Full clean suite before the final narrow gesture, CSS raster-policy and flow-note corrections; targeted follow-up checks validate those later changes."
     },
-    "static_and_linux_build": {"result": "PASS", "linux_ci_for_final_committed_source": "pending"},
+    "static_and_linux_build": {"result": "PASS", "linux_ci_for_final_committed_source": "pending after navigation race correction"},
+    "initial_main_ci": {
+      "source_revision": "e3b2b53d0553dc7103eedfaa0a88c465cc1d1e5b",
+      "url": "https://github.com/Blockamoto/gateway/actions/runs/38140548740",
+      "result": "FAIL",
+      "go_tests": {"passed": 920, "skipped": 52, "failed": 0},
+      "race_tests": {"passed": 576, "skipped": 18, "failed": 0},
+      "failure": "Inscription workspace browser timed out waiting for transaction-level hierarchy. A delayed same-block resolved callback can cancel a newer hierarchy descent.",
+      "scope": "Build, full Go tests, vet, races, browser helpers and packaging checks passed. Later native browser suites were not reached. Original failure retained; a focused production correction and regression are required."
+    },
+    "resolved_navigation_regression": {
+      "result": "PASS",
+      "script": "scripts/test-hierarchy-resolved-echo-browser.js",
+      "before_fix": "FAIL: releasing a held older same-block transaction response canceled a newer held hierarchy descent",
+      "cases": ["same-block transaction and inscription response preservation", "actual map, output and inscription navigation cancellation", "cross-block resolved synchronization", "explicit global navigation cancellation", "same-height changed block anchor invalidation", "indexing selections preserved and no builds started"],
+      "affected_workspace_browser_suites": "PASS: original inscription workspace, hierarchy, Explorer and composed transaction workspace; controller helper and changed JavaScript syntax checks also passed",
+      "scope": "Controlled deterministic request ordering. This does not establish ordinary Bitcoin-network retrieval or final packaged runtime behavior."
+    },
     "final_local_windows_runtime": {
       "sha256": "4c4c414e2331c6d3094444fadea6a2888419df7428036cb79e00f4f179e441a7",
       "native_content_guards": "PASS",
       "native_saved_choices_setup_shell": "PASS",
       "native_real_map_flow_and_split": "PASS",
-      "scope": "Exact reviewed development executable. Full-header release packages and installer are a separate build and require their own checks."
+      "scope": "Exact user-reviewed development executable before the later CI navigation-race correction. Refreshed full-header release packages and installer require their own exact-binary checks."
     },
     "affected_source_browser_suites": {
       "result": "PASS",

@@ -1,0 +1,38 @@
+.viewport-block-map{position:absolute;inset:4%;overflow:visible}
+.viewport-map-tx{position:absolute!important;display:flex;align-items:center;justify-content:center;min-width:0!important;min-height:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:#ff9616!important;color:#211808;overflow:hidden;cursor:pointer;transition:filter .12s}
+.viewport-map-tx.coinbase{background:#ffdfa0!important}
+.viewport-map-tx:hover,.viewport-map-tx:focus-visible,.viewport-map-tx.selected{z-index:2;outline:2px solid var(--text,#fff)!important;outline-offset:-2px;filter:brightness(1.12)}
+.viewport-map-tx img{width:100%;height:100%;object-fit:cover;pointer-events:none}
+.viewport-map-text{display:block;max-height:100%;padding:3%;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(5px,.65vw,11px);line-height:1.05;color:#221807;background:#f2dbb6;pointer-events:none}
+.viewport-map-inscription{font-size:clamp(5px,.7vw,14px);pointer-events:none}
+.viewport-caption{position:absolute;left:10px;right:10px;bottom:4px;margin:0!important;font-size:10px!important;line-height:1.25!important;color:var(--muted);background:var(--panel);padding:3px 6px;border-radius:5px;pointer-events:none}
+.viewport-map-tooltip{position:absolute;left:10px;right:10px;top:10px;border:1px solid var(--line);background:var(--panel);padding:7px 9px;font-size:11px;line-height:1.4;z-index:3;pointer-events:none}
+.viewport-empty{margin:auto!important;padding:24px;max-width:38ch;font-size:13px;line-height:1.7;color:var(--muted);text-align:center}
+.viewport-transaction-flow{width:100%;height:100%;position:relative;overflow:visible}
+.viewport-transaction-flow svg{width:100%;height:calc(100% - 48px);padding:0;display:block;overflow:visible}
+.viewport-transaction-flow svg text{fill:var(--text);font:12px ui-monospace,monospace}
+.viewport-transaction-flow .band{fill:none;stroke:var(--mint,#9cd5ad);opacity:.65}
+.viewport-transaction-flow .out-band{stroke:var(--amber,#e9af62)}
+.viewport-transaction-flow .flow-center{fill:var(--mint,#9cd5ad)}
+#workspace-viewport-body{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--bg);touch-action:none}
+/* Leave scale rasterization to the browser so zoomed HTML and SVG repaint at
+   the current resolution instead of keeping a permanently promoted texture. */
+.viewport-scene{position:absolute!important;inset:0;width:100%;height:100%;transform-origin:0 0}
+.viewport-block-surface{width:100%;height:100%}
+.viewport-navigation{position:absolute;top:8px;left:8px;display:flex;gap:3px;z-index:5;padding:3px;border-radius:7px;background:var(--panel);box-shadow:0 1px 5px #0002}
+.viewport-navigation button{width:27px;min-height:27px!important;padding:3px!important;font-size:16px!important;line-height:1;border:0!important;border-radius:4px!important}
+.viewport-grab,.viewport-grab *{cursor:grab!important}
+.viewport-move-content iframe{pointer-events:none}
+.viewport-dragging,.viewport-dragging *{cursor:grabbing!important;user-select:none}
+.viewport-inscription-unresolved{position:absolute;left:10px;right:10px;bottom:35px;display:flex;gap:5px;flex-wrap:wrap;max-height:22%;overflow:auto;z-index:4}
+.viewport-inscription-unresolved button{font-size:10px;padding:4px 6px;max-width:100%;overflow-wrap:anywhere;background:var(--panel)}
+#workspace-viewport-body>.inscription-monitor{width:100%;height:100%;margin:0;padding:0;display:flex;align-items:center;justify-content:center;border:0;border-radius:0;overflow:hidden}
+#workspace-viewport-body .inscription-monitor iframe{width:100%;height:100%;min-height:0!important;border:0;background:var(--panel)}
+#workspace-viewport:fullscreen,.workspace-viewport.fullscreen-fallback{width:100vw!important;height:100dvh!important;max-width:none!important;max-height:none!important;aspect-ratio:auto;background:var(--bg)}
+#workspace-viewport:fullscreen #workspace-viewport-body,.workspace-viewport.fullscreen-fallback #workspace-viewport-body{width:min(100vw,100dvh);height:min(100vw,100dvh);margin:auto}
+#workspace-viewport[data-resource=transaction]:fullscreen #workspace-viewport-body,.workspace-viewport[data-resource=transaction].fullscreen-fallback #workspace-viewport-body{width:100vw;height:100dvh}
+.workspace-viewport.fullscreen-fallback{position:fixed!important;inset:0!important;z-index:1000;display:flex;align-items:center;justify-content:center}
+#workspace-viewport:fullscreen #workspace-viewport-fullscreen,.workspace-viewport.fullscreen-fallback #workspace-viewport-fullscreen{position:absolute;top:12px;right:12px;z-index:4}
+
+.timeline-explorer-panel[data-resource="transaction"] .timeline-explorer-heading,.timeline-explorer-panel[data-resource="transaction"] .timeline-explorer-summary,.timeline-explorer-panel[data-resource="transaction"] .timeline-explorer-transactions{display:none}
+.timeline-inscription-panel .inscription-viewer-body{display:block}

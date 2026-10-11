@@ -213,9 +213,8 @@ async function run() {
 
     const located=await harness(browser,'a'.repeat(64));
     try{
-      await located.page.locator('#transaction-location').getByText('Transaction located; bytes needed',{exact:true}).waitFor();await healthy(located.page,'stored locator without provider bytes');
-      assert.equal(await located.page.locator('#transaction-location dd').nth(0).textContent(),'840,000');assert.equal(await located.page.locator('#transaction-location dd').nth(1).textContent(),'7');assert.equal(await located.page.locator('#load-flow').count(),0);assert.equal(await located.page.locator('.io-grid').count(),0);assert.equal(await located.page.locator('#transaction-location img').count(),0,'Provider note is escaped text');
-      await located.page.getByRole('button',{name:'Retry with a provider',exact:true}).click();await located.page.locator('#load-flow').waitFor();await located.page.locator('#output-0').getByText('123 sats',{exact:true}).waitFor();await healthy(located.page,'provider supplied transaction bytes');assert.deepEqual(located.errors,[]);assert.deepEqual(located.unexpected,[]);
+      await located.page.locator('iframe.indexes-frame').waitFor();await healthy(located.page,'Transaction address in the shared workspace');
+      assert.equal(await located.page.locator('#address').inputValue(),'a'.repeat(64));assert.equal(located.requests.some(request=>request.path==='/api/v1/navigate'),false,'Shell forwards resource entry to the workspace instead of resolving twice');assert.equal(await located.page.locator('#transaction-location').count(),0,'Shell does not duplicate transaction Details outside the workspace');assert.deepEqual(located.errors,[]);assert.deepEqual(located.unexpected,[]);
     }finally{await located.context.close()}
     const degraded = await harness(browser, '.gateway', true);
     try {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -20,7 +22,12 @@ const (
 	maxIndexPeerPageBytes  = 48 * 1024
 	maxIndexPeerBatchBytes = 32 * 1024
 	indexPeerClaimState    = "peer_claim_replay_required"
+	maxIndexPeerManifests  = 5
 )
+
+func indexPublicationSupported(id string) bool {
+	return id == "inscriptions" || id == "bitmap" || id == "blocks" || id == "tx-locator" || id == inscriptionLocatorIndex
+}
 
 // Publication is a frozen opt-in snapshot. Building more private blocks does
 // not expand it. The secret only authenticates local pagination cursors; it is
@@ -108,7 +115,7 @@ func validIndexPeerCheckpoint(c indexCheckpoint, d indexDefinition) bool {
 
 func validateIndexPeerManifest(m indexPeerManifest) error {
 	d, err := findIndexDefinition(m.Definition)
-	if err != nil || !d.Buildable || m.Schema != indexPeerSchema || m.Version != d.Version || m.Network != d.Network || m.RuleHash != d.RuleHash || m.OutputSchema != d.OutputSchema || !validIndexPeerCheckpoint(m.Checkpoint, d) || len(m.Coverage) != 1 || m.Coverage[0].From != m.Checkpoint.From || m.Coverage[0].To != m.Checkpoint.Height || m.MaxPageBlocks != maxIndexPeerBlocks || m.MaxPageBytes != maxIndexPeerPageBytes || m.MaxBatchBytes != maxIndexPeerBatchBytes || m.RecordPolicy != "whole_batches_newest_first" {
+	if err != nil || !d.Buildable || !indexPublicationSupported(m.Definition) || m.Schema != indexPeerSchema || m.Version != d.Version || m.Network != d.Network || m.RuleHash != d.RuleHash || m.OutputSchema != d.OutputSchema || !validIndexPeerCheckpoint(m.Checkpoint, d) || len(m.Coverage) != 1 || m.Coverage[0].From != m.Checkpoint.From || m.Coverage[0].To != m.Checkpoint.Height || m.MaxPageBlocks != maxIndexPeerBlocks || m.MaxPageBytes != maxIndexPeerPageBytes || m.MaxBatchBytes != maxIndexPeerBatchBytes || m.RecordPolicy != "whole_batches_newest_first" {
 		return fmt.Errorf("unsupported or inconsistent index manifest fingerprint, schema or coverage")
 	}
 	return nil
@@ -139,8 +146,8 @@ func (a *app) setIndexPublication(id string, published bool, expected ...string)
 // Store/encode helpers are retained for future peerhood validation. Public
 // publication and serving entries enforce release availability above them.
 func (a *app) storeIndexPublication(id string, published bool, expected ...string) (indexPeerManifest, error) {
-	if published && id != "inscriptions" && id != "bitmap" {
-		return indexPeerManifest{}, fmt.Errorf("Bitcoin derived index publication is not supported by this peer format; local reads remain available")
+	if published && !indexPublicationSupported(id) {
+		return indexPeerManifest{}, fmt.Errorf("index publication is not supported by this peer format; local reads remain available")
 	}
 	d, err := findIndexDefinition(id)
 	if err != nil || !d.Buildable {
@@ -174,6 +181,13 @@ func (a *app) storeIndexPublication(id string, published bool, expected ...strin
 	}
 	if !a.indexCheckpointCurrent(*s.checkpoint) {
 		return indexPeerManifest{}, fmt.Errorf("index checkpoint is stale or lacks current chain authority")
+	}
+	if id == "blocks" || id == "tx-locator" || id == inscriptionLocatorIndex {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err = s.ensureIndexLocators(ctx); err != nil {
+			return indexPeerManifest{}, fmt.Errorf("publication requires checked locator membership: %w", err)
+		}
 	}
 	m := indexManifestForCheckpoint(d, *s.checkpoint)
 	if err := validateIndexPeerManifest(m); err != nil {
@@ -249,7 +263,7 @@ func (a *app) readPublishedIndexManifests() []indexPeerManifest {
 	if !serving {
 		return out
 	}
-	for _, id := range []string{"inscriptions", "bitmap"} {
+	for _, id := range []string{"inscriptions", "bitmap", "blocks", "tx-locator", inscriptionLocatorIndex} {
 		if p, err := a.readIndexPublication(id); err == nil {
 			out = append(out, p.Manifest)
 		}
@@ -322,6 +336,36 @@ func readIndexPeerBatch(root string, d indexDefinition, commit string) (indexBat
 		return b, fmt.Errorf("index batch integrity failure")
 	}
 	return b, nil
+}
+
+func validateIndexPeerLocatorRecords(id string, b indexBatch) error {
+	if id != "blocks" && id != "tx-locator" && id != inscriptionLocatorIndex {
+		if b.TransactionLocator != nil || b.Bitcoin != nil || b.Spenders != nil || b.Sats != nil {
+			return fmt.Errorf("unexpected peer Bitcoin index payload")
+		}
+		if id == "inscriptions" {
+			return validateInscriptionPayload(b)
+		}
+		return nil
+	}
+	if b.Spenders != nil || b.Sats != nil || b.Numbering != nil || b.InscriptionBlock != nil || len(b.Inscriptions) != 0 || len(b.InscriptionCoordinates) != 0 || len(b.Bitmap) != 0 || len(b.Diagnostics) != 0 {
+		return fmt.Errorf("mixed peer transaction records")
+	}
+	if id != "blocks" {
+		if b.Bitcoin != nil {
+			return fmt.Errorf("unexpected peer Bitcoin records")
+		}
+		return validateTransactionPayload(b, id)
+	}
+	if b.TransactionLocator != nil || b.Bitcoin == nil || len(b.Bitcoin.TxIDs) == 0 || len(b.Bitcoin.TxIDs) != len(b.Bitcoin.Transactions) {
+		return fmt.Errorf("incomplete peer Bitcoin records")
+	}
+	for i, txid := range b.Bitcoin.TxIDs {
+		if !validHash(txid) || b.Bitcoin.Transactions[i].TxID != txid || b.Bitcoin.Transactions[i].Index != i {
+			return fmt.Errorf("peer Bitcoin transaction order mismatch")
+		}
+	}
+	return nil
 }
 
 func (a *app) serveIndexPeerPage(r indexPeerRangeRequest) (indexPeerPage, error) {
@@ -407,11 +451,17 @@ func validateIndexPeerPage(manifest indexPeerManifest, r indexPeerRangeRequest, 
 			return indexPeerPage{}, fmt.Errorf("index records or checkpoint continuity mismatch")
 		}
 		wantDep := indexDigest(struct{ Block, Parser, Reference string }{c.BlockHash, inscriptionParserProfile, inscriptionReferenceCommit})
+		if b.TransactionLocator != nil {
+			wantDep = indexDigest(struct{ Block, Selection, Source string }{c.BlockHash, b.TransactionLocator.Selection, b.TransactionLocator.SourceCommitment})
+		}
 		if c.DependencyFingerprint != wantDep {
 			return indexPeerPage{}, fmt.Errorf("incompatible index dependency fingerprint")
 		}
 		if (d.ID == "bitmap" && len(b.Inscriptions) > 0) || (d.ID == "inscriptions" && len(b.Bitmap) > 0) {
 			return indexPeerPage{}, fmt.Errorf("wrong index record schema")
+		}
+		if err := validateIndexPeerLocatorRecords(d.ID, *b); err != nil {
+			return indexPeerPage{}, err
 		}
 		for j := range b.Inscriptions {
 			b.Inscriptions[j].Verification = verificationView{}
@@ -463,7 +513,7 @@ func (a *app) queryIndexPeerManifests(peer overlayPeer) ([]indexPeerManifest, er
 	if err != nil {
 		return nil, err
 	}
-	if !resp.OK || resp.Type != "index_manifest" || len(resp.IndexManifests) > 2 {
+	if !resp.OK || resp.Type != "index_manifest" || len(resp.IndexManifests) > maxIndexPeerManifests {
 		return nil, fmt.Errorf("invalid index manifests")
 	}
 	seen := map[string]bool{}

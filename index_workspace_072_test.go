@@ -42,11 +42,12 @@ func TestInscriptionWorkspaceCLIOptionalLocatorsAndStageGate(t *testing.T) {
 			t.Fatal("invalid locator choice accepted", invalid)
 		}
 	}
-	a := &app{dataDir: t.TempDir()}
-	request := `{"index":"inscriptions","from":840000,"to":840000,"mode":"lean","conventional_ids":true}`
+	a := prepareLiveTestApp063(t)
+	request := `{"index":"inscriptions","from":0,"to":0,"mode":"lean","conventional_ids":true}`
 	response := indexInterfaceCall(indexInterfaceHandler(a), "POST", "/api/v1/index/plan", request)
-	if response.Code != 400 || !strings.Contains(strings.ToLower(response.Body.String()), "locked") {
-		t.Fatal("first inscription stage must reject locator enrichment", response.Code, response.Body.String())
+	var plan indexPlan
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &plan) != nil || !plan.ConventionalIDs || len(plan.Outputs) != 2 || plan.Outputs[1].Index != inscriptionLocatorIndex {
+		t.Fatal("transaction stage must accept explicit inscription locator enrichment", response.Code, response.Body.String())
 	}
 }
 

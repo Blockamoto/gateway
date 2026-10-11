@@ -68,6 +68,9 @@ func legacyIndexDefinition(d indexDefinition) indexDefinition {
 		d.Name = "Inscription occurrences"
 		d.Theory = "Bounded witness-envelope occurrences and content; canonical numbers remain unknown."
 	}
+	if d.ID == "tx-locator" {
+		d.Name = "Transaction locator"
+	}
 	d.RuleHash = indexDigest(struct {
 		Definition        indexDefinition
 		Parser, Reference string
@@ -261,26 +264,18 @@ func (a *app) indexQueryBlock(ctx context.Context, id string, height int64, limi
 		return nil, err
 	}
 	result := map[string]any{"definition": s.definition, "checkpoint": s.checkpoint, "rows": []any{}, "total": 0, "total_known": false, "truncated": false, "scanned": false, "known": false, "transaction_count_known": false, "chain_state": a.indexChainState(s.checkpoint), "inspected_blocks": 0, "block_height": height}
-	if s.checkpoint == nil || a.indexChainState(s.checkpoint) != "selected_chain" || height < s.checkpoint.From || height > s.checkpoint.Height {
-		return result, nil
-	}
-	if err = s.ensureIndexLocators(ctx); err != nil {
-		return nil, err
-	}
-	commit, ready, err := s.activeLocatorCommitContext(ctx, height)
+	hash, err := a.canonicalHashAtHeight(height)
 	if err != nil {
-		return nil, err
-	}
-	if !ready || commit == "" {
 		return result, nil
 	}
-	b, current, err := a.validatedLocatorBatch(ctx, s, indexLocatorRecord{Height: height, Commit: commit})
+	b, current, err := a.committedInscriptionBatch(ctx, height, hash)
 	if err != nil {
 		return nil, err
 	}
 	if !current {
 		return result, nil
 	}
+	result["chain_state"] = "selected_chain"
 	coordinates := inscriptionBatchCoordinates(b)
 	visible := coordinates
 	if len(visible) > limit {
@@ -413,7 +408,7 @@ func (a *app) committedInscriptionBatch(ctx context.Context, height int64, hash 
 		return indexBatch{}, false, err
 	}
 	if s.checkpoint == nil || height < s.checkpoint.From || height > s.checkpoint.Height {
-		return indexBatch{}, false, nil
+		return a.browsedBatchContext(ctx, "inscriptions", height, hash)
 	}
 	if err = s.ensureIndexLocators(ctx); err != nil {
 		return indexBatch{}, false, err
@@ -426,7 +421,10 @@ func (a *app) committedInscriptionBatch(ctx context.Context, height int64, hash 
 	if err != nil {
 		return b, false, err
 	}
-	return b, b.Checkpoint.BlockHash == hash, nil
+	if b.Checkpoint.BlockHash != hash {
+		return a.browsedBatchContext(ctx, "inscriptions", height, hash)
+	}
+	return b, true, nil
 }
 
 // Location only: this deliberately does not invoke the network or use the
@@ -444,7 +442,23 @@ func (a *app) committedTransactionLocation(ctx context.Context, txid, blockHash 
 	if !validHash(txid) || blockHash != "" && !validHash(blockHash) {
 		return txLocation{}, false, fmt.Errorf("invalid transaction/block identifier")
 	}
+	if publishedOnly {
+		return a.publishedTransactionLocation(ctx, txid, blockHash)
+	}
 	var match *txLocation
+	if !publishedOnly {
+		locations, err := a.browsedTransactionLocations(ctx, txid, blockHash, -1)
+		if err != nil {
+			return txLocation{}, false, err
+		}
+		for _, location := range locations {
+			if match != nil && (match.BlockHash != location.BlockHash || match.TxIndex != location.TxIndex) {
+				return txLocation{}, true, fmt.Errorf("historical transaction ID is ambiguous; supply its containing block")
+			}
+			copy := location
+			match = &copy
+		}
+	}
 	for _, id := range []string{inscriptionLocatorIndex, "tx-locator", "blocks"} {
 		s, err := indexStoreHead(a.dataDir, id)
 		if err != nil {

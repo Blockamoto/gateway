@@ -143,6 +143,9 @@ func indexDefinitions() []indexDefinition {
 		if d.ID == "inscriptions" {
 			d.Theory = "Verified positional inscription coordinates. Lean retains positions and block counts; Full additionally retains reveal content. Numbering and ownership require separate explicit historical work."
 		}
+		if d.ID == "tx-locator" {
+			d.Name = "Transaction Index"
+		}
 		// Availability is presentation policy, not part of the persisted recipe.
 		d.Locked = !releaseFeatureAvailable(d.ID)
 		if d.Locked {

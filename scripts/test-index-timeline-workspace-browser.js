@@ -2,6 +2,7 @@
 // Pointer, keyboard and layout acceptance against the actual source UI and
 // isolated API fixtures. No user profile, peer or external service is contacted.
 const assert = require('node:assert/strict');
+const {selectHeight}=require('./timeline-browser-gestures');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -63,7 +64,7 @@ async function run() {
     const rootBox=()=>page.locator('#index-timeline').boundingBox();
     const editorBox=()=>page.locator('.timeline-editor').boundingBox();
     const horizontal='#timeline-scrollbar-horizontal';
-    await page.goto(origin+'/indexes',{waitUntil:'networkidle'});
+    await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.locator('#timeline-expand').click();
     await page.locator('#timeline-divider').waitFor();
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks'],'Headers and Blocks are default tracks even without stored blocks');
     await page.locator('#timeline-add-index').click();
@@ -76,7 +77,7 @@ async function run() {
     assert.equal(await page.locator('#timeline-details').evaluate(el=>el.open),true,'Adding an index opens its settings without starting work');
     assert.equal(calls.some(c=>c.method==='POST'),false);
     await refresh();assert.equal(await page.locator('.timeline-track[data-index="blocks"]').count(),1);
-    await page.reload({waitUntil:'networkidle'});assert.equal(await page.locator('.timeline-track[data-index="blocks"]').count(),1,'An added index with empty coverage survives reload');
+    await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();assert.equal(await page.locator('.timeline-track[data-index="blocks"]').count(),1,'An added index with empty coverage survives reload');
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
 
     // Expanding settings scrolls inside the inspector; workspace stays docked.
@@ -92,7 +93,7 @@ async function run() {
     await drag(divider,0,-70);const grown=await editorBox();assert(grown.height>docked.height+50);
     await divider.focus();await page.keyboard.press('ArrowDown');assert((await editorBox()).height<grown.height);
     const resized=await editorBox();
-    await page.reload({waitUntil:'networkidle'});assert(Math.abs((await editorBox()).height-resized.height)<2,'Divider ratio persists across reload');
+    await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();assert(Math.abs((await editorBox()).height-resized.height)<2,'Divider ratio persists across reload');
     await divider.focus();await page.keyboard.press('Home');assert.equal(Number(await divider.getAttribute('aria-valuenow')),Number(await divider.getAttribute('aria-valuemin')));
     await page.keyboard.press('End');assert.equal(Number(await divider.getAttribute('aria-valuenow')),Number(await divider.getAttribute('aria-valuemax')));
     await divider.dblclick();await settle();
@@ -113,16 +114,26 @@ async function run() {
     const pointer=async fraction=>{const box=await lane.boundingBox();const p={x:box.x+box.width*fraction,y:box.y+Math.min(30,box.height/2)};await page.mouse.move(p.x,p.y);return p;};
     await lane.evaluate(el=>el.addEventListener('wheel',event=>{window.acceptanceWheelX=event.clientX;},{once:true}));
     await pointer(.73);const beforeWheel=await view();
-    await page.keyboard.down('Control');await page.mouse.wheel(0,-100);await page.keyboard.up('Control');await settle();
+    await page.mouse.wheel(0,-100);await settle();
     const afterWheel=await view();assert(span(afterWheel)<span(beforeWheel));
     const wheelAnchor=await lane.evaluate(el=>(window.acceptanceWheelX-el.getBoundingClientRect().left)/el.getBoundingClientRect().width);
-    assert(Math.abs((beforeWheel.from+span(beforeWheel)*wheelAnchor)-(afterWheel.from+span(afterWheel)*wheelAnchor))<=3,'Wheel zoom preserves the block beneath the pointer');
+    assert(Math.abs((beforeWheel.from+span(beforeWheel)*wheelAnchor)-(afterWheel.from+span(afterWheel)*wheelAnchor))<=3,'Ordinary wheel zoom preserves the block beneath the pointer');
     await pointer(.5);const beforePan=await view();await page.keyboard.down('Shift');await page.mouse.wheel(0,120);await page.keyboard.up('Shift');await settle();
     assert.equal(span(await view()),span(beforePan));assert((await view()).from>beforePan.from,'Shift-wheel pans horizontally');
     const beforeTrackpad=await view();await page.mouse.wheel(-80,0);await settle();assert((await view()).from<beforeTrackpad.from,'Horizontal trackpad delta pans');
     const thumb=await page.locator(horizontal+' .timeline-scroll-thumb').boundingBox();await page.mouse.move(thumb.x+thumb.width/2,thumb.y+thumb.height/2);
     const beforeBarWheel=await view();await page.keyboard.down('Control');await page.mouse.wheel(0,-60);await page.keyboard.up('Control');await settle();
     assert(span(await view())<span(beforeBarWheel),'Ctrl-wheel on the custom scrollbar zooms the timeline');
+
+    // Ordinary lane dragging pans after a threshold without exploring or
+    // replacing indexing selections; a later deliberate click still works.
+    const picksBeforeDrag=await lane.getAttribute('data-selection'),beforePlainDrag=await view();
+    const focusBeforeDrag=await page.locator('#index-timeline').getAttribute('data-playhead');
+    await drag(lane,45);
+    assert((await view()).from<beforePlainDrag.from,'Ordinary lane drag pans horizontally');
+    assert.equal(span(await view()),span(beforePlainDrag),'Ordinary pan keeps zoom scale');
+    assert.equal(await lane.getAttribute('data-selection'),picksBeforeDrag,'Ordinary pan preserves indexing picks');
+    assert.equal(await page.locator('#index-timeline').getAttribute('data-playhead'),focusBeforeDrag,'Pan release does not explore its last block');
 
     // Space grab must not inspect a block, and must release on cancel/blur.
     await page.locator('.timeline-track[data-index="headers"] .timeline-track-select').click();
@@ -133,8 +144,7 @@ async function run() {
     await page.keyboard.up('Space');await page.waitForTimeout(650);await page.mouse.up();await settle();
     assert.deepEqual(await page.locator('#timeline-inspector').evaluate(el=>({id:el.dataset.index,kind:el.dataset.kind})),selection,'Releasing Space before a delayed mouseup cannot produce a selection');
     assert.equal(await page.locator('#index-timeline').getAttribute('data-hand'),null);
-    await page.locator('#timeline-height').fill('123');await page.locator('#timeline-height').press('Space');assert.equal(await page.locator('#timeline-height').inputValue(),'123 ','Typing into inputs never activates grab mode');
-    await page.locator('#timeline-height').fill('');
+    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();await page.locator('#timeline-inspector-tab').click();await page.locator('#timeline-details').evaluate(el=>el.open=true);await page.locator('#to').fill('123');await page.locator('#to').press('Space');assert.equal(await page.locator('#to').inputValue(),'123');assert.equal(await page.locator('#index-timeline').getAttribute('data-hand'),null,'Typing in number inputs never activates grab mode');await page.locator('#timeline-details').evaluate(el=>el.open=false);await page.locator('.timeline-track[data-index="headers"] .timeline-track-select').click();
     await lane.focus();await page.keyboard.down('Space');await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.keyboard.up('Space');
     assert.equal(await page.locator('#index-timeline').getAttribute('data-hand'),null);
     assert.equal(await page.locator('#index-timeline').getAttribute('data-dragging'),null);
@@ -157,9 +167,9 @@ async function run() {
     await page.locator('#timeline-fit').click();
     const fitMarks=await page.locator('.timeline-ruler-tick').evaluateAll(nodes=>nodes.map(n=>({height:Number(n.dataset.height),kind:n.classList.contains('halving')?'halving':n.classList.contains('difficulty')?'difficulty':'regular'})));
     assert(fitMarks.some(m=>m.kind==='halving'&&m.height===210000));
-    await page.locator('#timeline-height').fill('210000');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
+    await selectHeight(page,210000);
     assert.equal(await page.locator('.timeline-ruler-tick.difficulty[data-height="210000"]').count(),0,'Halving boundaries are not invented difficulty boundaries');
-    await page.locator('#timeline-height').fill('201600');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
+    await selectHeight(page,201600);
     assert.equal(await page.locator('.timeline-ruler-tick.difficulty[data-height="201600"]').count(),1);
     await shot('workspace-landmarks');
 
@@ -172,18 +182,19 @@ async function run() {
     snapshot.timeline.tracks[1]={id:'blocks',coverage:[{from:499990,to:500010}],gaps:[{from:500000,to:500000}],coverage_complete:false};
     await refresh();
     const trackViewport=page.locator('#timeline-track-viewport');
-    await lane.scrollIntoViewIfNeeded();await pointer(.5);await page.mouse.wheel(0,220);await settle();assert((await trackViewport.evaluate(el=>el.scrollTop))>0,'Plain wheel scrolls tracks vertically');
+    await lane.scrollIntoViewIfNeeded();const label=await page.locator('.timeline-track[data-index="blocks"] .timeline-track-heading').boundingBox();
+    assert(label,'Track label sidebar is visible');await page.mouse.move(label.x+label.width/2,label.y+label.height/2);await page.mouse.wheel(0,220);await settle();assert((await trackViewport.evaluate(el=>el.scrollTop))>0,'Plain wheel over the label sidebar scrolls tracks vertically');
     const height=()=>page.locator('#index-timeline').evaluate(el=>Number.parseFloat(el.style.getPropertyValue('--timeline-track-height')));
     await trackViewport.evaluate(el=>el.scrollTop=0);await pointer(.5);const beforeHeight=await height();
     await page.keyboard.down('Alt');await page.mouse.wheel(0,-100);await page.keyboard.up('Alt');await settle();assert.notEqual(await height(),beforeHeight,'Alt-wheel changes track height');
     const vertical='#timeline-scrollbar-vertical';
     const beforeEnd=await height();await drag(page.locator(vertical+' .end'),0,18);assert.notEqual(await height(),beforeEnd,'Bottom vertical handle changes track height');
     await trackViewport.evaluate(el=>el.scrollTop=120);await settle();const beforeStart=await height();await drag(page.locator(vertical+' .start'),0,12);assert.notEqual(await height(),beforeStart,'Top vertical handle changes track height');
-    const storedHeight=await height();await page.reload({waitUntil:'networkidle'});assert.equal(await height(),storedHeight,'Track height persists');
+    const storedHeight=await height();await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();assert.equal(await height(),storedHeight,'Track height persists');
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     assert.match(await page.locator('#timeline-selection-note').innerText(),/partial|not been mapped/i);
     assert.deepEqual(await lane.evaluate(el=>JSON.parse(el.dataset.coverage)),[{from:499990,to:499999},{from:500001,to:500010}],'A one-block gap survives partial coverage mapping');
-    await page.locator('#timeline-height').fill('500000');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());assert.match(await page.locator('#timeline-selection-meta').innerText(),/0 \/ 1/);
+    await selectHeight(page,500000);assert.match(await page.locator('#timeline-selection-meta').innerText(),/0 \/ 1/);
 
     // Range handles and numeric fields share one draft; changes invalidate a
     // reviewed plan, but never submit a build or silently fix invalid text.
@@ -246,7 +257,7 @@ async function run() {
     }
     await page.setViewportSize({width:1280,height:900});
     await page.goto(origin+'/embedded-fixture',{waitUntil:'networkidle'});
-    const frame=page.frameLocator('iframe');await frame.locator('#timeline-divider').waitFor();
+    const frame=page.frameLocator('iframe');await frame.locator('#timeline-expand').click();await frame.locator('#timeline-divider').waitFor();
     const embeddedBefore=await frame.locator('.timeline-editor').boundingBox();
     await frame.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await frame.locator('#timeline-details').evaluate(el=>el.open=true);await settle();

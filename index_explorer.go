@@ -122,6 +122,22 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 	}
 	var location *txLocation
 	var transaction *transactionView
+	browsed, err := a.browsedTransactionLocations(ctx, txid, "", beforeHeight)
+	if err != nil {
+		return txResolutionView{}, false, err
+	}
+	for _, candidate := range browsed {
+		if location != nil && (location.BlockHash != candidate.BlockHash || location.TxIndex != candidate.TxIndex) {
+			if beforeHeight < 0 || location.Height == candidate.Height {
+				return txResolutionView{}, true, fmt.Errorf("historical transaction ID is ambiguous; supply its containing block")
+			}
+			if location.Height > candidate.Height {
+				continue
+			}
+		}
+		copy := candidate
+		location = &copy
+	}
 	for _, id := range []string{"blocks", "tx-locator"} {
 		if !releaseFeatureAvailable(id) {
 			continue
@@ -243,8 +259,11 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 		if transaction != nil {
 			return txResolutionView{TxID: txid, TxIndex: location.TxIndex, Height: location.Height, BlockHash: location.BlockHash, Transaction: *transaction, SourceNetwork: "local_index", LocatorPeer: "locally derived Bitcoin index", LocatorVerified: true, TransactionVerified: true, VerificationState: "header_anchored"}, true, nil
 		}
-		r, err := a.verifyTxLocation(txid, *location, "committed transaction locator")
+		r, err := a.verifyTxLocationContext(ctx, txid, *location, "committed transaction locator")
 		if err != nil {
+			if ctx.Err() != nil {
+				return txResolutionView{}, false, ctx.Err()
+			}
 			return txResolutionView{TxID: txid, TxIndex: location.TxIndex, Height: location.Height, BlockHash: location.BlockHash, SourceNetwork: "local_index_locator", LocatorPeer: "committed transaction locator", LocatorVerified: true, TransactionVerified: false, VerificationState: "header_anchored_locator", ResolutionState: "located_bytes_unavailable", Note: "Saved containing-block location is available. Verified transaction bytes require a block source; output, witness and sat state remain unknown."}, true, nil
 		}
 		r.TxIndex = location.TxIndex

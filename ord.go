@@ -260,15 +260,8 @@ func (a *app) resolveOrdInitial(ctx context.Context, rec ordRecord) (satlinePoin
 		return satlinePoint{}, fmt.Errorf("native initial location needs locally checked Bitcoin reveal evidence")
 	}
 	env := rec.Envelope
-	if env.Unbound {
-		return satlinePoint{}, fmt.Errorf("inscription is unbound by its even field")
-	}
-	if env.Duplicate || env.Incomplete || env.Pushnum || env.Stutter {
-		return satlinePoint{}, fmt.Errorf("historical binding requires indexed Ord context for this envelope")
-	}
-	// Do not assign ambiguous pre-jubilee non-first envelopes using modern rules.
-	if rec.Height < 824544 && (env.Input != 0 || env.Offset != 0 || env.Pointer != nil) {
-		return satlinePoint{}, fmt.Errorf("pre-jubilee binding requires indexed Ord context")
+	if state, note := inscriptionPlacementRuleState(rec.Height, env); state != "" {
+		return satlinePoint{}, fmt.Errorf("%s", note)
 	}
 	block, e := a.fetchBlockAtLocationContext(ctx, rec.Height, rec.BlockHash, "Ord initial satpoint")
 	if e != nil {
@@ -281,37 +274,37 @@ func (a *app) resolveOrdInitial(ctx context.Context, rec ordRecord) (satlinePoin
 			break
 		}
 	}
-	if env.Input >= len(tx.Inputs) {
-		return satlinePoint{}, fmt.Errorf("input unavailable")
-	}
 	resolver := newSatlineResolver(contextSatlineBackend{appSatlineBackend{a}, ctx})
 	resolver.ctx = ctx
-	position, e := resolver.inputPosition(tx, env.Input, 0, block.Height)
+	resolver.primeInputValues(tx, block.Height)
+	placement, e := deriveInscriptionInitialPlacement(ctx, tx, block.Height, env, func(i int) (uint64, error) {
+		in := tx.Inputs[i]
+		return resolver.prevoutValue(in.PrevTxID, in.PrevVout, block.Height)
+	})
 	if e != nil {
 		return satlinePoint{}, e
 	}
-	own := tx.Inputs[env.Input]
-	value, e := resolver.prevoutValue(own.PrevTxID, own.PrevVout, block.Height)
-	if e != nil {
-		return satlinePoint{}, e
+	if placement.State == "unbound" || placement.State == "historical_context_required" {
+		return satlinePoint{}, fmt.Errorf("%s", placement.Note)
 	}
-	if value == 0 {
-		return satlinePoint{}, fmt.Errorf("zero-value inscription input is unbound")
-	}
-	total, e := sumOutputs(tx)
-	if e != nil {
-		return satlinePoint{}, e
-	}
-	if env.Pointer != nil && *env.Pointer < total {
-		position = *env.Pointer
-	}
+	position := placement.Position
 	dest := tx
-	if position >= total {
+	if placement.State == "fee_to_coinbase" {
+		total, e := sumOutputs(tx)
+		if e != nil {
+			return satlinePoint{}, e
+		}
 		prior, e := resolver.priorBlockFees(block, tx.Index)
 		if e != nil {
 			return satlinePoint{}, e
 		}
-		position = position - total + prior + subsidyAtHeight(block.Height)
+		position, e = addUint64(position-total, prior)
+		if e == nil {
+			position, e = addUint64(position, subsidyAtHeight(block.Height))
+		}
+		if e != nil {
+			return satlinePoint{}, e
+		}
 		dest = block.Transactions[0]
 	}
 	vout, off, ok := mapStreamPosition(position, dest.Outputs)

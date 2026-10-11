@@ -365,8 +365,13 @@ func (a *app) publishedInscriptionLocatorAvailable() bool {
 		return false
 	}
 	for _, id := range []string{inscriptionLocatorIndex, "tx-locator", "blocks"} {
-		s, err := indexStoreHead(a.dataDir, id)
-		if err == nil && s.checkpoint != nil && a.indexChainState(s.checkpoint) == "selected_chain" && a.indexPublicationMatches(id, s.checkpoint) {
+		a.settingsMu.RLock()
+		serving := a.settings.ServeGatewayData
+		a.settingsMu.RUnlock()
+		if !serving {
+			return false
+		}
+		if _, err := a.readIndexPublication(id); err == nil {
 			return true
 		}
 	}

@@ -86,7 +86,7 @@ func (a *app) serveGatewayShell(w http.ResponseWriter, r *http.Request) {
 }
 func (a *app) handleShellAsset(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/shell/")
-	if name != "theme.js" && name != "theme.css" && name != "app.js" && name != "workspace.js" && name != "style.css" && name != "sparse.css" && name != "updates.js" && name != "updates.css" && name != "index-cards.js" && name != "index-cards.css" && name != "index-timeline.js" && name != "index-timeline.css" && name != "index-workspace.js" && name != "timeline-explorer.js" && name != "inscription-viewport.js" && name != "index-semantic.js" && name != "network.js" && name != "network.css" && name != "gateway-mark.svg" && name != "gateway.ico" {
+	if name != "theme.js" && name != "theme.css" && name != "app.js" && name != "workspace.js" && name != "style.css" && name != "sparse.css" && name != "updates.js" && name != "updates.css" && name != "index-cards.js" && name != "index-cards.css" && name != "index-timeline.js" && name != "index-timeline.css" && name != "index-workspace.js" && name != "timeline-explorer.js" && name != "block-viewport.css" && name != "block-viewport.js" && name != "transaction-flow-layout.css" && name != "transaction-flow-layout.js" && name != "inscription-viewport.js" && name != "index-semantic.js" && name != "network.js" && name != "network.css" && name != "gateway-mark.svg" && name != "gateway.ico" {
 		http.NotFound(w, r)
 		return
 	}
@@ -135,6 +135,7 @@ func (a *app) handleNavigate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	indexing := a.indexBrowsedNavigation(r.Context(), result)
 	// Copy the slice header before trimming. Cached immutable blocks are shared.
 	if result.Block != nil {
 		v := *result.Block
@@ -148,7 +149,7 @@ func (a *app) handleNavigate(w http.ResponseWriter, r *http.Request) {
 		}
 		result.Block = &v
 	}
-	writeJSON(w, map[string]any{"resource": result, "elapsed_ms": time.Since(started).Milliseconds(), "page_size": 40})
+	writeJSON(w, map[string]any{"indexing": indexing, "resource": result, "elapsed_ms": time.Since(started).Milliseconds(), "page_size": 40})
 }
 func (a *app) handleBlockPage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {

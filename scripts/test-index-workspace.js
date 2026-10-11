@@ -28,12 +28,16 @@ let timelineOptions,selectedTimeline='',timelineSnapshot={},navigation=[],explor
 const drawer=new Node('details');drawer.open=false;nodes.set('timeline-details',drawer);
 const inspector=new Node('section');inspector.scrollTo=()=>{};nodes.set('timeline-inspector',inspector);
 nodes.set('timeline-inspector-panel',inspector);
+// The timeline layout component creates this viewport before child mounting;
+// the controller-only boundary supplies that owned node without relaxing the
+// fixture's strict checks for IDs actually present in the source template.
+nodes.set('workspace-viewport-body',new Node('div'));
 // Child components own their browser DOM; this controller fixture supplies the
 // mount boundary only. Their real layout and sandbox are tested in Chromium.
 const timelineEditor=new Node('section');doc.querySelector=selector=>selector==='.timeline-editor'?timelineEditor:doc.querySelectorAll(selector)[0]||null;
 nodes.get('mode').options=[...html.match(/<select id="mode">([\s\S]*?)<\/select>/)[1].matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g)].map(match=>{const option=new Node('option');option.value=match[1];option.textContent=match[2];return option;});
 const window={addEventListener(){},GatewayInscriptionViewport:{coordinate:record=>record?.reveal_coordinate||'',mount(){return {available(){},setKnown(){},open(){},teardown(){}}}},GatewaySemanticTimeline:{mount(){return {clear(){},open(){},setMarkers(){}}}},GatewayTimelineExplorer:{mount(){return {focus:value=>explorerFocus.push(value),health(){},setTab(){}}}},GatewayIndexWorkspace:{mountLayout(){},mountRange(){return {update(){},sync(){}}}},GatewayIndexTimeline:{mount(options){timelineOptions=options;return {
- render(value){timelineSnapshot=value}, health(){},
+ render(value){timelineSnapshot=value}, health(){}, acceptResource(){},
  select(id){selectedTimeline=id;options.workspace.hidden=!id||!!definitions.find(d=>d.id===id)?.locked},
  model(id){return window.GatewayIndexCards.model(definitions.find(d=>d.id===id)||{id},timelineSnapshot)}
 }}}};

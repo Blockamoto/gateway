@@ -10,10 +10,10 @@ import (
 	"testing"
 )
 
-func Test072IndexReleaseAvailability(t *testing.T) {
+func Test073IndexReleaseAvailability(t *testing.T) {
 	a := independentTestApp(t)
 	for _, d := range indexDefinitions() {
-		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions"
+		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator"
 		if d.Locked == available || releaseFeatureAvailable(d.ID) != available {
 			t.Fatalf("wrong release availability: %+v", d)
 		}
@@ -53,9 +53,9 @@ func Test066ManualIndexAndModuleRequestsAreLocked(t *testing.T) {
 	a := independentTestApp(t)
 	h := indexInterfaceHandler(a)
 	for _, tc := range []struct{ method, path, body string }{
-		{"POST", "plan", `{"index":"bitmap"}`}, {"POST", "build", `{"index":"blocks","outputs":["tx-locator"]}`},
+		{"POST", "plan", `{"index":"bitmap"}`}, {"POST", "build", `{"index":"blocks","outputs":["txo-spender"]}`},
 		{"POST", "build", `{"index":"blocks","retain_sat_history":true}`},
-		{"POST", "live", `{"index":"sat-state","action":"enable"}`}, {"GET", "query?index=tx-locator", ""},
+		{"POST", "live", `{"index":"sat-state","action":"enable"}`}, {"GET", "query?index=txo-spender", ""},
 		{"GET", "lookup?index=bitmap&key=0", ""}, {"GET", "sat?sat=0", ""}, {"POST", "discover-sat", `{"id":"anything"}`},
 	} {
 		r := indexInterfaceCall(h, tc.method, "/api/v1/index/"+tc.path, tc.body)
@@ -72,14 +72,13 @@ func Test066ManualIndexAndModuleRequestsAreLocked(t *testing.T) {
 	}
 }
 
-func Test072RelatedInscriptionLocatorsStayGated(t *testing.T) {
-	if !releaseFeatureAvailable("inscriptions") || releaseInscriptionLocatorsAvailable() || releaseFeatureAvailable("gateway-peerhood") {
+func Test073RelatedInscriptionLocatorsAvailableAndOptional(t *testing.T) {
+	if !releaseFeatureAvailable("inscriptions") || !releaseInscriptionLocatorsAvailable() || releaseFeatureAvailable("gateway-peerhood") {
 		t.Fatal("wrong staged release capabilities")
 	}
 	a := independentTestApp(t)
 	on, off := true, false
 	for _, req := range []indexBuildRequest{
-		{Index: "inscriptions", ConventionalIDs: &on},
 		{Index: "inscriptions", Outputs: []string{"inscription-tx-locator"}, ConventionalIDs: &off},
 		{Index: "inscriptions", Outputs: []string{"tx-locator"}, ConventionalIDs: &off},
 	} {
@@ -87,14 +86,20 @@ func Test072RelatedInscriptionLocatorsStayGated(t *testing.T) {
 			t.Fatal("gated locator work accepted", req, err)
 		}
 	}
-	for _, choice := range []*bool{nil, &off} {
+	for _, choice := range []*bool{nil, &on} {
+		plan, err := a.planIndexBuild(indexBuildRequest{Index: "inscriptions", ConventionalIDs: choice})
+		if err != nil || !plan.ConventionalIDs || len(plan.Outputs) != 2 || plan.Outputs[1].Index != inscriptionLocatorIndex {
+			t.Fatal("transaction-stage enrichment unavailable", plan, err)
+		}
+	}
+	for _, choice := range []*bool{&off} {
 		plan, err := a.planIndexBuild(indexBuildRequest{Index: "inscriptions", ConventionalIDs: choice})
 		if err != nil || plan.ConventionalIDs {
-			t.Fatal("positional-only plan did not honor first-stage gate", plan, err)
+			t.Fatal("positional-only plan did not honor explicit off", plan, err)
 		}
 		for _, output := range plan.Outputs {
 			if output.Index == "inscription-tx-locator" || output.Index == "tx-locator" {
-				t.Fatal("positional-only plan derived transaction locators", output)
+				t.Fatal("explicit off derived transaction locators", output)
 			}
 		}
 	}
@@ -174,13 +179,17 @@ func Test066LocatorShortcutsCannotReadLockedProviders(t *testing.T) {
 	a.settings.CoreDisabled = true
 	id := strings.Repeat("a", 64)
 	a.cacheIndex.Tx[id] = txLocation{TxID: id, Height: 0, BlockHash: genesisHashDisplay}
-	for _, capability := range []string{"txloc", "spendloc", "utxos"} {
+	for _, capability := range []string{"spendloc", "utxos"} {
 		for _, declared := range []string{capability, "", "blockloc"} {
 			_, _, err := a.queryPeers(overlayRequest{Type: capability, TxID: id}, declared)
 			if err == nil || !strings.Contains(err.Error(), "locked") {
 				t.Fatal("local provider shortcut escaped release lock", capability, declared, err)
 			}
 		}
+	}
+	response, _, err := a.queryPeers(overlayRequest{Type: "txloc", TxID: id}, "txloc")
+	if err != nil || response.TxLocation == nil || response.TxLocation.TxID != id {
+		t.Fatal("available local TX locator shortcut stayed locked", response, err)
 	}
 	if a.cacheIndex.Tx[id].TxID != id {
 		t.Fatal("release lock changed retained locator data")

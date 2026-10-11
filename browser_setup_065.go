@@ -116,7 +116,7 @@ func configureInstalledNativeHosts(exe string, enabled bool) []browserRoutingSte
 				err = regAddValue(key, "", "REG_SZ", manifest)
 			} else {
 				if _, present := regQueryValue(key, ""); present {
-					err = exec.Command("reg.exe", "delete", key, "/f").Run()
+					err = registryCommand("delete", key, "/f").Run()
 				}
 			}
 		}

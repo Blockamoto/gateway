@@ -52,6 +52,7 @@ func cloneIndexJob(j indexJob) indexJob {
 }
 
 type indexStatusView struct {
+	Browse      []indexBrowsePolicy `json:"browse"`
 	Timeline    indexTimelineView   `json:"timeline"`
 	Jobs        []indexJob          `json:"jobs"`
 	Definitions []indexDefinition   `json:"definitions"`
@@ -117,6 +118,11 @@ func (a *app) saveIndexJob(j indexJob) error {
 func (a *app) indexStatus() indexStatusView {
 	out := indexStatusView{Definitions: indexDefinitions(), Providers: a.indexProviderViews(), Instances: []indexInstance{}, Live: []indexLiveView{}, Job: a.indexJobSnapshot()}
 	var queueErr error
+	if browse, err := a.indexBrowsePolicies(); err != nil {
+		out.Errors = append(out.Errors, "browse: "+err.Error())
+	} else {
+		out.Browse = browse
+	}
 	out.Jobs, queueErr = a.indexJobsSnapshot()
 	if queueErr != nil {
 		out.Errors = append(out.Errors, "queue: "+queueErr.Error())
@@ -557,6 +563,7 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 	total := 0
 	next := s.head.Commitment
 	blocks := 0
+	seenBlocks := map[string]bool{}
 	var child *indexBatch
 	for next != "" && blocks < 512 && len(rows) < limit {
 		b, e := s.readBatch(next)
@@ -566,6 +573,7 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 		if child != nil && (child.Checkpoint.Height != b.Checkpoint.Height+1 || child.PreviousBlockHash != b.Checkpoint.BlockHash) {
 			return nil, fmt.Errorf("query checkpoint discontinuity")
 		}
+		seenBlocks[fmt.Sprintf("%d:%s", b.Checkpoint.Height, b.Checkpoint.BlockHash)] = true
 		if b.Sats != nil {
 			rows = append(rows, struct {
 				Height int64             `json:"block_height"`
@@ -623,6 +631,17 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 		child = &b
 		blocks++
 	}
+	browseComplete := true
+	if indexBrowseAvailable(id) {
+		additional, count, inspected, complete, err := a.browseQueryRows(context.Background(), id, limit-len(rows), seenBlocks)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, additional...)
+		total += count
+		blocks += inspected
+		browseComplete = complete
+	}
 	return struct {
 		Definition      indexDefinition  `json:"definition"`
 		Checkpoint      *indexCheckpoint `json:"checkpoint"`
@@ -632,7 +651,7 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 		Truncated       bool             `json:"truncated"`
 		ChainState      string           `json:"chain_state"`
 		InspectedBlocks int              `json:"inspected_blocks"`
-	}{s.definition, s.checkpoint, rows, total, next == "", next != "" || total > len(rows), a.indexChainState(s.checkpoint), blocks}, nil
+	}{s.definition, s.checkpoint, rows, total, next == "" && browseComplete, next != "" || !browseComplete || total > len(rows), a.indexChainState(s.checkpoint), blocks}, nil
 }
 
 type indexLookupResult struct {

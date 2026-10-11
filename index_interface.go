@@ -61,7 +61,7 @@ func (a *app) handleIndexPage(w http.ResponseWriter, r *http.Request) {
 	if frameSource == "" {
 		frameSource = " 'none'"
 	}
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'self' 'nonce-"+nonce+"'; connect-src 'self'; img-src 'self'"+contentSource+"; media-src"+frameSource+"; frame-src"+frameSource+"; object-src 'none'; frame-ancestors "+ancestors+"; base-uri 'none'; form-action 'self'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'self' 'nonce-"+nonce+"'; connect-src 'self'; img-src 'self' data:"+contentSource+"; media-src"+frameSource+"; frame-src"+frameSource+"; object-src 'none'; frame-ancestors "+ancestors+"; base-uri 'none'; form-action 'self'")
 	bootstrap, _ := json.Marshal(map[string]any{"content_origin": a.contentURL})
 	page := strings.ReplaceAll(string(body), "__INDEX_NONCE__", nonce)
 	page = strings.Replace(page, "__INDEX_BOOTSTRAP__", string(bootstrap), 1)
@@ -125,6 +125,18 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 	var result any
 	var err error
 	switch strings.TrimPrefix(r.URL.Path, "/api/v1/index/") {
+	case "block-map":
+		a.handleIndexBlockMap(w, r)
+		return
+	case "browse":
+		if !indexMethod(w, r, http.MethodPost) {
+			return
+		}
+		var req indexBrowseRequest
+		if !indexRequestBody(w, r, &req) {
+			return
+		}
+		result, err = a.setIndexBrowsePolicy(r.Context(), req)
 	case "sat":
 		a.handleIndexSat(w, r)
 		return
@@ -277,12 +289,13 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type indexCLICommand struct {
-	Action     string
-	LiveAction string
-	Request    indexBuildRequest
-	Limit      int
-	Key        string
-	Peer       string
+	Action        string
+	LiveAction    string
+	Request       indexBuildRequest
+	Limit         int
+	Key           string
+	Peer          string
+	BrowseEnabled *bool
 }
 
 func parseIndexCLI(args []string) (indexCLICommand, error) {
@@ -293,6 +306,13 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 	c.Action = strings.ToLower(args[0])
 	args = args[1:]
 	switch c.Action {
+	case "browse":
+		if len(args) != 2 || (args[1] != "enable" && args[1] != "disable") {
+			return c, fmt.Errorf("usage: index browse <index-id> <enable|disable>")
+		}
+		c.Request.Index = args[0]
+		c.BrowseEnabled = boolPointer(args[1] == "enable")
+		return c, nil
 	case "status", "pause", "peers":
 		if len(args) != 0 {
 			return c, fmt.Errorf("index %s takes no arguments", c.Action)
@@ -430,6 +450,8 @@ func (a *app) runIndexCLI(args []string) (any, error) {
 		return nil, err
 	}
 	switch c.Action {
+	case "browse":
+		return a.setIndexBrowsePolicy(context.Background(), indexBrowseRequest{Index: c.Request.Index, Enabled: c.BrowseEnabled})
 	case "rules":
 		return indexRules(c.Request.Index)
 	case "status":

@@ -362,15 +362,12 @@ func TestSparseTransactionCountCompletenessAndCommitment(t *testing.T) {
 	}
 }
 
-func TestInscriptionLocatorStageOffAndChoiceIsolation(t *testing.T) {
+func Test073InscriptionLocatorStageChoiceIsolation(t *testing.T) {
 	a := prepareLiveTestApp063(t)
 	zero := int64(0)
-	plan, err := a.planIndexBuild(indexBuildRequest{Index: "inscriptions", From: &zero, To: &zero})
-	if err != nil || plan.ConventionalIDs || len(plan.Outputs) != 1 {
+	plan, err := a.planIndexBuild(indexBuildRequest{Index: "inscriptions", From: &zero, To: &zero, ConventionalIDs: boolPointer(true)})
+	if err != nil || !plan.ConventionalIDs || len(plan.Outputs) != 2 {
 		t.Fatal(plan, err)
-	}
-	if _, err = a.planIndexBuild(indexBuildRequest{Index: "inscriptions", From: &zero, To: &zero, ConventionalIDs: boolPointer(true)}); err == nil {
-		t.Fatal("locked related locator request accepted")
 	}
 	if _, err = a.planIndexBuild(indexBuildRequest{Index: "inscriptions", Outputs: []string{inscriptionLocatorIndex}}); err == nil {
 		t.Fatal("raw internal output accepted")
@@ -386,41 +383,20 @@ func TestInscriptionLocatorStageOffAndChoiceIsolation(t *testing.T) {
 	if !*on.ConventionalIDs {
 		t.Fatal("job snapshot aliases user preference")
 	}
-	if _, err = a.setIndexLivePolicy(indexLiveRequest{Index: "inscriptions", Action: "enable", ConventionalIDs: boolPointer(true)}); err == nil {
-		t.Fatal("closed stage persisted an enabled locator policy")
+	view, err := a.setIndexLivePolicy(indexLiveRequest{Index: "inscriptions", Action: "enable", ConventionalIDs: boolPointer(true)})
+	if err != nil || !view.Enabled || !view.On || view.State == "locked" {
+		t.Fatal("transaction-stage live enrichment unavailable", view, err)
 	}
-	policy := indexLivePolicy{Index: "inscriptions", Enabled: true, Mode: "lean", Retention: "ephemeral", ConventionalIDs: boolPointer(true)}
-	if err = a.writeIndexLivePolicy(policy); err != nil {
-		t.Fatal(err)
-	}
-	if view := a.indexLiveView("inscriptions", policy); view.State != "locked" || !view.Paused || view.On {
-		t.Fatal("saved enabled locator policy revived under a closed gate", view)
-	}
-	a.liveIndexTick()
-	if a.indexCancel != nil {
-		t.Fatal("locked saved policy started a worker")
-	}
-	queued := indexQueueState{Schema: 1, Entries: []indexQueueEntry{{Request: on, Job: indexJob{ID: "locked-locators", Index: "inscriptions", State: "queued", ConventionalIDs: boolPointer(true)}}}}
-	if err = atomicWriteJSON(filepath.Join(a.dataDir, "indexes", "queue.json"), queued); err != nil {
-		t.Fatal(err)
-	}
-	restarted := &app{dataDir: a.dataDir}
-	rows, err := restarted.indexJobsSnapshot()
-	if err != nil || len(rows) != 1 || rows[0].State != "paused" || !strings.Contains(rows[0].WaitingReason, "Transaction Index stage") {
-		t.Fatal("saved queue lost its locator gate", rows, err)
-	}
-	if _, err = os.Stat(filepath.Join(a.dataDir, "indexes", inscriptionLocatorIndex)); !os.IsNotExist(err) {
-		t.Fatal("gate check wrote locator data", err)
+	policies, err := a.indexLivePolicies()
+	if err != nil || policies["inscriptions"].ConventionalIDs == nil || !*policies["inscriptions"].ConventionalIDs {
+		t.Fatal("related preference did not persist", policies, err)
 	}
 }
 
-func TestInscriptionLeanStageBuildPersistsOffAndKnownEmptyQuery(t *testing.T) {
+func Test073InscriptionLeanBuildPersistsExplicitOffAndKnownEmptyQuery(t *testing.T) {
 	a := prepareLiveTestApp063(t)
 	zero := int64(0)
-	if _, err := a.startIndexBuild(indexBuildRequest{Index: "inscriptions", From: &zero, To: &zero, ConventionalIDs: boolPointer(true)}); err == nil {
-		t.Fatal("locked enrichment started a worker")
-	}
-	if _, err := a.startIndexBuild(indexBuildRequest{Index: "inscriptions", From: &zero, To: &zero}); err != nil {
+	if _, err := a.startIndexBuild(indexBuildRequest{Index: "inscriptions", From: &zero, To: &zero, ConventionalIDs: boolPointer(false)}); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -441,7 +417,7 @@ func TestInscriptionLeanStageBuildPersistsOffAndKnownEmptyQuery(t *testing.T) {
 		t.Fatal("default scan retained content/history", b)
 	}
 	if _, err = os.Stat(filepath.Join(a.dataDir, "indexes", inscriptionLocatorIndex)); !os.IsNotExist(err) {
-		t.Fatal("closed-stage scan wrote related locators", err)
+		t.Fatal("explicit-off scan wrote related locators", err)
 	}
 	value, err := a.indexQueryBlock(ctx, "inscriptions", 0, 1000)
 	if err != nil {

@@ -2,6 +2,7 @@
 // Browser acceptance against source-identical UI and deliberately sparse API
 // fixtures. No indexing, block fetches, peers or outside services are contacted.
 const assert = require('node:assert/strict');
+const {selectHeight}=require('./timeline-browser-gestures');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -109,9 +110,15 @@ async function run() {
     const clickBlock = async height => {
       const view = await viewport(), box = await blockLane.boundingBox();
       assert(height>=view.from&&height<=view.to,'Clicked block must lie inside the actual viewport');
-      await blockLane.click({position:{x:(height-view.from+.5)/(view.to-view.from+1)*box.width,y:40}});
+      const x=box.x+(height-view.from+.5)/(view.to-view.from+1)*box.width,y=box.y+40;
+      // A selection marker occupies this exact point after Ctrl-click. Real
+      // pointer input reaches that marker for the next modifier and explore.
+      await page.keyboard.down('Control');await page.mouse.click(x,y);await page.keyboard.up('Control');
+      await page.keyboard.down('Shift');await page.mouse.click(x,y);await page.keyboard.up('Shift');
+      await page.mouse.click(x,y);
     };
     await page.goto(origin+'/indexes', {waitUntil:'networkidle'});
+    await page.locator('#timeline-expand').click();
     await page.locator('.timeline-track[data-index="blocks"]').waitFor();
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes => nodes.map(node => node.dataset.index)), ['headers','blocks'], 'Only added or established indexes have tracks, with foundational Headers first');
     assert.deepEqual(await viewport(),{from:0,to:999999,fit:true});
@@ -123,11 +130,11 @@ async function run() {
 
     // The header itself is present at both heights. Explorer needs the body,
     // so its fetch disclosure must use Blocks availability independently.
-    await page.locator('#timeline-height').fill('500000');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
+    await selectHeight(page,500000);
     assert.equal(await page.locator('#timeline-inspector').getAttribute('data-index'),'headers');
     assert.match(await page.locator('#timeline-selection-meta').innerText(),/1 \/ 1/);
     assert.equal(await page.locator('#timeline-open-entity').innerText(),'Fetch & open in Explorer','A local header does not imply a locally held block body');
-    await page.locator('#timeline-height').fill('500003');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
+    await selectHeight(page,500003);
     assert.equal(await page.locator('#timeline-open-entity').innerText(),'Open in Explorer','Header selection can use independent known local block availability');
     await page.locator('#timeline-fit').click();
     await page.locator('#timeline-inspector-tab').click();
@@ -159,8 +166,7 @@ async function run() {
 
     // Read-only entity inspection must preserve exact absence in the middle of
     // a recorded range; only the distinct Explorer action may request bytes.
-    await page.locator('#timeline-height').fill('500000');
-    await page.locator('#timeline-jump').evaluate(form => form.requestSubmit());
+    await selectHeight(page,500000);
     assert.equal(await page.locator('#timeline-inspector').getAttribute('data-kind'),'block');
     assert.match(await page.locator('#timeline-selection-meta').innerText(),/0 \/ 1/);
     assert.equal(await page.locator('#timeline-open-entity').innerText(),'Fetch & open in Explorer');
@@ -175,7 +181,7 @@ async function run() {
     await page.locator('#timeline-pan-right').click();const panned=await viewport();assert(panned.from>zoomed.from);
     await page.locator('#timeline-pan-left').click();assert((await viewport()).from<panned.from);
     await blockLane.focus();await page.keyboard.press('Home');assert.equal((await viewport()).fit,true,'Home returns the keyboard viewport to the full chain');
-    await page.locator('#timeline-height').fill('500000');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
+    await selectHeight(page,500000);
     await page.locator('#timeline-focus').click();
     await screenshot('timeline-focused-light');
     noMutations();
@@ -210,7 +216,7 @@ async function run() {
     const physical=snapshot.timeline.tracks.splice(1,1)[0];
     await refresh();assert.deepEqual(await blockLane.evaluate(node=>JSON.parse(node.dataset.coverage)),[],'Missing physical projection does not fall back to processing/provider coverage');
     await page.locator('.timeline-track[data-index="headers"] .timeline-track-select').click();
-    await page.locator('#timeline-height').fill('500003');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
+    await selectHeight(page,500003);
     assert.equal(await page.locator('#timeline-open-entity').innerText(),'Fetch & open in Explorer','An unavailable block source never gets filled in by selected-header coverage');
     snapshot.timeline.tracks.splice(1,0,physical);await refresh();
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
@@ -224,7 +230,7 @@ async function run() {
     await refresh();
     assert.equal(await page.getByRole('switch',{name:'blocks On',exact:true}).isDisabled(), false, 'A successful refresh recovers controls');
     assert.equal(calls.filter(call=>call.path.endsWith('/query')).length,0,'All timeline inspection remains independent of record queries');
-    await page.locator('#timeline-height').fill('500000');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
+    await selectHeight(page,500000);
     await page.locator('#timeline-build-range').click();
     assert.equal(await page.locator('#from').inputValue(),'0','Preparing a range keeps the retained instance origin fixed');assert.equal(await page.locator('#from').getAttribute('readonly'),'');assert.equal(await page.locator('#to').inputValue(),'500000');
     assert.equal(await page.locator('#initial-live').isChecked(),false,'Preparing a selected range does not implicitly follow the chain');
@@ -233,10 +239,10 @@ async function run() {
     noMutations();
 
     // Explorer remains in the workspace; only the focused known block is requested.
-    await page.goto(origin+'/indexes?embedded=1',{waitUntil:'networkidle'});
+    await page.goto(origin+'/indexes?embedded=1',{waitUntil:'networkidle'});await page.locator('#timeline-expand').click();
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await page.evaluate(()=>{window.timelineNavigations=[];window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data?.type==='gateway:navigate')window.timelineNavigations.push(event.data.address);});});
-    await page.locator('#timeline-height').fill('500000');await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());
+    await selectHeight(page,500000);
     assert.deepEqual(await page.evaluate(()=>window.timelineNavigations),[]);
     await page.locator('#timeline-explorer-tab').click();
     await page.locator('#timeline-explorer-panel[data-state="error"]').waitFor();

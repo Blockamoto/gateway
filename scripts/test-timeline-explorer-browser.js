@@ -7,6 +7,7 @@ const browserPath=[process.env.GATEWAY_TEST_BROWSER,pw.chromium.executablePath()
 const transactions=(from,to)=>Array.from({length:to-from},(_,n)=>({index:from+n,txid:(''+(from+n)).padStart(64,'0'),output_sats:50,coinbase:from+n===0}));
 const block=height=>({height,hash:String(height).padStart(64,'a'),transaction_count:45,transactions:transactions(0,40),serialized_bytes:2000,time_iso:'2026-10-08',verification_state:'header_anchored',total_output_sats:2250,verification:{verifier_version:1},source_network:'cache',evidence:{bytes:'cache'}});
 (async()=>{
+  let reorg=false;
   const server=http.createServer((q,r)=>{r.end();});await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const origin='http://127.0.0.1:'+server.address().port,browser=await pw.chromium.launch({headless:true,executablePath:browserPath});
   try{
@@ -25,9 +26,10 @@ const block=height=>({height,hash:String(height).padStart(64,'a'),transaction_co
         const parts=body.address.split('.'),height=Number(parts[parts.length-2]);
         if(height===60 || parts.length===3&&Number(parts[0])===1)await new Promise(r=>setTimeout(r,500));
         if(height===70)await new Promise(r=>setTimeout(r,250));
-        if(parts.length===2){try{return await reply({resource:{block:block(height)},elapsed_ms:3});}catch{return;}}
+        if(parts.length===2){try{return await reply({resource:{block:{...block(height),...(height===77&&reorg?{hash:'c'.repeat(64),transaction_count:46}:{})}},elapsed_ms:3});}catch{return;}}
         const index=Number(parts[0]),tx={...transactions(index,index+1)[0],inputs:[{n:0,prev_txid:'b'.repeat(64),prev_vout:2}],outputs:[{n:0,value_sats:50,address:'bc1fixture'}],version:2,lock_time:0};
-        try{return await reply({resource:{transaction:{height,block_hash:block(height).hash,verification_state:'header_anchored',transaction:tx}}});}catch{return;}
+        if(height===77&&reorg)tx.outputs[0].value_sats=5;
+        try{return await reply({resource:{transaction:{height,block_hash:height===77&&reorg?'c'.repeat(64):block(height).hash,verification_state:'header_anchored',transaction:tx}}});}catch{return;}
       }
       if(url.pathname==='/api/v1/block/transactions')return reply({height:61,hash:block(61).hash,transactions:transactions(40,45),total:45,next:45});
       if(url.pathname==='/api/v1/flow')return reply({inputs:[{index:0,outpoint:'fixture',value:60}],outputs:[{n:0,value_sats:50}],fee:10,note:'Fixture value flow'});
@@ -56,6 +58,10 @@ const block=height=>({height,hash:String(height).padStart(64,'a'),transaction_co
     assert.equal(await page.locator('#timeline-explorer-flow-result svg').count(),1);
     assert.equal(await page.locator('#timeline-explorer-tx-detail button').filter({hasText:'Satline'}).isDisabled(),true);
     assert.equal(calls.some(c=>c.path.includes('graph')||c.path.includes('satline')||c.path.includes('index/build')),false,'Locked indexes and jobs never requested');
+    await page.evaluate(()=>helper.focus({index:'blocks',height:61,immediate:true}));assert.equal(await page.locator('#timeline-explorer-tx-detail').isVisible(),false,'Same-height block focus restores block details after transaction navigation');
+    await page.evaluate(()=>helper.entity({kind:'transaction',height:61,txIndex:1}));await page.waitForTimeout(80);await page.evaluate(()=>helper.focus({index:'headers',height:61,immediate:true}));await page.waitForTimeout(550);assert.equal(await page.locator('#timeline-explorer-tx-detail').isVisible(),false,'Same-height parent focus cancels an in-flight transaction');
+    const oldBlock=await page.evaluate(()=>helper.loadHierarchy({kind:'block',height:77})),oldOutput=await page.evaluate(()=>helper.loadHierarchy({kind:'output',height:77,txIndex:0,outputIndex:0}));assert.equal(oldBlock.count,45);assert.equal(oldOutput.count,50);reorg=true;
+    const newBlock=await page.evaluate(()=>helper.loadHierarchy({kind:'block',height:77})),newOutput=await page.evaluate(()=>helper.loadHierarchy({kind:'output',height:77,txIndex:0,outputIndex:0}));assert.equal(newBlock.count,46);assert.equal(newOutput.count,5);assert.notEqual(newBlock.block_hash,oldBlock.block_hash,'Parent metadata revalidates a replacement block at the same height');assert.equal(newBlock.block_hash,newOutput.block_hash);
     await page.evaluate(()=>{helper.focus({height:62,immediate:false});helper.focus({height:62,immediate:true});});await page.waitForFunction(()=>helper.state().loadedHeight===62);
     await page.waitForTimeout(1100);assert.equal(calls.filter(c=>c.body?.address==='62.bitcoin').length,1,'Immediate click accelerates pending scrub once');
     await page.evaluate(()=>{helper.focus({height:64,immediate:false});helper.health(false);});await page.waitForTimeout(1100);

@@ -36,6 +36,7 @@ type indexTimelineView struct {
 }
 
 type indexTimelineTrack struct {
+	PotentialFrom    int64                 `json:"potential_from"`
 	ID               string                `json:"id"`
 	Locked           bool                  `json:"locked"`
 	Coverage         []heightInterval      `json:"coverage"`
@@ -134,6 +135,26 @@ func (a *app) indexTimeline(defs []indexDefinition, providers []indexProviderVie
 	localSources := a.timelineLocalSources(h, out.TipHash, settings, &out.Errors)
 	for _, def := range defs {
 		track := indexTimelineTrack{ID: def.ID, Locked: def.Locked, Coverage: []heightInterval{}, Gaps: []heightInterval{}, RecordedCoverage: []heightInterval{}, ReportedCoverage: []heightInterval{}, Sources: []indexTimelineSource{}, CoverageComplete: out.TipKnown}
+		track.PotentialFrom = def.StartHeight
+		// Presentation boundary only: recognized reveal indexing remains an
+		// explicit arbitrary-start recipe with its unchanged semantic hash.
+		if def.ID == "inscriptions" {
+			track.PotentialFrom = 481824
+		}
+		if indexBrowseAvailable(def.ID) {
+			source, err := a.browseTimelineSource(def.ID, h)
+			if err != nil {
+				track.CoverageComplete = false
+				out.Errors = append(out.Errors, def.ID+": "+err.Error())
+			} else {
+				track.CoverageComplete = track.CoverageComplete && source.Complete
+				if len(source.Ranges) > 0 || !source.Complete {
+					track.Sources = append(track.Sources, source)
+					track.Coverage = append(track.Coverage, source.Ranges...)
+					track.RecordedCoverage = append(track.RecordedCoverage, source.Ranges...)
+				}
+			}
+		}
 		switch def.ID {
 		case "headers":
 			track.Note = "Selected local header prefix. Header timestamps and sync state describe freshness; this is not full transaction validation."

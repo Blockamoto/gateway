@@ -1,10 +1,14 @@
 # Gateway status
 
-## Working source: 0.7.2 inscription prerelease preparation
+## Working source: 0.7.3 The transaction update
+
+The source enables the Transaction Index and inscription-related locator builds. Independent opt-in browsing indexes store exact processed blocks without advancing sequential checkpoints. The workspace has context-aware Details and Inspector, a square shared viewport, complete BitFeed-style block maps, automatic transaction flow and a collapsible timeline. Gateway peers remain gated. The user-approved local build is moving to main, with an unpublished draft release prepared separately. The published release and hosted update feed remain unchanged. See [the transaction test guide](TESTING-0.7.3.md).
+
+## Previous source: 0.7.2 inscription prerelease preparation
 
 The source is preparing positional inscription indexing and an isolated content viewport. Related inscription transaction locators, the standalone Transaction Index and Gateway peerhood remain gated for their later stages. This does not change the published release or approved hosted feed. See [the inscription test guide](TESTING-0.7.2.md) and [draft release notes](RELEASE-NOTES-v0.7.2.md); validation is recorded separately for the new build.
 
-## Current draft validation
+## Inscription draft validation
 
 The exact local 0.7.2 Windows build passed **921 Go checks, 46 expected skips and no failures**, including the final cancellation and coordinate regressions. Native viewport tests separately checked controlled local Ord fixtures and real Bitcoin block 840000: 3,050 transactions, 878 Lean inscription coordinates, and verified positional content without a transaction locator index. The retained checkpoint and header snapshot survived the final-build restart.
 

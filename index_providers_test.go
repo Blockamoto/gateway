@@ -24,7 +24,7 @@ func TestIndexProvidersCoreProgressAndPolicy(t *testing.T) {
 	rows := buildIndexProviderViews(settings, core, indexProviderState{})
 	tx := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex")
 	spend := indexProviderRow(t, rows, "txo-spender", "bitcoin_core_txospenderindex")
-	if tx.Queryable || tx.Serveable || tx.Readiness != "locked" || tx.Completeness != "provider_reported_partial" || len(tx.Coverage) != 1 || tx.Coverage[0].To != 60 {
+	if tx.Queryable || tx.Serveable || tx.Readiness != "enabled_index_not_ready" || tx.Completeness != "provider_reported_partial" || len(tx.Coverage) != 1 || tx.Coverage[0].To != 60 {
 		t.Fatalf("partial txindex claims: %+v", tx)
 	}
 	if spend.Queryable || spend.Serveable || spend.Coverage[0].To != 40 {
@@ -34,12 +34,12 @@ func TestIndexProvidersCoreProgressAndPolicy(t *testing.T) {
 	core.TxIndexHeight, core.SpenderIndexHeight = 100, 100
 	rows = buildIndexProviderViews(settings, core, indexProviderState{})
 	tx = indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex")
-	if tx.Completeness != "provider_reported_at_snapshot" || tx.Serveable || tx.Queryable || tx.Snapshot == nil || tx.Snapshot.Height != 100 {
+	if tx.Completeness != "provider_reported_at_snapshot" || !tx.Serveable || !tx.Queryable || tx.Snapshot == nil || tx.Snapshot.Height != 100 {
 		t.Fatalf("synced provider lost its qualified snapshot: %+v", tx)
 	}
 	core.InitialBlockDownload = true
 	rows = buildIndexProviderViews(settings, core, indexProviderState{})
-	if got := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex"); got.Queryable || got.Serveable || got.Readiness != "locked" {
+	if got := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex"); got.Queryable || got.Serveable || got.Readiness != "enabled_index_not_ready" {
 		t.Fatalf("IBD bare-ID route advertised: %+v", got)
 	}
 	if got := indexProviderRow(t, rows, "txo-spender", "bitcoin_core_txospenderindex"); got.Completeness != "provider_reported_partial" {
@@ -62,7 +62,7 @@ func TestIndexProvidersDoNotInventPrunedOrNativeCoverage(t *testing.T) {
 		t.Fatalf("missing pruning boundary invented archival coverage: %+v", blocks)
 	}
 	graph := indexProviderRow(t, rows, "tx-locator", "gateway_native_graph")
-	if graph.Queryable || graph.Serveable || graph.Readiness != "locked" || graph.Completeness != "recorded_ranges" {
+	if !graph.Queryable || graph.Serveable || graph.Readiness != "provider_available_check_coverage" || graph.Completeness != "recorded_ranges" {
 		t.Fatalf("graph metadata became full coverage or nonexistent wire support: %+v", graph)
 	}
 	core.PruneHeight = 95
@@ -75,6 +75,14 @@ func TestIndexProvidersDoNotInventPrunedOrNativeCoverage(t *testing.T) {
 func TestIndexProvidersPrivateLocatorsSurviveBlockEviction(t *testing.T) {
 	a, _ := testAppWithGenesis(t)
 	a.settings.CoreDisabled, a.settings.ShareCache = true, true
+	block, err := a.fetchAndDecode("0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A locator already retained by an earlier explicit operation is distinct
+	// from raw cache possession; a browse preference does not create it here.
+	txid := block.Transactions[0].TxID
+	a.cacheIndex.Tx[txid] = txLocation{TxID: txid, Height: 0, BlockHash: genesisHashDisplay, TxIndex: 0}
 	a.coverage.TxLocation = []heightInterval{{From: 0, To: 0}}
 	for id, b := range a.cacheIndex.Blocks {
 		b.Private = true
@@ -86,7 +94,7 @@ func TestIndexProvidersPrivateLocatorsSurviveBlockEviction(t *testing.T) {
 	rows := a.indexProviderViews()
 	tx := indexProviderRow(t, rows, "tx-locator", "gateway_cache")
 	blocks := indexProviderRow(t, rows, "blocks", "gateway_cache")
-	if tx.Queryable || tx.Serveable || len(tx.PublicCoverage) != 0 || !blocks.Queryable || blocks.Serveable {
+	if !tx.Queryable || tx.Serveable || len(tx.PublicCoverage) != 0 || !blocks.Queryable || blocks.Serveable {
 		t.Fatalf("private data leaked or became unavailable locally: tx=%+v blocks=%+v", tx, blocks)
 	}
 	for _, b := range a.cacheIndex.Blocks {
@@ -95,7 +103,7 @@ func TestIndexProvidersPrivateLocatorsSurviveBlockEviction(t *testing.T) {
 		}
 	}
 	rows = a.indexProviderViews()
-	if indexProviderRow(t, rows, "blocks", "gateway_cache").Queryable || indexProviderRow(t, rows, "tx-locator", "gateway_cache").Queryable {
+	if indexProviderRow(t, rows, "blocks", "gateway_cache").Queryable || !indexProviderRow(t, rows, "tx-locator", "gateway_cache").Queryable {
 		t.Fatal("block possession and retained locator knowledge were conflated")
 	}
 }

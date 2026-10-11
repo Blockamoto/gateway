@@ -10,20 +10,18 @@ window.GatewayInscriptionViewport = (() => {
       return url;
     } catch {return null;}
   }
-  function mount({document:doc,explorer,contentOrigin,notify,onEntity,onNavigate}) {
+  function mount({document:doc,explorer,contentOrigin,notify,onEntity,onNavigate,viewport}) {
     const win=doc.defaultView,el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
     const panel=el('section',undefined,'timeline-inscription-panel');panel.id='timeline-inscription-panel';
-    const addressForm=el('form',undefined,'inscription-address-form'),label=el('label','Inscription address'),address=el('input'),submit=el('button','Open');
-    address.id='inscription-address';address.spellcheck=false;address.autocomplete='off';address.placeholder='12i0.792435.bitcoin or inscription ID';address.required=true;label.htmlFor=address.id;submit.type='submit';addressForm.append(label,address,submit);
-    const hint=el('details'),hintSummary=el('summary','Known reveal block'),blockHint=el('input');blockHint.setAttribute('aria-label','Optional reveal block height or hash');blockHint.placeholder='Height or block hash';hint.append(hintSummary,blockHint);
+    const address={value:''},blockHint={value:''};
     const status=el('p','Open an inscription by position, or use an ID with a known transaction locator.','small muted');status.id='inscription-viewer-status';status.setAttribute('role','status');
     const body=el('div',undefined,'inscription-viewer-body'),dependency=el('section',undefined,'inscription-dependencies');dependency.id='inscription-dependencies';dependency.hidden=true;dependency.setAttribute('aria-label','Requested inscription dependencies');
-    panel.append(addressForm,hint,status,body,dependency);explorer.addPane('inscriptions','Inscription viewer',panel);
+    panel.append(status,body,dependency);explorer.addPane('inscriptions','Details',panel);
     let enabled=false,dead=false,generation=0,current=null,known=[],poll=null,controller=null,requestTimer=null,pollController=null;
     function closeViewer(record){if(record?.viewer_session)win.fetch('/api/v1/ord/dependencies',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:record.viewer_session,action:'close'}),keepalive:true}).catch(()=>{});}
-    function cancel(){generation++;controller?.abort();controller=null;pollController?.abort();pollController=null;closeViewer(current);if(poll!==null){win.clearTimeout(poll);poll=null;}if(requestTimer!==null){win.clearTimeout(requestTimer);requestTimer=null;}body.replaceChildren();dependency.replaceChildren();dependency.hidden=true;}
-    function state(text,type='idle'){panel.dataset.state=type;panel.setAttribute('aria-busy',String(type==='loading'));status.textContent=text;status.setAttribute('role',type==='error'?'alert':'status');}
-    function available(value){enabled=Boolean(value);submit.disabled=!enabled;address.disabled=!enabled;if(!enabled){cancel();current=null;state('Inscriptions are unavailable in this build.','locked');}}
+    function cancel(){generation++;controller?.abort();controller=null;pollController?.abort();pollController=null;closeViewer(current);if(poll!==null){win.clearTimeout(poll);poll=null;}if(requestTimer!==null){win.clearTimeout(requestTimer);requestTimer=null;}body.replaceChildren();dependency.replaceChildren();dependency.hidden=true;if(explorer.viewport?.state().kind==='inscription')explorer.viewport.clear();}
+    function state(text,type='idle'){panel.dataset.state=type;panel.setAttribute('aria-busy',String(type==='loading'));status.textContent=text;if(['loading','error','locked'].includes(type)&&explorer.viewport)explorer.viewport.message(text,type);status.setAttribute('role',type==='error'?'alert':'status');}
+    function available(value){enabled=Boolean(value);if(!enabled){cancel();current=null;state('Inscriptions are unavailable in this build.','locked');}}
     function action(text,callback){const button=el('button',text);button.type='button';button.onclick=callback;return button;}
     function metadata(rows){const list=el('dl',undefined,'kv');for(const [name,value]of rows)list.append(el('dt',name),el('dd',value===null||value===undefined||value===''?'Not established':String(value)));return list;}
     async function copy(value){try{await win.navigator.clipboard.writeText(value);notify?.('Copied to clipboard.');}catch{notify?.('Clipboard unavailable. Select the displayed address to copy.',true);}}
@@ -49,7 +47,7 @@ window.GatewayInscriptionViewport = (() => {
         else {view=el('div',undefined,'inscription-empty');view.append(el('p','No preview for this binary content type.'),el('p',sourceType+' · '+(size??'Unknown')+' bytes'));}
         media.append(view);
       }
-      body.replaceChildren(media,evidence);state(resolved?'Reveal resolved. Dependencies are checked when content requests them.':record.resolution_state==='location_unknown'?'Inscription location is missing.':'Inscription located; its content is unavailable.',resolved?'ready':record.resolution_state);
+      if(explorer.viewport){explorer.viewport.content(media,{address:position||record.id,contentType:sourceType});body.replaceChildren(evidence);}else if(viewport){viewport.replaceChildren(media);body.replaceChildren(evidence);}else body.replaceChildren(media,evidence);state(resolved?'Reveal resolved. Dependencies are checked when content requests them.':record.resolution_state==='location_unknown'?'Inscription location is missing.':'Inscription located; its content is unavailable.',resolved?'ready':record.resolution_state);
       if(record.viewer_session)pollDependencies(record.viewer_session,generation);
     }
     async function pollDependencies(session,ticket){
@@ -64,15 +62,15 @@ window.GatewayInscriptionViewport = (() => {
     }
     async function open(value,{record,block,activate=true}={}){
       if(dead||!enabled)return;const query=String(value||coordinate(record)||record?.id||'').trim();if(!query)return;
-      cancel();const ticket=generation;current=null;address.value=query;blockHint.value=String(block??'');if(activate)explorer.setTab('inscriptions');state('Resolving locally first. Missing block data may be fetched from Bitcoin peers.','loading');
+      explorer.activateResource?.('inscriptions');cancel();const ticket=generation;current=null;address.value=query;blockHint.value=String(block??'');if(activate)explorer.setTab('inscriptions');state('Resolving locally first. Missing block data may be fetched from Bitcoin peers.','loading');
       try{
         let rec=record;
         if(!rec){controller=new win.AbortController();requestTimer=win.setTimeout(()=>controller?.abort(),90000);const response=await win.fetch('/api/v1/ord/resolve',{method:'POST',credentials:'same-origin',signal:controller.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({id:query,block_hash:blockHint.value.trim()})});const result=await response.json();if(dead||ticket!==generation){closeViewer(result);return;}if(!response.ok)throw Error(result.error||'Inscription resolution failed.');rec=result;}
-        if(ticket!==generation||dead){closeViewer(rec);return;}current=rec;render(rec);const position=coordinate(rec);if(integer(rec.height))onEntity?.({kind:'inscription',height:rec.height,txIndex:rec.tx_index,inscriptionIndex:rec.index,address:position||rec.id,index:'inscriptions'});
+        if(ticket!==generation||dead){closeViewer(rec);return;}current=rec;render(rec);const position=coordinate(rec);if(integer(rec.height))onEntity?.({kind:'inscription',height:rec.height,txIndex:rec.tx_index,inscriptionIndex:rec.index,address:position||rec.id,index:'inscriptions',resolved:true});return rec;
       }catch(error){if(ticket===generation&&!dead){state(error.name==='AbortError'?'The inscription request took too long. Check the connection and retry.':error.message,'error');body.append(action('Retry',()=>open(query,{block:blockHint.value})));if(/inscription.*disabled|ord.*disabled/i.test(error.message))body.append(action('Enable inscriptions',async()=>{try{const response=await win.fetch('/api/v1/settings'),saved=await response.json();if(!response.ok)throw Error(saved.error||'Settings unavailable.');const result=await win.fetch('/api/v1/settings',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({...saved.settings,ord_enabled:true})});if(!result.ok){const value=await result.json();throw Error(value.error||'Settings could not be saved.');}if(ticket===generation)open(query,{block:blockHint.value});}catch(error){if(ticket===generation)state(error.message,'error');}}));}}
       finally{if(ticket===generation){if(requestTimer!==null)win.clearTimeout(requestTimer);requestTimer=null;controller=null;}}
     }
-    addressForm.onsubmit=event=>{event.preventDefault();open(address.value,{block:blockHint.value});};
+    explorer.registerView?.('inscriptions',{open,deactivate:()=>{cancel();current=null;}});
     function clear(){cancel();current=null;state('Select an inscription marker or enter its position.');}
     return {open,clear,available,setKnown:rows=>{known=[...new Set(rows.filter(r=>typeof r==='string'&&r))];},state:()=>({state:panel.dataset.state,id:current?.id,position:coordinate(current)}),teardown(){cancel();dead=true;panel.remove();}};
   }

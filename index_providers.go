@@ -29,22 +29,25 @@ type indexProviderView struct {
 // These inputs keep policy projection independently testable. They contain no
 // credentials, filesystem paths, addresses queried, or remote peer identities.
 type indexProviderState struct {
-	Headers                       *chainSnapshot
-	Blocks, PublicBlocks, Mounted []heightInterval
-	TxCoverage, PublicTxCoverage  []heightInterval
-	GraphCoverage                 []heightInterval
-	TxKnown, PublicTxKnown        bool
-	SpendKnown, PublicSpendKnown  bool
-	SatlineReady                  bool
-	PublishedSatline              bool
-	CoreHeaderServing             bool
-	BitcoinPeersAvailable         bool
-	CommittedBlocks               []heightInterval
-	CommittedTx                   []heightInterval
-	CommittedSpends               []heightInterval
-	CommittedSats                 []heightInterval
-	SatSnapshot                   *chainSnapshot
-	NumberingSnapshot             *chainSnapshot
+	Headers                        *chainSnapshot
+	Blocks, PublicBlocks, Mounted  []heightInterval
+	TxCoverage, PublicTxCoverage   []heightInterval
+	GraphCoverage                  []heightInterval
+	TxKnown, PublicTxKnown         bool
+	SpendKnown, PublicSpendKnown   bool
+	SatlineReady                   bool
+	PublishedSatline               bool
+	CoreHeaderServing              bool
+	BitcoinPeersAvailable          bool
+	CommittedBlocks                []heightInterval
+	CommittedTx                    []heightInterval
+	BrowsedTx, BrowsedInscriptions []heightInterval
+	BrowseTxComplete               bool
+	BrowseInscriptionsComplete     bool
+	CommittedSpends                []heightInterval
+	CommittedSats                  []heightInterval
+	SatSnapshot                    *chainSnapshot
+	NumberingSnapshot              *chainSnapshot
 }
 
 // indexProviderViews performs no Bitcoin scans, materialization, peer discovery or
@@ -59,6 +62,14 @@ func (a *app) indexProviderViews() []indexProviderView {
 		core = inspectCore(s)
 	}
 	local := indexProviderState{}
+	for _, id := range []string{"tx-locator", "inscriptions"} {
+		source := a.browseProviderSource(id)
+		if id == "tx-locator" {
+			local.BrowsedTx, local.BrowseTxComplete = source.Ranges, source.Complete
+		} else {
+			local.BrowsedInscriptions, local.BrowseInscriptionsComplete = source.Ranges, source.Complete
+		}
+	}
 	local.BitcoinPeersAvailable = !s.NetworkDisabled && a.network != nil && len(a.network.listSessions()) > 0
 	for _, id := range []string{"blocks", "tx-locator", "txo-spender"} {
 		store, err := indexStoreHead(a.dataDir, id)
@@ -175,6 +186,18 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 		"Private committed decoded transaction evidence survives source eviction. Durable private ID pointers cover the committed range; each shard and active-commit table is bounded to 64 MiB. Auxiliary legacy scans stop at 512 batches/64 MiB and cannot establish absence. Missing or damaged acceleration requires cancellable repair; raw/witness bytes may still require a source.")
 	add("tx-locator", "gateway_committed_index", "recorded_contiguous_range", "locator_hint", len(local.CommittedTx) > 0, false, local.CommittedTx, nil, nil,
 		"Private durable ID pointers retain containing-block positions throughout committed coverage without a global transaction map. A saved location remains available after source eviction; transaction details require independently verified bytes. Each shard and active-commit table is bounded to 64 MiB; damaged/missing acceleration requires repair and a miss remains unknown.")
+	for _, id := range []string{"tx-locator", "inscriptions"} {
+		coverage, complete := local.BrowsedTx, local.BrowseTxComplete
+		if id == "inscriptions" {
+			coverage, complete = local.BrowsedInscriptions, local.BrowseInscriptionsComplete
+		}
+		completeness := "recorded_sparse_singletons"
+		if !complete {
+			completeness = "bounded_or_unavailable_sparse_projection"
+		}
+		add(id, "gateway_browsed_index", completeness, "committed_selected_chain", len(coverage) > 0, false, coverage, nil, nil,
+			"Private individually committed browsed blocks. Only inspected receipts with matching selected headers are shown; projection stops at 4096 receipts. Gaps do not imply work and no sequential checkpoint, absence, current ownership or sharing is inferred. Transaction content requires verified block bytes.")
+	}
 	add("tx-locator", "gateway_cache", "sparse", "locator_hint", local.TxKnown, s.ServeData && local.PublicTxKnown, local.TxCoverage, local.PublicTxCoverage, nil,
 		"Locally retained txid locations survive raw-block eviction. Resolve through verifyTxLocation to fetch the real block and check transaction inclusion; a miss is unknown.")
 	add("tx-locator", "gateway_native_graph", "recorded_ranges", "rechecked_on_query", len(local.GraphCoverage) > 0, false, local.GraphCoverage, nil, nil,
@@ -238,6 +261,9 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 		}
 		if r.Provider == "gateway_committed_index" && r.Queryable {
 			r.Readiness = "retained_records_durable_id_lookup"
+		}
+		if r.Provider == "gateway_browsed_index" && r.Queryable {
+			r.Readiness = "retained_sparse_browse_records"
 		}
 		if r.ID == "blocks" && r.Provider == "gateway_cache" && !r.Queryable && local.BitcoinPeersAvailable {
 			r.Readiness = "connected_peers_fetch_on_demand"

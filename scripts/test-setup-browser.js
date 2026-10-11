@@ -43,10 +43,10 @@ async function run(){
   });
   await page.goto(origin);await page.locator('#gateway-setup[open]').waitFor();
   assert.equal(await page.locator('#setup-title').innerText(),'Your Bitcoin connection');assert.equal(await page.locator('#setup-explore').count(),0);assert.equal(await page.locator('#setup-core-options').isVisible(),false);assert.equal(mutations.length,0);
-  assert.equal(await page.locator('#header-warning').isVisible(),true);headerHeight=2;await page.locator('#header-warning').waitFor({state:'hidden'});
+  assert.equal(await page.locator('#header-warning').evaluate(el=>el.hidden),false,'Header warning is populated in the status popover');headerHeight=2;await page.waitForFunction(()=>document.querySelector('#header-warning').hidden);
   await page.locator('[name="connection-mode"][value="core"]').check();assert.equal(await page.locator('#setup-core-options').isVisible(),true);assert.equal(await page.locator('#setup-mount').isChecked(),false);
   await page.locator('[name="connection-mode"][value="gateway"]').check();
-  await page.locator('#setup-close').click();assert.equal(progress.completed,false);assert.equal(mutations.length,0,'cancel does not save or complete');await page.locator('#network-details summary').first().click();await page.locator('[data-gateway-setup]').first().click();await page.locator('#gateway-setup[open]').waitFor();
+  await page.locator('#setup-close').click();assert.equal(progress.completed,false);assert.equal(mutations.length,0,'cancel does not save or complete');await page.locator('#runtime-status').click();await page.locator('[data-gateway-setup]').first().click();await page.locator('#gateway-setup[open]').waitFor();
   if(out)await page.screenshot({path:path.join(out,'setup-connection.png'),fullPage:true});
   await page.locator('#setup-next').click();await page.getByRole('heading',{name:'Browser access',exact:true}).waitFor();assert.equal(await page.locator('#setup-startup').isChecked(),false,'fresh installed mode must not imply startup consent');
   const mutationCount=mutations.length;measurePolling=true;const pollDeadline=Date.now()+20000;while((pollTimes.network.length<4||pollTimes.readiness.length<4)&&Date.now()<pollDeadline)await page.waitForTimeout(100);measurePolling=false;assert.equal(pollTimes.network.length>=4&&pollTimes.readiness.length>=4,true,'four consecutive readiness polls observed');assert.equal(mutations.length,mutationCount,'readiness polling is read-only');

@@ -915,6 +915,16 @@ func (s *indexStore) ensureIndexLocators(ctx context.Context) error {
 }
 
 func (s *indexStore) bitcoinLocatorRecords(ctx context.Context, txid string) ([]indexLocatorRecord, error) {
+	return s.bitcoinLocatorRecordsWithRepair(ctx, txid, true)
+}
+
+// Remote reads must not trigger private shard reconstruction. Publishing is
+// the explicit local opportunity to repair and validate membership first.
+func (s *indexStore) bitcoinLocatorRecordsReadOnly(ctx context.Context, txid string) ([]indexLocatorRecord, error) {
+	return s.bitcoinLocatorRecordsWithRepair(ctx, txid, false)
+}
+
+func (s *indexStore) bitcoinLocatorRecordsWithRepair(ctx context.Context, txid string, repair bool) ([]indexLocatorRecord, error) {
 	path, err := graphShardPath(s.dir, s.locatorKind(), txid)
 	if err != nil {
 		return nil, err
@@ -931,6 +941,9 @@ func (s *indexStore) bitcoinLocatorRecords(ctx context.Context, txid string) ([]
 	r, err := readIndexLocatorReceipt(path)
 	if os.IsNotExist(err) {
 		if _, checkErr := os.Stat(path); checkErr == nil {
+			if !repair {
+				return nil, fmt.Errorf("locator receipt missing; repair the published source locally")
+			}
 			if err = s.rebuildIndexLocatorShard(ctx, path); err != nil {
 				return nil, err
 			}

@@ -87,7 +87,7 @@ func (a *app) indexStorage(ctx context.Context, id string) (any, error) {
 			report.Errors = append(report.Errors, reason)
 		}
 	}
-	for _, group := range []struct{ relative, category string }{{"indexes/inscriptions", "inscription_reverse_shards"}, {"indexes/" + inscriptionLocatorIndex, "related_transaction_reverse_shards"}, {"blocks", "source_block_cache"}, {"ord", "resolved_content_cache"}} {
+	for _, group := range []struct{ relative, category string }{{"indexes/inscriptions", "inscription_reverse_shards"}, {"indexes/browse/inscriptions", "inscription_checkpoint_overhead"}, {"indexes/" + inscriptionLocatorIndex, "related_transaction_reverse_shards"}, {"blocks", "source_block_cache"}, {"ord", "resolved_content_cache"}} {
 		root := filepath.Join(a.dataDir, filepath.FromSlash(group.relative))
 		if _, err := os.Lstat(root); os.IsNotExist(err) {
 			continue
@@ -141,7 +141,7 @@ func (a *app) indexStorage(ctx context.Context, id string) (any, error) {
 			if group.relative == "indexes/"+inscriptionLocatorIndex && filepath.Base(filepath.Dir(path)) == "commits" {
 				category = "related_transaction_records"
 			}
-			if group.relative != "indexes/inscriptions" || filepath.Base(filepath.Dir(path)) != "commits" || !strings.HasSuffix(path, ".json") {
+			if (group.relative != "indexes/inscriptions" && group.relative != "indexes/browse/inscriptions") || filepath.Base(filepath.Dir(path)) != "commits" || !strings.HasSuffix(path, ".json") {
 				report.Bytes[category] += info.Size()
 				return nil
 			}

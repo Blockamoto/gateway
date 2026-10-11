@@ -240,7 +240,7 @@ func TestIntegrationReadinessRequiresActualPeersAndSyncedCore(t *testing.T) {
 	if got := indexProviderRow(t, rows, "blocks", "gateway_cache"); got.Readiness != "needs_coverage_or_provider" {
 		t.Fatal("network preference invented connected block sources", got)
 	}
-	if got := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex"); got.Readiness != "locked" || got.Queryable || got.Serveable || len(got.Coverage) == 0 {
+	if got := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex"); got.Readiness != "enabled_index_not_ready" || got.Queryable || got.Serveable || len(got.Coverage) == 0 {
 		t.Fatal("enabled Core txindex was shown synced", got)
 	}
 	if got := indexProviderRow(t, rows, "satline", "gateway_satline"); got.Readiness != "locked" {
@@ -251,7 +251,7 @@ func TestIntegrationReadinessRequiresActualPeersAndSyncedCore(t *testing.T) {
 	if got := indexProviderRow(t, rows, "blocks", "gateway_cache"); got.Readiness != "connected_peers_fetch_on_demand" {
 		t.Fatal("connected peer capability missing", got)
 	}
-	if got := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex"); got.Readiness != "locked" {
+	if got := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex"); got.Readiness != "provider_reported_at_snapshot" || !got.Queryable || !got.Serveable {
 		t.Fatal("synced Core snapshot qualification missing", got)
 	}
 }

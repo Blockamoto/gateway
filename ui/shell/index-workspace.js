@@ -8,26 +8,34 @@ window.GatewayIndexWorkspace = (() => {
 
   function mountLayout(root, message) {
     const doc = root.ownerDocument, win = doc.defaultView;
-    const inspector = root.querySelector('.timeline-inspector'), editor = root.querySelector('.timeline-editor');
+    const inspector = root.querySelector('.timeline-inspector'), editor = root.querySelector('.timeline-editor'), upper = root.querySelector('.timeline-upper-workspace'), viewport = root.querySelector('#workspace-viewport');
     if (!inspector || !editor) return;
     if (message) inspector.prepend(message);
     editor.id = 'timeline-editor';
     const divider = doc.createElement('div');
     divider.id = 'timeline-divider'; divider.className = 'timeline-divider'; divider.tabIndex = 0;
     divider.setAttribute('role', 'separator'); divider.setAttribute('aria-orientation', 'horizontal');
-    divider.setAttribute('aria-label', 'Resize inspector and timeline'); divider.setAttribute('aria-controls', 'timeline-inspector timeline-editor');
+    divider.setAttribute('aria-label', 'Resize details and timeline'); divider.setAttribute('aria-controls', 'timeline-inspector timeline-editor');
     divider.title = 'Drag to resize. Arrow keys adjust height; Home and End choose the limits. Double-click resets.';
     root.insertBefore(divider, editor);
-    let ratio = .56, drag = null;
+    let ratio = .56, drag = null, paneDrag = null, paneRatios = {block:.38, inscription:.38, transaction:.56};
     try { const saved = Number(win.localStorage.getItem('gateway.timeline.panel-ratio')); if (saved > 0 && saved < 1) ratio = saved; } catch {}
+    try { const saved=JSON.parse(win.localStorage.getItem('gateway.workspace.viewport-ratios')||'{}');for(const kind of Object.keys(paneRatios))if(Number.isFinite(saved[kind])&&saved[kind]>.1&&saved[kind]<.9)paneRatios[kind]=saved[kind]; } catch {}
+    const paneDivider=doc.createElement('div');paneDivider.id='workspace-viewport-divider';paneDivider.className='workspace-viewport-divider';paneDivider.tabIndex=0;paneDivider.setAttribute('role','separator');paneDivider.setAttribute('aria-orientation','vertical');paneDivider.setAttribute('aria-label','Resize Details and visualization');paneDivider.setAttribute('aria-controls','timeline-inspector workspace-viewport');paneDivider.title='Drag to resize Details and visualization. Arrow keys adjust width; double-click resets.';
+    if(upper&&viewport)upper.insertBefore(paneDivider,viewport);
+    function paneBounds(){const width=Math.max(0,(upper?.clientWidth||root.clientWidth)-10),available=Math.max(0,upper?.clientHeight||0),kind=viewport?.dataset.resource||'block';const minimum=Math.min(150,width*.32,available),maximum=Math.max(minimum,Math.min(width-Math.min(250,width*.45),kind==='transaction'?width*.72:available));return {width,minimum,maximum,kind};}
+    function paintPane(value,save=false){if(!viewport)return;const b=paneBounds(),size=clamp(value??b.width*(paneRatios[b.kind]??.38),b.minimum,b.maximum);root.style.setProperty('--workspace-viewport-size',size+'px');paneDivider.setAttribute('aria-valuemin',String(Math.round(b.minimum)));paneDivider.setAttribute('aria-valuemax',String(Math.round(b.maximum)));paneDivider.setAttribute('aria-valuenow',String(Math.round(size)));paneDivider.setAttribute('aria-valuetext','Visualization '+Math.round(size)+' pixels wide');if(save&&b.width){paneRatios[b.kind]=size/b.width;try{win.localStorage.setItem('gateway.workspace.viewport-ratios',JSON.stringify(paneRatios));}catch{}}}
     function bounds() {
       const available = Math.max(0, root.clientHeight - divider.offsetHeight);
       const minimum = Math.min(220, available * .52);
       return {available, minimum, maximum:Math.max(minimum, available - Math.min(130, available * .3))};
     }
     function paint(value, save = false) {
+      const compact = root.dataset.timelineCollapsed === 'true';
+      divider.hidden = compact;
       const b = bounds(), size = clamp(value ?? b.available * ratio, b.minimum, b.maximum);
-      root.style.setProperty('--timeline-panel-height', size + 'px');
+      if (!compact) root.style.setProperty('--timeline-panel-height', size + 'px');
+      paintPane();
       divider.setAttribute('aria-valuemin', String(Math.round(b.minimum)));
       divider.setAttribute('aria-valuemax', String(Math.round(b.maximum)));
       divider.setAttribute('aria-valuenow', String(Math.round(size)));
@@ -49,7 +57,16 @@ window.GatewayIndexWorkspace = (() => {
       const value = {ArrowUp:current + step, ArrowDown:current - step, Home:b.minimum, End:b.maximum}[event.key];
       if (value === undefined) return; event.preventDefault(); paint(value, true);
     });
+    paneDivider.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();paneDivider.focus();paneDrag={id:event.pointerId,x:event.clientX,size:viewport.getBoundingClientRect().width};paneDivider.setPointerCapture(event.pointerId);root.dataset.resizing='viewport';});
+    paneDivider.addEventListener('pointermove',event=>{if(paneDrag?.id===event.pointerId)paintPane(paneDrag.size+paneDrag.x-event.clientX,true);});
+    function releasePane(event){if(paneDrag?.id!==event.pointerId)return;paneDrag=null;delete root.dataset.resizing;}
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])paneDivider.addEventListener(type,releasePane);
+    paneDivider.addEventListener('dblclick',()=>{paneRatios[viewport.dataset.resource||'block']=viewport.dataset.resource==='transaction'?.56:.38;paintPane(undefined,true);});
+    paneDivider.addEventListener('keydown',event=>{const b=paneBounds(),current=viewport.getBoundingClientRect().width,step=event.shiftKey?48:16,value={ArrowLeft:current+step,ArrowRight:current-step,Home:b.minimum,End:b.maximum}[event.key];if(value===undefined)return;event.preventDefault();paintPane(value,true);});
     if (win.ResizeObserver) new win.ResizeObserver(() => paint()).observe(root);
+    if(win.ResizeObserver&&upper)new win.ResizeObserver(()=>paintPane()).observe(upper);
+    if(win.MutationObserver&&viewport)new win.MutationObserver(()=>paintPane()).observe(viewport,{attributes:true,attributeFilter:['data-resource']});
+    win.addEventListener('gateway:timeline-layout', () => paint());
     paint();
     return {resize:() => paint()};
   }

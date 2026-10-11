@@ -139,7 +139,7 @@ func (a *app) searchQueryContext(ctx context.Context, q string) (searchResponse,
 				return searchResponse{}, err
 			}
 			out.Kind, out.Block = "block", &v
-		} else if tx, err := a.resolveTransactionViaOverlay(q); err == nil {
+		} else if tx, err := a.resolveTransactionViaOverlayContext(ctx, q); err == nil {
 			out.Kind, out.Tx = "transaction", &tx
 		} else {
 			// A raw block hash is sufficient to ask Bitcoin directly even before

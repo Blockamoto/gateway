@@ -2,6 +2,7 @@
 // Real Indexes page and real pointer/keyboard events with disposable API data.
 // No client profile, Bitcoin peer or externally hosted service is contacted.
 const assert=require('node:assert/strict');
+const {selectHeight}=require('./timeline-browser-gestures');
 const fs=require('node:fs');
 const path=require('node:path');
 const os=require('node:os');
@@ -36,10 +37,11 @@ async function run(){
       const body=req.method()==='POST'?req.postDataJSON():null;calls.push({method:req.method(),path:url.pathname,body,time:Date.now()});
       if(url.pathname==='/api/v1/index/status')return unavailable?reply({error:'Fixture status unavailable'},'application/json',503):reply(snapshot);
       if(url.pathname==='/api/v1/index/query')return reply({rows:[],total:0,total_known:true,inspected_blocks:0,chain_state:'selected_chain'});
+      if(url.pathname==='/api/v1/index/block-map'){const height=parseInt(url.searchParams.get('block'),16);return reply({height,hash:height.toString(16).padStart(64,'0'),total:1,transaction_count:1,transactions:[{index:0,txid:height.toString(16).padStart(64,'0'),output_sats:5000000000,vsize:100,weight:400,coinbase:true}]});}
       if(url.pathname==='/api/v1/navigate'){
         const height=Number(body.address.replace('.bitcoin',''));
         assert(Number.isSafeInteger(height)&&height>=0,'Only single focused block requests are expected');
-        return reply({elapsed_ms:1,resource:{block:{height,hash:'fixture-block-'+height,previous_block_hash:'fixture-previous',merkle_root:'fixture-merkle',transaction_count:1,serialized_bytes:200,total_output_sats:5000000000,time_iso:'Fixture block time',verification_state:'selected_chain',evidence:{bytes:'cache',chain_authority:'selected_chain'},transactions:[{index:0,txid:'fixture-transaction-'+height,coinbase:true,output_sats:5000000000}]}}});
+        return reply({elapsed_ms:1,resource:{block:{height,hash:height.toString(16).padStart(64,'0'),previous_block_hash:'fixture-previous',merkle_root:'fixture-merkle',transaction_count:1,serialized_bytes:200,total_output_sats:5000000000,time_iso:'Fixture block time',verification_state:'selected_chain',evidence:{bytes:'cache',chain_authority:'selected_chain'},transactions:[{index:0,txid:height.toString(16).padStart(64,'0'),coinbase:true,output_sats:5000000000}]}}});
       }
       unexpected.push(req.method()+' '+url.pathname);return reply({error:'Unexpected action'},'application/json',500);
     });
@@ -53,11 +55,11 @@ async function run(){
     const activeMarker=()=>page.evaluate(()=>({height:Number(document.activeElement.dataset.height),edge:document.activeElement.dataset.edge,index:document.activeElement.closest('.timeline-track')?.dataset.index}));
     const heightPoint=async(height,target='.timeline-lane[data-index="blocks"]')=>{const current=await view(),box=await page.locator(target).boundingBox();assert(height>=current.from&&height<=current.to);return{x:box.x+(height-current.from+.5)/(current.to-current.from+1)*box.width,y:box.y+box.height/2};};
     const clickHeight=async(height,modifiers=[])=>{const point=await heightPoint(height);for(const key of modifiers)await page.keyboard.down(key);await page.mouse.click(point.x,point.y);for(const key of modifiers.reverse())await page.keyboard.up(key);await settle();};
-    const jump=async height=>{const before=navigations().length;await page.locator('#timeline-height').fill(String(height));await page.locator('#timeline-jump').evaluate(form=>form.requestSubmit());await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');assert.equal(navigations().length,before+1,'A deliberate jump loads exactly one block immediately');};
+    const jump=async height=>{const before=navigations().length;await selectHeight(page,height,'blocks');await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');assert.equal(navigations().length,before+1,'A deliberate jump loads exactly one block immediately');};
     const refresh=async preserveFocus=>{const response=page.waitForResponse(r=>r.url()===origin+'/api/v1/index/status');if(preserveFocus)await page.locator('#timeline-refresh').evaluate(button=>button.click());else await page.locator('#timeline-refresh').click();await response;await settle();};
-    const drag=async(locator,dx)=>{const box=await locator.boundingBox();const x=box.x+box.width/2,y=box.y+box.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y,{steps:5});await page.mouse.up();await settle();};
+    const drag=async(locator,dx)=>{await locator.waitFor({state:'visible'});const box=await locator.boundingBox();const x=box.x+box.width/2,y=box.y+box.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y,{steps:5});await page.mouse.up();await settle();};
 
-    await page.goto(origin+'/indexes',{waitUntil:'networkidle'});
+    await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.locator('#timeline-expand').click();
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks'],'Both foundational tracks exist without raw blocks');
     assert.equal(await page.locator('.timeline-add-track-row').evaluate(el=>el.parentElement.lastElementChild===el),true,'Plus row is after all tracks');
     assert.equal(await page.locator('.timeline-track[data-index="blocks"] .timeline-track-placeholder').isVisible(),false,'Empty coverage does not obscure selectable positions');
@@ -73,7 +75,7 @@ async function run(){
     assert.equal(await page.locator('#timeline-track-viewport').evaluate(el=>el.scrollTop),trackScroll);
     await plus.click();assert.equal(await picker.isVisible(),false,'Plus remains clickable and closes a full catalog');
     await plus.click();await page.keyboard.press('Escape');assert.equal(await picker.isVisible(),false,'Escape closes even when all catalog entries are disabled');
-    await plus.click();await page.locator('#timeline-height').click();assert.equal(await picker.isVisible(),false,'An outside click closes the catalog');
+    await plus.click();await page.locator('#timeline-inspector-tab').click();assert.equal(await picker.isVisible(),false,'An outside click closes the catalog');
     await page.setViewportSize({width:390,height:844});await plus.click();
     const narrowPicker=await picker.boundingBox(),narrowPlus=await plus.boundingBox();
     assert(narrowPicker.x>=0&&narrowPicker.x+narrowPicker.width<=390&&narrowPicker.y>=0&&narrowPicker.y+narrowPicker.height<=844,'The full catalog fits a narrow viewport');
@@ -124,8 +126,9 @@ async function run(){
     assert.deepEqual(await picks('blocks'),[{from:200,to:200}],'Exploring a selected marker does not change indexing selections');
     await page.locator('#timeline-ruler').focus();await page.keyboard.press('ArrowRight');await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');
     assert.equal(await playhead(),201);assert.equal(await page.locator('#timeline-ruler').evaluate(el=>document.activeElement===el),true,'Ruler keyboard focus survives its child redraw');
-    const beforeDirect=navigations().length;await clickHeight(211);await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');
+    const beforeDirect=navigations().length,picksBeforeDirect=await picks('blocks');await clickHeight(211);await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');
     assert.equal(navigations().length,beforeDirect+1);assert.equal(navigations().at(-1).body.address,'211.bitcoin','Direct block clicks load immediately');
+    assert.deepEqual(await picks('blocks'),picksBeforeDirect,'Ordinary block clicks explore without overwriting indexing selections');
     unavailable=true;await refresh(false);const beforeOffline=navigations().length;await clickHeight(212);await page.waitForTimeout(1100);
     assert.equal(await playhead(),212);assert.equal(navigations().length,beforeOffline,'Unavailable status pauses Explorer loading even though local focus can change');
     unavailable=false;await refresh(false);await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');

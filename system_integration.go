@@ -27,6 +27,14 @@ type systemIntegrationStatus struct {
 	Note               string `json:"note,omitempty"`
 }
 
+// Registry status is polled by the desktop UI. Background helpers must not
+// open a console when Gateway itself is built as a Windows GUI application.
+func registryCommand(args ...string) *exec.Cmd {
+	cmd := exec.Command("reg.exe", args...)
+	hideUpdateHelper(cmd)
+	return cmd
+}
+
 func regQueryValue(key, value string) (string, bool) {
 	if runtime.GOOS != "windows" {
 		return "", false
@@ -37,7 +45,7 @@ func regQueryValue(key, value string) (string, bool) {
 	} else {
 		args = append(args, "/v", value)
 	}
-	out, err := exec.Command("reg.exe", args...).CombinedOutput()
+	out, err := registryCommand(args...).CombinedOutput()
 	if err != nil {
 		return "", false
 	}
@@ -54,7 +62,7 @@ func regAddValue(key, value, typ, data string) error {
 		args = append(args, "/v", value)
 	}
 	args = append(args, "/t", typ, "/d", data, "/f")
-	return exec.Command("reg.exe", args...).Run()
+	return registryCommand(args...).Run()
 }
 func regDeleteValue(key, value string) error {
 	if runtime.GOOS != "windows" {
@@ -67,14 +75,14 @@ func regDeleteValue(key, value string) error {
 		args = append(args, "/v", value)
 	}
 	args = append(args, "/f")
-	_ = exec.Command("reg.exe", args...).Run()
+	_ = registryCommand(args...).Run()
 	return nil
 }
 func regDeleteKey(key string) error {
 	if runtime.GOOS != "windows" {
 		return nil
 	}
-	_ = exec.Command("reg.exe", "delete", key, "/f").Run()
+	_ = registryCommand("delete", key, "/f").Run()
 	return nil
 }
 

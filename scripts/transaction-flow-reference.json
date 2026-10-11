@@ -1,0 +1,495 @@
+{
+  "reference": "mempool/mempool@adde1343c8ab3e2258175197a7b618bec1589933",
+  "precision": 1e-7,
+  "cases": [
+    {
+      "scenario": {
+        "name": "balanced",
+        "inputs": [
+          10,
+          90
+        ],
+        "outputs": [
+          30,
+          60
+        ],
+        "fee": 10
+      },
+      "options": {
+        "width": 1200,
+        "height": 600
+      },
+      "digest": "ed5f8ef48a2a8a198afcaa8b335b028768270cafe27bf54759b4ca02150a6ba2"
+    },
+    {
+      "scenario": {
+        "name": "balanced",
+        "inputs": [
+          10,
+          90
+        ],
+        "outputs": [
+          30,
+          60
+        ],
+        "fee": 10
+      },
+      "options": {
+        "width": 640,
+        "height": 360,
+        "connectors": true
+      },
+      "digest": "b8021c1063f5236193d565fe353e88588dc18f1a75d32d490d4122285558b3fd"
+    },
+    {
+      "scenario": {
+        "name": "balanced",
+        "inputs": [
+          10,
+          90
+        ],
+        "outputs": [
+          30,
+          60
+        ],
+        "fee": 10
+      },
+      "options": {
+        "width": 390,
+        "height": 280,
+        "maxStrands": 12,
+        "tooltip": true
+      },
+      "digest": "7448926e365cff90b8f8915331c2146b9ae7236d49fca5acbe598f80e8fd834a"
+    },
+    {
+      "scenario": {
+        "name": "singleton",
+        "inputs": [
+          1050
+        ],
+        "outputs": [
+          1000
+        ],
+        "fee": 50
+      },
+      "options": {
+        "width": 1200,
+        "height": 600
+      },
+      "digest": "9fb9a510e3cc32480b6f22150f825d226e94eab826a147011c0b91e5d81f7128"
+    },
+    {
+      "scenario": {
+        "name": "singleton",
+        "inputs": [
+          1050
+        ],
+        "outputs": [
+          1000
+        ],
+        "fee": 50
+      },
+      "options": {
+        "width": 640,
+        "height": 360,
+        "connectors": true
+      },
+      "digest": "9e35f6cad4b6fa581181cb78bd02b46642f7dab69f9a878949ccc33eaf2858f3"
+    },
+    {
+      "scenario": {
+        "name": "singleton",
+        "inputs": [
+          1050
+        ],
+        "outputs": [
+          1000
+        ],
+        "fee": 50
+      },
+      "options": {
+        "width": 390,
+        "height": 280,
+        "maxStrands": 12,
+        "tooltip": true
+      },
+      "digest": "c43e80f72d42bda54d50b5d4e9a4de29e34babdbae1c9a80dcf532f560ca9086"
+    },
+    {
+      "scenario": {
+        "name": "tiny-zero",
+        "inputs": [
+          1000000,
+          1,
+          0
+        ],
+        "outputs": [
+          999990,
+          0,
+          1
+        ],
+        "fee": 10
+      },
+      "options": {
+        "width": 1200,
+        "height": 600
+      },
+      "digest": "93697860c01d8a0dac3b0e33c10d4f4fbbc95a5b9fe21456816c93c15c251f97"
+    },
+    {
+      "scenario": {
+        "name": "tiny-zero",
+        "inputs": [
+          1000000,
+          1,
+          0
+        ],
+        "outputs": [
+          999990,
+          0,
+          1
+        ],
+        "fee": 10
+      },
+      "options": {
+        "width": 640,
+        "height": 360,
+        "connectors": true
+      },
+      "digest": "325e734966f20ccc923967f6a0c8d168f055061b468a4fff2234dea7f0fde81a"
+    },
+    {
+      "scenario": {
+        "name": "tiny-zero",
+        "inputs": [
+          1000000,
+          1,
+          0
+        ],
+        "outputs": [
+          999990,
+          0,
+          1
+        ],
+        "fee": 10
+      },
+      "options": {
+        "width": 390,
+        "height": 280,
+        "maxStrands": 12,
+        "tooltip": true
+      },
+      "digest": "d13d1a0942a25736dcaf537f6f14412e648f3ebe2dd952e3e79c92d4efe6db3a"
+    },
+    {
+      "scenario": {
+        "name": "unknown",
+        "inputs": [
+          50,
+          null,
+          null
+        ],
+        "outputs": [
+          75,
+          20
+        ],
+        "fee": 5
+      },
+      "options": {
+        "width": 1200,
+        "height": 600
+      },
+      "digest": "a71d712acb1ccb98722a28014f6b6f7fbc63e49d7a1ce4bcbdefb88136f29878"
+    },
+    {
+      "scenario": {
+        "name": "unknown",
+        "inputs": [
+          50,
+          null,
+          null
+        ],
+        "outputs": [
+          75,
+          20
+        ],
+        "fee": 5
+      },
+      "options": {
+        "width": 640,
+        "height": 360,
+        "connectors": true
+      },
+      "digest": "fc99971afd96f19c07dad2de25256eb00a2ef4f853c98f2cf7a6a38d221fc786"
+    },
+    {
+      "scenario": {
+        "name": "unknown",
+        "inputs": [
+          50,
+          null,
+          null
+        ],
+        "outputs": [
+          75,
+          20
+        ],
+        "fee": 5
+      },
+      "options": {
+        "width": 390,
+        "height": 280,
+        "maxStrands": 12,
+        "tooltip": true
+      },
+      "digest": "5f76414af62e8cd8acbac533303636405df7f549363424595445831aa208ac79"
+    },
+    {
+      "scenario": {
+        "name": "coinbase",
+        "inputs": [
+          null
+        ],
+        "outputs": [
+          625000000,
+          0
+        ],
+        "fee": null,
+        "coinbase": true
+      },
+      "options": {
+        "width": 1200,
+        "height": 600
+      },
+      "digest": "0f9c88a2441c5405d12d0a701462fcfb6fe4e0cdd5fcc9e9ddfb64c634bbb7b2"
+    },
+    {
+      "scenario": {
+        "name": "coinbase",
+        "inputs": [
+          null
+        ],
+        "outputs": [
+          625000000,
+          0
+        ],
+        "fee": null,
+        "coinbase": true
+      },
+      "options": {
+        "width": 640,
+        "height": 360,
+        "connectors": true
+      },
+      "digest": "e53f043e4d4bf25fe8c1af684f24cc4af1007d12fdf451480872acf51644f7d3"
+    },
+    {
+      "scenario": {
+        "name": "coinbase",
+        "inputs": [
+          null
+        ],
+        "outputs": [
+          625000000,
+          0
+        ],
+        "fee": null,
+        "coinbase": true
+      },
+      "options": {
+        "width": 390,
+        "height": 280,
+        "maxStrands": 12,
+        "tooltip": true
+      },
+      "digest": "38f6abaf40ed05dc8476ce67d9e2ccc58bccfcc94d97d877712ea3a732fea018"
+    },
+    {
+      "scenario": {
+        "name": "all-zero",
+        "inputs": [
+          0,
+          0
+        ],
+        "outputs": [
+          0,
+          0
+        ],
+        "fee": 0
+      },
+      "options": {
+        "width": 1200,
+        "height": 600
+      },
+      "digest": "27115c6955dfde8a8eb40fcec963560106e38628162383eec1e236f78d309b42"
+    },
+    {
+      "scenario": {
+        "name": "all-zero",
+        "inputs": [
+          0,
+          0
+        ],
+        "outputs": [
+          0,
+          0
+        ],
+        "fee": 0
+      },
+      "options": {
+        "width": 640,
+        "height": 360,
+        "connectors": true
+      },
+      "digest": "2d69c253b3bdd0b05e6346842a0be47e83c70454a5aa47c4f7d376e02ba570d7"
+    },
+    {
+      "scenario": {
+        "name": "all-zero",
+        "inputs": [
+          0,
+          0
+        ],
+        "outputs": [
+          0,
+          0
+        ],
+        "fee": 0
+      },
+      "options": {
+        "width": 390,
+        "height": 280,
+        "maxStrands": 12,
+        "tooltip": true
+      },
+      "digest": "e6a9aaa58b120e51238361d78e75bacc584dc2cd753a21dc375af78d6f50a1a3"
+    },
+    {
+      "scenario": {
+        "name": "single-zero",
+        "inputs": [
+          0
+        ],
+        "outputs": [
+          0
+        ],
+        "fee": 0
+      },
+      "options": {
+        "width": 1200,
+        "height": 600
+      },
+      "digest": "0e4f5b26c1615210f1cbc9ec487fe81a0508b7c83010968224fd9a587b2709cb"
+    },
+    {
+      "scenario": {
+        "name": "single-zero",
+        "inputs": [
+          0
+        ],
+        "outputs": [
+          0
+        ],
+        "fee": 0
+      },
+      "options": {
+        "width": 640,
+        "height": 360,
+        "connectors": true
+      },
+      "digest": "a15bcc263bfb19050b9aa8d887cb8aea3d8188addb607e59a5adbea755350fde"
+    },
+    {
+      "scenario": {
+        "name": "single-zero",
+        "inputs": [
+          0
+        ],
+        "outputs": [
+          0
+        ],
+        "fee": 0
+      },
+      "options": {
+        "width": 390,
+        "height": 280,
+        "maxStrands": 12,
+        "tooltip": true
+      },
+      "digest": "6a8fc963e5ae32f0a6b33dc83fd4b556a355d353c7bb589c6cd97fbbd6fd5b3f"
+    },
+    {
+      "scenario": {
+        "name": "many",
+        "count": 260
+      },
+      "options": {
+        "width": 1200,
+        "height": 600
+      },
+      "digest": "bba5141c7338736c489f908f531f5a6b273438de93ed1a2269d5b1764f59d6a0"
+    },
+    {
+      "scenario": {
+        "name": "many",
+        "count": 260
+      },
+      "options": {
+        "width": 640,
+        "height": 360,
+        "connectors": true
+      },
+      "digest": "0e6c1059456d48a57afa19a49356fd8e9ca68eef026d64f441f03906b0c45f7d"
+    },
+    {
+      "scenario": {
+        "name": "many",
+        "count": 260
+      },
+      "options": {
+        "width": 390,
+        "height": 280,
+        "maxStrands": 12,
+        "tooltip": true
+      },
+      "digest": "2e53b315ad91c1c190fe4aeffe2c70ab23d618bddcfbc29103d754175cc7f173"
+    },
+    {
+      "scenario": {
+        "name": "strands",
+        "count": 30
+      },
+      "options": {
+        "width": 1200,
+        "height": 600
+      },
+      "digest": "b0cc44e51b41aa432a1c50c6ce2500fd9bd27d9669adb4f965093402264405e3"
+    },
+    {
+      "scenario": {
+        "name": "strands",
+        "count": 30
+      },
+      "options": {
+        "width": 640,
+        "height": 360,
+        "connectors": true
+      },
+      "digest": "23d6d470666114b8d357af12385f98a9c86fd2956abbbf5c6af220edd9813466"
+    },
+    {
+      "scenario": {
+        "name": "strands",
+        "count": 30
+      },
+      "options": {
+        "width": 390,
+        "height": 280,
+        "maxStrands": 12,
+        "tooltip": true
+      },
+      "digest": "cae43820ed1ccbb2d2028929f49380b0f233d74dd5869c25b82b04017e5dafc5"
+    }
+  ]
+}

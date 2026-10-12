@@ -315,3 +315,48 @@ func TestTimelineExplicitInstanceGapsAreNeverPaintedAsIndexed(t *testing.T) {
 		t.Fatal("projection mutated source instance")
 	}
 }
+
+func TestTimelinePotentialStartMatchesCatalogWithoutRestrictingCoverage(t *testing.T) {
+	inscriptions, err := findIndexDefinition("inscriptions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inscriptions.StartHeight != 0 || !inscriptions.ArbitraryStart {
+		t.Fatal("suggested start restricted explicit earlier scans", inscriptions)
+	}
+	for _, tc := range []struct {
+		name string
+		def  indexDefinition
+		want int64
+	}{
+		{"mainnet", inscriptions, 767430},
+		{"other-network", indexDefinition{ID: "inscriptions", Network: "bitcoin-testnet", StartHeight: 123}, 123},
+		{"blocks", indexDefinition{ID: "blocks"}, 0},
+		{"bitmap", indexDefinition{ID: "bitmap", StartHeight: 792435}, 792435},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _, hashes := timelineFixture(t, 6)
+			track := timelineTrack(t, a.indexTimeline([]indexDefinition{tc.def}, nil, nil), tc.def.ID)
+			if track.PotentialFrom != tc.want || track.PotentialFrom != defaultIndexFrom(tc.def) {
+				t.Fatalf("empty potential starts at %d, want catalog default %d", track.PotentialFrom, tc.want)
+			}
+			if tc.name != "mainnet" {
+				return
+			}
+			instances := []indexInstance{{Definition: "inscriptions", Coverage: []heightInterval{{0, 5}}, Gaps: []heightInterval{{2, 2}}, Checkpoint: &indexCheckpoint{From: 0, Height: 5, BlockHash: hashes[5]}}}
+			track = timelineTrack(t, a.indexTimeline([]indexDefinition{tc.def}, nil, instances), tc.def.ID)
+			if track.PotentialFrom != tc.want || !reflect.DeepEqual(track.Coverage, []heightInterval{{0, 1}, {3, 5}}) || !reflect.DeepEqual(track.Gaps, []heightInterval{{2, 2}}) {
+				t.Fatal("potential presentation changed explicit earlier coverage", track)
+			}
+		})
+	}
+	plan, err := planIndex(indexBuildRequest{Index: "inscriptions"})
+	if err != nil || plan.From != 767430 {
+		t.Fatal("fresh range no longer uses the catalog suggestion", plan, err)
+	}
+	genesis := int64(0)
+	plan, err = planIndex(indexBuildRequest{Index: "inscriptions", From: &genesis})
+	if err != nil || plan.From != 0 || plan.Definition.RuleHash != inscriptions.RuleHash {
+		t.Fatal("explicit genesis range or recipe changed", plan, err)
+	}
+}

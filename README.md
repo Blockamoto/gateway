@@ -4,7 +4,7 @@ Gateway is a Bitcoin block explorer that retrieves the blocks you ask for. Explo
 
 **0.7.1 is a public testing release with a timeline workspace.** Its active indexes are **Headers** and **Bitcoin Blocks**. Additional indexes remain locked while they undergo further validation. See [current status](docs/STATUS.md) for validation and hosted delivery status.
 
-The working source is **0.7.3**, The transactions update, approved after local review. A draft release is being prepared separately. It enables transaction locators and optional inscription-related locators, with independent "Index as you browse" settings. The shared workspace shows block maps, transaction flows and isolated inscription content. This source version has not replaced the published downloads or hosted update feed. See [the transaction test guide](docs/TESTING-0.7.3.md).
+The working source is **0.7.4**, adding the **Transaction Input/Output (TXIO) index** and durable Bitcoin serialized block bodies. TXIO connects inputs to their original outputs and outputs to their spending inputs. Blocks retain compact transaction order metadata and verified raw bodies; compatible legacy conversion keeps the old copies. The shared workspace shows block maps, transaction flows and isolated inscription content. See [the 0.7.4 test guide](docs/TESTING-0.7.4.md) and [status](docs/STATUS.md) for validation and publication progress.
 
 ## Start here
 
@@ -20,7 +20,7 @@ Try `0.bitcoin` in Gateway's address field. It opens the genesis block. `0.0.bit
 
 Headers establish the selected proof-of-work chain; they do not contain block bodies. Gateway fetches blocks from ordinary Bitcoin peers or optional local sources. Transactions inside a known block need no additional index. An unknown transaction ID may require a containing-block hint.
 
-The Indexes workspace combines a zoomable timeline with Inspector and Block Explorer tabs. The playhead controls exploration; selected ranges prepare indexing work for explicit review and start. The schema, bounded Blocks jobs, source retention, peer controls and optional Windows browser integration remain available. [Indexing](docs/INDEXING.md) explains coverage and storage. [CLI.txt](CLI.txt) lists supported command-line examples.
+The Indexes workspace combines a zoomable timeline with context-aware Details, an Inspector and a shared viewport. The playhead controls exploration; selected ranges prepare indexing work for explicit review and start. The schema, bounded Blocks jobs, source retention, peer controls and optional Windows browser integration remain available. [Indexing](docs/INDEXING.md) explains coverage and storage. [CLI.txt](CLI.txt) lists supported command-line examples.
 
 ## Connections and privacy
 
@@ -32,7 +32,7 @@ The Peers page uses aliases until you reveal an address. Aliases are a display c
 
 Gateway verifies block identity, proof of work, transaction and witness commitments and selected-chain context. It does not replace Bitcoin Core's full script and UTXO consensus validation. Missing data is not proof of nonexistence, and a position inside an output is not proof of current ownership.
 
-The inscription source stage enables Lean positional records and optional Full reveal records. It does not infer global inscription numbers, sat identity, current ownership or parent-child provenance. Transaction-ID lookup uses available locators; missing locations remain unresolved. Gateway peerhood, spender/address, Sat/Satline, Bitmap and **Bitmap: Terrain Claim Chains** features remain gated. Their presence in the source does not make them supported features. The [roadmap](docs/GATEWAY-ROADMAP.md) separates available work from future work without promising release dates.
+Lean positional inscription records and optional Full reveal records do not infer global inscription numbers, sat identity, current ownership or parent-child provenance. Transaction-ID lookup uses available locators; missing locations remain unresolved. TXIO unknown results do not prove an output is unspent. Gateway peerhood, address, Sat/Satline, Bitmap and **Bitmap: Terrain Claim Chains** features remain gated. Their presence in the source does not make them supported features. The [roadmap](docs/GATEWAY-ROADMAP.md) separates available work from future work without promising release dates.
 
 ## Test, contribute and build
 

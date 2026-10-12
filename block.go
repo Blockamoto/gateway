@@ -435,6 +435,9 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 	if policy == "legacy" {
 		a.indexVerifiedBlockKnowledge(view)
 	}
+	if err := a.restoreCommittedRawBody(ctx, target, payload); err != nil {
+		return blockView{}, err
+	}
 
 	a.settingsMu.RLock()
 	cacheEnabled := a.settings.CacheBlocks
@@ -451,7 +454,7 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 		if len(payload) > maxMessageSize {
 			return blockView{}, fmt.Errorf("retained block exceeds Bitcoin block size limit")
 		}
-		if err := atomicWriteBytes(retained, payload); err != nil {
+		if err := writeSharedRawObject(a.dataDir, retained, target, payload); err != nil {
 			return blockView{}, err
 		}
 	}
@@ -463,10 +466,7 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 		}
 	}
 	if !fromCache && writeCache {
-		if err := os.MkdirAll(filepath.Dir(binPath), 0700); err != nil {
-			return blockView{}, err
-		}
-		if err := os.WriteFile(binPath, payload, 0644); err != nil {
+		if err := writeSharedRawObject(a.dataDir, binPath, target, payload); err != nil {
 			return blockView{}, err
 		}
 	}

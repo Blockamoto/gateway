@@ -219,7 +219,7 @@ func (a *app) readIndexPublication(id string) (indexPublication, error) {
 	if p.Manifest.Definition != id || !validHash(p.Secret) {
 		return p, fmt.Errorf("invalid publication")
 	}
-	if info, err := os.Stat(filepath.Join(a.dataDir, "indexes", id, "commits", p.Manifest.Checkpoint.Commitment+".json")); err != nil || !info.Mode().IsRegular() {
+	if info, err := os.Stat(indexCommitReadPath(a.dataDir, id, p.Manifest.Checkpoint.Commitment)); err != nil || !info.Mode().IsRegular() {
 		return p, fmt.Errorf("published checkpoint data is unavailable")
 	}
 	if !a.indexCheckpointCurrent(p.Manifest.Checkpoint) {
@@ -329,7 +329,7 @@ func readIndexPeerBatch(root string, d indexDefinition, commit string) (indexBat
 	if !validHash(commit) {
 		return b, fmt.Errorf("invalid commitment")
 	}
-	if err := readIndexPeerJSON(filepath.Join(root, "indexes", d.ID, "commits", commit+".json"), maxIndexPeerBatchBytes, &b); err != nil {
+	if err := readIndexPeerJSON(indexCommitReadPath(root, d.ID, commit), maxIndexPeerBatchBytes, &b); err != nil {
 		return b, err
 	}
 	if b.Checkpoint.Commitment != commit || !validIndexPeerCheckpoint(b.Checkpoint, d) || batchRecordsHash(b) != b.Checkpoint.RecordsHash {
@@ -357,11 +357,11 @@ func validateIndexPeerLocatorRecords(id string, b indexBatch) error {
 		}
 		return validateTransactionPayload(b, id)
 	}
-	if b.TransactionLocator != nil || b.Bitcoin == nil || len(b.Bitcoin.TxIDs) == 0 || len(b.Bitcoin.TxIDs) != len(b.Bitcoin.Transactions) {
+	if b.TransactionLocator != nil || b.Bitcoin == nil || validateBitcoinBodyRecord(b.Bitcoin) != nil || validateBitcoinBodyAnchor(b) != nil {
 		return fmt.Errorf("incomplete peer Bitcoin records")
 	}
 	for i, txid := range b.Bitcoin.TxIDs {
-		if !validHash(txid) || b.Bitcoin.Transactions[i].TxID != txid || b.Bitcoin.Transactions[i].Index != i {
+		if !validHash(txid) || len(b.Bitcoin.Transactions) > 0 && (b.Bitcoin.Transactions[i].TxID != txid || b.Bitcoin.Transactions[i].Index != i) {
 			return fmt.Errorf("peer Bitcoin transaction order mismatch")
 		}
 	}

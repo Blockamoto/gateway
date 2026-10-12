@@ -1,6 +1,14 @@
 # Gateway roadmap
 
-Gateway 0.7.1 builds on the first public release with a timeline workspace for Headers and Bitcoin Blocks. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for publication and acceptance status.
+Gateway 0.7.4 builds on the timeline, inscription and transaction stages with TXIO relationships and durable serialized block bodies. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for publication and acceptance status.
+
+## Current 0.7.4 work
+
+- Enable the TXIO index with one canonical spend set and automatic Input/Output lookup; retain legacy identifiers and unknown-state distinctions.
+- Store verified Bitcoin serialized block bodies with compact ordered transaction metadata, shared temporary decoding and resumable compatible legacy migration.
+- Keep legacy duplicate bodies until explicit cleanup; broad destructive index management is deferred.
+- Correct the inscription potential-range boundary and reserve accessible map controls outside the visualization.
+- Prepare a GitHub prerelease and promote its exact signed artifacts through the existing hosted channel, respecting each installation's update preferences.
 
 ## Scope in 0.7.1
 
@@ -36,6 +44,6 @@ These stages describe order, not promised dates. They do not enable current owne
 
 ## Future, currently locked
 
-Beyond the staged inscription/transaction work, spender/address, UTXO, Sat/Satline, Bitmap and parcel capabilities remain unavailable. **Bitmap: Terrain Claim Chains** is the name of the locked Terrain Claim Chains feature; it introduces no active behavior in this release.
+Beyond the inscription/transaction/TXIO work, address, UTXO, Sat/Satline, Bitmap and parcel capabilities remain unavailable. **Bitmap: Terrain Claim Chains** is the name of the locked Terrain Claim Chains feature; it introduces no active behavior in this release.
 
 Gateway-to-Gateway peerhood and index sharing also remain locked. Their eventual scope and trust model require separate validation. Related schema and reference-project alignment can inform future work without implying conformance or a release commitment today.

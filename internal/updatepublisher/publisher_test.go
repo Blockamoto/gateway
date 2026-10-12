@@ -358,6 +358,25 @@ func TestPublisherPrivateGitHubOriginDownloadAndIntegrity(t *testing.T) {
 	if len(downloaded.Packages) != 2 || downloaded.Revision != testRevision {
 		t.Fatal("incorrect authenticated origin packages")
 	}
+	// Exact approval, not GitHub's latest-release classification, selects the
+	// ordinary feed. A published prerelease still needs all origin checks.
+	var releaseDocument map[string]any
+	if err := json.Unmarshal(releaseData, &releaseDocument); err != nil {
+		t.Fatal(err)
+	}
+	releaseDocument["prerelease"] = true
+	prereleaseData, _ := json.Marshal(releaseDocument)
+	files["/repos/Blockamoto/gateway/releases/tags/v"+testVersion] = prereleaseData
+	if prerelease, err := fetchGitHub(context.Background(), testVersion, "fixture-private-token", t.TempDir(), server.URL, server.Client()); err != nil || prerelease.Revision != testRevision || len(prerelease.Packages) != 2 {
+		t.Fatal("explicitly approved prerelease excluded from normal delivery", err)
+	}
+	releaseDocument["draft"] = true
+	draftData, _ := json.Marshal(releaseDocument)
+	files["/repos/Blockamoto/gateway/releases/tags/v"+testVersion] = draftData
+	if _, err := fetchGitHub(context.Background(), testVersion, "fixture-private-token", t.TempDir(), server.URL, server.Client()); err == nil {
+		t.Fatal("draft accepted merely because prereleases are deliverable")
+	}
+	files["/repos/Blockamoto/gateway/releases/tags/v"+testVersion] = prereleaseData
 	if _, err := fetchGitHub(context.Background(), "0.6.3", "fixture-private-token", t.TempDir(), server.URL, server.Client()); err == nil {
 		t.Fatal("auto-promoted unsigned old release")
 	}

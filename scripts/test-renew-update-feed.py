@@ -99,6 +99,15 @@ class PromotionTests(unittest.TestCase):
 
 
 class ApprovalTests(unittest.TestCase):
+    def test_explicitly_approved_prerelease_remains_renewable_but_draft_does_not(self):
+        release = {"id": 74, "tag_name": "v" + VERSION, "html_url": "https://github.com/" + renewal.REPOSITORY + "/releases/tag/v" + VERSION, "draft": False, "prerelease": True}
+        gh = renewal.GitHub("fixture-token")
+        with mock.patch.object(gh, "api", side_effect=[release, []]):
+            self.assertTrue(gh.release(VERSION)["prerelease"])
+        with mock.patch.object(gh, "api", return_value={**release, "draft": True}):
+            with self.assertRaises(renewal.RenewalError):
+                gh.release(VERSION)
+
     def old_and_new(self):
         old = {"application": {"sequence": 9, "issued_at": "old", "expires_at": "old", "version": VERSION, "artifacts": [{"sha256": "original"}]},
                "headers": {"sequence": 4, "issued_at": "old", "expires_at": "old", "chunks": [{"sha256": "original"}]}}

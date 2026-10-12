@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "version": "0.7.4",
+  "title": "TXIO and serialized block bodies",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-12",
+  "status": "final-validation-in-progress",
+  "published": false,
+  "release_kind": "prerelease",
+  "source_identity": "SOURCE-REVISION.txt and artifact-manifest.json identify the committed packaging source. Development-runtime checks below are scoped to their exact executable hash; final packages and hosted delivery require separate checks.",
+  "enabled_indexes": [
+    "headers",
+    "blocks",
+    "inscriptions",
+    "tx-locator",
+    "txo-spender"
+  ],
+  "product_names": {
+    "txo-spender": "TXIO (Transaction Input/Output)"
+  },
+  "gated_features": [
+    "gateway-peerhood",
+    "sat-state",
+    "satline",
+    "bitmap",
+    "bitmap-compatibility",
+    "address-history",
+    "address-state"
+  ],
+  "storage": {
+    "blocks_body_schema": 2,
+    "txio_schema": 2,
+    "legacy_copies": "retained without automatic removal",
+    "new_raw_body_allocation": "NTFS hard links share verified allocation across independent cache, retained and durable names; unsupported filesystems preserve durability with measured independent-copy fallback.",
+    "native_measured_blocks_0_and_1": {
+      "legacy_commit_json_bytes": 4196,
+      "compact_commit_json_bytes": 2534,
+      "durable_serialized_body_bytes": 500,
+      "scope": "Canonical commit and body payload only; excludes receipts, private accelerators, heads, filesystem allocation and retained legacy copies."
+    },
+    "native_txio_block_170_commit_json_bytes": 1496,
+    "genesis_285_byte_allocation": {
+      "cache_and_durable_logical_bytes": 570,
+      "cache_retained_durable_logical_bytes": 855,
+      "ntfs_unique_bytes": 285,
+      "unsupported_two_name_unique_bytes": 570,
+      "unsupported_three_name_unique_bytes": 855
+    }
+  },
+  "validation": {
+    "windows_go_suite": "final run pending",
+    "fresh_backend_review": {
+      "result": "PASS",
+      "new_txio_raw_migration_tests": 18,
+      "existing_lean_full_privacy_eviction_legacy_checks": 12,
+      "late_graph_opt_in_and_update_drain": "PASS"
+    },
+    "source_browser_suites": {
+      "result": "PASS",
+      "count": 18,
+      "scope": "Controlled source fixtures including TXIO navigation, potential-range clipping, gesture boundaries, stale responses and unobscured reserved controls."
+    },
+    "javascript_helpers": {
+      "result": "PASS",
+      "count": 10,
+      "bitfeed_ordered_tiles": 704,
+      "mempool_geometry_vectors": 27
+    },
+    "packaging_regressions": {
+      "result": "PASS",
+      "count": 9
+    },
+    "feed_renewal_regressions": {
+      "result": "PASS",
+      "count": 19,
+      "approved_prerelease_accepted_and_draft_rejected": true
+    },
+    "update_apply_suite": {
+      "result": "PASS",
+      "passed": 75,
+      "expected_skips": 1,
+      "initial_failure": "A parallel run exceeded the existing healthy-startup acknowledgement timeout. The isolated case and subsequent complete serial suite passed; the original timeout remains recorded."
+    },
+    "development_native": {
+      "result": "PASS",
+      "executable_sha256": "1e2fbf27c96740c4c551ed090c871519561542385e4827c2e0e320e913b9e933",
+      "published_0_7_3_profiles": "Automatic versioned migration preserved original commitments, settings and the validated header snapshot.",
+      "real_bitcoin_relationship": "Original output 0.0.9 and spending input i0.1.170 resolved in both directions through saved TXIO API and compiled UI without fallback.",
+      "cold_restart_and_eviction": "Both saved links remained known after restart and disposable source-byte eviction. Unavailable block bytes returned an explicit error.",
+      "renderer": "Genuine genesis map/flow, desktop and narrow compiled layouts, 120/180px constrained toolbars, keyboard zoom/Fit, fullscreen, content isolation, media and recursion passed.",
+      "limitations": "Development executable predates the final enqueue guard and storage-allocation correction. Chromium DOM and screenshots do not establish native WebView sharpness."
+    },
+    "exact_package_builds_audits_and_native_checks": "pending",
+    "linux_ci": "pending",
+    "system_installation": "not_established",
+    "raw_storage_completion": {
+      "result": "PASS",
+      "ntfs_sharing_eviction_atomic_repair_privacy": "PASS",
+      "exfat_independent_copy_fallback": "PASS",
+      "preserved_legacy_copies": "PASS",
+      "independent_final_review": "PASS"
+    },
+    "windows_cleanup_identity": {
+      "result": "PASS",
+      "complete_cleanup_suite": "PASS",
+      "rebuilt_runtime_authenticated_cleanup": "PASS",
+      "same_size_same_timestamp_replacement_rejected": "PASS",
+      "external_wallet_preserved": true,
+      "missing_windows_symlink_privilege": "Only three link-specific subtests skip; other safety assertions execute."
+    }
+  },
+  "hosted_delivery": {
+    "status": "not_yet_promoted",
+    "publisher": "https://gateway-updates.onrender.com",
+    "public_key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
+    "render_auto_deploy": "enabled, on commit to main; independently verified",
+    "initial_live_application_version": "0.7.1",
+    "initial_live_application_sequence": 6,
+    "initial_live_header_sequence": 5,
+    "published_0_7_3_automatic_upgrade": "pending"
+  },
+  "notes": [
+    "Unknown or unresolved TXIO results do not prove that an output is unspent.",
+    "Blocks provide ordered transaction knowledge independently of the Transaction Index.",
+    "Canonical facts, retained raw bytes and rebuildable private accelerators have separate lifetimes.",
+    "Fresh profiles check automatically but do not install automatically without opt-in; existing explicit preferences are preserved.",
+    "GitHub publication and Render code deployment alone do not prove signed client delivery.",
+    "Windows executables remain unsigned. Local antivirus diagnostics do not establish clearance on other machines.",
+    "No local profile, credential, private signing key or personal audit artifact is included in release inputs."
+  ]
+}

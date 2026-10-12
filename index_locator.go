@@ -32,7 +32,15 @@ var indexLocatorMu sync.Mutex
 // repair or append acceleration against that stale snapshot after a writer has
 // advanced the real head. Call only while holding the publication mutex.
 func (s *indexStore) requireVisibleLocatorHead() error {
-	current, err := indexStoreHead(filepath.Dir(filepath.Dir(s.dir)), s.definition.ID)
+	profile := s.profileRoot
+	if profile == "" {
+		profile = filepath.Dir(filepath.Dir(s.dir))
+	}
+	profile = filepath.Clean(profile)
+	current, err := indexStoreHead(profile, s.definition.ID)
+	if s.stagedMigration {
+		current, err = readBlocksHeadAt(profile, s.dir)
+	}
 	if err != nil {
 		return err
 	}
@@ -50,7 +58,11 @@ func (s *indexStore) syncLocatorDirectory(path string) error {
 }
 
 func (s *indexStore) makeLocatorDirectories(path string) error {
-	profile := filepath.Dir(filepath.Dir(s.dir))
+	profile := s.profileRoot
+	if profile == "" {
+		profile = filepath.Dir(filepath.Dir(s.dir))
+	}
+	profile = filepath.Clean(profile)
 	rel, err := filepath.Rel(profile, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("locator directory leaves profile")
@@ -101,6 +113,9 @@ func (s *indexStore) makeLocatorDirectories(path string) error {
 		}
 		if dir == profile {
 			break
+		}
+		if filepath.Dir(dir) == dir {
+			return fmt.Errorf("locator directory does not reach its profile root")
 		}
 	}
 	return nil
@@ -456,7 +471,7 @@ func (s *indexStore) locatorKind() string {
 		return "sat-movements-v1"
 	}
 	if s.definition.ID == "txo-spender" {
-		return "spenders-v1"
+		return "txio-v2"
 	}
 	if s.definition.ID == "inscriptions" {
 		return "occurrences-v1"
@@ -530,9 +545,7 @@ func (s *indexStore) indexBatchLocatorKeys(b indexBatch) ([]string, error) {
 	} else if b.Sats != nil {
 		keys = satHistoryLocatorKeys(b.Sats)
 	} else if b.Spenders != nil {
-		for _, r := range b.Spenders.Rows {
-			keys = append(keys, indexSpendKey(r.PrevTxID, r.Vout))
-		}
+		keys = txioBatchKeys(b)
 	} else if s.definition.ID == "inscriptions" {
 		for _, occurrence := range b.Inscriptions {
 			if _, _, err := inscriptionParts(occurrence.ID); err != nil {

@@ -26,9 +26,12 @@ const indexExplorerMaxBatches = 512
 const indexExplorerMaxBytes int64 = 64 << 20
 
 // Bitcoin batches reuse the same immutable range/checkpoint machinery. Blocks
-// preserve decoded transaction evidence; locator-only batches preserve IDs in
+// preserve verified serialized bodies plus compact ordered transaction IDs;
+// old decoded batches remain readable. Locator-only batches preserve IDs in
 // block order and require a source provider for transaction bytes.
 type bitcoinIndexBlock struct {
+	BodySchema      int               `json:"body_schema,omitempty"`
+	RawBody         *indexedRawBody   `json:"raw_body,omitempty"`
 	VerifierVersion int               `json:"verifier_version,omitempty"`
 	TxIDs           []string          `json:"txids"`
 	Transactions    []transactionView `json:"transactions,omitempty"`
@@ -180,8 +183,14 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 					retained = nil
 				}
 				candidate = &txLocation{TxID: txid, Height: b.Checkpoint.Height, BlockHash: b.Checkpoint.BlockHash, TxIndex: i}
-				if b.Bitcoin != nil && reusableBitcoinEvidence(b.Bitcoin) && len(b.Bitcoin.Transactions) == len(b.Bitcoin.TxIDs) {
-					copy := b.Bitcoin.Transactions[i]
+				if b.Bitcoin != nil && reusableBitcoinEvidence(b.Bitcoin) {
+					decoded, decodeErr := a.decodedIndexBlockContext(ctx, s, b)
+					if decodeErr != nil {
+						// A durable locator remains useful if its body was deliberately
+						// evicted or damaged; the shared provider path can reacquire it.
+						continue
+					}
+					copy := decoded.Transactions[i]
 					if copy.TxID != txid {
 						return fmt.Errorf("indexed transaction identity mismatch")
 					}

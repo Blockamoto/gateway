@@ -292,7 +292,7 @@ func Test073BlockMapRealBytesEndpointAndGatePromotion(t *testing.T) {
 	if view.Total != 1 || !view.Transactions[0].Coinbase || view.Transactions[0].OutputSats != 5000000000 || view.Indexing[0].State != "indexed" {
 		t.Fatal(view)
 	}
-	if !releaseFeatureAvailable("tx-locator") || !releaseInscriptionLocatorsAvailable() || releaseFeatureAvailable("gateway-peerhood") || releaseFeatureAvailable("txo-spender") {
+	if !releaseFeatureAvailable("tx-locator") || !releaseInscriptionLocatorsAvailable() || !releaseFeatureAvailable("txo-spender") || releaseFeatureAvailable("gateway-peerhood") {
 		t.Fatal("stage boundaries lost")
 	}
 	for _, args := range [][]string{{"browse", "tx-locator", "enable"}, {"browse", "inscriptions", "disable"}} {

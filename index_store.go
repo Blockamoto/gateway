@@ -50,6 +50,9 @@ type indexHead struct {
 	Published  bool   `json:"published"`
 }
 type indexStore struct {
+	profileRoot              string
+	stagedMigration          bool
+	spenderOrigin            func(context.Context, inputView, int64, int) (txioCreation, error)
 	retainSatHistory         bool
 	numberingValues          func(transactionView, int64) ([]uint64, error)
 	dir                      string
@@ -67,6 +70,14 @@ func openIndexStore(root, id string) (*indexStore, error) {
 	return openIndexStoreContext(context.Background(), root, id)
 }
 func openIndexStoreContext(ctx context.Context, root, id string) (*indexStore, error) {
+	if id == "blocks" {
+		// Failed conversions retain the fully readable legacy root. Cancellation
+		// still stops a build rather than silently continuing its work.
+		_ = migrateBlockBodiesContext(ctx, root)
+		if e := ctx.Err(); e != nil {
+			return nil, e
+		}
+	}
 
 	s, e := indexStoreHead(root, id)
 	if e != nil {
@@ -102,7 +113,19 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 	if !d.Buildable {
 		return nil, fmt.Errorf("%s has no derivation executor", id)
 	}
-	s := &indexStore{dir: filepath.Join(root, "indexes", id), definition: d, winners: map[uint64]string{}}
+	dir := filepath.Join(root, "indexes", id)
+	if id == "blocks" {
+		var redirect blocksStorageRoot
+		if raw, readErr := os.ReadFile(filepath.Join(dir, "storage-v2.json")); readErr == nil {
+			if json.Unmarshal(raw, &redirect) != nil || redirect.Schema != 2 || redirect.Root != "v2" {
+				return nil, fmt.Errorf("invalid Blocks storage root")
+			}
+			dir = filepath.Join(dir, "v2")
+		} else if !os.IsNotExist(readErr) {
+			return nil, readErr
+		}
+	}
+	s := &indexStore{profileRoot: root, dir: dir, definition: d, winners: map[uint64]string{}}
 	b, e := os.ReadFile(filepath.Join(s.dir, "head.json"))
 	if os.IsNotExist(e) {
 		return s, nil
@@ -263,10 +286,14 @@ func (s *indexStore) readBatch(commit string) (indexBatch, error) {
 		if b.Bitcoin != nil || b.Sats != nil || b.Numbering != nil || len(b.Inscriptions) > 0 || len(b.Bitmap) > 0 {
 			return b, fmt.Errorf("invalid spender payload")
 		}
-		for _, r := range b.Spenders.Rows {
+		for i := range b.Spenders.Rows {
+			r := txioSpendRow(b.Spenders, i)
 			if !validHash(r.PrevTxID) || !validHash(r.TxID) || r.Vin < 0 || r.TxIndex < 1 {
 				return b, fmt.Errorf("invalid spender record")
 			}
+		}
+		if e = validateTXIOBatch(b); e != nil {
+			return b, e
 		}
 	}
 	if (s.definition.ID == "sat-state") != (b.Sats != nil) {
@@ -282,8 +309,12 @@ func (s *indexStore) readBatch(commit string) (indexBatch, error) {
 		if len(b.Bitmap) > 0 || len(b.Inscriptions) > 0 || len(b.Diagnostics) > 0 {
 			return b, fmt.Errorf("unexpected Bitcoin index records")
 		}
-		if s.definition.ID == "blocks" && len(b.Bitcoin.Transactions) != len(b.Bitcoin.TxIDs) {
-			return b, fmt.Errorf("incomplete transaction records")
+		if s.definition.ID == "blocks" {
+			if e = validateBitcoinBodyRecord(b.Bitcoin); e != nil {
+				return b, e
+			}
+		} else if b.Bitcoin.BodySchema != 0 || b.Bitcoin.RawBody != nil {
+			return b, fmt.Errorf("raw body metadata in legacy transaction locator")
 		}
 		if len(b.Bitcoin.TxIDs) == 0 || (s.definition.ID == "tx-locator" && len(b.Bitcoin.Transactions) != 0) {
 			return b, fmt.Errorf("invalid Bitcoin index payload")
@@ -298,6 +329,9 @@ func (s *indexStore) readBatch(commit string) (indexBatch, error) {
 		}
 	}
 	c := b.Checkpoint
+	if e = validateBitcoinBodyAnchor(b); e != nil {
+		return b, e
+	}
 	d := s.definition
 	if c.Version == 1 && d.Version == 2 && (d.ID == "inscriptions" || d.ID == "tx-locator") {
 		d = legacyIndexDefinition(d)
@@ -440,7 +474,7 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 	}
 	b := indexBatch{PreviousBlockHash: block.PreviousBlockHash, Diagnostics: extracted.Diagnostics}
 	if s.definition.ID == "txo-spender" {
-		b.Spenders, e = deriveIndexSpenders(block)
+		b.Spenders, e = s.deriveTXIOBlock(block)
 		if e != nil {
 			return e
 		}
@@ -457,7 +491,10 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 			b.Bitcoin.TxIDs = append(b.Bitcoin.TxIDs, tx.TxID)
 		}
 		if s.definition.ID == "blocks" {
-			b.Bitcoin.Transactions = block.Transactions
+			b.Bitcoin, e = s.prepareRawBitcoinRecord(block)
+			if e != nil {
+				return e
+			}
 		}
 	} else if s.definition.ID == "bitmap" {
 		b.Bitmap = bitmapCandidatesLookup(extracted.Occurrences, func(n uint64) (string, bool) { v, ok := s.winners[n]; return v, ok })
@@ -500,6 +537,13 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 }
 
 func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash string, from int64, retention string) error {
+	if s.definition.ID == "blocks" && !s.stagedMigration {
+		blocksBodyMigrationMu.Lock()
+		defer blocksBodyMigrationMu.Unlock()
+		if err := s.requireActiveBlocksRoot(); err != nil {
+			return err
+		}
+	}
 	if s.checkpoint != nil {
 		if height != s.checkpoint.Height+1 || b.PreviousBlockHash != s.checkpoint.BlockHash {
 			return fmt.Errorf("nonsequential index block")
@@ -578,6 +622,13 @@ func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash s
 // Unavailable chain evidence is an error, never evidence of a reorg. Rewind
 // only after actual hash disagreement, retaining old immutable audit batches.
 func (s *indexStore) reconcile(hashAt func(int64) (string, error)) error {
+	if s.definition.ID == "blocks" && !s.stagedMigration {
+		blocksBodyMigrationMu.Lock()
+		defer blocksBodyMigrationMu.Unlock()
+		if err := s.requireActiveBlocksRoot(); err != nil {
+			return err
+		}
+	}
 	if s.checkpoint == nil {
 		return nil
 	}

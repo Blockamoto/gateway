@@ -99,6 +99,18 @@ assert.deepEqual(plain(trackModel(derived,{instances:[{definition:derived.id,cov
 assert.deepEqual(plain(trackModel(derived,{instances:[{definition:derived.id,checkpoint:{from:0,height:999999}}]}).coverage),[],'A checkpoint height alone never establishes an entire range');
 for(const verification of ['stale_reorg','anchor_unavailable'])assert.deepEqual(plain(trackModel(derived,{instances:[{definition:derived.id,coverage:[{from:0,to:10}],verification}]}).coverage),[],'Unverified chain evidence cannot establish current fallback coverage');
 
+const inscriptions={id:'inscriptions',network:'bitcoin-mainnet',start_height:0,buildable:true};
+assert.equal(trackModel(inscriptions,{}).potentialFrom,767430,'An empty inscription track uses the same suggested start as a fresh scan');
+const earlyInscriptions={instances:[{definition:'inscriptions',checkpoint:{from:0,height:10},coverage:[{from:0,to:10}],gaps:[{from:4,to:6}]}],live:[{index:'inscriptions',initial_from:0}]};
+const earlyModel=trackModel(inscriptions,earlyInscriptions);
+assert.equal(earlyModel.initialFrom,0,'A saved genesis scan keeps its own live origin');
+assert.equal(earlyModel.potentialFrom,767430,'A saved live origin does not change the ghost presentation boundary');
+assert.deepEqual(plain(earlyModel.coverage),[{from:0,to:3},{from:7,to:10}],'Actual early coverage stays independent of the potential range');
+assert.equal(trackModel({...inscriptions,network:'bitcoin-testnet',start_height:123},{}).potentialFrom,123,'Other networks use their catalog start rather than a mainnet constant');
+assert.equal(trackModel(inscriptions,{timeline:{tracks:[{id:'inscriptions',potential_from:-1}]}}).potentialFrom,767430,'Invalid projected starts use the shared suggested-start fallback');
+assert.equal(trackModel(inscriptions,{timeline:{tracks:[{id:'inscriptions',potential_from:800000}]}}).potentialFrom,800000,'Valid projected catalog boundaries take precedence over the fallback');
+assert.equal(trackModel(blocks,{}).potentialFrom,0,'The whole-chain Blocks ghost still begins at genesis');
+
 assert.equal(established({id:'headers'},{}),true,'Headers is always the foundational track');
 assert.equal(established(blocks,{providers:[{id:'blocks',coverage:[{from:0,to:100}]}]}),false,'An external provider alone does not add a track');
 assert.equal(established({...blocks,locked:true},misleading),false,'Saved jobs or data cannot unlock a track');

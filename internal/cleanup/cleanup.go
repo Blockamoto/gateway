@@ -368,13 +368,20 @@ func Preview(path, kind string, extraProtected []string) (Plan, error) {
 			p.Excluded = append(p.Excluded, path)
 			return nil
 		}
-		st, e := d.Info()
+		// Directory-entry identities are not reliable on every Windows volume.
+		// Capture this exact no-follow path instead, including its identity now:
+		// Windows Lstat defers loading the file ID until SameFile is called. A
+		// deferred ID lookup during Execute could adopt a replacement file.
+		st, e := os.Lstat(path)
 		if e != nil {
 			return e
 		}
-		if !st.Mode().IsRegular() {
+		if !st.Mode().IsRegular() || isReparse(path) {
 			p.Excluded = append(p.Excluded, path)
 			return nil
+		}
+		if !os.SameFile(st, st) {
+			return fmt.Errorf("cannot capture cleanup file identity: %s", path)
 		}
 		p.Items = append(p.Items, Item{path, st.Size(), st})
 		p.Bytes += st.Size()

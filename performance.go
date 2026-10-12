@@ -146,7 +146,7 @@ func (a *app) scheduleKnowledgeSave() {
 // block is queued without refetching; coverage advances only after graph commit.
 // A full queue never invents coverage: the block can be indexed by an explicit build.
 func (a *app) enqueueGraphIndex(v blockView) {
-	if !releaseFeatureAvailable("txo-spender") {
+	if !a.legacyKnowledgeEnabled() {
 		return
 	}
 	if !a.asyncIndex {

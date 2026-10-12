@@ -156,7 +156,13 @@ func Test063LiveRepairsSelectedChainReorgBeforeExtending(t *testing.T) {
 	stale.Height = 1
 	stale.Hash = strings.Repeat("f", 64)
 	stale.PreviousBlockHash = genesisHashDisplay
-	if err = s.appendBlock(stale, 0, "ephemeral"); err != nil {
+	// A deliberately disconnected synthetic receipt tests reconciliation.
+	// It cannot be serialized as a valid raw Bitcoin block.
+	ids := make([]string, len(stale.Transactions))
+	for i, tx := range stale.Transactions {
+		ids[i] = tx.TxID
+	}
+	if err = s.commitPreparedIndexBatch(indexBatch{PreviousBlockHash: stale.PreviousBlockHash, Bitcoin: &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: ids, Transactions: stale.Transactions}}, stale.Height, stale.Hash, 0, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
 	staleCommit := s.checkpoint.Commitment

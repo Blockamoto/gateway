@@ -671,7 +671,10 @@ func (a *app) graphCanProveUnspent(txid string, vout uint32) (*chainSnapshot, st
 }
 
 func (a *app) verifyGraphSpend(s graphSpend, provider string) (spenderLookupView, error) {
-	block, err := a.fetchBlockAtLocation(s.Height, s.BlockHash, provider)
+	return a.verifyGraphSpendContext(context.Background(), s, provider)
+}
+func (a *app) verifyGraphSpendContext(ctx context.Context, s graphSpend, provider string) (spenderLookupView, error) {
+	block, err := a.fetchBlockAtLocationContext(ctx, s.Height, s.BlockHash, provider)
 	if err != nil {
 		return spenderLookupView{}, err
 	}
@@ -714,6 +717,12 @@ func (a *app) verifyGraphSpend(s graphSpend, provider string) (spenderLookupView
 }
 
 func (a *app) resolveSpender(txid string, vout uint32) (spenderLookupView, error) {
+	return a.resolveSpenderContext(context.Background(), txid, vout)
+}
+func (a *app) resolveSpenderContext(ctx context.Context, txid string, vout uint32) (spenderLookupView, error) {
+	if err := ctx.Err(); err != nil {
+		return spenderLookupView{}, err
+	}
 	if err := requireReleaseFeature("txo-spender"); err != nil {
 		return spenderLookupView{}, err
 	}
@@ -741,7 +750,7 @@ func (a *app) resolveSpender(txid string, vout uint32) (spenderLookupView, error
 
 	nativeSpend, nativeFound := a.graphFindSpend(txid, vout)
 	if !nativeFound {
-		if indexed, err := a.lookupIndexSpender(context.Background(), outpoint); err == nil && len(indexed.Rows) == 1 {
+		if indexed, err := a.lookupIndexSpender(ctx, outpoint); err == nil && len(indexed.Rows) == 1 {
 			r := indexed.Rows[0]
 			nativeSpend = graphSpend{Outpoint: outpoint, SpendingTxID: r.TxID, SpendingVin: r.Vin, BlockHash: r.BlockHash, Height: r.Height}
 			nativeFound = true
@@ -774,8 +783,11 @@ func (a *app) resolveSpender(txid string, vout uint32) (spenderLookupView, error
 	}
 
 	positiveVerifyError := ""
+	if err := ctx.Err(); err != nil {
+		return spenderLookupView{}, err
+	}
 	if nativeFound {
-		v, err := a.verifyGraphSpend(nativeSpend, "bod_native_graph")
+		v, err := a.verifyGraphSpendContext(ctx, nativeSpend, "bod_native_graph")
 		if err == nil {
 			v.MempoolState, v.MempoolSpendingTxID, v.NativeCoverage, v.NativeCompleteThrough = memState, memTx, cov, complete
 			v.Note = "A native graph hit is a locator; the spending transaction and exact vin were checked against Bitcoin before returning CONFIRMED_SPENT."
@@ -785,7 +797,7 @@ func (a *app) resolveSpender(txid string, vout uint32) (spenderLookupView, error
 	}
 	if corePositive {
 		gs := graphSpend{Outpoint: outpoint, SpendingTxID: coreConfirmed.SpendingTxID, SpendingVin: coreConfirmed.InputIndex, BlockHash: coreConfirmed.BlockHash, Height: coreConfirmed.Height}
-		v, err := a.verifyGraphSpend(gs, "bitcoin_core_txospenderindex")
+		v, err := a.verifyGraphSpendContext(ctx, gs, "bitcoin_core_txospenderindex")
 		if err == nil {
 			v.MempoolState, v.MempoolSpendingTxID, v.NativeCoverage, v.NativeCompleteThrough = memState, memTx, cov, complete
 			v.Note = "Bitcoin Core located the historical spender through txospenderindex; Bitcoin on Demand verified the exact spend against the underlying Bitcoin transaction."

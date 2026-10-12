@@ -146,6 +146,12 @@ func indexDefinitions() []indexDefinition {
 		if d.ID == "tx-locator" {
 			d.Name = "Transaction Index"
 		}
+		if d.ID == "txo-spender" {
+			// Preserve the legacy recipe identity and readable immutable batches.
+			// TXIO payloads carry their own additive version and private layout.
+			d.Name = "TXIO index"
+			d.Theory = "Transaction Input/Output Index: input-to-original-output and output-to-spending-input positions. Missing or unresolved sparse relationships do not prove unspentness."
+		}
 		// Availability is presentation policy, not part of the persisted recipe.
 		d.Locked = !releaseFeatureAvailable(d.ID)
 		if d.Locked {

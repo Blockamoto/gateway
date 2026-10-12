@@ -264,8 +264,67 @@ async function run() {
     assert.deepEqual(await frame.locator('.timeline-editor').boundingBox(),embeddedBefore,'Fixed-height embedding preserves timeline docking');
     assert(embeddedBefore.y+embeddedBefore.height<=900&&embeddedBefore.y>=60);
     await shot('workspace-embedded');
+
+    // The inscription ghost is the suggested occurrence scan span, independent
+    // of saved coverage and a user's chosen history origin. Exercise the real
+    // renderer and range picker with a disposable unlocked catalog response.
+    snapshot=fixture();
+    Object.assign(snapshot.definitions.find(d=>d.id==='inscriptions'),{locked:false,lock_reason:''});
+    snapshot.live=[{index:'inscriptions',initial_from:0,on:false,enabled:false}];
+    await page.goto(origin+'/indexes',{waitUntil:'networkidle'});
+    if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();
+    await page.locator('#timeline-add-index').click();
+    await page.locator('#timeline-index-picker button[data-index="inscriptions"]').click();
+    await page.locator('#timeline-fit').click();await settle();
+    const inscriptionLane=page.locator('.timeline-lane[data-index="inscriptions"]');
+    const potential=()=>inscriptionLane.evaluate(el=>JSON.parse(el.dataset.potential));
+    assert.deepEqual(await potential(),[{from:767430,to:999999}],'An empty mainnet inscription track starts at the catalog scan suggestion when projection metadata is absent');
+    assert.deepEqual(await inscriptionLane.evaluate(el=>JSON.parse(el.dataset.coverage)),[],'A potential span never creates indexed coverage');
+    await page.locator('#timeline-details').evaluate(el=>el.open=true);await settle();
+    assert.equal(await page.locator('#from').inputValue(),'767430','Fresh inscription range defaults agree with the ghost boundary');
+    assert.equal(await page.locator('#range-start').inputValue(),'767430');
+    assert.equal(await page.locator('#from').getAttribute('min'),'0','The suggested presentation origin does not forbid explicit earlier scans');
+    assert.equal(await page.locator('#range-start').getAttribute('min'),'0');
+    assert.equal(await page.locator('#from').evaluate(el=>el.readOnly),false);
+    snapshot.timeline.tracks.push({id:'inscriptions',potential_from:767430,coverage:[{from:767450,to:767470}],gaps:[{from:767460,to:767460}],coverage_complete:false});
+    await refresh();await page.locator('#timeline-fit').click();await settle();
+    assert.deepEqual(await potential(),[{from:767430,to:999999}],'Partial indexed coverage does not move the potential origin');
+    assert.deepEqual(await inscriptionLane.evaluate(el=>JSON.parse(el.dataset.coverage)),[{from:767450,to:767459},{from:767461,to:767470}],'A real unindexed gap stays distinct from the ghost span');
+    async function zoomAt(block) {
+      const current=await view(),box=await inscriptionLane.boundingBox();
+      assert(block>=current.from&&block<=current.to);
+      await page.mouse.move(box.x+(block-current.from+.5)/span(current)*box.width,box.y+Math.min(25,box.height/2));
+      await page.mouse.wheel(0,-180);await settle();
+    }
+    for(let i=0;i<3;i++)await zoomAt(767430);
+    const crossing=await view();
+    assert(crossing.from<767430&&crossing.to>767430,'Pointer zoom straddles the inscription boundary');
+    assert.deepEqual(await potential(),[{from:767430,to:crossing.to}],'Zoom clips the ghost at its actual block height rather than a difficulty period');
+    await page.locator('#timeline-fit').click();await settle();
+    for(let i=0;i<4;i++)await zoomAt(700000);
+    assert((await view()).to<767430,'The selected zoom lies entirely before the inscription start');
+    assert.deepEqual(await potential(),[],'A view before the suggestion has no inscription ghost');
+    snapshot.timeline={tip_height:767429,target_height:767429,tracks:[{id:'headers',coverage:[{from:0,to:767429}],gaps:[]},{id:'blocks',coverage:[],gaps:[],coverage_complete:true},{id:'inscriptions',potential_from:767430,coverage:[],gaps:[],coverage_complete:true}]};
+    await refresh();await page.locator('#timeline-fit').click();await settle();
+    assert.equal((await view()).to,767429);
+    assert.deepEqual(await potential(),[],'A chain ending before the potential start cannot create a reversed ghost interval');
+    snapshot.timeline.tip_height=snapshot.timeline.target_height=767430;
+    snapshot.timeline.tracks[0].coverage=[{from:0,to:767430}];
+    await refresh();await page.locator('#timeline-fit').click();await settle();
+    assert.deepEqual(await potential(),[{from:767430,to:767430}],'A tip at the suggestion exposes exactly one potential block');
+    snapshot.instances=[{definition:'inscriptions',checkpoint:{from:0,height:767430,commitment:'retained-genesis-origin'},coverage:[{from:0,to:10}],verification:'selected_chain'}];
+    snapshot.timeline.tracks[2].coverage=[{from:0,to:10}];
+    await refresh();await page.locator('.timeline-track[data-index="inscriptions"] .timeline-track-select').click();
+    await page.locator('#timeline-details').evaluate(el=>el.open=true);await settle();
+    assert.equal(await page.locator('#from').inputValue(),'0','Retained custom inscription history preserves its authenticated origin');
+    assert.equal(await page.locator('#from').evaluate(el=>el.readOnly),true);
+    assert.equal(await page.locator('#range-start').inputValue(),'0');
+    assert.equal(await page.locator('#range-start').isDisabled(),true);
+    assert.deepEqual(await inscriptionLane.evaluate(el=>JSON.parse(el.dataset.coverage)),[{from:0,to:10}],'Earlier indexed evidence remains visible independently of the presentation suggestion');
+    assert.deepEqual(await potential(),[{from:767430,to:767430}],'Retained genesis history does not shift the potential span');
+    await shot('workspace-inscription-ghost');
     onlyPlans();assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);
-    console.log('Index timeline workspace gestures PASS: docked layout, persistent splitter, add-index locks, two-edge scrollbar zoom/pan, anchored wheel and touch pinch, Space-grab, vertical scrolling/height, Bitcoin landmarks, range draft validation, themes and embedding.');
+    console.log('Index timeline workspace gestures PASS: docked layout, persistent splitter, add-index locks, two-edge scrollbar zoom/pan, anchored wheel and touch pinch, Space-grab, vertical scrolling/height, Bitcoin landmarks, range draft validation, themes, embedding, inscription potential boundaries and preserved custom history.');
     if(out)fs.writeFileSync(path.join(out,'acceptance.json'),JSON.stringify({result:'PASS',scope:'Actual UI, synthetic sparse and empty APIs, disposable browser profile; no external network or real indexing',calls},null,2)+'\n');
   } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}
 }

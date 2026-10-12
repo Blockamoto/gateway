@@ -23,6 +23,12 @@ func initGraphTestApp(t *testing.T) (*app, blockView) {
 	a.settings.GraphIndex = true
 	a.coverage = newCoverageState()
 	a.initGraphStore()
+	// Graph-enabled reads may schedule delayed cache snapshots. Drain them
+	// before TempDir cleanup, just as the desktop update/shutdown barrier does.
+	t.Cleanup(func() {
+		a.stopKnowledgeWritersForUpdate()
+		waitUpdateWriters064(t, a)
+	})
 	a.status.TipHash = genesisHashDisplay
 	a.refreshCoreBlockStore()
 	h, _ := hex.DecodeString(genesisHeaderHex)

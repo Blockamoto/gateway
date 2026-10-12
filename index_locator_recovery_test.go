@@ -37,6 +37,16 @@ func nextLocatorBlock064(t *testing.T, a *app, s *indexStore) blockView {
 	return v
 }
 
+// These recovery fixtures deliberately stress legacy locator publication with
+// synthetic identities, not new Bitcoin-body ingestion/consensus verification.
+func appendLegacyLocatorBlock064(s *indexStore, v blockView) error {
+	ids := make([]string, len(v.Transactions))
+	for i, tx := range v.Transactions {
+		ids[i] = tx.TxID
+	}
+	return s.commitPreparedIndexBatch(indexBatch{PreviousBlockHash: v.PreviousBlockHash, Bitcoin: &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: ids, Transactions: v.Transactions}}, v.Height, v.Hash, 0, "ephemeral")
+}
+
 func TestIndexLocatorPartialFirstRecordWithExistingHeadRecovers(t *testing.T) {
 	for _, acknowledged := range []bool{false, true} {
 		t.Run(map[bool]string{false: "missing_receipt", true: "empty_receipt"}[acknowledged], func(t *testing.T) {
@@ -77,7 +87,7 @@ func TestIndexLocatorPartialFirstRecordWithExistingHeadRecovers(t *testing.T) {
 			if current, _ := os.ReadFile(filepath.Join(s.dir, "head.json")); string(current) != string(oldHead) {
 				t.Fatal("repair admission changed head")
 			}
-			if err = s.appendBlock(next, 0, "ephemeral"); err != nil {
+			if err = appendLegacyLocatorBlock064(s, next); err != nil {
 				t.Fatal("first-record retry remained blocked", err)
 			}
 			records, err := s.bitcoinLocatorRecords(context.Background(), next.Transactions[0].TxID)
@@ -113,7 +123,7 @@ func TestIndexLocatorReceiptDirectoryFailureKeepsPriorHead(t *testing.T) {
 		}
 		return nil
 	}
-	if err = s.appendBlock(next, 0, "ephemeral"); !errors.Is(err, failure) {
+	if err = appendLegacyLocatorBlock064(s, next); !errors.Is(err, failure) {
 		t.Fatal("receipt flush failure was swallowed", err)
 	}
 	after, _ := os.ReadFile(filepath.Join(s.dir, "head.json"))
@@ -127,7 +137,7 @@ func TestIndexLocatorReceiptDirectoryFailureKeepsPriorHead(t *testing.T) {
 		t.Fatal("unpublished pointer became visible", found, err)
 	}
 	s.locatorSyncDirectory = nil
-	if err = s.appendBlock(next, 0, "ephemeral"); err != nil {
+	if err = appendLegacyLocatorBlock064(s, next); err != nil {
 		t.Fatal("receipt failure could not be retried", err)
 	}
 }
@@ -169,7 +179,7 @@ func TestIndexLocatorParentFlushFailureIsRetried(t *testing.T) {
 	if attempts != 2 || s.checkpoint == nil {
 		t.Fatal("existing unacknowledged parent was not flushed on retry", attempts)
 	}
-	if !s.locatorDirectoriesSynced[a.dataDir] {
+	if !s.locatorDirectoriesSynced[filepath.Clean(a.dataDir)] {
 		t.Fatal("enclosing profile entry chain was not acknowledged")
 	}
 }
@@ -238,7 +248,7 @@ func TestIndexLocatorStaleRepairCannotDropNewCommittedRows(t *testing.T) {
 				t.Fatal(err)
 			}
 			next := nextLocatorBlock064(t, a, s)
-			if err = s.appendBlock(next, 0, "ephemeral"); err != nil {
+			if err = appendLegacyLocatorBlock064(s, next); err != nil {
 				t.Fatal(err)
 			}
 			path, _ := graphShardPath(s.dir, s.locatorKind(), next.Transactions[0].TxID)

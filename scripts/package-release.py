@@ -67,6 +67,9 @@ def main():
     documents = [f'RELEASE-NOTES-v{version}.md', 'UPDATES.md', 'GATEWAY-ROADMAP.md', 'INDEXING.md', 'STATUS.md', 'RELEASE-ACCEPTANCE.json']
     if (root / 'docs' / f'TESTING-{version}.md').exists():
         documents.append(f'TESTING-{version}.md')
+    for document in (f'BLOCK-BODIES-{version}.md', 'TXIO-INDEX.md', f'IMPLEMENTATION-BRIEF-{version}.md'):
+        if (root / 'docs' / document).exists():
+            documents.append(document)
     document_sources = {document: acceptance if document == 'RELEASE-ACCEPTANCE.json' else root / 'docs' / document for document in documents}
     bundled_sources = {source.resolve(): document for document, source in document_sources.items()}
     artifacts = []
@@ -114,7 +117,10 @@ source change waits for staged-update or recovery work to retain its original
 verification authority. Access credentials are configured only in Settings.
 No publisher signing secrets or GitHub credentials belong in a client package.
 
-This draft prerelease enables Headers, Bitcoin Blocks, Inscriptions and Transaction Index.
+This prerelease enables Headers, Bitcoin Blocks, Inscriptions, Transaction Index
+and TXIO (Transaction Input/Output) index. TXIO unknown results do not prove unspentness.
+Blocks retain verified serialized raw bodies and compact transaction metadata;
+compatible migration retains legacy copies without automatic deletion.
 Related inscription transaction locator construction is also available. The
 shared workspace includes complete block maps, transaction flow and an isolated
 positional inscription viewport. Transaction and Inscription indexing as you

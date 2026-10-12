@@ -39,7 +39,18 @@ func contextualTransactionFixture(t *testing.T, from, to int64, counts map[strin
 			t.Fatal(err)
 		}
 		for _, block := range blocks[:count] {
-			if err = store.appendBlock(block, from, "ephemeral"); err != nil {
+			if index == "blocks" {
+				// These fabricated headers isolate BIP30 identity selection. Save
+				// an explicit legacy decoded receipt; they are not raw wire blocks.
+				ids := make([]string, len(block.Transactions))
+				for i, tx := range block.Transactions {
+					ids[i] = tx.TxID
+				}
+				err = store.commitPreparedIndexBatch(indexBatch{PreviousBlockHash: block.PreviousBlockHash, Bitcoin: &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: ids, Transactions: block.Transactions}}, block.Height, block.Hash, from, "ephemeral")
+			} else {
+				err = store.appendBlock(block, from, "ephemeral")
+			}
+			if err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -81,7 +92,6 @@ func Test065ContextualBIP30LookupPreservesPublicAmbiguity(t *testing.T) {
 }
 
 func Test065ContextualLookupDoesNotAttachOlderDecodedIncarnation(t *testing.T) {
-	t.Skip("This cross-index resolution requires the standalone transaction locator, intentionally locked in 0.6.6. Blocks-only BIP30 tests remain active.")
 	a, id, hashes := contextualTransactionFixture(t, 0, 1, map[string]int{"blocks": 1, "tx-locator": 2}, map[int64]bool{0: true, 1: true})
 	r, found, err := a.indexedTransactionBeforeContext(context.Background(), id, 1)
 	if err != nil || !found || r.Height != 1 || r.BlockHash != hashes[1] || r.TransactionVerified || r.Transaction.TxID != "" || r.ResolutionState != "located_bytes_unavailable" {

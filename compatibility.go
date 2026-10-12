@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	appVersion              = "0.7.3"
+	appVersion              = "0.7.4"
 	bodWireVersion          = 1
 	minBODWireVersion       = 1
 	overlayProtocolVersion  = bodWireVersion
@@ -34,6 +34,8 @@ type compatibilityView struct {
 	RawBlockRedownload     bool   `json:"raw_block_redownload_required"`
 	IndexSchema            int    `json:"index_schema"`
 	IndexRebuild           bool   `json:"index_rebuild_required"`
+	BlockBodySchema        int    `json:"block_body_schema"`
+	TXIOSchema             int    `json:"txio_schema"`
 	CacheMetadataSchema    int    `json:"cache_metadata_schema"`
 	CacheMetadataRebuild   bool   `json:"cache_metadata_rebuild_required"`
 	CoreMountSchema        int    `json:"core_mount_schema"`
@@ -71,6 +73,8 @@ func currentCompatibility() compatibilityView {
 		RawBlockRedownload:     false,
 		IndexSchema:            indexSchemaVersion,
 		IndexRebuild:           false,
+		BlockBodySchema:        2,
+		TXIOSchema:             2,
 		CacheMetadataSchema:    cacheMetadataSchema,
 		CacheMetadataRebuild:   false,
 		CoreMountSchema:        coreMountSchemaVersion,
@@ -86,7 +90,7 @@ func currentCompatibility() compatibilityView {
 		MinimumOverlayProtocol: minBODWireVersion,
 		StorageIndexRebuild:    false,
 		BlockVerifier:          blockVerifierVersion, DerivedRecheck: true, OrdStorage: 1, ArchiveStorage: 1,
-		Note: "Headers, Blocks and Inscriptions testing client. Related inscription transaction locators, the standalone Transaction Index and Gateway peerhood remain locked for separate stages. Fresh installs carry a separate validated header snapshot; application updates omit it and signed header chunks extend it independently. Inscription reveal evidence does not establish global numbering, current ownership or parent-child provenance. Hosted update readiness is recorded separately in release acceptance.",
+		Note: "TXIO input/output links and raw-backed Blocks payloads use versioned records within the unchanged readable storage and index envelopes. Legacy bodies remain readable and are retained during resumable migration. Headers, Blocks, Inscriptions, Transaction Index and TXIO index are available; Gateway peerhood and later indexes remain locked. Fresh installs carry a separate validated header snapshot; application updates omit it and signed header chunks extend it independently. Inscription reveal evidence does not establish global numbering, current ownership or parent-child provenance. Hosted update readiness is recorded separately in release acceptance.",
 	}
 }
 

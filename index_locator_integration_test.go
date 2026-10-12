@@ -56,7 +56,19 @@ func olderExplorerFixture064(t *testing.T, id string, count int) (*app, *indexSt
 				b.Transactions[0].TxID = indexDigest(h)
 			}
 		}
-		if err = s.appendBlock(b, 0, "ephemeral"); err != nil {
+		if id == "blocks" {
+			// This helper deliberately models old decoded checkpoints, including
+			// later synthetic identities used only to stress locator membership.
+			// New Blocks ingestion verifies and serializes actual Bitcoin bodies.
+			ids := make([]string, len(b.Transactions))
+			for i, tx := range b.Transactions {
+				ids[i] = tx.TxID
+			}
+			err = s.commitPreparedIndexBatch(indexBatch{PreviousBlockHash: b.PreviousBlockHash, Bitcoin: &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: ids, Transactions: b.Transactions}}, b.Height, b.Hash, 0, "ephemeral")
+		} else {
+			err = s.appendBlock(b, 0, "ephemeral")
+		}
+		if err != nil {
 			t.Fatal(h, err)
 		}
 		previous = b.Hash

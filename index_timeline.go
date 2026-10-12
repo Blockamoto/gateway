@@ -135,12 +135,9 @@ func (a *app) indexTimeline(defs []indexDefinition, providers []indexProviderVie
 	localSources := a.timelineLocalSources(h, out.TipHash, settings, &out.Errors)
 	for _, def := range defs {
 		track := indexTimelineTrack{ID: def.ID, Locked: def.Locked, Coverage: []heightInterval{}, Gaps: []heightInterval{}, RecordedCoverage: []heightInterval{}, ReportedCoverage: []heightInterval{}, Sources: []indexTimelineSource{}, CoverageComplete: out.TipKnown}
-		track.PotentialFrom = def.StartHeight
 		// Presentation boundary only: recognized reveal indexing remains an
 		// explicit arbitrary-start recipe with its unchanged semantic hash.
-		if def.ID == "inscriptions" {
-			track.PotentialFrom = 481824
-		}
+		track.PotentialFrom = defaultIndexFrom(def)
 		if indexBrowseAvailable(def.ID) {
 			source, err := a.browseTimelineSource(def.ID, h)
 			if err != nil {
@@ -263,6 +260,7 @@ func (a *app) timelineLocalSources(headers *timelineLocalReader, tip string, set
 	}
 	archive := a.timelineArchiveSource(headers, archiveRoot, problems)
 	retained := a.timelineRetainedSource(headers, tip, problems)
+	indexed := a.timelineIndexedBodiesSource(headers, problems)
 	mounted := timelineSource("core_mount", "Present mounted file extents anchored to selected headers. Core files remain read-only; raw block integrity is checked on use.")
 	if !settings.CoreMountDisabled {
 		a.coreStoreMu.RLock()
@@ -300,7 +298,7 @@ func (a *app) timelineLocalSources(headers *timelineLocalReader, tip string, set
 			}
 		}
 	}
-	sources := []indexTimelineSource{cache, archive, retained, mounted}
+	sources := []indexTimelineSource{cache, archive, retained, indexed, mounted}
 	for i := range sources {
 		sources[i].Ranges = mergeIntervals(sources[i].Ranges)
 		if !sources[i].Complete {

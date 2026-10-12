@@ -431,9 +431,13 @@ func (a *app) locallyIndexedInscriptionSat(height int64, hash, txid string, env 
 		return nil
 	}
 	var tx *transactionView
-	for i := range b.Bitcoin.Transactions {
-		if b.Bitcoin.Transactions[i].TxID == txid {
-			tx = &b.Bitcoin.Transactions[i]
+	decoded, e := a.decodedIndexBlockContext(context.Background(), blocks, b)
+	if e != nil {
+		return nil
+	}
+	for i := range decoded.Transactions {
+		if decoded.Transactions[i].TxID == txid {
+			tx = &decoded.Transactions[i]
 			break
 		}
 	}
@@ -496,7 +500,10 @@ func (a *app) localIndexedReveal(id string, height int64, hash string) *ordRecor
 	if e != nil || b.Checkpoint.BlockHash != hash || b.Bitcoin == nil || !reusableBitcoinEvidence(b.Bitcoin) {
 		return nil
 	}
-	block := blockView{Height: height, Hash: hash, Transactions: b.Bitcoin.Transactions, Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, WitnessCommitment: true, HeaderChainMatch: true}}
+	block, e := a.decodedIndexBlockContext(context.Background(), s, b)
+	if e != nil {
+		return nil
+	}
 	extracted, e := extractInscriptionOccurrences(block)
 	if e != nil {
 		return nil

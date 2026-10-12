@@ -37,7 +37,8 @@ func (a *app) publishedTransactionLocation(ctx context.Context, txid, blockHash 
 		publications[id] = p
 		d, _ := findIndexDefinition(id)
 		checkpoint := p.Manifest.Checkpoint
-		s := &indexStore{dir: filepath.Join(a.dataDir, "indexes", id), definition: d, head: indexHead{Commitment: checkpoint.Commitment}, checkpoint: &checkpoint}
+		publicationDir := filepath.Dir(filepath.Dir(indexCommitReadPath(a.dataDir, id, checkpoint.Commitment)))
+		s := &indexStore{profileRoot: a.dataDir, dir: publicationDir, definition: d, head: indexHead{Commitment: checkpoint.Commitment}, checkpoint: &checkpoint}
 		records, err := s.bitcoinLocatorRecordsReadOnly(ctx, txid)
 		if err != nil {
 			return txLocation{}, false, err

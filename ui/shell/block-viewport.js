@@ -133,7 +133,7 @@ function navigation(root, doc) {
   const win=doc.defaultView || window, saved=new Map(), pointers=new Map();
   let surface=null, key='', value={zoom:1,x:0,y:0}, drag=null, pinch=null, space=false, panMode=false, suppressUntil=0, dead=false;
   const now=()=>win.performance?.now?.() ?? Date.now();
-  const bounds=()=>root.getBoundingClientRect();
+  const bounds=()=>root.querySelector('.viewport-stage')?.getBoundingClientRect() || root.getBoundingClientRect();
   function remember(){if(!key)return;saved.delete(key);saved.set(key,{...value});while(saved.size>32)saved.delete(saved.keys().next().value);}
   function paint(){if(surface)surface.style.transform='translate('+value.x+'px,'+value.y+'px) scale('+value.zoom+')';root.dataset.zoom=String(value.zoom);root.classList.toggle('viewport-grab',space||panMode);root.classList.toggle('viewport-move-content',space||panMode);root.classList.toggle('viewport-dragging',Boolean(drag?.moved||pinch));root.querySelector('[data-viewport-pan]')?.setAttribute('aria-pressed',String(panMode));}
   function zoom(factor,clientX,clientY){const rect=bounds(),x=(clientX??rect.left+rect.width/2)-rect.left,y=(clientY??rect.top+rect.height/2)-rect.top,next=Math.max(.001,Math.min(32,value.zoom*factor)),ratio=next/value.zoom;value={zoom:next,x:x-(x-value.x)*ratio,y:y-(y-value.y)*ratio};paint();remember();}
@@ -142,8 +142,8 @@ function navigation(root, doc) {
     if(extent&&matrix&&rect.width>0&&rect.height>0){
       const points=[[extent.x,extent.y],[extent.x+extent.width,extent.y+extent.height]].map(([x,y])=>({x:(matrix.a*x+matrix.c*y+matrix.e-rect.left-value.x)/value.zoom,y:(matrix.b*x+matrix.d*y+matrix.f-rect.top-value.y)/value.zoom}));
       const width=points[1].x-points[0].x,height=points[1].y-points[0].y;
-      const scale=Math.max(.001,Math.min(1,(rect.width-24)/Math.max(1,width),(rect.height-72)/Math.max(1,height)));
-      value={zoom:scale,x:(rect.width-width*scale)/2-points[0].x*scale,y:40+(rect.height-72-height*scale)/2-points[0].y*scale};
+      const scale=Math.max(.001,Math.min(1,Math.max(1,rect.width-24)/Math.max(1,width),Math.max(1,rect.height-24)/Math.max(1,height)));
+      value={zoom:scale,x:(rect.width-width*scale)/2-points[0].x*scale,y:(rect.height-height*scale)/2-points[0].y*scale};
     }else value={zoom:1,x:0,y:0};
     paint();remember();
   }
@@ -165,15 +165,16 @@ function navigation(root, doc) {
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const number = value => Number.isFinite(value) ? value.toLocaleString('en-GB') : 'Unknown';
-  function mount({root, document:doc, onTransaction, onOutput, onInscription}) {
+  function mount({root, document:doc, onTransaction, onInput, onOutput, onInscription}) {
     if(!root)throw Error('A shared viewport is required.');
     const el=(tag,text,cls)=>{const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
-    let dead=false,kind='empty',selected=null,lastMap=null,lastFlow=null,scene=null;
+    let dead=false,kind='empty',selected=null,lastMap=null,lastFlow=null,scene=null,stage=null;
     const nav=navigation(root,doc),host=root.closest('#workspace-viewport');
     function controls(){const tools=el('div',undefined,'viewport-navigation');tools.setAttribute('role','toolbar');tools.setAttribute('aria-label','Viewport navigation');for(const [label,text,action]of [['Zoom out','−',()=>nav.zoom(1/1.25)],['Fit view','⌖',()=>nav.fit()],['Zoom in','+',()=>nav.zoom(1.25)],['Pan view','✥',()=>nav.pan()]]){const button=el('button',text);button.type='button';button.setAttribute('aria-label',label);button.title=label==='Pan view'?'Pan view: temporarily pause content interaction for dragging and zooming':label;if(label==='Pan view'){button.dataset.viewportPan='true';button.setAttribute('aria-pressed',String(nav.mode()));}button.onclick=action;tools.append(button);}root.append(tools);}
-    function frame(node,key,resource,moveContent=false){scene=node;node.classList.add('viewport-scene');root.append(node);if(host)host.dataset.resource=resource;nav.attach(node,key,moveContent);controls();}
+    function frame(node,key,resource,moveContent=false){scene=node;node.classList.add('viewport-scene');controls();stage=el('div',undefined,'viewport-stage');stage.append(node);root.append(stage);if(host)host.dataset.resource=resource;nav.attach(node,key,moveContent);sizeMap();}
+    function sizeMap(){if(!stage||kind!=='block-map')return;const rect=stage.getBoundingClientRect();stage.style.setProperty('--viewport-map-size',Math.max(0,Math.min(rect.width,rect.height)*.92)+'px');}
     function disposeFlow(){for(const svg of root.querySelectorAll('.transaction-flow-svg'))svg.disposeFlow?.();}
-    function clear(){disposeFlow();nav.detach();root.replaceChildren();kind='empty';selected=null;lastMap=null;lastFlow=null;scene=null;root.dataset.kind=kind;}
+    function clear(){disposeFlow();nav.detach();root.replaceChildren();kind='empty';selected=null;lastMap=null;lastFlow=null;scene=null;stage=null;root.dataset.kind=kind;}
     function message(text,state='idle'){if(dead)return;clear();root.dataset.state=state;const node=el('p',text,'viewport-empty');node.setAttribute('role',state==='error'?'alert':'status');root.append(node);}
     function block(map) {
       if(dead)return;
@@ -210,21 +211,21 @@ function navigation(root, doc) {
         });
         buttons.push(button);scene.append(button);
       }
-      const surface=el('div',undefined,'viewport-block-surface');surface.append(scene);frame(surface,'block:'+map.hash,'block');root.append(caption,tooltip);root.dataset.state='ready';
+      const surface=el('div',undefined,'viewport-block-surface');surface.append(scene);frame(surface,'block:'+map.hash,'block');stage.append(tooltip);root.append(caption);sizeMap();root.dataset.state='ready';
     }
     function select(index){selected=index;for(const button of root.querySelectorAll('[data-map-tx]')){const match=Number(button.dataset.mapTx)===index;button.classList.toggle('selected',match);button.setAttribute('aria-pressed',String(match));}}
     function flow(data,context={}) {
       if(dead)return;clear();kind='transaction-flow';lastFlow={data,context};root.dataset.kind=kind;root.dataset.state='ready';
       const box=el('div',undefined,'viewport-transaction-flow');box.id='viewport-transaction-flow';box.dataset.kind=kind;box.dataset.txIndex=context.index??'';box.dataset.height=context.height??'';
-      function draw(){if(!window.GatewayTransactionFlow)return;const rect=root.getBoundingClientRect();disposeFlow();box.replaceChildren(window.GatewayTransactionFlow.render(doc,data,{width:Math.max(280,rect.width),height:Math.max(180,rect.height-48),onOutput:value=>onOutput?.(value.datum,context),onInscription:entry=>onInscription?.(entry)}));}
-      if(!window.GatewayTransactionFlow){message('The transaction flow renderer is unavailable. Reload Gateway and retry.','error');return;}draw();
+      function draw(){if(!window.GatewayTransactionFlow)return;const rect=stage?.getBoundingClientRect()||root.getBoundingClientRect();disposeFlow();box.replaceChildren(window.GatewayTransactionFlow.render(doc,data,{width:Math.max(280,rect.width),height:Math.max(180,rect.height),onInput:value=>onInput?.(value,context),onOutput:value=>onOutput?.(value.datum,context),onInscription:entry=>onInscription?.(entry)}));}
+      if(!window.GatewayTransactionFlow){message('The transaction flow renderer is unavailable. Reload Gateway and retry.','error');return;}
       frame(box,'transaction:'+(data.txid||context.height+'.'+context.index),'transaction');
       root.append(el('p',data.note||'Unknown input values are not inferred.','viewport-caption'));
-      const unresolved=(data.inscription_context?.entries||[]).filter(entry=>entry.state!=='verified_reveal_output');if(unresolved.length){const notes=el('div',undefined,'viewport-inscription-unresolved');notes.setAttribute('aria-label','Inscriptions without a verified reveal output');for(const entry of unresolved){const button=el('button','◈ '+(entry.coordinate||'Inscription '+entry.index)+' · '+String(entry.state||'unresolved').replaceAll('_',' '));button.type='button';button.onclick=()=>onInscription?.(entry);notes.append(button);}root.append(notes);}
+      const unresolved=(data.inscription_context?.entries||[]).filter(entry=>entry.state!=='verified_reveal_output');if(unresolved.length){const notes=el('div',undefined,'viewport-inscription-unresolved');notes.setAttribute('aria-label','Inscriptions without a verified reveal output');for(const entry of unresolved){const button=el('button','◈ '+(entry.coordinate||'Inscription '+entry.index)+' · '+String(entry.state||'unresolved').replaceAll('_',' '));button.type='button';button.onclick=()=>onInscription?.(entry);notes.append(button);}root.append(notes);}draw();
     }
     function content(node,context={}){if(dead)return;clear();kind='inscription';root.dataset.kind=kind;root.dataset.state='ready';frame(node,'inscription:'+(context.address||node.querySelector('iframe')?.src||''),'inscription',String(context.contentType||'').startsWith('image/'));}
     message('Select a block, transaction or inscription.');
-    const win=doc.defaultView||window,Observer=win.ResizeObserver;const observer=Observer?new Observer(()=>{if(kind==='transaction-flow'&&lastFlow&&scene&&window.GatewayTransactionFlow){const rect=root.getBoundingClientRect();disposeFlow();scene.replaceChildren(window.GatewayTransactionFlow.render(doc,lastFlow.data,{width:Math.max(280,rect.width),height:Math.max(180,rect.height-48),onOutput:value=>onOutput?.(value.datum,lastFlow.context),onInscription:entry=>onInscription?.(entry)}));}}):null;observer?.observe(root);
+    const win=doc.defaultView||window,Observer=win.ResizeObserver;const observer=Observer?new Observer(()=>{sizeMap();if(kind==='transaction-flow'&&lastFlow&&scene&&window.GatewayTransactionFlow){const rect=stage?.getBoundingClientRect()||root.getBoundingClientRect();disposeFlow();scene.replaceChildren(window.GatewayTransactionFlow.render(doc,lastFlow.data,{width:Math.max(280,rect.width),height:Math.max(180,rect.height),onInput:value=>onInput?.(value,lastFlow.context),onOutput:value=>onOutput?.(value.datum,lastFlow.context),onInscription:entry=>onInscription?.(entry)}));}}):null;observer?.observe(root);
     return {block,flow,content,message,clear,select,fit:()=>nav.fit(),state:()=>({kind,selected,total:lastMap?.total,height:lastMap?.height,view:nav.state()}),teardown(){observer?.disconnect();clear();nav.teardown();dead=true;}};
   }
   function flowSVG(data) {

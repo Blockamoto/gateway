@@ -52,15 +52,16 @@ func cloneIndexJob(j indexJob) indexJob {
 }
 
 type indexStatusView struct {
-	Browse      []indexBrowsePolicy `json:"browse"`
-	Timeline    indexTimelineView   `json:"timeline"`
-	Jobs        []indexJob          `json:"jobs"`
-	Definitions []indexDefinition   `json:"definitions"`
-	Providers   []indexProviderView `json:"providers"`
-	Instances   []indexInstance     `json:"instances"`
-	Live        []indexLiveView     `json:"live"`
-	Job         indexJob            `json:"job"`
-	Errors      []string            `json:"errors,omitempty"`
+	BlockBodyMigration *blocksBodyMigration `json:"block_body_migration,omitempty"`
+	Browse             []indexBrowsePolicy  `json:"browse"`
+	Timeline           indexTimelineView    `json:"timeline"`
+	Jobs               []indexJob           `json:"jobs"`
+	Definitions        []indexDefinition    `json:"definitions"`
+	Providers          []indexProviderView  `json:"providers"`
+	Instances          []indexInstance      `json:"instances"`
+	Live               []indexLiveView      `json:"live"`
+	Job                indexJob             `json:"job"`
+	Errors             []string             `json:"errors,omitempty"`
 }
 
 func (a *app) loadIndexJobLocked() {
@@ -117,6 +118,11 @@ func (a *app) saveIndexJob(j indexJob) error {
 }
 func (a *app) indexStatus() indexStatusView {
 	out := indexStatusView{Definitions: indexDefinitions(), Providers: a.indexProviderViews(), Instances: []indexInstance{}, Live: []indexLiveView{}, Job: a.indexJobSnapshot()}
+	if state, err := readBlocksBodyMigration(a.dataDir); err != nil {
+		out.Errors = append(out.Errors, "Blocks migration: "+err.Error())
+	} else {
+		out.BlockBodyMigration = state
+	}
 	var queueErr error
 	if browse, err := a.indexBrowsePolicies(); err != nil {
 		out.Errors = append(out.Errors, "browse: "+err.Error())
@@ -410,6 +416,7 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		return
 	}
 	s = checked
+	a.configureTXIOStore(s)
 	s.head.Mode = j.Mode
 	s.retainSatHistory = j.RetainSatHistory
 	liveBlocksProcessed := int64(0)
@@ -585,17 +592,28 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 			rows = append(rows, b.TransactionLocator)
 			total++
 		} else if b.Bitcoin != nil {
+			data := b.Bitcoin
+			bodyState := "legacy_decoded"
+			if b.Bitcoin.BodySchema == 2 {
+				bodyState = "unavailable"
+				if decoded, err := a.decodedIndexBlockContext(context.Background(), s, b); err == nil {
+					copy := *b.Bitcoin
+					copy.Transactions = decoded.Transactions
+					data, bodyState = &copy, "verified_raw_decoded_on_demand"
+				}
+			}
 			rows = append(rows, struct {
-				Height int64              `json:"block_height"`
-				Hash   string             `json:"block_hash"`
-				Data   *bitcoinIndexBlock `json:"data"`
-			}{b.Checkpoint.Height, b.Checkpoint.BlockHash, b.Bitcoin})
+				Height    int64              `json:"block_height"`
+				Hash      string             `json:"block_hash"`
+				Data      *bitcoinIndexBlock `json:"data"`
+				BodyState string             `json:"body_state"`
+			}{b.Checkpoint.Height, b.Checkpoint.BlockHash, data, bodyState})
 			total++
 		} else if b.Spenders != nil {
 			for i := len(b.Spenders.Rows) - 1; i >= 0; i-- {
 				total++
 				if len(rows) < limit {
-					rows = append(rows, indexSpendMatch{b.Spenders.Rows[i], b.Checkpoint.Height, b.Checkpoint.BlockHash})
+					rows = append(rows, indexSpendMatch{txioSpendRow(b.Spenders, i), b.Checkpoint.Height, b.Checkpoint.BlockHash})
 				}
 			}
 		} else if id == "bitmap" {

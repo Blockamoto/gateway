@@ -43,6 +43,8 @@ Application update ZIPs omit the full header snapshot. Settings → Check now al
 
 ## Publisher operations
 
+An explicitly approved GitHub prerelease can be delivered through the existing Gateway channel. GitHub's prerelease flag does not change the signed numeric version or require a separate beta channel. Approval pins the exact tag, source revision and package bytes; the publisher and renewal workflow do not follow an arbitrary latest release. Automatic-install profiles can apply a newer approved prerelease through normal polling, while check-only, manual, network-disabled and custom-source preferences retain their behavior. Signature, validity, sequence, platform, digest and compatibility checks still apply.
+
 The publisher reads approved GitHub release artifacts, checks source/tag and artifact identities, and signs separate app/header manifests. Serving uses public verification material and any narrowly scoped download credential required by the release source. Private signing keys are never shipped to clients.
 
 Signed metadata has an issue and expiry time, with a maximum validity of 31 days. Expiry stops acceptance of stale delivery information; it does not expire the installed application or the signing key. Renewal must preserve the approved release identity and advance valid metadata without approving arbitrary new code.
@@ -50,6 +52,8 @@ Signed metadata has an issue and expiry time, with a maximum validity of 31 days
 The GitHub workflow runs weekly on Mondays at 06:17 UTC. Its `gateway-update-renewal` environment is restricted to `main`, with signing and deployment-hook secrets provisioned. It renews only the committed approved release, extends each feed to 30 days and advances its independent sequence without changing app/header content. It does not choose a new application release automatically.
 
 The public service obtains the exact approved release bundle directly from GitHub's release-download URL, avoiding anonymous REST rate limits. It still verifies the pinned signatures, expiry, release identity and every app/header byte before serving. Render receives public verification material, not the private signing key. The repository and approved release are public, so downloads need no GitHub credential.
+
+Render's `gateway-updates` service follows `main` with automatic deployment on commit enabled. This redeploys the publisher code; it does not approve a new application version by itself. Release promotion still requires the exact published artifacts, signed application/header bundle and approved runtime version. Check `/manifest.json`, `/headers/manifest.json`, `/artifacts/<file>` and `/headers/chunks/<file>` for live delivery evidence; a GitHub download link alone does not verify that path.
 
 Local publisher/renewal checks and hosted application acceptance passed. An isolated synthetic older client automatically installed the exact public 0.7.0 release and restarted with its profile preserved; a fresh 0.7.0 client checked both feeds without manual setup. Independent HTTPS verification downloaded both application archives and all 97 header chunks, both on initial publication and again after renewal at application sequence 3 and header sequence 2. These checks used a warmed service, so idle cold-start latency remains unmeasured.
 

@@ -1,5 +1,5 @@
 {
-  "app_version": "0.7.3",
+  "app_version": "0.7.4",
   "minimum_compatible_app": "0.3.9",
   "wire_protocol": 1,
   "minimum_wire_protocol": 1,
@@ -11,6 +11,8 @@
   "raw_block_redownload_required": false,
   "index_schema": 3,
   "index_rebuild_required": false,
+  "block_body_schema": 2,
+  "txio_schema": 2,
   "cache_metadata_schema": 2,
   "cache_metadata_rebuild_required": false,
   "core_mount_schema": 1,
@@ -29,8 +31,8 @@
   "derived_recheck_required": true,
   "ord_storage_schema": 1,
   "archive_storage_schema": 1,
-  "note": "Headers, Blocks, Inscriptions and Transaction Index development client. Related inscription transaction locators are available; Gateway peerhood and later indexes remain locked. Browsing indexes are independent opt-in settings and record exact processed blocks without advancing sequential checkpoints. Inscription reveal evidence does not establish global numbering, current ownership or parent-child provenance. This local test build does not change hosted update readiness.",
+  "note": "TXIO input/output links and raw-backed Blocks payloads use versioned records within unchanged readable storage and index envelopes. Legacy bodies remain readable and are retained during resumable migration. Gateway peerhood and later indexes remain locked. Browsing indexes are independent opt-in settings. Inscription reveal evidence does not establish global numbering, current ownership or parent-child provenance. Hosted update readiness is recorded separately in release acceptance.",
   "satline_wire": 1,
   "satline_publication_schema": 1,
-  "release_status": "local_development"
+  "release_status": "prerelease"
 }

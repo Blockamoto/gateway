@@ -1,6 +1,6 @@
 # Indexing and positional inscriptions
 
-The published baseline enables **Headers**, the foundational selected-chain index, and **Bitcoin Blocks**. The working inscription stage adds **Inscriptions**. Related transaction locator construction and the complete Transaction Index remain gated alongside the later peer stage. Locked implementations cannot be enabled through a setting, command or API.
+The 0.7.4 source enables **Headers**, **Bitcoin Blocks**, **Inscriptions**, **Transaction Index** and **Transaction Input/Output (TXIO) index**. Related inscription transaction locator construction is available. Gateway peerhood and later index stages remain gated; locked implementations cannot be enabled through a setting, command or API.
 
 ## What coverage means
 
@@ -10,7 +10,9 @@ Blocks records processing and availability for requested ranges. A block can als
 
 The schema and explorer work with a known block's transactions, inputs, outputs and output-relative offsets. A transaction-ID lookup can use evidence already available from Blocks; an unknown ID may need a containing-block hint. An offset is not proof of global sat identity, ownership or movement history.
 
-Standalone transaction-location, related inscription transaction locators, spender/address, UTXO, Sat/Satline, Bitmap, parcel and Terrain Claim Chains features remain gated. Gateway peerhood and index sharing are gated too. Fetching or viewing a block does not start those jobs.
+Address, UTXO, Sat/Satline, Bitmap, parcel and Terrain Claim Chains features remain gated. Gateway peerhood and index sharing are gated too. Fetching or viewing a block does not start historical index jobs. Transaction and Inscription indexing as you browse remain independent opt-in choices.
+
+TXIO keeps one committed set of spend relationships with automatic lookup in both directions. A supplied BPS needs no transaction-hash locator. Construction still needs verified creation evidence; sparse missing predecessors remain unresolved. Relationships survive source-body eviction, while navigation may need to fetch the target's bytes. See [the canonical format and measured overhead](TXIO-INDEX.md).
 
 ## Inscription payloads
 
@@ -24,9 +26,9 @@ These are syntax examples, not claims about inscriptions at those positions. The
 
 **Full** additionally retains authenticated reveal records and content bodies. Lean/Full is separate from source retention: retaining a Bitcoin block does not turn a Lean payload into Full. Empty evaluated blocks commit scanned coverage too. Neither mode silently starts global numbering, ownership, sat tracing or recursive dependency resolution.
 
-## Related transaction locators — later stage
+## Related transaction locators
 
-Both the optional build-time choice and the retroactive action belong in the **Inscription inspector**. They are implemented but disabled in the first inscription stage. Once promoted, a scan can save one sparse transaction locator per transaction containing inscriptions, even if that transaction contains several inscriptions. This is independent of the complete Transaction Index.
+Both the optional build-time choice and the retroactive action belong in the **Inscription inspector**. A scan can save one sparse transaction locator per transaction containing inscriptions, even if that transaction contains several inscriptions. This is independent of the complete Transaction Index.
 
 The transaction payload keeps actual positions, rather than renumbering sparse rows:
 
@@ -48,7 +50,7 @@ An unknown location, temporarily unavailable block bytes and unverified relation
 
 ## Plans, jobs and Live
 
-Selecting a track or range does not start a scan. A build selects an explicit range, mode and source-retention choice. Requests containing locked outputs or locator enrichment fail before fetching or writing data. One index writer runs at a time; accepted additional requests enter a durable queue. Pause and cancellation preserve committed work.
+Selecting a track or range does not start a scan. A build selects an explicit range, mode and source-retention choice. Requests containing locked outputs fail before fetching or writing data. One index writer runs at a time; accepted additional requests enter a durable queue. Pause and cancellation preserve committed work.
 
 **On** permits an available index to run. **Live** authorizes catch-up and following the selected chain in batches. It starts work immediately from the saved/default start, which may be genesis. Review a small bounded range first. Header pause and outbound-network disable remain effective controls.
 
@@ -64,10 +66,12 @@ Gateway checks header hash, proof of work, transaction Merkle root, witness comm
 
 Changing retention does not refill or delete earlier bytes automatically. Committed processing coverage does not promise that ephemeral source bodies remain available indefinitely. Turning Private cache off does not change older objects from private to public.
 
+Bitcoin Blocks is durable body storage: new records keep compact ordered transaction IDs and a verified Bitcoin serialized raw body rather than permanent decoded input/output arrays. Shared readers decode that body temporarily for queries, JSON inspection, builders and inscriptions. Blocks bodies are independent of ordinary cache eviction and pruneable Core files. Automatic legacy migration stages a versioned root before switching readers; old immutable batches, decoded cache JSON and hex files remain available and are not deleted automatically. Existing disk savings therefore require a later explicit cleanup decision.
+
 ## Checkpoints and recovery
 
 Committed batches bind the definition, rules, network, range, block hash, dependencies, previous commitment and canonical records. A batch is written before its head is selected. Corrupt or incompatible checkpoints fail closed.
 
 Restart checks saved commitments; interrupted work resumes from safe state rather than claiming unfinished coverage. An actual selected-chain disagreement rewinds to a common committed checkpoint. A temporarily unavailable source does not cause a destructive rewind. Old-branch batches do not count as selected coverage.
 
-See [the QA guide](TESTING-0.7.0.md) for small-range restart and reorganization checks, and [current status](STATUS.md) for acceptance evidence.
+See [the current QA guide](TESTING-0.7.4.md) for small-range restart and reorganization checks, and [current status](STATUS.md) for acceptance evidence.

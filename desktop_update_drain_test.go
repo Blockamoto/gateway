@@ -19,26 +19,34 @@ func waitUpdateWriters064(t *testing.T, a *app) {
 	}
 }
 
-func Test066UpdateDrainDoesNotAdmitLockedGraphWork(t *testing.T) {
-	a, genesis := initGraphTestApp(t)
-	a.asyncIndex = true
-	// A saved development preference must not admit graph work, even while the
-	// update barrier closes. Existing graph records are otherwise left intact.
-	a.graphStoreMu.Lock()
-	a.enqueueGraphIndex(genesis)
-	a.stopKnowledgeWritersForUpdate()
-	a.graphStoreMu.Unlock()
-	waitUpdateWriters064(t, a)
-	if got := a.graphBlockHash(0); got != "" {
-		t.Fatalf("locked graph accepted a queued commit: %s", got)
-	}
-	if len(a.graphCoverage()) != 0 {
-		t.Fatal("locked graph gained coverage")
-	}
-	a.enqueueGraphIndex(genesis) // A late canceled producer cannot panic/send to a closed queue.
-	waitUpdateWriters064(t, a)
-	if err := a.saveCacheIndex(); err != nil {
-		t.Fatal(err)
+func Test074UpdateDrainRespectsGraphOptIn(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(map[bool]string{false: "off", true: "on"}[enabled], func(t *testing.T) {
+			a, genesis := initGraphTestApp(t)
+			a.settings.GraphIndex = enabled
+			a.asyncIndex = true
+			// Drain accepted opt-in work, while an off preference admits none.
+			a.graphStoreMu.Lock()
+			a.enqueueGraphIndex(genesis)
+			a.stopKnowledgeWritersForUpdate()
+			a.graphStoreMu.Unlock()
+			waitUpdateWriters064(t, a)
+			want := ""
+			if enabled {
+				want = genesis.Hash
+			}
+			if got := a.graphBlockHash(0); got != want {
+				t.Fatalf("graph choice/drain lost: got %s want %s", got, want)
+			}
+			if !enabled && len(a.graphCoverage()) != 0 {
+				t.Fatal("disabled graph gained coverage")
+			}
+			a.enqueueGraphIndex(genesis) // A late producer cannot send to the closed queue.
+			waitUpdateWriters064(t, a)
+			if err := a.saveCacheIndex(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

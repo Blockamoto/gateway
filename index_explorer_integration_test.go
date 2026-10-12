@@ -310,21 +310,21 @@ func TestIntegrationBitcoinBatchRejectsTamperingAndUnverifiedReceipts(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	b.Bitcoin.Transactions[0].OutputSats++
+	b.Bitcoin.RawBody.Bytes++
 	if err := atomicWriteJSON(filepath.Join(s.dir, "commits", s.head.Commitment+".json"), b); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.readBatch(s.head.Commitment); err == nil {
-		t.Fatal("decoded transaction mutation escaped committed hash")
+		t.Fatal("raw body receipt mutation escaped committed hash")
 	}
-	b.Bitcoin.Transactions[0].Index = -1
+	b.Bitcoin.TxIDs[0] = strings.Repeat("f", 64)
 	b.Checkpoint.RecordsHash = batchRecordsHash(b)
 	b.Checkpoint.Commitment = checkpointHash(b.Checkpoint)
 	if err := atomicWriteJSON(filepath.Join(s.dir, "commits", b.Checkpoint.Commitment+".json"), b); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.readBatch(b.Checkpoint.Commitment); err == nil {
-		t.Fatal("self-consistent hash accepted invalid transaction order")
+		t.Fatal("self-consistent hash accepted transaction positions outside the committed Merkle root")
 	}
 	// A changed selected header cannot keep a stale local index authoritative.
 	h, err := a.readSelectedHeader(0)

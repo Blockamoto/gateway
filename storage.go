@@ -24,8 +24,17 @@ func (a *app) localStorageBlock(target blockTarget) (storageHit, error) {
 }
 
 func (a *app) localStorageBlockContext(ctx context.Context, target blockTarget) (storageHit, error) {
+	return a.localStorageBlockProvidersContext(ctx, target, true)
+}
+
+func (a *app) localStorageBlockProvidersContext(ctx context.Context, target blockTarget, privateIndex bool) (storageHit, error) {
 	if err := ctx.Err(); err != nil {
 		return storageHit{}, err
+	}
+	if privateIndex {
+		if raw, _, err := readIndexedRawBody(a.dataDir, target, nil); err == nil {
+			return storageHit{Raw: raw, Source: "Gateway durable raw Blocks body", Network: "index_retained", Height: target.Height}, nil
+		}
 	}
 	// 0.4.0 presents one logical local Bitcoin data space. Existing BOD-owned
 	// cache objects are checked first, then a live Core RPC backend, then Core's
@@ -99,7 +108,10 @@ func (a *app) storageBlockForServing(ctx context.Context, hash string) (blockDat
 	if ready.Limited && target.Height < ready.Height-287 {
 		return blockData{}, fmt.Errorf("block is outside limited Bitcoin serving window")
 	}
-	hit, e := a.localStorageBlockContext(ctx, target)
+	// A private index body is not a serving provider. Excluding it here also
+	// prevents it from shadowing an independently shared cache/archive/Core
+	// copy of the same public Bitcoin block.
+	hit, e := a.localStorageBlockProvidersContext(ctx, target, false)
 	if e != nil {
 		return blockData{}, e
 	}

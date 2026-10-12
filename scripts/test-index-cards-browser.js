@@ -97,7 +97,7 @@ async function run() {
 
     await page.locator('#timeline-add-index').click();
     assert.equal(await page.locator('#timeline-index-picker [data-index="inscriptions"]').isDisabled(),false,'The inscription stage permits adding its track');
-    assert.equal(await page.locator('#timeline-index-picker [data-index="tx-locator"]').isDisabled(),false,'The transaction stage permits adding its track');for(const id of ['txo-spender','sat-state','address-history','bitmap-compatibility'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),true,id+' remains gated');
+    for(const id of ['tx-locator','txo-spender'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),false,id+' is available in the TXIO stage');for(const id of ['sat-state','address-history','bitmap-compatibility'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),true,id+' remains gated');
     assert.equal(await page.locator('.timeline-track[data-index="inscriptions"]').count(),0,'An available index does not occupy a track until added');
     await page.screenshot({path:path.join(out,'locked-features.png'),fullPage:true});
     await page.locator('#timeline-add-index').click();

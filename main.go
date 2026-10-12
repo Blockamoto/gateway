@@ -301,7 +301,15 @@ func main() {
 	if handled, code := runCLI(a, cliArgs); handled {
 		os.Exit(code)
 	}
-	a.startUpdateAwareWorker(func() { a.superviseLiveIndexes(a.network.ctx) })
+	a.startUpdateAwareWorker(func() {
+		// The profile lock excludes other processes. Builders also enter the
+		// migration lock before opening Blocks; readers retain the old snapshot
+		// until the complete verified replacement root is published.
+		if err := migrateBlockBodiesContext(a.network.ctx, a.dataDir); err != nil {
+			fmt.Fprintln(os.Stderr, "Blocks body migration deferred (legacy data retained):", err)
+		}
+		a.superviseLiveIndexes(a.network.ctx)
+	})
 
 	ln, err := net.Listen("tcp", *httpAddr)
 	fatalIf(err)
@@ -392,6 +400,7 @@ func main() {
 	a.registerSatlineRoutes(mux)
 	a.registerGatewayRoutes(mux)
 	a.registerIndexRoutes(mux)
+	a.registerTXIORoutes(mux)
 	executable, exeErr := os.Executable()
 	if exeErr == nil {
 		restartArgs, restartErr := desktopUpdateRestartArgs(os.Args[1:], dataDir, url)

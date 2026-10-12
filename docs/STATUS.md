@@ -1,8 +1,16 @@
 # Gateway status
 
-## Working source: 0.7.3 The transactions update
+## Working source: 0.7.4 TXIO and serialized block bodies
 
-The source enables the Transaction Index and inscription-related locator builds. Independent opt-in browsing indexes store exact processed blocks without advancing sequential checkpoints. The workspace has context-aware Details and Inspector, a square shared viewport, complete BitFeed-style block maps, automatic transaction flow and a collapsible timeline. Gateway peers remain gated. The user-approved local build is on main with an unpublished draft release. A focused correction preserves newer same-block hierarchy navigation when older responses arrive; actual navigation and block-anchor changes still cancel obsolete work. The deterministic regression and affected workspace checks passed; the draft refresh requires fresh exact-package and committed-source CI checks. The published release and hosted update feed remain unchanged. See [the transaction test guide](TESTING-0.7.3.md).
+The source enables TXIO bidirectional input/output relationships while retaining the `txo-spender` storage/API identity. Blocks use compact ordered transaction metadata and verified durable serialized bodies, with compatible versioned migration and shared temporary decoding. Legacy batches and decoded/hex duplicates are retained. The inscription potential range uses the catalog's suggested start without restricting explicit earlier scans; map controls occupy their own accessible toolbar. Gateway peerhood remains locked.
+
+The implementation brief and focused test guide are recorded in [the 0.7.4 brief](IMPLEMENTATION-BRIEF-0.7.4.md) and [tester guide](TESTING-0.7.4.md). Final source, package and hosted delivery checks are in progress. Publication is intended as a new GitHub prerelease through the existing signed channel; this paragraph does not claim that the new feed is live.
+
+Render automatic deployment on `main` is enabled for `gateway-updates`. Application approval and signing remain separate from publisher deployment. The live feed was independently read on 12 October 2026: application version **0.7.1**, sequence **6**, and header sequence **5**. The [renewal receipt](UPDATE-FEED-STATUS.json) records that earlier delivery state.
+
+## Previous source: 0.7.3 The transactions update
+
+The source enables the Transaction Index and inscription-related locator builds. Independent opt-in browsing indexes store exact processed blocks without advancing sequential checkpoints. The workspace has context-aware Details and Inspector, a square shared viewport, complete BitFeed-style block maps, automatic transaction flow and a collapsible timeline. Gateway peers remain gated. The published `v0.7.3` prerelease uses source `e3b2b53d0553dc7103eedfaa0a88c465cc1d1e5b`. A later local/main correction at `53739195` preserves newer same-block hierarchy navigation when older responses arrive; actual navigation and block-anchor changes still cancel obsolete work. The deterministic regression and affected workspace checks passed. That correction is included in 0.7.4. The earlier 0.7.3 review draft remains separate from the new release. See [the transaction test guide](TESTING-0.7.3.md).
 
 ## Previous source: 0.7.2 inscription prerelease preparation
 

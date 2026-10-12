@@ -12,14 +12,20 @@ import (
 // Positive spend records prove only their committed range. In particular a
 // miss cannot assert unspentness or choose an incarnation of a BIP30 txid.
 type indexSpendRecord struct {
-	PrevTxID string `json:"prev_txid"`
-	Vout     uint32 `json:"vout"`
-	TxID     string `json:"txid"`
-	TxIndex  int    `json:"tx_index"`
-	Vin      int    `json:"vin"`
+	PrevTxID            string  `json:"prev_txid,omitempty"`
+	Vout                uint32  `json:"vout"`
+	TxID                string  `json:"txid,omitempty"`
+	TxIndex             int     `json:"tx_index"`
+	Vin                 int     `json:"vin"`
+	Output              string  `json:"output,omitempty"`
+	PreviousTransaction *uint32 `json:"previous_transaction,omitempty"`
 }
 type indexSpenderBlock struct {
-	Rows []indexSpendRecord `json:"rows"`
+	Version              int                `json:"version,omitempty"`
+	Rows                 []indexSpendRecord `json:"rows"`
+	Origins              []txioOrigin       `json:"origins,omitempty"`
+	CreationAnchors      map[string]string  `json:"creation_anchors,omitempty"`
+	PreviousTransactions []string           `json:"previous_transactions,omitempty"`
 }
 
 func indexSpendKey(txid string, vout uint32) string {
@@ -36,7 +42,7 @@ func deriveIndexSpenders(block blockView) (*indexSpenderBlock, error) {
 			if in.Coinbase || !validHash(in.PrevTxID) || ti == 0 {
 				return nil, fmt.Errorf("invalid spender input evidence")
 			}
-			out.Rows = append(out.Rows, indexSpendRecord{in.PrevTxID, in.PrevVout, tx.TxID, ti, vin})
+			out.Rows = append(out.Rows, indexSpendRecord{PrevTxID: in.PrevTxID, Vout: in.PrevVout, TxID: tx.TxID, TxIndex: ti, Vin: vin})
 		}
 	}
 	return out, nil
@@ -75,6 +81,9 @@ func (a *app) lookupIndexSpender(ctx context.Context, key string) (indexSpendRes
 	if out.ChainState != "selected_chain" {
 		return out, fmt.Errorf("spender index needs a current chain anchor or reorg reconciliation")
 	}
+	if err = s.ensureIndexLocators(ctx); err != nil {
+		return out, err
+	}
 	rows, err := s.bitcoinLocatorRecords(ctx, indexSpendKey(txid, uint32(vout)))
 	if err != nil {
 		return out, err
@@ -90,7 +99,7 @@ func (a *app) lookupIndexSpender(ctx context.Context, key string) (indexSpendRes
 		if b.Spenders == nil || row.TxIndex >= len(b.Spenders.Rows) {
 			return out, fmt.Errorf("spender pointer does not match committed records")
 		}
-		r := b.Spenders.Rows[row.TxIndex]
+		r := txioSpendRow(b.Spenders, row.TxIndex)
 		if r.PrevTxID != txid || r.Vout != uint32(vout) {
 			return out, fmt.Errorf("spender pointer key mismatch")
 		}

@@ -10,10 +10,10 @@ import (
 	"testing"
 )
 
-func Test073IndexReleaseAvailability(t *testing.T) {
+func Test074IndexReleaseAvailability(t *testing.T) {
 	a := independentTestApp(t)
 	for _, d := range indexDefinitions() {
-		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator"
+		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender"
 		if d.Locked == available || releaseFeatureAvailable(d.ID) != available {
 			t.Fatalf("wrong release availability: %+v", d)
 		}
@@ -53,9 +53,9 @@ func Test066ManualIndexAndModuleRequestsAreLocked(t *testing.T) {
 	a := independentTestApp(t)
 	h := indexInterfaceHandler(a)
 	for _, tc := range []struct{ method, path, body string }{
-		{"POST", "plan", `{"index":"bitmap"}`}, {"POST", "build", `{"index":"blocks","outputs":["txo-spender"]}`},
+		{"POST", "plan", `{"index":"bitmap"}`}, {"POST", "build", `{"index":"blocks","outputs":["sat-state"]}`},
 		{"POST", "build", `{"index":"blocks","retain_sat_history":true}`},
-		{"POST", "live", `{"index":"sat-state","action":"enable"}`}, {"GET", "query?index=txo-spender", ""},
+		{"POST", "live", `{"index":"sat-state","action":"enable"}`}, {"GET", "query?index=sat-state", ""},
 		{"GET", "lookup?index=bitmap&key=0", ""}, {"GET", "sat?sat=0", ""}, {"POST", "discover-sat", `{"id":"anything"}`},
 	} {
 		r := indexInterfaceCall(h, tc.method, "/api/v1/index/"+tc.path, tc.body)
@@ -63,7 +63,7 @@ func Test066ManualIndexAndModuleRequestsAreLocked(t *testing.T) {
 			t.Fatalf("%s bypass: %d %s", tc.path, r.Code, r.Body.String())
 		}
 	}
-	for _, handler := range []http.HandlerFunc{a.handleOrdFollow, a.handleSatlineResolve, a.handleSatlineFollow, a.handleSatlineRun, a.handleGraphBuild, a.handleResolveSpender, a.handleAddressUTXOs, a.handleJobs} {
+	for _, handler := range []http.HandlerFunc{a.handleOrdFollow, a.handleSatlineResolve, a.handleSatlineFollow, a.handleSatlineRun, a.handleAddressUTXOs, a.handleJobs} {
 		w := httptest.NewRecorder()
 		handler(w, httptest.NewRequest("POST", "/", strings.NewReader(`{}`)))
 		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "locked") {
@@ -237,13 +237,12 @@ func Test066LockPreservesDerivedEvidenceAndRules(t *testing.T) {
 	}
 }
 
-func Test066BlockFetchDoesNotDeriveLockedIndexes(t *testing.T) {
+func Test074BlockFetchDoesNotImplicitlyDeriveLegacyIndexes(t *testing.T) {
 	a, _ := testAppWithGenesis(t)
 	block, err := a.fetchAndDecode("0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.settings.GraphIndex = true
 	a.indexVerifiedBlockKnowledge(block)
 	a.indexCachedBlockPolicy(block, "release-block", true)
 	if len(a.cacheIndex.Tx) != 0 || len(a.cacheIndex.Spends) != 0 {
@@ -254,5 +253,22 @@ func Test066BlockFetchDoesNotDeriveLockedIndexes(t *testing.T) {
 	}
 	if a.ingest != nil {
 		t.Fatal("graph worker started")
+	}
+	// Rebuilding possession metadata does not select derived indexes either.
+	a.rebuildCacheIndex()
+	if len(a.cacheIndex.Tx) != 0 || len(a.cacheIndex.Spends) != 0 {
+		t.Fatal("cache recovery silently enabled indexing")
+	}
+	// The legacy explicit choice remains supported, including enabling it after
+	// the same block was viewed while off. Canonical browse/range policies are
+	// independent and remain covered by their own tests.
+	a.settings.GraphIndex = true
+	a.indexVerifiedBlockKnowledge(block)
+	if len(a.cacheIndex.Tx) != 1 {
+		t.Fatal("explicit legacy indexing did not retain known transaction")
+	}
+	a.indexCachedBlockPolicy(block, "release-block", false)
+	if len(a.cacheIndex.Tx) != 1 {
+		t.Fatal("source-only cache update removed existing knowledge")
 	}
 }

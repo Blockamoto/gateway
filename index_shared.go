@@ -199,13 +199,15 @@ func (a *app) indexSourceBlock(ctx context.Context, target blockTarget, retentio
 				if e != nil {
 					return blockView{}, e
 				}
-				if batch.Checkpoint.BlockHash == target.HashDisplay && batch.Bitcoin != nil && reusableBitcoinEvidence(batch.Bitcoin) && len(batch.Bitcoin.Transactions) > 0 {
-					return blockView{Height: target.Height, Hash: target.HashDisplay, PreviousBlockHash: batch.PreviousBlockHash, Transactions: batch.Bitcoin.Transactions, TransactionCount: uint64(len(batch.Bitcoin.Transactions)), SourceNetwork: "local_index", VerificationState: "header_anchored", Verification: verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, WitnessCommitment: true, HeaderChainMatch: true}, Note: "Reused committed decoded evidence; raw block bytes were not fetched or retained."}, nil
+				if batch.Checkpoint.BlockHash == target.HashDisplay && batch.Bitcoin != nil && reusableBitcoinEvidence(batch.Bitcoin) {
+					if decoded, decodeErr := a.decodedIndexBlockContext(ctx, s, batch); decodeErr == nil {
+						return decoded, nil
+					}
 				}
 			}
 		}
 	}
-	return a.fetchBlockWithPolicy(target, retention)
+	return a.fetchBlockWithPolicyContext(ctx, target, retention)
 }
 
 func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
@@ -254,6 +256,7 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 			p.State, p.Error = "failed", e.Error()
 		} else {
 			s.head.Mode = output.Mode
+			a.configureTXIOStore(s)
 			s.retainSatHistory = j.RetainSatHistory
 			stores[output.Index] = s
 			if s.checkpoint != nil {

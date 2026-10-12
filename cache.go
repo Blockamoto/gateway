@@ -38,6 +38,18 @@ func newCacheIndex() cacheIndex {
 
 func (a *app) cacheIndexPath() string { return filepath.Join(a.dataDir, "cache-index.json") }
 
+// Availability permits an explicit index build. It must not turn ordinary
+// navigation into legacy transaction/spend indexing when a gate opens.
+func (a *app) legacyKnowledgeEnabled() bool {
+	if !releaseFeatureAvailable("tx-locator") || !releaseFeatureAvailable("txo-spender") {
+		return false
+	}
+	a.settingsMu.RLock()
+	enabled := a.settings.GraphIndex
+	a.settingsMu.RUnlock()
+	return enabled
+}
+
 func (a *app) rebuildCacheIndex() {
 	idx := newCacheIndex()
 	dir := filepath.Join(a.dataDir, "blocks", "json")
@@ -55,7 +67,7 @@ func (a *app) rebuildCacheIndex() {
 			continue
 		}
 		prefix := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
-		indexBlockIntoPolicy(&idx, v, prefix, releaseFeatureAvailable("tx-locator") && releaseFeatureAvailable("txo-spender"))
+		indexBlockIntoPolicy(&idx, v, prefix, a.legacyKnowledgeEnabled())
 	}
 	a.cacheMu.Lock()
 	a.cacheIndex = idx
@@ -166,7 +178,7 @@ func indexBlockKnowledgeInto(idx *cacheIndex, v blockView) {
 }
 
 func (a *app) indexVerifiedBlockKnowledge(v blockView) {
-	if !releaseFeatureAvailable("tx-locator") || !releaseFeatureAvailable("txo-spender") {
+	if !a.legacyKnowledgeEnabled() {
 		return
 	}
 	if (!v.Verification.HeaderChainMatch && !v.Verification.ConsensusValidated) || v.Height < 0 {
@@ -203,7 +215,7 @@ func (a *app) indexCachedBlock(v blockView, prefix string) {
 // Explicit index source caching records possession only. Retaining source
 // bytes must not silently select the independent tx/spender indexes.
 func (a *app) indexCachedBlockPolicy(v blockView, prefix string, deriveKnowledge bool) {
-	deriveKnowledge = deriveKnowledge && releaseFeatureAvailable("tx-locator") && releaseFeatureAvailable("txo-spender")
+	deriveKnowledge = deriveKnowledge && a.legacyKnowledgeEnabled()
 	a.cacheMu.Lock()
 	indexBlockIntoPolicy(&a.cacheIndex, v, prefix, deriveKnowledge)
 	a.cacheMu.Unlock()

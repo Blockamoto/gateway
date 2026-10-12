@@ -64,12 +64,11 @@ def main():
     build, out = args.build.resolve(), args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     installer = f'gateway-client-v{version}-installer.exe'
+    # Released clients and the publisher enforce an exact update-archive
+    # allowlist. Supplemental index/implementation documents stay in source.
     documents = [f'RELEASE-NOTES-v{version}.md', 'UPDATES.md', 'GATEWAY-ROADMAP.md', 'INDEXING.md', 'STATUS.md', 'RELEASE-ACCEPTANCE.json']
     if (root / 'docs' / f'TESTING-{version}.md').exists():
         documents.append(f'TESTING-{version}.md')
-    for document in (f'BLOCK-BODIES-{version}.md', 'TXIO-INDEX.md', f'IMPLEMENTATION-BRIEF-{version}.md'):
-        if (root / 'docs' / document).exists():
-            documents.append(document)
     document_sources = {document: acceptance if document == 'RELEASE-ACCEPTANCE.json' else root / 'docs' / document for document in documents}
     bundled_sources = {source.resolve(): document for document, source in document_sources.items()}
     artifacts = []

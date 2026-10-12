@@ -135,6 +135,10 @@ class PackagingTests(unittest.TestCase):
         (self.root / 'docs/RELEASE-ACCEPTANCE.json').write_text('{"version":"0.6.3","fixture":"historical"}')
         (self.root / 'docs/HEADER-BASELINE.md').write_text('Repository-only baseline details.\n')
         source_status = '[Current](RELEASE-ACCEPTANCE-0.6.4.json) [Historical](RELEASE-ACCEPTANCE.json) [Baseline](HEADER-BASELINE.md#validation)\n'
+        supplemental = ('BLOCK-BODIES-0.6.4.md', 'TXIO-INDEX.md', 'IMPLEMENTATION-BRIEF-0.6.4.md')
+        for document in supplemental:
+            (self.root / 'docs' / document).write_text('Supplemental repository-only reference.\n')
+            source_status += '[Supplemental](' + document + '#scope)\n'
         (self.root / 'docs/STATUS.md').write_text(source_status)
         build = self.root / 'build'
         build.mkdir()
@@ -163,8 +167,12 @@ class PackagingTests(unittest.TestCase):
                 self.assertEqual(json.loads(archive.read(package_root + '/RELEASE-ACCEPTANCE.json'))['fixture'], 'current')
                 packaged_status = archive.read(package_root + '/STATUS.md').decode('utf-8')
                 pinned_docs = 'https://github.com/Blockamoto/gateway/blob/' + 'a' * 40 + '/docs/'
-                self.assertEqual(packaged_status, '[Current](RELEASE-ACCEPTANCE.json) [Historical](' + pinned_docs + 'RELEASE-ACCEPTANCE.json) [Baseline](' + pinned_docs + 'HEADER-BASELINE.md#validation)\n')
+                expected_status = '[Current](RELEASE-ACCEPTANCE.json) [Historical](' + pinned_docs + 'RELEASE-ACCEPTANCE.json) [Baseline](' + pinned_docs + 'HEADER-BASELINE.md#validation)\n'
+                expected_status += ''.join('[Supplemental](' + pinned_docs + document + '#scope)\n' for document in supplemental)
+                self.assertEqual(packaged_status, expected_status)
                 self.assertNotIn(package_root + '/HEADER-BASELINE.md', archive.namelist())
+                for document in supplemental:
+                    self.assertNotIn(package_root + '/' + document, archive.namelist())
                 self.assertEqual(archive.read(package_root + '/' + helper), (build / helper).read_bytes())
                 for notice in NOTICES:
                     self.assertEqual(archive.read(package_root + '/' + notice), (self.root / notice).read_bytes())
@@ -186,6 +194,9 @@ class PackagingTests(unittest.TestCase):
                     self.assertEqual(hashlib.sha256(archive.read(package_root + '/' + name)).hexdigest(), digest)
             with zipfile.ZipFile(out / (package_root + '-fresh.zip')) as archive:
                 self.assertEqual(archive.read(package_root + '/bootstrap/headers-mainnet.bin'), header_payload)
+                self.assertEqual(archive.read(package_root + '/STATUS.md').decode('utf-8'), expected_status)
+                for document in supplemental:
+                    self.assertNotIn(package_root + '/' + document, archive.namelist())
                 for notice in NOTICES:
                     self.assertEqual(archive.read(package_root + '/' + notice), (self.root / notice).read_bytes())
         with zipfile.ZipFile(out / 'gateway-headers-v0.6.4.zip') as archive:

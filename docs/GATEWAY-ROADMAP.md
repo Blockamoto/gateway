@@ -1,14 +1,14 @@
 # Gateway roadmap
 
-Gateway 0.7.4 builds on the timeline, inscription and transaction stages with TXIO relationships and durable serialized block bodies. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for publication and acceptance status.
+The [public 0.7.4 prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.4) builds on the timeline, inscription and transaction stages with TXIO relationships and durable serialized block bodies. Hosted downloads, genuine 0.7.3 automatic upgrade and renewal acceptance passed. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for validation and its limits.
 
-## Current 0.7.4 work
+## Available in the 0.7.4 prerelease
 
-- Enable the TXIO index with one canonical spend set and automatic Input/Output lookup; retain legacy identifiers and unknown-state distinctions.
-- Store verified Bitcoin serialized block bodies with compact ordered transaction metadata, shared temporary decoding and resumable compatible legacy migration.
-- Keep legacy duplicate bodies until explicit cleanup; broad destructive index management is deferred.
-- Correct the inscription potential-range boundary and reserve accessible map controls outside the visualization.
-- Prepare a GitHub prerelease and promote its exact signed artifacts through the existing hosted channel, respecting each installation's update preferences.
+- TXIO has one canonical spend set and automatic Input/Output lookup, retaining legacy identifiers and unknown-state distinctions.
+- Bitcoin Blocks store verified serialized bodies with compact ordered transaction metadata, shared temporary decoding and resumable compatible legacy migration.
+- Legacy duplicate bodies remain until explicit cleanup; migration does not automatically reclaim their space, and broad destructive index management is deferred.
+- The inscription potential-range boundary is corrected and map controls remain accessible outside the visualization.
+- The public prerelease's exact approved artifacts are delivered through the existing signed channel, respecting each installation's update preferences. Renewal, independent downloads of all renewed artifacts and normal refreshed-client acceptance passed without changing the approved application or header payloads.
 
 ## Scope in 0.7.1
 
@@ -27,10 +27,10 @@ See [status](STATUS.md) for release acceptance and [the timeline tester guide](T
 
 The timeline is the first step in the design overhaul. Further interaction and index-specific features will be scoped individually as testing informs the next brief.
 
-The inscription work is a staged rollout, with each stage tested before promotion:
+The inscription and transaction stages are available; Gateway peers remain the next locked stage. Each stage needs its own validation before promotion:
 
 1. **Inscriptions:** a content viewport within the timeline workspace, compact positional indexing, Lean/Full storage choices and visible unresolved content dependencies. Positional lookup works from a known block without a global transaction index.
-2. **Transactions:** enable the Transaction Index, plus the optional inscription-related transaction locator choice and its retroactive action in the Inscription inspector. These connect conventional transaction/inscription IDs to block positions. Both inscription enrichment controls remain gated in stage one.
+2. **Transactions:** the Transaction Index, plus the optional inscription-related transaction locator choice and its retroactive action in the Inscription inspector, connect conventional transaction/inscription IDs to block positions. Both inscription enrichment controls were gated during the earlier inscription-only stage.
 3. **Gateway peers:** enable verified locator requests and explicitly public locator serving. The shared protocol foundation is implemented alongside the earlier stages but remains gated. Peers supply location hints; fetched evidence is checked locally.
 
 These stages describe order, not promised dates. They do not enable current ownership, complete parent-child enumeration, global sat history or unrelated index features.

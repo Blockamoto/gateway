@@ -1,12 +1,20 @@
 # Gateway status
 
-## Working source: 0.7.4 TXIO and serialized block bodies
+## Published prerelease: 0.7.4 TXIO and serialized block bodies
 
 The source enables TXIO bidirectional input/output relationships while retaining the `txo-spender` storage/API identity. Blocks use compact ordered transaction metadata and verified durable serialized bodies, with compatible versioned migration and shared temporary decoding. Legacy batches and decoded/hex duplicates are retained. The inscription potential range uses the catalog's suggested start without restricting explicit earlier scans; map controls occupy their own accessible toolbar. Gateway peerhood remains locked.
 
-The implementation brief and focused test guide are recorded in [the 0.7.4 brief](IMPLEMENTATION-BRIEF-0.7.4.md) and [tester guide](TESTING-0.7.4.md). Final source, package and hosted delivery checks are in progress. Publication is intended as a new GitHub prerelease through the existing signed channel; this paragraph does not claim that the new feed is live.
+The [public 0.7.4 prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.4) was published on **12 October 2026 at 21:08:04 UTC**. Its tag and application source remain `87770d70c8162139f19fdf37e55a474e6370be40`. Packaging-policy correction `65c00fc` removed supplemental documents from the two automatic-update ZIPs and pinned their links to the source; all compiled bytes, fresh ZIPs, installer and header ZIP stayed unchanged. The implementation brief and test guide are recorded in [the 0.7.4 brief](IMPLEMENTATION-BRIEF-0.7.4.md) and [tester guide](TESTING-0.7.4.md).
 
-Render automatic deployment on `main` is enabled for `gateway-updates`. Application approval and signing remain separate from publisher deployment. The live feed was independently read on 12 October 2026: application version **0.7.1**, sequence **6**, and header sequence **5**. The [renewal receipt](UPDATE-FEED-STATUS.json) records that earlier delivery state.
+Initial hosted delivery passed after approval commit `c8fd6c750bc777a6d20a56eeb3dba0d9ba2d4d47` became live on Render at **21:33:34 UTC**. Independent verification downloaded both application ZIPs and all **97 header chunks**, checking signatures, validity, sequences, sizes and hashes across **99 objects / 87,741,245 bytes**. These feeds used application sequence **7** and header sequence **6**, with the existing public verification key and app source unchanged.
+
+A genuine published **0.7.3** Windows client automatically downloaded, installed and restarted into 0.7.4; all four executable hashes matched the published package. Settings, theme, live-index policy, user data marker, all 969,480 saved headers and bootstrap sidecars were preserved. A separate fresh 0.7.4 client automatically checked both feeds without Settings setup and reported up to date. Its snapshot prefix remained identical while ordinary Bitcoin peers appended 1,662 headers. Disposable profiles were removed. These checks used a warmed service and did not perform a system installation or measure idle cold-start latency.
+
+The [renewal workflow](https://github.com/Blockamoto/gateway/actions/runs/38311565343) passed and the workflow-maintained [feed status](UPDATE-FEED-STATUS.json) is verified. The renewed feeds are application sequence **8** and header sequence **7**, both expiring **11 November 2026 at 21:36:03 UTC**. Independent signature and byte comparison confirmed that only sequences, issue times and expiry times changed; all 99 application/header payloads stayed identical. A fresh download of all **99 objects / 87,741,245 bytes** passed at **21:43:31 UTC**. The exact 0.7.4 client automatically accepted both refreshed feeds through normal startup checks, reported up to date and started no download, staging or installation. Settings, live-index policy and the full snapshot prefix stayed intact.
+
+[Linux CI at app source 877](https://github.com/Blockamoto/gateway/actions/runs/38305738277) and [approval commit c8](https://github.com/Blockamoto/gateway/actions/runs/38311238112) passed full Go, static, race, helper, packaging and browser/runtime checks. The original full Windows result remains **991 passing and 44 skipped test events with three obsolete locked-TXIO expectations**; reviewed corrections to those two test files passed a separate **16-test** run. No corrected full Windows rerun is claimed. Exact native migration, saved TXIO links, restart, renderer and local Defender checks passed within their recorded scope; native WebView sharpness and clearance on other machines are not established. The [acceptance record](RELEASE-ACCEPTANCE-0.7.4.json) records the evidence and limits.
+
+Render automatic deployment on `main` is enabled for `gateway-updates`; application approval and signing remain separate from publisher deployment. Weekly renewal refreshes only the exact approved release, not whichever GitHub release is newest. Existing update modes, custom-source choices and explicit opt-outs are preserved.
 
 ## Previous source: 0.7.3 The transactions update
 
@@ -14,23 +22,23 @@ The source enables the Transaction Index and inscription-related locator builds.
 
 ## Previous source: 0.7.2 inscription prerelease preparation
 
-The source is preparing positional inscription indexing and an isolated content viewport. Related inscription transaction locators, the standalone Transaction Index and Gateway peerhood remain gated for their later stages. This does not change the published release or approved hosted feed. See [the inscription test guide](TESTING-0.7.2.md) and [draft release notes](RELEASE-NOTES-v0.7.2.md); validation is recorded separately for the new build.
+The 0.7.2 preparation stage introduced positional inscription indexing and an isolated content viewport. Related inscription transaction locators, the standalone Transaction Index and Gateway peerhood were gated for later stages. See [the inscription test guide](TESTING-0.7.2.md) and [draft release notes](RELEASE-NOTES-v0.7.2.md) for that earlier stage.
 
-## Inscription draft validation
+## Previous 0.7.2 inscription draft validation
 
 The exact local 0.7.2 Windows build passed **921 Go checks, 46 expected skips and no failures**, including the final cancellation and coordinate regressions. Native viewport tests separately checked controlled local Ord fixtures and real Bitcoin block 840000: 3,050 transactions, 878 Lean inscription coordinates, and verified positional content without a transaction locator index. The retained checkpoint and header snapshot survived the final-build restart.
 
 A genuine 0.7.1 client automatically upgraded and restarted into the exact final 0.7.2 components through a local signed publisher fixture, preserving settings and all 969,480 headers. Same-size tampered bytes were rejected. This was a local update test, not a production deployment or system installation. The installer and four Windows components had no threats reported by local Defender scans with protection active and unchanged definitions; they remain unsigned. [Linux CI](https://github.com/Blockamoto/gateway/actions/runs/38054908829) passed build, full tests, static checks, race checks, helpers, packaging and actual browser regressions. See the [0.7.2 acceptance record](RELEASE-ACCEPTANCE-0.7.2.json) for exact scope and limits.
 
-The GitHub release remains a draft for review. The production updater and approved weekly renewal still serve 0.7.1.
+At that review stage, the GitHub release remained a draft and the production updater and approved weekly renewal served 0.7.1. That historical state does not describe the current 0.7.4 delivery above.
 
-## Published baseline
+## Previous published baseline: 0.7.1
 
-Gateway **0.7.1 is published, and its hosted updater and renewal workflow have passed live acceptance**. The tested build replaces index cards with a timeline workspace and brings Inspector and Block Explorer tabs into its upper pane. Headers and Bitcoin Blocks remain the enabled indexes. Additional indexes and Gateway-to-Gateway sharing remain locked.
+Gateway **0.7.1 was published with hosted updater and renewal acceptance passed**. That build replaced index cards with a timeline workspace and brought Inspector and Block Explorer tabs into its upper pane. Headers and Bitcoin Blocks were its enabled indexes; additional indexes and Gateway-to-Gateway sharing were locked.
 
 The [release downloads](https://github.com/Blockamoto/gateway/releases/tag/v0.7.1) are public. The [acceptance record](RELEASE-ACCEPTANCE-0.7.1.json) identifies the tested runtime source, exact packages, live delivery checks and their limits.
 
-## Completed validation
+## Previous 0.7.1 validation
 
 Validation on **9 October 2026** used runtime source `e508085f34c406f41ded7eadbc33d5ee0ab4324b`.
 
@@ -42,7 +50,7 @@ Validation on **9 October 2026** used runtime source `e508085f34c406f41ded7eadbc
 - All eight release downloads and the initial signed delivery bundle matched their local hashes and sizes. The public `v0.7.1` tag resolves to `da673faf517a8ae85f130da6ae3ea89efc64fd6a`.
 - The exact final installer and four Windows components had no threats reported by local Defender diagnostic scans with active protection and unchanged definitions **1.459.636.0**. They remain unsigned; these scans do not establish cloud, browser-download or other-machine clearance.
 
-## Publication and hosted delivery
+## Previous 0.7.1 publication and hosted delivery
 
 The release tag, application packages and header snapshot remain fixed at `da673faf517a8ae85f130da6ae3ea89efc64fd6a`. Later documentation and feed-operation changes do not alter those released application bytes.
 
@@ -50,7 +58,7 @@ The public update service at `https://gateway-updates.onrender.com` passed indep
 
 A genuine released 0.7.0 Windows client automatically downloaded 0.7.1, installed and restarted with all four executable hashes matching the published package. Settings, appearance, indexing preferences and the full saved headers were preserved. A separate fresh 0.7.1 client automatically checked the public feeds; its validated 969,480-header snapshot prefix remained intact while ordinary peers appended 1,169 headers. These checks used disposable profiles and a warmed service; idle cold-start latency was not measured.
 
-The weekly approved-release renewal passed its [commissioning run](https://github.com/Blockamoto/gateway/actions/runs/37951160873). The current feeds are application sequence **5** and header sequence **4**, both expiring on **8 November 2026 at 15:22:35 UTC**. The [public renewal receipt](UPDATE-FEED-STATUS.json) records the live verification. Final independent checks confirmed that both live feeds match the renewed signed bundle and that both application archives and all 97 header chunks remain byte-identical to the accepted release. Only signed sequences and timestamps changed.
+The weekly approved-release renewal passed its [commissioning run](https://github.com/Blockamoto/gateway/actions/runs/37951160873). At that commissioning run, the feeds were application sequence **5** and header sequence **4**, both expiring on **8 November 2026 at 15:22:35 UTC**. Final independent checks confirmed that both live feeds matched that renewed signed bundle and that both application archives and all 97 header chunks remained byte-identical to the accepted 0.7.1 release. Only signed sequences and timestamps changed. The current workflow-maintained [feed status](UPDATE-FEED-STATUS.json) now records 0.7.4.
 
 The exact final 0.7.1 Windows client also automatically accepted both renewed feeds and reported up to date, with its validated header snapshot preserved and no unnecessary download or installation offered.
 

@@ -2,9 +2,9 @@
 
 Gateway is a Bitcoin block explorer that retrieves the blocks you ask for. Explore blocks, transactions, inputs, outputs and positions within outputs without downloading the whole blockchain. Bitcoin Core is optional.
 
-**0.7.1 is a public testing release with a timeline workspace.** Its active indexes are **Headers** and **Bitcoin Blocks**. Additional indexes remain locked while they undergo further validation. See [current status](docs/STATUS.md) for validation and hosted delivery status.
+**[0.7.4 is a public prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.4), with hosted automatic-upgrade and renewal acceptance passed.** Its active indexes are **Headers**, **Bitcoin Blocks**, **Inscriptions**, **Transactions** and **Transaction Input/Output (TXIO)**. Gateway peerhood and later index features remain locked. See [current status](docs/STATUS.md) for validation and its limits.
 
-The working source is **0.7.4**, adding the **Transaction Input/Output (TXIO) index** and durable Bitcoin serialized block bodies. TXIO connects inputs to their original outputs and outputs to their spending inputs. Blocks retain compact transaction order metadata and verified raw bodies; compatible legacy conversion keeps the old copies. The shared workspace shows block maps, transaction flows and isolated inscription content. See [the 0.7.4 test guide](docs/TESTING-0.7.4.md) and [status](docs/STATUS.md) for validation and publication progress.
+TXIO connects inputs to their original outputs and outputs to their spending inputs. Blocks retain compact transaction order metadata and verified durable serialized bodies; compatible legacy conversion keeps the old copies and does not immediately reclaim their disk space. The shared workspace shows block maps, transaction flows and isolated inscription content. See [the 0.7.4 test guide](docs/TESTING-0.7.4.md) and [indexing](docs/INDEXING.md).
 
 ## Start here
 
@@ -36,8 +36,8 @@ Lean positional inscription records and optional Full reveal records do not infe
 
 ## Test, contribute and build
 
-- [Timeline tester guide](docs/TESTING-0.7.1.md), plus the [setup and browser QA checklist](docs/TESTING-0.7.0.md) for installation, browser registration and real `.bitcoin` address entry.
-- [Release notes](docs/RELEASE-NOTES-v0.7.1.md), [updates](docs/UPDATES.md) and [header delivery](docs/HEADER-BASELINE.md).
+- [0.7.4 tester guide](docs/TESTING-0.7.4.md), plus the [setup and browser QA checklist](docs/TESTING-0.7.0.md) for installation, browser registration and real `.bitcoin` address entry.
+- [0.7.4 release notes](docs/RELEASE-NOTES-v0.7.4.md), [updates](docs/UPDATES.md) and [header delivery](docs/HEADER-BASELINE.md).
 - [Building](BUILDING.md), [development](DEVELOPMENT.md) and [contributing](CONTRIBUTING.md).
 - [Security reporting](SECURITY.md).
 

@@ -27,7 +27,9 @@ func TestIndexProvidersCoreProgressAndPolicy(t *testing.T) {
 	if tx.Queryable || tx.Serveable || tx.Readiness != "enabled_index_not_ready" || tx.Completeness != "provider_reported_partial" || len(tx.Coverage) != 1 || tx.Coverage[0].To != 60 {
 		t.Fatalf("partial txindex claims: %+v", tx)
 	}
-	if spend.Queryable || spend.Serveable || spend.Coverage[0].To != 40 {
+	// Local positive spend queries can use partial Core coverage. The catalog
+	// must keep the partial qualification and unsynced serving restriction.
+	if !spend.Queryable || spend.Serveable || spend.Readiness != "provider_available_partial_coverage" || spend.Completeness != "provider_reported_partial" || len(spend.Coverage) != 1 || spend.Coverage[0] != (heightInterval{From: 0, To: 40}) {
 		t.Fatalf("partial spender claims: %+v", spend)
 	}
 	core.TxIndex, core.SpenderIndex = true, true
@@ -37,6 +39,11 @@ func TestIndexProvidersCoreProgressAndPolicy(t *testing.T) {
 	if tx.Completeness != "provider_reported_at_snapshot" || !tx.Serveable || !tx.Queryable || tx.Snapshot == nil || tx.Snapshot.Height != 100 {
 		t.Fatalf("synced provider lost its qualified snapshot: %+v", tx)
 	}
+	settings.ServeData = false
+	if got := indexProviderRow(t, buildIndexProviderViews(settings, core, indexProviderState{}), "txo-spender", "bitcoin_core_txospenderindex"); !got.Queryable || got.Serveable {
+		t.Fatalf("local spender query ignored serving policy: %+v", got)
+	}
+	settings.ServeData = true
 	core.InitialBlockDownload = true
 	rows = buildIndexProviderViews(settings, core, indexProviderState{})
 	if got := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex"); got.Queryable || got.Serveable || got.Readiness != "enabled_index_not_ready" {
@@ -170,11 +177,14 @@ func TestIndexProvidersSpenderMissRemainsUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	appendGraphTestHeader(t, b, genesisHashDisplay, 123)
-	if got := indexProviderRow(t, b.indexProviderViews(), "txo-spender", "gateway_native_graph"); got.Queryable || got.Completeness != "recorded_ranges" {
+	if got := indexProviderRow(t, b.indexProviderViews(), "txo-spender", "gateway_native_graph"); !got.Queryable || got.Serveable || got.Readiness != "provider_available_check_coverage" || got.Completeness != "recorded_ranges" || len(got.Coverage) != 1 || got.Coverage[0] != (heightInterval{From: 0, To: 0}) {
 		t.Fatalf("native sparse provider missing: %+v", got)
 	}
 	if snap, why := b.graphCanProveUnspent(genesis.Transactions[0].TxID, 0); snap != nil {
 		t.Fatalf("native coverage gap became unspent: %+v %s", snap, why)
+	}
+	if got, err := b.resolveSpender(genesis.Transactions[0].TxID, 0); err != nil || got.ConfirmedState != "unknown" || got.Found || got.Snapshot != nil {
+		t.Fatalf("queryable sparse provider promoted a miss to unspent: %+v %v", got, err)
 	}
 }
 

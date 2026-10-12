@@ -174,24 +174,43 @@ func Test066SavedDerivedWorkCannotResume(t *testing.T) {
 	}
 }
 
-func Test066LocatorShortcutsCannotReadLockedProviders(t *testing.T) {
+func Test074LocatorShortcutsRespectReleaseAvailability(t *testing.T) {
 	a, _ := testAppWithGenesis(t)
 	a.settings.CoreDisabled = true
 	id := strings.Repeat("a", 64)
 	a.cacheIndex.Tx[id] = txLocation{TxID: id, Height: 0, BlockHash: genesisHashDisplay}
-	for _, capability := range []string{"spendloc", "utxos"} {
-		for _, declared := range []string{capability, "", "blockloc"} {
-			_, _, err := a.queryPeers(overlayRequest{Type: capability, TxID: id}, declared)
-			if err == nil || !strings.Contains(err.Error(), "locked") {
-				t.Fatal("local provider shortcut escaped release lock", capability, declared, err)
-			}
+	outpoint := id + ":0"
+	spend := spendLocation{Outpoint: outpoint, Found: true, SpendingTxID: strings.Repeat("b", 64), Height: 0, BlockHash: genesisHashDisplay}
+	a.cacheIndex.Spends[outpoint] = spend
+	for _, declared := range []string{"utxos", "", "blockloc", "txloc", "spendloc"} {
+		_, _, err := a.queryPeers(overlayRequest{Type: "utxos", TxID: id}, declared)
+		if err == nil || !strings.Contains(err.Error(), "locked") {
+			t.Fatal("request alias escaped address-state lock", declared, err)
+		}
+	}
+	for _, requested := range []string{"txloc", "spendloc", "blockloc"} {
+		_, _, err := a.queryPeers(overlayRequest{Type: requested, TxID: id}, "utxos")
+		if err == nil || !strings.Contains(err.Error(), "locked") {
+			t.Fatal("declared capability escaped address-state lock", requested, err)
 		}
 	}
 	response, _, err := a.queryPeers(overlayRequest{Type: "txloc", TxID: id}, "txloc")
 	if err != nil || response.TxLocation == nil || response.TxLocation.TxID != id {
 		t.Fatal("available local TX locator shortcut stayed locked", response, err)
 	}
-	if a.cacheIndex.Tx[id].TxID != id {
+	response, _, err = a.queryPeers(overlayRequest{Type: "spendloc", TxID: id}, "spendloc")
+	if err != nil || response.SpendLocation == nil || *response.SpendLocation != spend {
+		t.Fatal("available local spender shortcut stayed locked", response, err)
+	}
+	// Enabling local spender evidence does not enable the Gateway peer protocol.
+	response, status := a.answerBODRequest(overlayRequest{Type: "spendloc", TxID: id})
+	if status != "unsupported" || response.OK || response.SpendLocation != nil {
+		t.Fatal("local spender availability enabled peer serving", response, status)
+	}
+	if _, err := a.queryGatewayPeer(overlayPeer{Addr: "127.0.0.1:1", Capabilities: []string{"spendloc"}}, overlayRequest{Type: "spendloc", TxID: id}); err == nil || !strings.Contains(err.Error(), "locked") {
+		t.Fatal("local spender availability enabled peer querying", err)
+	}
+	if a.cacheIndex.Tx[id].TxID != id || a.cacheIndex.Spends[outpoint] != spend {
 		t.Fatal("release lock changed retained locator data")
 	}
 }

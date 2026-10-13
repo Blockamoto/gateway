@@ -47,4 +47,6 @@ node scripts/test-utxo-build-browser.js
 node scripts/test-timeline-explorer-browser.js
 ```
 
+[The complete Linux development run](https://github.com/Blockamoto/gateway/actions/runs/38469242401) passed against runtime source `cc56b6bcc8a8d836f3d82fd0b41084d2eb4a31c1`, including full Go tests, race checks, vet, companion/helpers, packaging and actual browser/native checks. The full corrected Windows root-package run passed in 786.677 seconds; final recovery changes also passed focused regressions. See [status](STATUS.md) for counts and the corrected initial CI failures.
+
 Current/historical tests use bounded fixtures and authentic early-chain blocks. They do not establish a full-mainnet build, storage benchmark, system installation, public update delivery or complete Bitcoin consensus validation.

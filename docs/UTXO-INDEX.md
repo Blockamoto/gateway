@@ -29,6 +29,8 @@ The engine stores membership separately from immutable output facts:
 
 These are separate JSON files under `indexes/utxo-state`, with bounded copy-on-write radix pages and content-addressed commits/journals. Shared output pages live under `indexes/output-facts-v1`. The transaction hash catalogue is not duplicated in each TXIO spend row. The optional historical **Transaction Locator** remains its own track/store; the engine's mandatory live bridge is published with live membership and does not depend on complete historical locator coverage.
 
+BPS remains the logical live-output identity. Internal live/transaction radix keys disperse those positions with SHA-256 to avoid deep common numeric prefixes; direct BPS lookup computes its key locally. The current checkpoint schema is version 2. Earlier unreleased development UTXO heads are rejected rather than interpreted with a different key encoding; published 0.7.4 profiles contain no enabled UTXO state.
+
 The following is an illustrative resolved lookup, not the physical membership record or a claim about an actual output:
 
 ```json
@@ -65,6 +67,8 @@ TXIO's **Values** and **ScriptPubKeys** history are optional, independently cove
 Retention is the union of live membership, retained recovery, preserved rebuild archives and optional historical owners. Cleanup cannot delete a page still referenced by any owner. Collection works at page granularity, so retained pages can contain neighboring historical outputs whose individual rows no longer need retention. Unpublished shared pages receive a one-hour staging grace period. Incremental engine cleanup and source retention are independent.
 
 Engine marking records completed subtrees durably and can continue across bounded passes. A sweep runs with cancellation checks against a stable writer snapshot; it is allowed to finish instead of repeatedly restarting under a short timeout. Whole-state fact enumeration runs outside the status mutex. Each block/query/undo operation uses a fresh bounded cache of authenticated fact pages, avoiding repeated parsing of a page for each output without reusing stale authentication in later operations.
+
+Private engine-page cleanup uses versioned, even-second timestamps and verifies each stored mark before sweeping. A filesystem which cannot preserve those marks stops cleanup with an error; it does not permit deletion based on a successful timestamp-setting call alone. The source checks include an actual exFAT drive fixture as well as simulated precision loss.
 
 These indexes remain local/private. The feature does not enable Gateway-to-Gateway sharing or publish a UTXO snapshot. Local records and preserved archives can reveal which chain data was processed; turning a history option off does not erase earlier retained data. Storage inspection reports file bytes, counts shared dependencies once, excludes raw blocks and unrelated TXIO-only history, and labels budget-limited inspections as partial. Automatic status uses only a completed measurement for the same state revision; otherwise bytes remain unknown.
 

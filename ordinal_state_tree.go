@@ -402,11 +402,31 @@ func (t *ordinalTree) predecessor(key string, target any) (bool, error) {
 var ordinalMaintenanceMu sync.Mutex
 var ordinalGCProcessOwner = fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano())
 var errOrdinalMaintenancePending = errors.New("ordinal cleanup mark pass has more incremental work")
+var ordinalGCSetTimes = os.Chtimes
 
 type ordinalGCGeneration struct {
-	Next    int64  `json:"next"`
-	Pending bool   `json:"pending"`
-	Owner   string `json:"owner"`
+	Encoding int    `json:"encoding,omitempty"`
+	Next     int64  `json:"next"`
+	Pending  bool   `json:"pending"`
+	Owner    string `json:"owner"`
+}
+
+// Encoding 2 uses even seconds in a historical, nonoverlapping epoch. FAT and
+// exFAT can round odd seconds despite a successful timestamp-setting call.
+// Never treat that successful call as a receipt: verify the stored mark before
+// permitting sweep, so unsupported timestamp precision fails closed.
+func ordinalMarkPage(name string, mark time.Time) error {
+	if e := ordinalGCSetTimes(name, mark, mark); e != nil {
+		return e
+	}
+	info, e := os.Stat(name)
+	if e != nil {
+		return e
+	}
+	if !info.ModTime().Equal(mark) {
+		return fmt.Errorf("filesystem cannot preserve ordinal cleanup mark")
+	}
+	return nil
 }
 
 func collectOrdinalPages(dir string, roots []string) error {
@@ -448,6 +468,12 @@ func collectOrdinalPagesContext(ctx context.Context, dir string, roots func(func
 	if e == nil && json.Unmarshal(data, &generation) != nil {
 		return fmt.Errorf("invalid ordinal maintenance generation")
 	}
+	if generation.Encoding != 0 && generation.Encoding != 2 {
+		return fmt.Errorf("unsupported ordinal maintenance mark encoding")
+	}
+	if generation.Encoding != 2 {
+		generation = ordinalGCGeneration{Encoding: 2}
+	}
 	if !generation.Pending || generation.Owner != ordinalGCProcessOwner {
 		generation.Next++
 	}
@@ -462,7 +488,7 @@ func collectOrdinalPagesContext(ctx context.Context, dir string, roots func(func
 	if e = syncDirectory(dir); e != nil {
 		return e
 	}
-	mark := time.Unix(946684800+generation.Next, 0)
+	mark := time.Unix(315532800+2*generation.Next, 0)
 	tree := newOrdinalTree(dir, "")
 	workSpent := time.Duration(0)
 	markRoot := func(root string) error {
@@ -500,7 +526,7 @@ func collectOrdinalPagesContext(ctx context.Context, dir string, roots func(func
 			}
 			started := time.Now()
 			if current.exit {
-				if e = os.Chtimes(name, mark, mark); e != nil {
+				if e = ordinalMarkPage(name, mark); e != nil {
 					return e
 				}
 			} else {
@@ -524,7 +550,7 @@ func collectOrdinalPagesContext(ctx context.Context, dir string, roots func(func
 					}
 				}
 				if len(children) == 0 {
-					if e = os.Chtimes(name, mark, mark); e != nil {
+					if e = ordinalMarkPage(name, mark); e != nil {
 						return e
 					}
 				} else {

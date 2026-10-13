@@ -11,7 +11,7 @@
   "storage": {
     "blocks_body_schema": 2,
     "txio_schema": 3,
-    "utxo_schema": 1,
+    "utxo_schema": 2,
     "recovery_transitions": 288,
     "legacy_copies": "retained without automatic removal",
     "optional_history": "Values and ScriptPubKeys have independent coverage and retention",

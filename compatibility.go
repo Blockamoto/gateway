@@ -76,7 +76,7 @@ func currentCompatibility() compatibilityView {
 		IndexRebuild:           false,
 		BlockBodySchema:        2,
 		TXIOSchema:             3,
-		UTXOSchema:             1,
+		UTXOSchema:             utxoCheckpointSchema,
 		CacheMetadataSchema:    cacheMetadataSchema,
 		CacheMetadataRebuild:   false,
 		CoreMountSchema:        coreMountSchemaVersion,

@@ -142,6 +142,7 @@ func storeBlockOutputFactLayersContext(ctx context.Context, root string, block b
 		return nil, fmt.Errorf("output facts need a block identity")
 	}
 	p := outputFactPage{Schema: 1, Height: block.Height, BlockHash: block.Hash, Values: values, Scripts: scripts}
+	dirtyDirectories := map[string]bool{}
 	flush := func() error {
 		if len(p.Rows) == 0 {
 			return nil
@@ -187,12 +188,9 @@ func storeBlockOutputFactLayersContext(ctx context.Context, root string, block b
 				return e
 			}
 		}
-		// Reused files must have the same durability acknowledgement as new files.
-		for _, dir := range []string{filepath.Dir(path), outputFactDirectory(root), filepath.Dir(outputFactDirectory(root)), root} {
-			if e = syncDirectory(dir); e != nil {
-				return e
-			}
-		}
+		// Returned references become publishable only after the complete block
+		// flush below. Reused pages need that same durability acknowledgement.
+		dirtyDirectories[filepath.Dir(path)] = true
 		for i, r := range p.Rows {
 			refs[outputCoordinate(int(r.Vout), r.TxIndex, block.Height)] = outputFactRef{hash, uint32(i)}
 		}
@@ -239,6 +237,24 @@ func storeBlockOutputFactLayersContext(ctx context.Context, root string, block b
 	}
 	if e := flush(); e != nil {
 		return nil, e
+	}
+	for dir := range dirtyDirectories {
+		if e := ctx.Err(); e != nil {
+			return nil, e
+		}
+		if e := syncDirectory(dir); e != nil {
+			return nil, e
+		}
+	}
+	if len(dirtyDirectories) > 0 {
+		for _, dir := range []string{outputFactDirectory(root), filepath.Dir(outputFactDirectory(root)), root} {
+			if e := ctx.Err(); e != nil {
+				return nil, e
+			}
+			if e := syncDirectory(dir); e != nil {
+				return nil, e
+			}
+		}
 	}
 	return refs, nil
 }

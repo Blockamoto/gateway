@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -118,17 +119,28 @@ func resetUTXOForRebuild(ctx context.Context, root, jobID string) error {
 	return syncDirectory(indexes)
 }
 
+var ErrUTXOArchivePinsUnavailable = errors.New("preserved UTXO archive prevents fact collection")
+
+func utxoArchivePinError(ctx context.Context, e error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	// An unreadable preserved archive prevents reclamation but does not make
+	// the independently authenticated replacement's current state corrupt.
+	return fmt.Errorf("%w: %v", ErrUTXOArchivePinsUnavailable, e)
+}
+
 func (s *utxoStore) visitArchivedFactPages(ctx context.Context, visit func(string) error) error {
 	dir := filepath.Join(s.root, "indexes", "utxo-state-archives")
 	if e := updateapply.CheckPath(dir); e != nil {
-		return e
+		return utxoArchivePinError(ctx, e)
 	}
 	f, e := os.Open(dir)
 	if os.IsNotExist(e) {
 		return nil
 	}
 	if e != nil {
-		return e
+		return utxoArchivePinError(ctx, e)
 	}
 	defer f.Close()
 	for {
@@ -138,29 +150,29 @@ func (s *utxoStore) visitArchivedFactPages(ctx context.Context, visit func(strin
 				return e
 			}
 			if !entry.IsDir() || !validHash(entry.Name()) {
-				return fmt.Errorf("%w: invalid UTXO archive entry", ErrUTXOStateCorrupt)
+				return utxoArchivePinError(ctx, fmt.Errorf("invalid UTXO archive entry"))
 			}
 			old := &utxoStore{root: s.root, dir: filepath.Join(dir, entry.Name())}
 			var marker utxoRebuildMarker
 			markerPath := filepath.Join(s.root, "indexes", "utxo-rebuild-jobs", entry.Name()+".json")
 			if e = utxoReadJSON(ctx, markerPath, 16<<10, &marker); e != nil || marker.Schema != 1 || marker.Checksum != utxoRebuildDigest(marker) || indexDigest(marker.JobID) != entry.Name() {
-				return fmt.Errorf("%w: invalid UTXO archive marker (%v)", ErrUTXOStateCorrupt, e)
+				return utxoArchivePinError(ctx, fmt.Errorf("invalid UTXO archive marker (%v)", e))
 			}
 			if e = old.reload(ctx); e != nil {
-				return fmt.Errorf("archived UTXO state prevents fact collection: %w", e)
+				return utxoArchivePinError(ctx, e)
 			}
 			if marker.PriorHead && old.head == nil {
-				return fmt.Errorf("%w: archived UTXO head is missing", ErrUTXOStateCorrupt)
+				return utxoArchivePinError(ctx, fmt.Errorf("archived UTXO head is missing"))
 			}
 			if e = old.visitCurrentFactPages(ctx, visit); e != nil {
-				return e
+				return utxoArchivePinError(ctx, e)
 			}
 		}
 		if readErr == io.EOF {
 			return nil
 		}
 		if readErr != nil {
-			return readErr
+			return utxoArchivePinError(ctx, readErr)
 		}
 	}
 }

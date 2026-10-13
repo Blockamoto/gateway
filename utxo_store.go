@@ -20,6 +20,7 @@ import (
 )
 
 const utxoRecoveryTransitions = 288
+const utxoCheckpointSchema = 2
 const utxoMaxMoney = uint64(21_000_000 * 100_000_000)
 const utxoRecordBudget = 128 << 20
 
@@ -142,10 +143,16 @@ func utxoCheckpointDigest(c utxoCheckpoint) string {
 }
 func utxoHeadDigest(h utxoHead) string { h.Checksum = ""; return indexDigest(h) }
 func utxoPositionKey(height int64, tx, vout int) string {
-	return fmt.Sprintf("%016x%08x%08x", height, tx, vout)
+	return indexDigest("output:" + outputCoordinate(vout, tx, height))
 }
-func utxoTransactionKey(height int64, tx int) string { return fmt.Sprintf("%016x%08x", height, tx) }
-func (s *utxoStore) pages() string                   { return filepath.Join(s.dir, "pages") }
+
+// BPS remains the logical identity and query input. Internal radix keys are
+// dispersed to avoid rewriting a long common numeric prefix on every spend.
+func utxoTransactionKey(height int64, tx int) string {
+	return indexDigest(fmt.Sprintf("transaction:%d.%d", tx, height))
+}
+func utxoBridgeKey(txid string) string { return indexDigest("outpoint-transaction:" + txid) }
+func (s *utxoStore) pages() string     { return filepath.Join(s.dir, "pages") }
 func (s *utxoStore) recordPath(kind, hash string) string {
 	return filepath.Join(s.dir, kind, hash+".json")
 }
@@ -249,7 +256,7 @@ func (s *utxoStore) reload(ctx context.Context) error {
 }
 
 func validateUTXOCheckpoint(c utxoCheckpoint) error {
-	if c.Schema != 1 || c.Network != "bitcoin-mainnet" || c.Height < 0 || !validHash(c.BlockHash) || c.Commitment != utxoCheckpointDigest(c) || c.Validation != "header_anchored_processing" || c.ConsensusValidated || c.TotalValueSats > utxoMaxMoney || c.RecoveryBoundaryHeight < 0 || c.RecoveryBoundaryHeight > c.Height || !validHash(c.RecoveryBoundaryHash) {
+	if c.Schema != utxoCheckpointSchema || c.Network != "bitcoin-mainnet" || c.Height < 0 || !validHash(c.BlockHash) || c.Commitment != utxoCheckpointDigest(c) || c.Validation != "header_anchored_processing" || c.ConsensusValidated || c.TotalValueSats > utxoMaxMoney || c.RecoveryBoundaryHeight < 0 || c.RecoveryBoundaryHeight > c.Height || !validHash(c.RecoveryBoundaryHash) {
 		return fmt.Errorf("%w: invalid UTXO checkpoint", ErrUTXOStateCorrupt)
 	}
 	if c.Height == 0 {
@@ -420,7 +427,7 @@ func (s *utxoStore) coinUsingReader(ctx context.Context, trees map[string]*ordin
 
 func (s *utxoStore) memberForOutpoint(trees map[string]*ordinalTree, txid string, vout uint32) (utxoMember, bool, error) {
 	var bridge utxoBridge
-	ok, e := trees["bridge"].get(txid, &bridge)
+	ok, e := trees["bridge"].get(utxoBridgeKey(txid), &bridge)
 	if e != nil || !ok {
 		return utxoMember{}, false, e
 	}
@@ -471,7 +478,7 @@ func (s *utxoStore) changeCoin(ctx context.Context, edit *utxoEdit, checkpoint *
 		if e = edit.change("transactions", txkey, tx); e != nil {
 			return e
 		}
-		if e = edit.change("bridge", txid, utxoBridge{f.Height, f.TxIndex, f.BlockHash}); e != nil {
+		if e = edit.change("bridge", utxoBridgeKey(txid), utxoBridge{f.Height, f.TxIndex, f.BlockHash}); e != nil {
 			return e
 		}
 	} else {
@@ -489,7 +496,7 @@ func (s *utxoStore) changeCoin(ctx context.Context, edit *utxoEdit, checkpoint *
 			if e = edit.change("transactions", txkey, nil); e != nil {
 				return e
 			}
-			if e = edit.change("bridge", txid, nil); e != nil {
+			if e = edit.change("bridge", utxoBridgeKey(txid), nil); e != nil {
 				return e
 			}
 		} else if e = edit.change("transactions", txkey, tx); e != nil {
@@ -631,7 +638,7 @@ func (s *utxoStore) ApplyBlock(ctx context.Context, block blockView) error {
 			}
 		}
 		var duplicate utxoBridge
-		hasDuplicate, err := edit.trees["bridge"].get(tx.TxID, &duplicate)
+		hasDuplicate, err := edit.trees["bridge"].get(utxoBridgeKey(tx.TxID), &duplicate)
 		if err != nil {
 			return err
 		}
@@ -695,7 +702,7 @@ func (s *utxoStore) ApplyBlock(ctx context.Context, block blockView) error {
 	if e = s.hook("pages_written"); e != nil {
 		return e
 	}
-	c.Schema, c.Network, c.Height, c.BlockHash, c.PreviousBlockHash = 1, "bitcoin-mainnet", block.Height, block.Hash, block.PreviousBlockHash
+	c.Schema, c.Network, c.Height, c.BlockHash, c.PreviousBlockHash = utxoCheckpointSchema, "bitcoin-mainnet", block.Height, block.Hash, block.PreviousBlockHash
 	c.PreviousCommitment, c.Journal = previous, ""
 	c.Validation, c.ConsensusValidated = "header_anchored_processing", false
 	boundary, boundaryHash := int64(0), genesisHashDisplay
@@ -740,6 +747,13 @@ func (s *utxoStore) ApplyBlock(ctx context.Context, block blockView) error {
 // Reconcile identifies the common ancestor before changing anything. An
 // unavailable selected header is unknown, not evidence of a reorganization.
 func (s *utxoStore) Reconcile(ctx context.Context, canonical func(context.Context, int64) (string, error)) error {
+	return s.ReconcileSelected(ctx, -1, canonical)
+}
+
+// ReconcileSelected also accepts the known selected-chain tip. Heights above
+// that tip are disconnected, not missing evidence. A nonnegative bound is
+// anchored before recovery and rechecked before each head publication.
+func (s *utxoStore) ReconcileSelected(ctx context.Context, selectedTipHeight int64, canonical func(context.Context, int64) (string, error)) error {
 	utxoWriterMu.Lock()
 	defer utxoWriterMu.Unlock()
 	utxoStateMu.Lock()
@@ -750,15 +764,28 @@ func (s *utxoStore) Reconcile(ctx context.Context, canonical func(context.Contex
 	if s.head == nil {
 		return nil
 	}
-	current, err := canonical(ctx, s.head.Checkpoint.Height)
-	if err != nil {
-		return err
+	selectedTipHash := ""
+	if selectedTipHeight >= 0 {
+		var err error
+		selectedTipHash, err = canonical(ctx, selectedTipHeight)
+		if err != nil {
+			return err
+		}
+		if !validHash(selectedTipHash) {
+			return fmt.Errorf("selected UTXO chain anchor unavailable at %d", selectedTipHeight)
+		}
 	}
-	if !validHash(current) {
-		return fmt.Errorf("selected UTXO chain anchor unavailable at %d", s.head.Checkpoint.Height)
-	}
-	if current == s.head.Checkpoint.BlockHash {
-		return nil
+	if selectedTipHeight < 0 || s.head.Checkpoint.Height <= selectedTipHeight {
+		current, err := canonical(ctx, s.head.Checkpoint.Height)
+		if err != nil {
+			return err
+		}
+		if !validHash(current) {
+			return fmt.Errorf("selected UTXO chain anchor unavailable at %d", s.head.Checkpoint.Height)
+		}
+		if current == s.head.Checkpoint.BlockHash {
+			return nil
+		}
 	}
 	retained, e := s.retainedCheckpoints(ctx)
 	if e != nil {
@@ -766,7 +793,7 @@ func (s *utxoStore) Reconcile(ctx context.Context, canonical func(context.Contex
 	}
 	ancestor := -1
 	for i, c := range retained {
-		if i == 0 {
+		if i == 0 || selectedTipHeight >= 0 && c.Height > selectedTipHeight {
 			continue
 		}
 		hash, err := canonical(ctx, c.Height)
@@ -843,6 +870,15 @@ func (s *utxoStore) Reconcile(ctx context.Context, canonical func(context.Contex
 		}
 		if e = ctx.Err(); e != nil {
 			return e
+		}
+		if selectedTipHeight >= 0 {
+			hash, err := canonical(ctx, selectedTipHeight)
+			if err != nil {
+				return err
+			}
+			if hash != selectedTipHash {
+				return fmt.Errorf("selected UTXO chain changed during recovery")
+			}
 		}
 		if e = s.publish(parent, s.head.RecoveryBoundaryHeight, s.head.RecoveryBoundaryHash); e != nil {
 			return e

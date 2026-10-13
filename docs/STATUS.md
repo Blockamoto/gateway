@@ -8,6 +8,8 @@ UTXO processing is header anchored and reports `consensus_validated=false`; full
 
 Focused development-worktree engine/rebuild tests passed on **13 October 2026**, covering ordered/same-block state changes, raw-free recovery, COW page splitting, interrupted head publication, missing/double-spent prerequisites, exact 288-transition recovery/deeper failure, ancient Coin fact pins, metadata/page cleanup, historical BIP30 restoration, corrupt head/root/facts/undo, and idempotent reviewed rebuild/archive preservation. These are bounded fixtures, not a full-chain UTXO build, disk/performance benchmark or exact package acceptance. Broader integration/static/race/browser results and final Windows/Linux packages must be recorded separately.
 
+Further source checks cover shorter selected-chain recovery, changing-tip rejection and cleanup on an actual exFAT drive. The final larger synthetic fixture passed with 10,000 live Coins and 320 spend mutations across 321 non-genesis transitions, complete resumed cleanup and retained rollback afterward. Earlier four-minute runs revealed common-prefix and repeated-decoding costs; the final source disperses internal keys and uses a bounded authenticated fact cache. [The test guide](TESTING-0.7.5.md) records measured fixture geometry, byte boundaries and remaining limits. No full-mainnet replay or speedup ratio is established.
+
 The public release, exact packaged executables, genuine previous-client automatic upgrade, hosted signed feeds and renewal checks for **0.7.5 remain pending**. The published/approved delivery baseline below is still 0.7.4 until the release receipt records promotion. This source preparation does not itself change the hosted updater.
 
 ## Published prerelease: 0.7.4 TXIO and serialized block bodies

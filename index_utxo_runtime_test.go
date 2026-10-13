@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,6 +32,28 @@ func Test075UTXOPlanningIsGenesisOnlyAndPruned(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(a.dataDir, "indexes", "utxo-state", "head.json")); !os.IsNotExist(err) {
 		t.Fatal("planning wrote a checkpoint", err)
+	}
+}
+
+func Test075UTXOMaintenanceCorruptionCannotCompleteJob(t *testing.T) {
+	for _, cause := range []error{ErrUTXOStateCorrupt, ErrUTXORebuildRequired} {
+		failure := fmt.Errorf("maintenance: %w", cause)
+		state, err, limitation := utxoMaintenanceCompletion(failure, nil)
+		if state != "rebuild_required" || !errors.Is(err, cause) || limitation != "" {
+			t.Fatal("corrupt committed state reported successful", state, err, limitation)
+		}
+	}
+	state, err, limitation := utxoMaintenanceCompletion(fmt.Errorf("obsolete file is temporarily in use"), nil)
+	if state != "complete" || err != nil || !strings.Contains(limitation, "Reclamation deferred") {
+		t.Fatal("ordinary reclamation error changed valid state", state, err, limitation)
+	}
+	state, err, limitation = utxoMaintenanceCompletion(fmt.Errorf("%w: %v", ErrUTXOArchivePinsUnavailable, ErrUTXOStateCorrupt), nil)
+	if state != "complete" || err != nil || !strings.Contains(limitation, "Reclamation deferred") {
+		t.Fatal("preserved damaged archive invalidated the rebuilt state", state, err, limitation)
+	}
+	state, err, limitation = utxoMaintenanceCompletion(context.Canceled, context.Canceled)
+	if state != "paused" || err != nil || limitation != "" {
+		t.Fatal("cancelled maintenance cannot pause", state, err, limitation)
 	}
 }
 
@@ -123,6 +147,84 @@ func Test075UTXOPauseMissingBodyAndResumeCheckpoint(t *testing.T) {
 	}
 	if done, err := a.waitQueuedIndexJob(ctx, job.ID); err != nil || done.State != "complete" || done.Height != 1 {
 		t.Fatal(done, err)
+	}
+}
+
+func Test075UTXOSelectedShorterCoreTipDoesNotUseOldMirror(t *testing.T) {
+	a, _ := testAppWithGenesis(t)
+	_, hash := installBlockOneHeader063(t, a)
+	store, err := openUTXOStoreContext(context.Background(), a.dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := utxoFixtureBlock(0, "", utxoFixtureCoinbase(801, 50))
+	utxoApply(t, store, genesis)
+	block := utxoFixtureBlock(1, genesis.Hash, utxoFixtureCoinbase(802, 50))
+	block.Hash = hash // The old mirror still names the processed block at height 1.
+	utxoApply(t, store, block)
+	settings, stop := fakeCoreRPC(t, 0, genesisHashDisplay)
+	defer stop()
+	settings.CoreMountDisabled, settings.NetworkDisabled = true, true
+	a.settings = settings
+	if status := a.indexUTXOStatus(nil); status.State != "reconciling" || status.ChainState != "stale_reorg_resume_required" {
+		t.Fatal("shorter Core tip was hidden by old mirror", status)
+	}
+	if _, err := a.lookupUTXOIndex(context.Background(), "0.0.1"); err == nil {
+		t.Fatal("disconnected Coin was presented as selected-chain state")
+	}
+	zero := int64(0)
+	job, err := a.startIndexBuild(indexBuildRequest{Index: "utxo-state", To: &zero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if done, err := a.waitQueuedIndexJob(ctx, job.ID); err != nil || done.State != "complete" || done.Height != 0 {
+		t.Fatal("known shorter selected chain did not rewind", done, err)
+	}
+	if cp := store.Head(); cp == nil || cp.Height != 0 || cp.LiveOutputs != 0 {
+		// Reload the handle after the runtime writer publishes its new head.
+		store, err = utxoStoreHead(a.dataDir)
+		if err != nil || store.Head() == nil || store.Head().Height != 0 || store.Head().LiveOutputs != 0 {
+			t.Fatal("disconnected Coin survived", store, err)
+		}
+	}
+	if status := a.indexUTXOStatus(nil); status.State != "current" || status.ProcessedHash != genesisHashDisplay || status.TargetHash != genesisHashDisplay {
+		t.Fatal("rewound state not anchored to exact selected tip", status)
+	}
+}
+
+func Test075UTXOMissingSelectedTipPreservesState(t *testing.T) {
+	a, _ := testAppWithGenesis(t)
+	_, hash := installBlockOneHeader063(t, a)
+	a.settings.CoreDisabled = true
+	store, err := openUTXOStoreContext(context.Background(), a.dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := utxoFixtureBlock(0, "", utxoFixtureCoinbase(811, 50))
+	utxoApply(t, store, genesis)
+	block := utxoFixtureBlock(1, genesis.Hash, utxoFixtureCoinbase(812, 50))
+	block.Hash = hash
+	utxoApply(t, store, block)
+	prior := store.Head().Commitment
+	// A missing tip file is unavailable evidence, not a shorter selected chain.
+	if err := os.Truncate(a.headersPath, 80); err != nil {
+		t.Fatal(err)
+	}
+	authority := a.currentChainAuthority()
+	if authority.Height != -1 {
+		t.Fatal("missing selected tip still treated as authoritative", authority)
+	}
+	err = store.ReconcileSelected(context.Background(), authority.Height, func(ctx context.Context, height int64) (string, error) {
+		target, err := a.utxoSelectedTarget(ctx, authority, height)
+		return target.HashDisplay, err
+	})
+	if err == nil || store.Head().Commitment != prior {
+		t.Fatal("missing evidence rewound saved state", err, store.Head())
+	}
+	if status := a.indexUTXOStatus(nil); status.State != "waiting" || status.ChainState != "anchor_unavailable" {
+		t.Fatal("missing selected tip labeled current or disconnected", status)
 	}
 }
 

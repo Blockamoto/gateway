@@ -156,3 +156,66 @@ func TestOrdinalTreeInterruptedPagesNeverSelectRoot(t *testing.T) {
 		t.Fatal("orphan became visible", value, e)
 	}
 }
+
+func TestOrdinalCollectionUnrepresentableMarkNeverSweeps(t *testing.T) {
+	tree := newOrdinalTree(filepath.Join(t.TempDir(), "pages"), "")
+	_ = tree.put(fmt.Sprintf("%064x", 1), "live")
+	root, e := tree.flush()
+	if e != nil {
+		t.Fatal(e)
+	}
+	_ = tree.put(fmt.Sprintf("%064x", 2), "orphan")
+	orphan, e := tree.flush()
+	if e != nil {
+		t.Fatal(e)
+	}
+	original := ordinalGCSetTimes
+	defer func() { ordinalGCSetTimes = original }()
+	ordinalGCSetTimes = func(name string, access, modified time.Time) error {
+		// A successful setter which stores a rounded/different timestamp must
+		// never allow sweep. This models filesystem precision loss portably.
+		return os.Chtimes(name, access, modified.Add(time.Second))
+	}
+	if e = collectOrdinalPages(tree.dir, []string{root}); e == nil {
+		t.Fatal("unrepresentable timestamp permitted collection")
+	}
+	for _, hash := range []string{root, orphan} {
+		if _, e = os.Stat(tree.pagePath(hash)); e != nil {
+			t.Fatal("failed marking swept pages", hash, e)
+		}
+	}
+}
+
+func TestOrdinalCollectionCoarseTimestampFilesystem(t *testing.T) {
+	base := os.Getenv("GATEWAY_TEST_GC_DIRECTORY")
+	if base == "" {
+		t.Skip("set GATEWAY_TEST_GC_DIRECTORY for an actual coarse-timestamp filesystem")
+	}
+	dir, e := os.MkdirTemp(base, "gateway-gc-filesystem-")
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Keep the fixture and logged path for release evidence.
+	t.Logf("filesystem collection fixture retained at %s", dir)
+	tree := newOrdinalTree(filepath.Join(dir, "pages"), "")
+	_ = tree.put(fmt.Sprintf("%064x", 1), "live")
+	root, e := tree.flush()
+	if e != nil {
+		t.Fatal(e)
+	}
+	_ = tree.put(fmt.Sprintf("%064x", 2), "orphan")
+	orphan, e := tree.flush()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = collectOrdinalPages(tree.dir, []string{root}); e != nil {
+		t.Fatal(e)
+	}
+	var value string
+	if found, e := newOrdinalTree(tree.dir, root).get(fmt.Sprintf("%064x", 1), &value); e != nil || !found || value != "live" {
+		t.Fatal("live data lost during collection", found, value, e)
+	}
+	if _, e = os.Stat(tree.pagePath(orphan)); !os.IsNotExist(e) {
+		t.Fatal("orphan was not reclaimed", e)
+	}
+}

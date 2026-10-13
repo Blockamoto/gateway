@@ -32,6 +32,69 @@ func utxoIndexCheckpoint(cp *utxoCheckpoint, def indexDefinition) *indexCheckpoi
 	return &indexCheckpoint{Schema: def.CheckpointSchema, Definition: def.ID, Version: def.Version, RuleHash: def.RuleHash, Network: def.Network, From: 0, Height: cp.Height, BlockHash: cp.BlockHash, PreviousCommitment: cp.PreviousCommitment, Commitment: cp.Commitment}
 }
 
+// A reconciliation uses one captured selected-chain provider throughout. In
+// particular, a shorter Core active chain must not fall back to an older local
+// header mirror above its tip. Missing evidence is never a disconnected block.
+func (a *app) utxoSelectedTarget(ctx context.Context, authority chainAuthorityView, height int64) (blockTarget, error) {
+	if err := ctx.Err(); err != nil {
+		return blockTarget{}, err
+	}
+	if authority.Height < 0 || !validHash(authority.Hash) || height < 0 || height > authority.Height {
+		return blockTarget{}, fmt.Errorf("selected UTXO chain anchor unavailable at %d", height)
+	}
+	var target blockTarget
+	var err error
+	switch authority.Source {
+	case "bitcoin_core":
+		if height == authority.Height {
+			target, err = a.coreTipTargetContext(ctx)
+		} else {
+			target, err = a.coreTargetByHeightContext(ctx, height)
+		}
+	case "bod_headers":
+		if height == authority.Height {
+			status := a.getStatus()
+			if status.HeaderHeight != authority.Height || status.HeaderCount <= authority.Height {
+				return blockTarget{}, fmt.Errorf("selected UTXO header tip changed")
+			}
+		}
+		target, err = a.localBlockTarget(height)
+	default:
+		return blockTarget{}, fmt.Errorf("selected UTXO chain provider unavailable")
+	}
+	if err != nil {
+		return blockTarget{}, err
+	}
+	if height == authority.Height && (target.Height != authority.Height || target.HashDisplay != authority.Hash) {
+		return blockTarget{}, fmt.Errorf("selected UTXO chain tip changed")
+	}
+	return target, nil
+}
+
+func (a *app) utxoSelectedChainState(ctx context.Context, cp *utxoCheckpoint, authority chainAuthorityView) string {
+	if cp == nil {
+		return "empty"
+	}
+	if authority.Height < 0 || !validHash(authority.Hash) {
+		return "anchor_unavailable"
+	}
+	// Authenticate the known selected tip before interpreting its height bound.
+	if _, err := a.utxoSelectedTarget(ctx, authority, authority.Height); err != nil {
+		return "anchor_unavailable"
+	}
+	if cp.Height > authority.Height {
+		return "stale_reorg_resume_required"
+	}
+	target, err := a.utxoSelectedTarget(ctx, authority, cp.Height)
+	if err != nil {
+		return "anchor_unavailable"
+	}
+	if target.HashDisplay != cp.BlockHash {
+		return "stale_reorg_resume_required"
+	}
+	return "selected_chain"
+}
+
 func (a *app) planUTXOIndexBuild(req indexBuildRequest) (indexPlan, error) {
 	if err := requireReleaseIndexRequest(req); err != nil {
 		return indexPlan{}, err
@@ -58,8 +121,7 @@ func (a *app) planUTXOIndexBuild(req indexBuildRequest) (indexPlan, error) {
 		return p, err
 	}
 	if cp := s.Head(); cp != nil {
-		def, _ := findIndexDefinition("utxo-state")
-		switch a.indexChainState(utxoIndexCheckpoint(cp, def)) {
+		switch a.utxoSelectedChainState(context.Background(), cp, a.currentChainAuthority()) {
 		case "selected_chain":
 			end := cp.Height
 			if output.To >= 0 && output.To < end {
@@ -133,13 +195,12 @@ func (a *app) indexUTXOStatus(jobs []indexJob) *indexUTXOStatusView {
 			view.StorageBytes, view.StorageMeasuredAt, view.StorageCheckpoint = &total, measurement.MeasuredAt, measurement.Checkpoint
 			view.StorageRevision = measurement.Revision
 		}
-		def, _ := findIndexDefinition("utxo-state")
-		view.ChainState = a.indexChainState(utxoIndexCheckpoint(cp, def))
+		view.ChainState = a.utxoSelectedChainState(context.Background(), cp, authority)
 		if view.ChainState == "stale_reorg_resume_required" {
 			view.State = "reconciling"
 		} else if view.ChainState == "anchor_unavailable" {
 			view.State = "waiting"
-		} else if view.TargetHeight != nil && h == *view.TargetHeight {
+		} else if view.TargetHeight != nil && h == *view.TargetHeight && cp.BlockHash == view.TargetHash {
 			view.State = "current"
 		} else {
 			view.State = "paused"
@@ -194,10 +255,10 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 	finish := func(state string, err error) {
 		if state == "complete" && maintain != nil {
 			if maintenanceErr := maintain(!j.Live); maintenanceErr != nil {
-				if ctx.Err() != nil {
-					state = "paused"
-				} else if len(j.Limitations) < 8 {
-					j.Limitations = append(j.Limitations, "Reclamation deferred: "+maintenanceErr.Error())
+				var limitation string
+				state, err, limitation = utxoMaintenanceCompletion(maintenanceErr, ctx.Err())
+				if limitation != "" && len(j.Limitations) < 8 {
+					j.Limitations = append(j.Limitations, limitation)
 				}
 			}
 		}
@@ -306,11 +367,12 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 			}
 			j.To = authority.Height
 		}
-		if err = s.Reconcile(ctx, func(ctx context.Context, h int64) (string, error) {
+		authority := a.currentChainAuthority()
+		if err = s.ReconcileSelected(ctx, authority.Height, func(ctx context.Context, h int64) (string, error) {
 			if err := ctx.Err(); err != nil {
 				return "", err
 			}
-			t, err := a.indexTarget(h)
+			t, err := a.utxoSelectedTarget(ctx, authority, h)
 			return t.HashDisplay, err
 		}); err != nil {
 			if errors.Is(err, ErrUTXORebuildRequired) {
@@ -322,6 +384,11 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 			}
 			continue
 		}
+		// A reorganization can select a higher-work branch with fewer blocks.
+		// Its authenticated tip replaces a target that no longer exists.
+		if authority.Height >= 0 && j.To > authority.Height {
+			j.To = authority.Height
+		}
 		next := int64(0)
 		if cp := s.Head(); cp != nil {
 			next = cp.Height + 1
@@ -331,7 +398,7 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 			finish("complete", nil)
 			return
 		}
-		target, err := a.indexTarget(next)
+		target, err := a.utxoSelectedTarget(ctx, authority, next)
 		if err != nil {
 			if !wait(fmt.Errorf("waiting for selected header at block %d: %w", next, err)) {
 				return
@@ -359,7 +426,7 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 			}
 			continue
 		}
-		current, err := a.indexTarget(next)
+		current, err := a.utxoSelectedTarget(ctx, authority, next)
 		if err != nil {
 			if !wait(err) {
 				return
@@ -367,6 +434,12 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 			continue
 		}
 		if current.HashDisplay != block.Hash {
+			continue
+		}
+		if _, err := a.utxoSelectedTarget(ctx, authority, authority.Height); err != nil {
+			if !wait(err) {
+				return
+			}
 			continue
 		}
 		if err = s.ApplyBlock(ctx, block); err != nil {
@@ -399,13 +472,24 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 	}
 }
 
+func utxoMaintenanceCompletion(maintenanceErr, contextErr error) (string, error, string) {
+	// A reclamation problem can be deferred only while committed state remains
+	// usable. Typed corruption must never leave a successful completed job.
+	if errors.Is(maintenanceErr, ErrUTXOStateCorrupt) || errors.Is(maintenanceErr, ErrUTXORebuildRequired) {
+		return "rebuild_required", maintenanceErr, ""
+	}
+	if contextErr != nil {
+		return "paused", nil, ""
+	}
+	return "complete", nil, "Reclamation deferred: " + maintenanceErr.Error()
+}
+
 func (a *app) queryUTXOIndex(ctx context.Context, limit int) (any, error) {
 	s, err := openUTXOStoreContext(ctx, a.dataDir)
 	if err != nil {
 		return nil, err
 	}
-	def, _ := findIndexDefinition("utxo-state")
-	chainState := a.indexChainState(utxoIndexCheckpoint(s.Head(), def))
+	chainState := a.utxoSelectedChainState(ctx, s.Head(), a.currentChainAuthority())
 	if s.Head() != nil && chainState != "selected_chain" {
 		return nil, fmt.Errorf("UTXO snapshot cannot currently be anchored to the selected chain")
 	}
@@ -441,8 +525,7 @@ func (a *app) lookupUTXOIndex(ctx context.Context, key string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	def, _ := findIndexDefinition("utxo-state")
-	chainState := a.indexChainState(utxoIndexCheckpoint(s.Head(), def))
+	chainState := a.utxoSelectedChainState(ctx, s.Head(), a.currentChainAuthority())
 	if chainState != "selected_chain" {
 		return nil, fmt.Errorf("UTXO snapshot cannot currently be anchored to the selected chain")
 	}

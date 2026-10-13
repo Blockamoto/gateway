@@ -13,7 +13,7 @@
   "index_rebuild_required": false,
   "block_body_schema": 2,
   "txio_schema": 3,
-  "utxo_schema": 1,
+  "utxo_schema": 2,
   "cache_metadata_schema": 2,
   "cache_metadata_rebuild_required": false,
   "core_mount_schema": 1,

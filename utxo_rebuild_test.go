@@ -61,7 +61,7 @@ func TestUTXOExplicitRebuildArchivesPinsAndResumesOnce(t *testing.T) {
 	if e = os.Remove(filepath.Join(archive, "head.json")); e != nil {
 		t.Fatal(e)
 	}
-	if e = s.VisitFactPages(ctx, func(string) error { return nil }); !errors.Is(e, ErrUTXOStateCorrupt) {
+	if e = s.VisitFactPages(ctx, func(string) error { return nil }); !errors.Is(e, ErrUTXOArchivePinsUnavailable) || errors.Is(e, ErrUTXOStateCorrupt) {
 		t.Fatal("missing archived head allowed shared fact collection", e)
 	}
 }
@@ -107,7 +107,7 @@ func TestUTXORebuildCanArchiveCorruptHeadAndRecoverInterruptedRename(t *testing.
 				t.Fatal("reviewed rebuild could not restart from genesis", e)
 			}
 			if scenario == "corrupt_head" {
-				if e = s.VisitFactPages(ctx, func(string) error { return nil }); !errors.Is(e, ErrUTXOStateCorrupt) {
+				if e = s.VisitFactPages(ctx, func(string) error { return nil }); !errors.Is(e, ErrUTXOArchivePinsUnavailable) || errors.Is(e, ErrUTXOStateCorrupt) {
 					t.Fatal("corrupt archived state did not stop shared collection", e)
 				}
 			}

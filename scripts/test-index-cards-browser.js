@@ -91,13 +91,31 @@ async function run() {
     page.on('request', request => { if (!request.url().startsWith(endpoint + '/')) external.push(request.url()); });
     await page.goto(endpoint + '/indexes', {waitUntil:'networkidle'});await page.locator('#timeline-expand').click();
     await page.locator('.timeline-track[data-index="headers"]').waitFor();
-    assert.equal(await page.locator('.timeline-track').count(),2,'A fresh profile starts with foundational Headers and Blocks tracks');
+    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(node=>node.dataset.index)),['headers','blocks','utxo-state'],'A fresh profile has the two Blocks layers and the separate UTXO state track');
+    assert.equal(await page.locator('.timeline-group[data-group="blocks"]').count(),1,'Headers and raw Blocks share their expandable group');
+    assert.equal(await page.locator('.timeline-track[data-index="utxo-state"][data-group]').count(),0,'UTXO state stays separate from block-body coverage');
+    await page.locator('#timeline-group-blocks').click();
+    for(const id of ['headers','blocks']){
+      assert.equal(await page.locator('.timeline-track[data-index="'+id+'"]').isVisible(),false,'Collapsing Blocks hides its '+id+' child row');
+      assert.equal(await page.locator('.timeline-group-band[data-index="'+id+'"]').count(),1,'Collapsed Blocks retains a distinct '+id+' coverage band');
+    }
+    assert.equal(await page.locator('.timeline-track[data-index="utxo-state"]').isVisible(),true,'Collapsing block layers does not hide UTXO state');
+    await page.locator('#timeline-group-blocks').click();
+    await page.locator('.timeline-track[data-index="utxo-state"] .timeline-track-select').click();
+    await page.locator('#utxo-primary').waitFor();
+    assert.equal(await page.locator('#utxo-primary').innerText(),'Build UTXO set');
+    assert.equal(await page.locator('#utxo-primary').getAttribute('data-action'),'review','Fresh UTXO state requires review before work can start');
+    assert.equal(await page.locator('#build-range-picker').isVisible(),false,'UTXO state cannot begin at an arbitrary range');
+    assert.match(await page.locator('#utxo-metrics').innerText(),/Unavailable/,'Unbuilt UTXO metrics do not invent measurements');
+    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Inspecting UTXO state does not start a build');
+    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     assert.equal(await page.locator('select#index, select#query-index, select#peer-index').count(), 0);
     await page.screenshot({path:path.join(out, 'timeline-desktop.png'), fullPage:true});
 
     await page.locator('#timeline-add-index').click();
     assert.equal(await page.locator('#timeline-index-picker [data-index="inscriptions"]').isDisabled(),false,'The inscription stage permits adding its track');
-    for(const id of ['tx-locator','txo-spender'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),false,id+' is available in the TXIO stage');for(const id of ['sat-state','address-history','bitmap-compatibility'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),true,id+' remains gated');
+    for(const id of ['tx-locator','txo-spender'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),false,id+' is available in the UTXO stage');for(const id of ['sat-state','address-history','bitmap-compatibility'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),true,id+' remains gated');
+    assert.equal(await page.locator('#timeline-index-picker [data-index="utxo-state"]').count(),0,'The existing UTXO state track is not offered as a duplicate addition');
     assert.equal(await page.locator('.timeline-track[data-index="inscriptions"]').count(),0,'An available index does not occupy a track until added');
     await page.screenshot({path:path.join(out,'locked-features.png'),fullPage:true});
     await page.locator('#timeline-add-index').click();

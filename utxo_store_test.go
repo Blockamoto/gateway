@@ -48,6 +48,52 @@ func utxoRequireCoin(t *testing.T, s *utxoStore, position string, value uint64) 
 	return coin
 }
 
+func TestUTXOReconcileShorterSelectedChainAndChangingTip(t *testing.T) {
+	for _, changing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("changing=%t", changing), func(t *testing.T) {
+			ctx := context.Background()
+			s, e := openUTXOStoreContext(ctx, t.TempDir())
+			if e != nil {
+				t.Fatal(e)
+			}
+			hashes := map[int64]string{}
+			previous := ""
+			for h := int64(0); h <= 3; h++ {
+				block := utxoFixtureBlock(h, previous, utxoFixtureCoinbase(uint64(70000+h), uint64(h+1)))
+				utxoApply(t, s, block)
+				previous, hashes[h] = block.Hash, block.Hash
+			}
+			before := s.Head().Commitment
+			tipCalls := 0
+			e = s.ReconcileSelected(ctx, 1, func(_ context.Context, h int64) (string, error) {
+				if h > 1 {
+					t.Fatalf("requested unavailable height above known tip: %d", h)
+				}
+				if h == 1 {
+					tipCalls++
+					if changing && tipCalls >= 3 {
+						return testID(888888), nil
+					}
+				}
+				return hashes[h], nil
+			})
+			if changing {
+				if e == nil || s.Head().Commitment != before {
+					t.Fatal("changed selected tip published undo", e, s.Head())
+				}
+				return
+			}
+			if e != nil || s.Head().Height != 1 {
+				t.Fatal("shorter selected-chain recovery failed", e, s.Head())
+			}
+			utxoRequireCoin(t, s, "0.0.1", 2)
+			if _, found, e := s.LookupBPS(ctx, "0.0.3"); e != nil || found {
+				t.Fatal("disconnected output remains live", found, e)
+			}
+		})
+	}
+}
+
 func TestUTXOGenesisOrderedCoinsAndRawFreeUndo(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -536,5 +582,28 @@ func TestUTXOMissingRecoveryCoinFactsPreservesHead(t *testing.T) {
 		return b1.Hash, nil
 	}); !errors.Is(e, ErrUTXOStateCorrupt) || s.Head().Commitment != prior {
 		t.Fatal("undo published a Coin with missing full facts", e)
+	}
+}
+
+func TestUTXOHashedBridgeAuthenticatesOriginalTransactionIdentity(t *testing.T) {
+	ctx := context.Background()
+	s, e := openUTXOStoreContext(ctx, t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	b0 := utxoFixtureBlock(0, "", utxoFixtureCoinbase(8100, 50))
+	utxoApply(t, s, b0)
+	b1 := utxoFixtureBlock(1, b0.Hash, utxoFixtureCoinbase(8101, 10))
+	utxoApply(t, s, b1)
+	b2 := utxoFixtureBlock(2, b1.Hash, utxoFixtureCoinbase(8102, 20))
+	utxoApply(t, s, b2)
+	trees := s.trees(ctx, s.head.Checkpoint)
+	// Even an authenticated bridge page cannot substitute a different native
+	// transaction: its referenced transaction record must carry the requested ID.
+	if e = trees["bridge"].put(utxoBridgeKey(b1.Transactions[0].TxID), utxoBridge{2, 0, b2.Hash}); e != nil {
+		t.Fatal(e)
+	}
+	if _, _, e = s.memberForOutpoint(trees, b1.Transactions[0].TxID, 0); !errors.Is(e, ErrUTXOStateCorrupt) {
+		t.Fatal("hashed bridge accepted a different original transaction", e)
 	}
 }

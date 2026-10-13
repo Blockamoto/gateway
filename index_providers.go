@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -87,9 +88,11 @@ func (a *app) indexProviderViews() []indexProviderView {
 		}
 	}
 	local.CoreHeaderServing = a.currentBitcoinServing().Archival
-	if store, err := indexStoreHead(a.dataDir, "utxo-state"); err == nil && store.checkpoint != nil && a.indexChainState(store.checkpoint) == "selected_chain" {
-		local.CommittedUTXO = []heightInterval{{From: 0, To: store.checkpoint.Height}}
-		local.UTXOSnapshot = &chainSnapshot{Network: "mainnet", Height: store.checkpoint.Height, Hash: store.checkpoint.BlockHash, Source: "gateway_utxo_state"}
+	if store, err := utxoStoreHead(a.dataDir); err == nil {
+		if cp := store.Head(); cp != nil && a.utxoSelectedChainState(context.Background(), cp, a.currentChainAuthority()) == "selected_chain" {
+			local.CommittedUTXO = []heightInterval{{From: 0, To: cp.Height}}
+			local.UTXOSnapshot = &chainSnapshot{Network: "mainnet", Height: cp.Height, Hash: cp.BlockHash, Source: "gateway_utxo_state"}
+		}
 	}
 	if store, err := indexStoreHead(a.dataDir, "sat-state"); err == nil && store.checkpoint != nil && a.indexChainState(store.checkpoint) == "selected_chain" {
 		batch, err := store.readBatch(store.checkpoint.Commitment)

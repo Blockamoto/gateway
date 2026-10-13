@@ -128,5 +128,5 @@ func TestUTXOLargeFixtureMaintenanceContinuousProgress(t *testing.T) {
 		t.Fatal("retained reorg failed after maintenance", e)
 	}
 	utxoRequireCoin(t, s, "319.0.1", 1)
-	t.Logf("synthetic fixture: 10,000 live Coins; 321 non-genesis transitions / 320 spend mutations; build=%s; GC=%s in %d resumable mark passes; engine files %d/%d bytes -> %d/%d bytes (shared facts excluded)", buildDuration, time.Since(gcStarted), passes, beforeFiles, beforeBytes, afterFiles, afterBytes)
+	t.Logf("synthetic fixture: 10,000 live Coins; 321 non-genesis transitions / 320 spend mutations; build=%s; maintenance plus postchecks/undo=%s in %d resumable mark passes; engine files %d/%d bytes -> %d/%d bytes (shared facts excluded)", buildDuration, time.Since(gcStarted), passes, beforeFiles, beforeBytes, afterFiles, afterBytes)
 }

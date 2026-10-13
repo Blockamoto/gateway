@@ -65,17 +65,30 @@ func satHistoryBlock(batch indexBatch) (blockView, error) {
 	return block, nil
 }
 func (a *app) retainedSatStore(ctx context.Context) (*indexStore, error) {
-	return a.retainedSatStoreSelected077(ctx, a.currentChainAuthority())
+	s, err := retainedSatHead077(ctx, a.dataDir)
+	if err != nil {
+		return nil, err
+	}
+	return a.retainedSatStoreSelected077(ctx, s, a.currentChainAuthority())
 }
-func (a *app) retainedSatStoreSelected077(ctx context.Context, authority chainAuthorityView) (*indexStore, error) {
+
+// A missing, empty or unreadable local index cannot provide Sat evidence. Check
+// it before any authority RPC so ordinary value lookups retain their fast path.
+func retainedSatHead077(ctx context.Context, root string) (*indexStore, error) {
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
-	s, e := indexStoreHead(a.dataDir, "sat-state")
+	s, e := indexStoreHead(root, "sat-state")
 	if e != nil {
 		return nil, e
 	}
-	if s.checkpoint == nil || a.satChainState077(ctx, s.checkpoint, authority) != "selected_chain" {
+	if s.checkpoint == nil {
+		return nil, fmt.Errorf("retained Sat history has no snapshot")
+	}
+	return s, nil
+}
+func (a *app) retainedSatStoreSelected077(ctx context.Context, s *indexStore, authority chainAuthorityView) (*indexStore, error) {
+	if a.satChainState077(ctx, s.checkpoint, authority) != "selected_chain" {
 		return nil, fmt.Errorf("retained Sat history has no selected-chain snapshot")
 	}
 	return s, nil
@@ -178,10 +191,14 @@ func (a *app) retainedSatTransaction(ctx context.Context, id string, before int6
 	return *best, nil
 }
 func (a *app) retainedSatSpender(ctx context.Context, id string, vout uint32) (spenderLookupView, error) {
-	authority := a.currentChainAuthority()
 	satStateMu.Lock()
 	defer satStateMu.Unlock()
-	s, e := a.retainedSatStoreSelected077(ctx, authority)
+	s, e := retainedSatHead077(ctx, a.dataDir)
+	if e != nil {
+		return spenderLookupView{}, e
+	}
+	authority := a.currentChainAuthority()
+	s, e = a.retainedSatStoreSelected077(ctx, s, authority)
 	if e != nil {
 		return spenderLookupView{}, e
 	}

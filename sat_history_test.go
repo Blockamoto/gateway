@@ -4,11 +4,61 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func Test077RetainedSatMissingIndexAvoidsAuthorityProbes(t *testing.T) {
+	for _, state := range []string{"missing", "empty", "corrupt"} {
+		t.Run(state, func(t *testing.T) {
+			var calls atomic.Int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				http.Error(w, "no RPC should be needed for absent Sat evidence", http.StatusInternalServerError)
+			}))
+			defer srv.Close()
+			a := &app{dataDir: t.TempDir(), settings: testRPCSettings050(t, srv.URL)}
+			switch state {
+			case "empty":
+				if _, err := openIndexStore(a.dataDir, "sat-state"); err != nil {
+					t.Fatal(err)
+				}
+			case "corrupt":
+				dir := filepath.Join(a.dataDir, "indexes", "sat-state")
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "head.json"), []byte("{damaged"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx := context.Background()
+			if _, err := a.retainedSatStore(ctx); err == nil {
+				t.Fatal("unavailable evidence supplied a Sat store")
+			}
+			if result, err := a.retainedSatSpender(ctx, testID(95001), 0); err == nil || result.Snapshot != nil {
+				t.Fatal("unavailable membership supplied a snapshot", result, err)
+			}
+			if _, err := a.retainedSatTransaction(ctx, testID(95001), 1); err == nil {
+				t.Fatal("unavailable transaction supplied evidence")
+			}
+			if _, err := a.retainedSatBlock(ctx, 1); err == nil {
+				t.Fatal("unavailable block supplied evidence")
+			}
+			if _, err := a.retainedSatInputValues(ctx, transactionView{TxID: testID(95001)}, 1, testID(95002)); err == nil {
+				t.Fatal("unavailable input amounts supplied evidence")
+			}
+			if calls.Load() != 0 {
+				t.Fatalf("local %s evidence triggered %d authority RPCs", state, calls.Load())
+			}
+		})
+	}
+}
 
 // Synthetic verifier receipts isolate derived indexing and lineage. Real block
 // authentication has its own decoder fixtures; these are not mainnet scans.

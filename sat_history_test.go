@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // Synthetic verifier receipts isolate derived indexing and lineage. Real block
@@ -18,6 +20,10 @@ func retainedSatFixture(t *testing.T, count int) (*app, *indexStore, func(int64,
 	for h := range hashes {
 		header := headers[h*80 : (h+1)*80]
 		header[0], header[1] = byte(h), byte(h>>8)
+		if h == 0 {
+			genesis, _ := hex.DecodeString(genesisHeaderHex)
+			copy(header, genesis)
+		}
 		sum := hash256(header)
 		hashes[h] = reverseHex(sum[:])
 	}
@@ -42,6 +48,66 @@ func retainedSatFixture(t *testing.T, count int) (*app, *indexStore, func(int64,
 	return a, s, block
 }
 
+func Test077RetainedSatSpenderMembershipUsesCapturedCommitment(t *testing.T) {
+	ctx := context.Background()
+	a, s, block := retainedSatFixture(t, 3)
+	coin := testID(93001)
+	for _, b := range []blockView{block(0, testCoinbase(testID(93000), subsidyAtHeight(0))), block(1, testCoinbase(coin, 100, subsidyAtHeight(1)-100))} {
+		if err := s.appendBlock(b, 0, "pruned"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.status.HeaderCount, a.status.HeaderHeight = 2, 1
+	before, err := a.retainedSatSpender(ctx, coin, 0)
+	if err != nil || before.ConfirmedState != "unspent_at_snapshot" || before.Snapshot == nil || before.Snapshot.Height != 1 || before.Snapshot.Hash != s.checkpoint.BlockHash {
+		t.Fatal(before, err)
+	}
+	saved, err := indexStoreHead(a.dataDir, "sat-state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	savedBatch, err := saved.readBatch(saved.checkpoint.Commitment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spend := testID(93003)
+	next := block(2, testCoinbase(testID(93002), subsidyAtHeight(2)), testTx(spend, []inputView{{PrevTxID: coin}}, 100))
+	if err = s.appendBlock(next, 0, "pruned"); err != nil {
+		t.Fatal(err)
+	}
+	a.status.HeaderCount, a.status.HeaderHeight = 3, 2
+	// The immutable membership adapter must still answer from the captured
+	// commitment, even if the active head has advanced and consumed the coin.
+	satStateMu.Lock()
+	oldOutput, have, err := retainedSatSnapshotOutput077(ctx, saved, savedBatch, coin, 0)
+	satStateMu.Unlock()
+	if err != nil || !have || oldOutput.State != "unspent" || oldOutput.Point.Height != 1 {
+		t.Fatal("captured membership was reopened at a different head", oldOutput, have, err)
+	}
+	miss, err := a.retainedSatSpender(ctx, coin, 0)
+	if err == nil || miss.Snapshot != nil || miss.ConfirmedState != "unknown" {
+		t.Fatal("new head miss became unspent or acquired an old snapshot", miss, err)
+	}
+	current, err := a.retainedSatSpender(ctx, spend, 0)
+	if err != nil || current.Snapshot == nil || current.Snapshot.Height != 2 || current.Snapshot.Hash != next.Hash || current.ConfirmedState != "unspent_at_snapshot" {
+		t.Fatal("membership snapshot does not identify its own commitment", current, err)
+	}
+	settings, _, stop := satline077RPC(t, map[int64]string{0: genesisHashDisplay})
+	defer stop()
+	a.settings = settings
+	if a.indexChainState(s.checkpoint) != "selected_chain" {
+		t.Fatal("fixture did not exercise the old provider fallback")
+	}
+	stale, err := a.retainedSatSpender(ctx, spend, 0)
+	if err == nil || stale.Snapshot != nil || stale.ConfirmedState == "unspent_at_snapshot" {
+		t.Fatal("shorter selected Core chain used the stale mirror", stale, err)
+	}
+	unchanged, err := indexStoreHead(a.dataDir, "sat-state")
+	if err != nil || unchanged.checkpoint.Commitment != s.checkpoint.Commitment {
+		t.Fatal("read-only stale query changed stored state", unchanged, err)
+	}
+}
+
 // This backend exercises retained receipt algorithms directly, independently
 // of the release-locked public transaction and Satline entry points.
 type retainedHistoryTestBackend struct{ appSatlineBackend }
@@ -62,9 +128,20 @@ func TestSatHistoryOnlyLineageIncludesSameBlockHopsAndFees(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	txio, e := openIndexStore(a.dataDir, "txo-spender")
+	if e != nil {
+		t.Fatal(e)
+	}
+	txio.retainOutputValues = true
+	for _, b := range blocks {
+		if e = txio.appendBlock(b, 0, "ephemeral"); e != nil {
+			t.Fatal(e)
+		}
+	}
+	a.status.HeaderCount, a.status.HeaderHeight = 3, 2
 	// No Blocks index, raw store, Core, or peer exists: every hop must be
 	// supplied by the compact receipts and current Sat output tree.
-	backend := retainedHistoryTestBackend{appSatlineBackend{a}}
+	backend := newSatlineEvidenceBackend077(a, context.Background())
 	for _, tc := range []struct {
 		offset      uint64
 		types       []string
@@ -76,20 +153,21 @@ func TestSatHistoryOnlyLineageIncludesSameBlockHopsAndFees(t *testing.T) {
 			t.Fatalf("offset%d: %+v", tc.offset, result)
 		}
 		for i, kind := range tc.types {
-			if result.Hops[i].Type != kind || result.Hops[i].SpenderProvider != satHistorySource {
+			if result.Hops[i].Type != kind || result.Hops[i].SpenderProvider != satlineCompactSource {
 				t.Fatal(result.Hops)
 			}
 		}
 	}
 	retained, e := backend.BlockByHeight(2)
-	if e != nil || retained.SourceNetwork != satHistorySource || integrityVerified(retained) {
+	if e != nil || retained.SourceNetwork != satlineCompactSource || integrityVerified(retained) {
 		t.Fatal("compact layout misrepresented as raw verification", retained, e)
 	}
 	tx, e := backend.Transaction(one, 2)
-	if e != nil || tx.Source != satHistorySource || tx.Tx.TxID != one {
+	if e != nil || tx.Source != satlineCompactSource || tx.Tx.TxID != one {
 		t.Fatal(tx, e)
 	}
 	s.retainSatHistory = false
+	a.status.HeaderCount, a.status.HeaderHeight = 5, 4
 	if e = s.appendBlock(block(3, testCoinbase(testID(5105), subsidyAtHeight(3))), 0, "ephemeral"); e != nil {
 		t.Fatal(e)
 	}
@@ -104,8 +182,8 @@ func TestSatHistoryOnlyLineageIncludesSameBlockHopsAndFees(t *testing.T) {
 	if _, e = a.retainedSatBlock(context.Background(), 3); e == nil {
 		t.Fatal("unrecorded block claimed as retained")
 	}
-	if _, e = a.retainedSatBlock(context.Background(), 2); e != nil {
-		t.Fatal("disabling recording erased old history", e)
+	if retained, e = newSatlineEvidenceBackend077(a, context.Background()).BlockByHeight(2); e != nil || retained.SourceNetwork != satlineCompactSource {
+		t.Fatal("disabling range recording erased independent FIFO facts", e)
 	}
 }
 func TestSatInscriptionIdentitySurvivesPruningWithoutNumberingOrHistory(t *testing.T) {
@@ -146,6 +224,32 @@ func TestSatInscriptionIdentitySurvivesPruningWithoutNumberingOrHistory(t *testi
 			}
 		}
 	}
+	// Run actual bounded reclamation before discovery. The current identity
+	// root must preserve same-block born/spent inscriptions independently of
+	// old transaction receipts and optional historical output range retention.
+	cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s.locatorContext = cleanup
+	for {
+		err := s.collectOrdinalState()
+		if errors.Is(err, errOrdinalMaintenancePending) {
+			continue
+		}
+		if err != nil {
+			t.Fatal("fixture reclamation failed", err)
+		}
+		break
+	}
+	s.locatorContext = context.Background()
+	headBefore, err := os.ReadFile(filepath.Join(s.dir, "head.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobBefore := indexDigest(a.indexJobSnapshot())
+	policiesBefore, err := a.indexLivePolicies()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// The same-block input output was consumed before the final block root;
 	// the durable identity map must preserve its sats past the recovery window.
 	for _, id := range []string{one + "i0", two + "i0"} {
@@ -153,8 +257,12 @@ func TestSatInscriptionIdentitySurvivesPruningWithoutNumberingOrHistory(t *testi
 		if identity == nil || !identity.Known || identity.SatNumber == nil || *identity.SatNumber != firstSatAtHeight(1) {
 			t.Fatal(id, identity)
 		}
-		if _, e := a.discoverInscriptionSat(context.Background(), id); e == nil || e.Error() != releaseLockReason("sat-state") {
-			t.Fatal("stored identity bypassed the independent Sat Index release lock", e)
+		discovered, err := a.discoverInscriptionSat(context.Background(), id)
+		if err != nil || indexDigest(discovered) != indexDigest(*identity) || discovered.RevealHeight != 2 || discovered.RevealHash != reveal.Hash || discovered.Profile != inscriptionSatProfile {
+			t.Fatal("discovery did not reuse the exact committed inscription identity", discovered, identity, err)
+		}
+		if _, err := os.Stat(a.inscriptionSatPath(id)); !os.IsNotExist(err) {
+			t.Fatal("stored identity was copied into a separate discovery cache", err)
 		}
 	}
 	identity := a.indexedSatIdentity(two+"i1", 2, reveal.Hash)
@@ -169,6 +277,20 @@ func TestSatInscriptionIdentitySurvivesPruningWithoutNumberingOrHistory(t *testi
 	a.enrichBitmapIdentity(&row, reveal.Hash)
 	if row.SatNumber == nil || *row.SatNumber != firstSatAtHeight(1) {
 		t.Fatal("Bitmap did not use persistent identity", row)
+	}
+	headAfter, err := os.ReadFile(filepath.Join(s.dir, "head.json"))
+	if err != nil || string(headAfter) != string(headBefore) || indexDigest(a.indexJobSnapshot()) != jobBefore {
+		t.Fatal("identity discovery changed Sat state or started a build", err)
+	}
+	policiesAfter, err := a.indexLivePolicies()
+	if err != nil || indexDigest(policiesAfter) != indexDigest(policiesBefore) {
+		t.Fatal("identity discovery changed Live policies", err)
+	}
+	for _, relative := range []string{"blocks/raw", "blocks/hex", "blocks/json", "indexes/sources"} {
+		entries, err := os.ReadDir(filepath.Join(a.dataDir, relative))
+		if !os.IsNotExist(err) && (err != nil || len(entries) != 0) {
+			t.Fatal("identity discovery materialized raw or decoded block copies", relative, entries, err)
+		}
 	}
 }
 func TestSatIndexCancellationCannotPublishOrLoadFragmentedState(t *testing.T) {

@@ -144,6 +144,9 @@ func (r *satlineResolver) primeInputValues(tx transactionView, height int64) {
 	if r.valuesTried[key] {
 		return
 	}
+	if len(r.valuesTried) >= 8192 {
+		clear(r.valuesTried)
+	}
 	r.valuesTried[key] = true
 	// A transaction whose prevouts are already known needs no extra RPC.
 	missing := false
@@ -164,7 +167,11 @@ func (r *satlineResolver) primeInputValues(tx transactionView, height int64) {
 		r.values[k] = v
 	}
 	if len(values) > 0 {
-		r.observeVerification("consensus_validated")
+		if source, ok := r.backend.(interface{ ValueEvidenceVerification() string }); ok {
+			r.observeVerification(source.ValueEvidenceVerification())
+		} else {
+			r.observeVerification("consensus_validated")
+		}
 	}
 }
 func (r *satlineResolver) coreFeePrefix(block blockView) ([]uint64, bool) {
@@ -178,12 +185,19 @@ func (r *satlineResolver) coreFeePrefix(block blockView) ([]uint64, bool) {
 	if prefix, tried := r.feePrefixes[block.Hash]; tried {
 		return prefix, prefix != nil
 	}
+	if len(r.feePrefixes) >= 4 {
+		clear(r.feePrefixes)
+	}
 	prefix, e := b.FeePrefix(block)
 	if e != nil {
 		r.feePrefixes[block.Hash] = nil
 		return nil, false
 	}
 	r.feePrefixes[block.Hash] = prefix
-	r.observeVerification("consensus_validated")
+	if source, ok := r.backend.(interface{ ValueEvidenceVerification() string }); ok {
+		r.observeVerification(source.ValueEvidenceVerification())
+	} else {
+		r.observeVerification("consensus_validated")
+	}
 	return prefix, true
 }

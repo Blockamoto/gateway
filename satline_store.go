@@ -70,9 +70,7 @@ func (a *app) satlineSatDir() string    { return filepath.Join(a.satlineRoot(), 
 func (a *app) satlineFollowDir() string { return filepath.Join(a.satlineRoot(), "satpoints") }
 
 func (a *app) satlineEnabled() bool {
-	a.settingsMu.RLock()
-	defer a.settingsMu.RUnlock()
-	return releaseFeatureAvailable("satline") && a.settings.SatlineEnabled
+	return releaseFeatureAvailable("satline")
 }
 
 func (a *app) initSatlineStore() {
@@ -283,7 +281,7 @@ func validateSatlineRecord(rec satlineRecord, canonical func(int64) (string, err
 
 func satlineStaticState(s string) bool {
 	switch s {
-	case "INVALID", "LOST_AT_BIRTH", "LOST_UNCLAIMED_COINBASE", "LOST_DUPLICATE_TXID":
+	case "INVALID", "LOST_AT_BIRTH", "LOST_UNCLAIMED_COINBASE", "LOST_DUPLICATE_TXID", "LOST_BURNED_OUTPUT", "GENESIS_UNSPENDABLE":
 		return true
 	default:
 		return false

@@ -44,6 +44,8 @@ type indexBatch struct {
 	Diagnostics            []inscriptionExtractionDiagnostic `json:"diagnostics,omitempty"`
 }
 type indexHead struct {
+	SatSavepoints      []satSavepoint077           `json:"sat_savepoints,omitempty"`
+	SatSavepointsHash  string                      `json:"sat_savepoints_hash,omitempty"`
 	TXIOLayersSchema   int                         `json:"txio_layers_schema,omitempty"`
 	TXIOLayers         map[string][]heightInterval `json:"txio_layers,omitempty"`
 	TXIOLayersComplete bool                        `json:"txio_layers_complete,omitempty"`
@@ -54,6 +56,7 @@ type indexHead struct {
 	Published          bool                        `json:"published"`
 }
 type indexStore struct {
+	satCommitHook            func(string) error
 	retainOutputValues       bool
 	retainOutputScripts      bool
 	profileRoot              string
@@ -90,6 +93,9 @@ func openIndexStoreContext(ctx context.Context, root, id string) (*indexStore, e
 		return nil, e
 	}
 	s.locatorContext = ctx
+	if id == "sat-state" {
+		return s, nil
+	}
 	if id == "txo-spender" {
 		s.head.TXIOLayersSchema, s.head.TXIOLayersComplete = 1, true
 		s.head.TXIOLayers = map[string][]heightInterval{}
@@ -147,6 +153,9 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 	}
 	if id == "address-state" || id == "address-history" {
 		return addressIndexStoreHead(root, s)
+	}
+	if id == "sat-state" {
+		return s, s.readSatHeadContext077(context.Background())
 	}
 	b, e := os.ReadFile(filepath.Join(s.dir, "head.json"))
 	if os.IsNotExist(e) {
@@ -326,7 +335,10 @@ func (s *indexStore) readBatch(commit string) (indexBatch, error) {
 	if (s.definition.ID == "sat-state") != (b.Sats != nil) {
 		return b, fmt.Errorf("Sat index record type mismatch")
 	}
-	if b.Sats != nil && (b.Sats.Profile != satIndexProfile || b.Bitcoin != nil || b.Numbering != nil || len(b.Bitmap) != 0 || len(b.Inscriptions) != 0) {
+	if b.Sats != nil && b.Sats.Profile != satIndexProfile {
+		return b, ErrSatProfileIncompatible
+	}
+	if b.Sats != nil && (b.Bitcoin != nil || b.Numbering != nil || len(b.Bitmap) != 0 || len(b.Inscriptions) != 0) {
 		return b, fmt.Errorf("invalid Sat index snapshot payload")
 	}
 	if bitcoin != (b.Bitcoin != nil) {
@@ -463,6 +475,9 @@ func (s *indexStore) appendBlock(block blockView, from int64, retention string) 
 }
 
 func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention string, prepared *inscriptionBlockResult) error {
+	if s.definition.ID == "sat-state" {
+		return s.appendSat077Block(block, from, retention, prepared)
+	}
 	if !block.Verification.HeaderChainMatch && !block.Verification.ConsensusValidated {
 		return fmt.Errorf("index requires a selected-chain anchor")
 	}
@@ -654,6 +669,9 @@ func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash s
 // Unavailable chain evidence is an error, never evidence of a reorg. Rewind
 // only after actual hash disagreement, retaining old immutable audit batches.
 func (s *indexStore) reconcile(hashAt func(int64) (string, error)) error {
+	if s.definition.ID == "sat-state" {
+		return s.reconcileSatStateSelected(s.ordinalContext(), -1, hashAt)
+	}
 	if s.definition.ID == "blocks" && !s.stagedMigration {
 		blocksBodyMigrationMu.Lock()
 		defer blocksBodyMigrationMu.Unlock()

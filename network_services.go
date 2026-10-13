@@ -41,7 +41,7 @@ func (s *bitcoinSession) serveMessage(m message) {
 	a.settingsMu.RLock()
 	allowed := a.settings.ServeData
 	gatewayAllowed := releaseFeatureAvailable("gateway-peerhood") && a.settings.ServeGatewayData
-	sat := a.settings.SatlineEnabled && a.settings.SatlineServePublished
+	sat := releaseFeatureAvailable("satline") && a.settings.SatlineServePublished
 	a.settingsMu.RUnlock()
 	// Provider work never owns the writer. The wrapper serializes each complete
 	// Bitcoin frame, leaving ping and opposite-direction replies independent.

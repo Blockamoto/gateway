@@ -69,6 +69,7 @@ func (a *app) handleFetch(w http.ResponseWriter, r *http.Request) {
 }
 
 type searchResponse struct {
+	Sat          *satViewResult077      `json:"sat,omitempty"`
 	AddressIndex *addressViewResult     `json:"address_index,omitempty"`
 	Module       string                 `json:"module,omitempty"`
 	Ord          *ordRecord             `json:"inscription,omitempty"`
@@ -102,6 +103,10 @@ func (a *app) searchQueryContext(ctx context.Context, q string) (searchResponse,
 		return searchResponse{}, err
 	}
 	q = strings.TrimSpace(q)
+	if number, ok := parseSatQuery077(q); ok {
+		view, err := a.satViewContext077(ctx, number)
+		return searchResponse{Kind: "sat", Module: "satline", Query: q, Sat: &view}, err
+	}
 	if q == "" {
 		return searchResponse{}, fmt.Errorf("search a block height, block hash, transaction ID, Gateway coordinate, or Bitcoin address")
 	}
@@ -228,9 +233,9 @@ func (a *app) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if !releaseFeatureAvailable("txo-spender") {
 		s.GraphIndex = old.GraphIndex
 	}
-	if !releaseFeatureAvailable("satline") {
-		s.SatlineEnabled = old.SatlineEnabled
-	}
+	// The legacy field is readable for old clients, but local Satline follows
+	// release availability rather than an independently configurable switch.
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
 	if !releaseFeatureAvailable("inscriptions") {
 		s.OrdEnabled, s.OrdURL = old.OrdEnabled, old.OrdURL
 	}

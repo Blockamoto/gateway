@@ -243,7 +243,7 @@ func TestIntegrationReadinessRequiresActualPeersAndSyncedCore(t *testing.T) {
 	if got := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex"); got.Readiness != "enabled_index_not_ready" || got.Queryable || got.Serveable || len(got.Coverage) == 0 {
 		t.Fatal("enabled Core txindex was shown synced", got)
 	}
-	if got := indexProviderRow(t, rows, "satline", "gateway_satline"); got.Readiness != "locked" {
+	if got := indexProviderRow(t, rows, "satline", "gateway_satline"); got.Readiness != "needs_coverage_or_provider" || got.Queryable || got.Serveable {
 		t.Fatal("unready satline was shown available", got)
 	}
 	core.TxIndex, core.TxIndexHeight = true, 100

@@ -42,9 +42,9 @@ type appSettings struct {
 	RPCPort               int    `json:"rpc_port,omitempty"`
 	MaintainHeaderMirror  bool   `json:"maintain_header_mirror,omitempty"` // keep BOD headers syncing even while live Core supplies chain authority
 	GraphIndex            bool   `json:"graph_index"`                      // index spends/tx locations for every newly processed canonical block
-	SatlineEnabled        bool   `json:"satline_enabled"`
+	SatlineEnabled        bool   `json:"satline_enabled"`                  // deprecated compatibility field; follows release availability
 	SatlineUsePeers       bool   `json:"satline_use_peers"`
-	SatlineServePublished bool   `json:"satline_serve_published"` // bundled Satline module can be disabled independently
+	SatlineServePublished bool   `json:"satline_serve_published"` // explicit publication sharing preference; independently release-gated
 }
 
 type publicSettings struct {
@@ -79,12 +79,12 @@ type publicSettings struct {
 	GraphIndex            bool   `json:"graph_index"`                      // index spends/tx locations for every newly processed canonical block
 	SatlineEnabled        bool   `json:"satline_enabled"`
 	SatlineUsePeers       bool   `json:"satline_use_peers"`
-	SatlineServePublished bool   `json:"satline_serve_published"` // bundled Satline module can be disabled independently
+	SatlineServePublished bool   `json:"satline_serve_published"` // explicit publication sharing preference; independently release-gated
 }
 
 func (s appSettings) public() publicSettings {
 	s.GraphIndex = s.GraphIndex && releaseFeatureAvailable("txo-spender")
-	s.SatlineEnabled = s.SatlineEnabled && releaseFeatureAvailable("satline")
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
 	s.OrdEnabled = s.OrdEnabled && releaseFeatureAvailable("inscriptions")
 	s.ServeGatewayData = s.ServeGatewayData && releaseFeatureAvailable("gateway-peerhood")
 	return publicSettings{LANDiscovery: s.LANDiscovery, CoreDisabled: s.CoreDisabled, CoreMountDisabled: s.CoreMountDisabled, PrepareMountedFiles: s.PrepareMountedFiles, NetworkDisabled: s.NetworkDisabled, HeadersPaused: s.HeadersPaused, BitcoinPeers: append([]string(nil), s.BitcoinPeers...), OrdEnabled: s.OrdEnabled, OrdURL: s.OrdURL, ArchiveDir: s.ArchiveDir,
@@ -96,7 +96,7 @@ func (s appSettings) public() publicSettings {
 }
 
 func defaultSettings() appSettings {
-	return appSettings{CacheBlocks: true, ShareCache: true, ServeData: true, OrdEnabled: true, StorageCapMB: 1024, BitcoinDataDir: detectBitcoinDataDir(), RPCAuthMode: "auto"}
+	return appSettings{CacheBlocks: true, ShareCache: true, ServeData: true, OrdEnabled: true, SatlineEnabled: releaseFeatureAvailable("satline"), StorageCapMB: 1024, BitcoinDataDir: detectBitcoinDataDir(), RPCAuthMode: "auto"}
 }
 
 func (a *app) settingsPath() string { return filepath.Join(a.dataDir, "settings.json") }
@@ -132,12 +132,16 @@ func (a *app) loadSettings() appSettings {
 	if s.StorageCapMB < 0 {
 		s.StorageCapMB = 1024
 	}
+	// Local Satline is part of an available release, including upgrades with an
+	// old explicit false. Peer receiving and publication sharing stay separate.
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
 	return s
 }
 
 func (a *app) saveSettings(s appSettings) error {
 	// Keep the legacy field in lockstep so downgrading doesn't silently switch sharing off.
 	s.ShareCore = s.ServeData
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err

@@ -12,6 +12,8 @@ import (
 )
 
 type flowInput struct {
+	PreviousOutput    string  `json:"previous_output,omitempty"`
+	CreationBlockHash string  `json:"creation_block_hash,omitempty"`
 	Index             int     `json:"index"`
 	Outpoint          string  `json:"outpoint"`
 	Value             *uint64 `json:"value"`
@@ -118,6 +120,7 @@ func (a *app) handleFlow(w http.ResponseWriter, r *http.Request) {
 // have one request deadline, four workers, and a hard count bound; misses remain
 // unknown rather than triggering a historical block scan.
 func (a *app) flowInputValues(ctx context.Context, block blockView, tx transactionView) []flowInput {
+	authority := a.currentChainAuthority()
 	inputs := make([]flowInput, len(tx.Inputs))
 	groups := map[string][]int{}
 	order := []string{}
@@ -139,6 +142,10 @@ func (a *app) flowInputValues(ctx context.Context, block blockView, tx transacti
 				if uint64(in.PrevVout) < uint64(len(parent.Outputs)) {
 					v := parent.Outputs[in.PrevVout].ValueSats
 					inputs[i].Value, inputs[i].Source = &v, "verified_same_block"
+					if target, err := a.utxoSelectedTarget(ctx, authority, block.Height); err == nil && target.HashDisplay == block.Hash {
+						inputs[i].PreviousOutput = outputCoordinate(int(in.PrevVout), parent.Index, block.Height)
+						inputs[i].CreationBlockHash = block.Hash
+					}
 					if block.Verification.ConsensusValidated {
 						inputs[i].VerificationState = "consensus_validated"
 					} else if block.Verification.HeaderChainMatch {
@@ -198,6 +205,12 @@ func (a *app) flowInputValues(ctx context.Context, block blockView, tx transacti
 					inputs[i].Value = &value
 					inputs[i].Source = ev.Source
 					inputs[i].VerificationState = ev.VerificationState
+					if ev.Tx.Index >= 0 && validHash(ev.BlockHash) {
+						if target, err := a.utxoSelectedTarget(ctx, authority, ev.Height); err == nil && target.HashDisplay == ev.BlockHash {
+							inputs[i].PreviousOutput = outputCoordinate(int(vout), ev.Tx.Index, ev.Height)
+							inputs[i].CreationBlockHash = ev.BlockHash
+						}
+					}
 				}
 			}
 		}()

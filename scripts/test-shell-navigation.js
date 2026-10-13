@@ -53,7 +53,7 @@ let origin; // A fresh loopback fixture server owns this origin for each run.
 const bitcoinAddress='1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
 const addressCheckpoint={height:170,block_hash:'b'.repeat(64),commitment:'address-head'};
 const fixtures = {
-  '/api/v1/settings': {settings:{bitcoin_peers:[], satline_enabled:true, ord_enabled:true}, core:{connected:false}, core_store:{}},
+  '/api/v1/settings': {settings:{bitcoin_peers:[], satline_enabled:false, ord_enabled:true}, core:{connected:false}, core_store:{}},
   '/api/v1/browser/status': {browser:{native_active:false}},
   '/api/v1/system/status': {},
   '/api/v1/updates/status': {state:'not_configured',current_version:'test',configured:false,auto_check:false},
@@ -67,7 +67,7 @@ const fixtures = {
   '/api/v1/data-coverage': {headers:{header_height:0}, cache:{}, transaction_locations:{}, spender_knowledge:{}, mounted:{}, mounted_preparation:{}, core:{connected:false}, serving:{}},
 };
 
-async function harness(browser, address = '.gateway', failStatus = false, addressLookupState='not_built') {
+async function harness(browser, address = '.gateway', failStatus = false, addressLookupState='not_built', satlineAvailable=false, satState='ready') {
   const context = await browser.newContext({serviceWorkers:'block'});
   const page = await context.newPage();
   page.setDefaultTimeout(5000);
@@ -75,13 +75,13 @@ async function harness(browser, address = '.gateway', failStatus = false, addres
   page.on('pageerror', error => errors.push(error.message));
   await context.route('**/*', async route => {
     const request = route.request(), url = new URL(request.url());
-    requests.push({method:request.method(), path:url.pathname});
+    requests.push({method:request.method(), path:url.pathname,...(request.method()==='POST'?{body:request.postDataJSON()}: {})});
     const fulfill = (body, contentType, status = 200) => route.fulfill({status, contentType, body});
     if (url.origin !== origin) {
       unexpected.push(request.url());
       return route.abort();
     }
-    if (url.pathname === '/') return fulfill(html.replace('__GATEWAY_BOOTSTRAP__', JSON.stringify({version:'test', address, activation:''})), 'text/html');
+    if (url.pathname === '/') return fulfill(html.replace('__GATEWAY_BOOTSTRAP__', JSON.stringify({version:'test', address, activation:'',release_availability:{'sat-state':true,satline:satlineAvailable}})), 'text/html');
     if (scripts.has(url.pathname)) return fulfill(scripts.get(url.pathname), 'application/javascript');
     if (url.pathname === '/shell/style.css') return fulfill(read('ui/shell/style.css'), 'text/css');
     if (url.pathname === '/shell/theme.css') return fulfill(read('ui/shell/theme.css'), 'text/css');
@@ -100,6 +100,8 @@ async function harness(browser, address = '.gateway', failStatus = false, addres
       assert.equal(request.method(),'GET');assert.equal(url.searchParams.get('address'),bitcoinAddress);assert.equal(url.searchParams.get('mode'),'current');
       return fulfill(JSON.stringify({address:bitcoinAddress,mode:'current',state:addressLookupState,snapshot:addressLookupState==='rebuild_required'?addressCheckpoint:{},current_balance_sats:null,current_output_count:null,outputs:[],complete:false,note:'Current UTXOs require inspection or a reviewed build.'}),'application/json');
     }
+    if(url.pathname==='/api/v1/sats/view')return fulfill(JSON.stringify({state:satState,sat_number:Number(url.searchParams.get('sat')),origin:{height:144,first_sat:50,subsidy_offset:1},properties:{rarity:'common'},location:{state:'unspent',output_coordinate:'0.1.144',offset:1,address:bitcoinAddress},snapshot:addressCheckpoint,note:'Saved Sat location.'}),'application/json');
+    if(url.pathname==='/api/v1/settings'&&request.method()==='POST'){assert.equal(Object.hasOwn(request.postDataJSON(),'satline_enabled'),false,'Settings no longer sends the legacy Satline disable flag');return fulfill(JSON.stringify({ok:true}),'application/json');}
     if (request.method() === 'GET' && Object.hasOwn(fixtures, url.pathname)) {
       if (failStatus && url.pathname === '/api/v1/settings') return fulfill(JSON.stringify({error:'Fixture services unavailable'}), 'application/json', 503);
       return fulfill(JSON.stringify(fixtures[url.pathname]), 'application/json');
@@ -128,7 +130,7 @@ async function checkRoute(page, address, selector) {
   await healthy(page, address);
   assert.equal(await page.locator('#address').inputValue(), address);
   const selected = page.locator('.nav-item.active');
-  const positionalInput=/^i[0-9]+\.[0-9]+\.[0-9]+(?:\.bitcoin)?$/.test(address),primary = ['.gateway','indexes.gateway','peers.gateway','settings.gateway'].includes(address)||positionalInput;
+  const positionalInput=/^(?:i[0-9]+\.[0-9]+\.[0-9]+|[0-9]+(?:\.[0-9]+)*)(?:\.bitcoin)?$/.test(address),primary = ['.gateway','indexes.gateway','peers.gateway','settings.gateway'].includes(address)||positionalInput;
   assert.equal(await selected.count(), primary ? 1 : 0, `${address}: primary workspace selection`);
   if (primary) {
     assert.equal(await selected.getAttribute('data-route'), positionalInput?'indexes.gateway':address);
@@ -235,6 +237,13 @@ async function run() {
         await damagedAddress.page.getByRole('button',{name:'Review Current UTXOs rebuild'}).click();await checkRoute(damagedAddress.page,'indexes.gateway','iframe.indexes-frame');const frame=damagedAddress.page.frameLocator('#indexes-module');await frame.locator('body[data-index="address-state"]').waitFor();assert.deepEqual(JSON.parse(await frame.locator('body').getAttribute('data-rebuild-snapshot')),addressCheckpoint,'Outer shell passes the damaged lookup checkpoint to the existing same-origin workspace');assert.equal(damagedAddress.requests.some(r=>r.path==='/api/v1/index/build'||r.path==='/api/v1/index/plan'),false,'Rebuild navigation requires a later explicit review');assert.deepEqual(damagedAddress.errors,[]);assert.deepEqual(damagedAddress.unexpected,[]);
       }finally{await damagedAddress.context.close()}
     }
+    if(scripts.has('/shell/sat-view.js')){
+      const sat=await harness(browser,'51.sat',false,'not_built',true);
+      try{
+        await sat.page.getByRole('heading',{name:'Sat 51',exact:true}).waitFor();await checkRoute(sat.page,'51.sat','.sat-evidence');await sat.page.getByRole('button',{name:'Trace Satline',exact:true}).click();await sat.page.locator('#satline-module').waitFor();assert.equal(new URL(await sat.page.locator('#satline-module').getAttribute('src'),origin).searchParams.get('input'),'51','Explicit trace action opens the existing numeric Satline journey');assert.equal(sat.requests.some(r=>r.path.startsWith('/api/v1/satline')&&r.method==='POST'),false,'Opening a Sat view does not start a trace itself');await sat.page.locator('#address').fill('51.sat');await sat.page.locator('#address-form').evaluate(form=>form.requestSubmit());await sat.page.getByRole('heading',{name:'Sat 51',exact:true}).waitFor();assert.equal(sat.requests.filter(r=>r.path==='/api/v1/navigate').length,0,'Internal Sat entry uses the read-only Sat view route');await sat.page.getByRole('button',{name:bitcoinAddress,exact:true}).click();await sat.page.locator('#address-balance').waitFor();await checkRoute(sat.page,bitcoinAddress,'#address-balance');await sat.page.goBack();await sat.page.getByRole('heading',{name:'Sat 51',exact:true}).waitFor();await sat.page.locator('#sat-number').fill('0');await sat.page.getByRole('button',{name:'Open sat',exact:true}).click();await sat.page.getByRole('heading',{name:'Sat 0',exact:true}).waitFor();assert.equal(new URL(sat.page.url()).searchParams.get('resolve'),'0.sat');await sat.page.getByRole('button',{name:'0.1.144',exact:true}).click();await checkRoute(sat.page,'0.1.144','iframe.indexes-frame');assert.equal(sat.requests.some(r=>r.path==='/api/v1/index/build'),false,'Sat/address/output navigation does not start indexing');assert.deepEqual(sat.errors,[]);assert.deepEqual(sat.unexpected,[]);
+      }finally{await sat.context.close()}
+    }
+    if(scripts.has('/shell/sat-view.js')){const unindexed=await harness(browser,'5.sat',false,'not_built',true,'not_built');try{await unindexed.page.getByRole('button',{name:'Trace Satline',exact:true}).click();await unindexed.page.locator('#satline-module').waitFor();assert.equal(new URL(await unindexed.page.locator('#satline-module').getAttribute('src'),origin).searchParams.get('input'),'5','Trace is available with a legacy false preference and no global Sat index');await unindexed.page.locator('#settings-button').click();await unindexed.page.locator('#settings-form').waitFor();assert.equal(await unindexed.page.locator('#satline-enabled').count(),0,'Settings offers no Satline disable switch');await unindexed.page.getByRole('button',{name:'Save settings',exact:true}).click();await unindexed.page.waitForFunction(()=>document.querySelector('#toast').textContent==='Settings saved.');assert.equal(Object.hasOwn(unindexed.requests.filter(r=>r.path==='/api/v1/settings'&&r.method==='POST').at(-1).body,'satline_enabled'),false);assert.equal(unindexed.requests.some(r=>r.path==='/api/v1/index/build'),false);assert.deepEqual(unindexed.errors,[]);assert.deepEqual(unindexed.unexpected,[]);}finally{await unindexed.context.close()}}
     const degraded = await harness(browser, '.gateway', true);
     try {
       await degraded.page.locator('#home-state').getByText('Status unavailable', {exact:true}).waitFor();

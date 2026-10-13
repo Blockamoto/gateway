@@ -195,12 +195,12 @@ func Test073FlowRealGenesisDoesNotIndexEvenWhenBrowseEnabled(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil || result.Context.State != "complete" || result.Context.Count != 0 || len(result.Outputs) != 1 || result.Outputs[0].ValueSats != 5000000000 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	for _, id := range []string{"tx-locator", "inscriptions", "blocks", "browse/tx-locator", "browse/inscriptions"} {
+	for _, id := range []string{"tx-locator", "inscriptions", "blocks", "sat-state", "browse/tx-locator", "browse/inscriptions"} {
 		if _, err := os.Stat(filepath.Join(a.dataDir, "indexes", filepath.FromSlash(id), "head.json")); !os.IsNotExist(err) {
 			t.Fatal("flow advanced indexing", id, err)
 		}
 	}
-	if releaseFeatureAvailable("sat-state") || releaseFeatureAvailable("satline") || releaseFeatureAvailable("gateway-peerhood") {
+	if releaseFeatureAvailable("gateway-peerhood") {
 		t.Fatal("viewing unlocked a future feature")
 	}
 	ctx, cancel := context.WithCancel(context.Background())

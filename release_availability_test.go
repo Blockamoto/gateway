@@ -13,7 +13,7 @@ import (
 func Test074IndexReleaseAvailability(t *testing.T) {
 	a := independentTestApp(t)
 	for _, d := range indexDefinitions() {
-		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender" || d.ID == "utxo-state" || d.ID == "address-state" || d.ID == "address-history"
+		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender" || d.ID == "utxo-state" || d.ID == "address-state" || d.ID == "address-history" || d.ID == "sat-state" || d.ID == "satline"
 		if d.Locked == available || releaseFeatureAvailable(d.ID) != available {
 			t.Fatalf("wrong release availability: %+v", d)
 		}
@@ -49,25 +49,25 @@ func Test074IndexReleaseAvailability(t *testing.T) {
 	}
 }
 
-func Test066ManualIndexAndModuleRequestsAreLocked(t *testing.T) {
+func Test077ManualUnavailableIndexesStayLocked(t *testing.T) {
 	a := independentTestApp(t)
 	h := indexInterfaceHandler(a)
 	for _, tc := range []struct{ method, path, body string }{
-		{"POST", "plan", `{"index":"bitmap"}`}, {"POST", "build", `{"index":"blocks","outputs":["sat-state"]}`},
-		{"POST", "build", `{"index":"blocks","retain_sat_history":true}`},
-		{"POST", "live", `{"index":"sat-state","action":"enable"}`}, {"GET", "query?index=sat-state", ""},
-		{"GET", "lookup?index=bitmap&key=0", ""}, {"GET", "sat?sat=0", ""}, {"POST", "discover-sat", `{"id":"anything"}`},
+		{"POST", "plan", `{"index":"bitmap"}`},
+		{"POST", "build", `{"index":"blocks","outputs":["bitmap"]}`},
+		{"POST", "live", `{"index":"bitmap","action":"enable"}`},
+		{"GET", "query?index=bitmap", ""}, {"GET", "lookup?index=bitmap&key=0", ""},
 	} {
 		r := indexInterfaceCall(h, tc.method, "/api/v1/index/"+tc.path, tc.body)
 		if r.Code < 400 || !strings.Contains(r.Body.String(), "locked") {
 			t.Fatalf("%s bypass: %d %s", tc.path, r.Code, r.Body.String())
 		}
 	}
-	for _, handler := range []http.HandlerFunc{a.handleOrdFollow, a.handleSatlineResolve, a.handleSatlineFollow, a.handleSatlineRun, a.handleJobs} {
+	for _, handler := range []http.HandlerFunc{a.handleSatlineResolve, a.handleJobs, a.handleOrdFollow} {
 		w := httptest.NewRecorder()
-		handler(w, httptest.NewRequest("POST", "/", strings.NewReader(`{}`)))
-		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "locked") {
-			t.Fatalf("handler bypass: %d %s", w.Code, w.Body.String())
+		handler(w, httptest.NewRequest("POST", "/", strings.NewReader(`{`)))
+		if w.Code == http.StatusForbidden && strings.Contains(w.Body.String(), "locked") {
+			t.Fatalf("released local Sat API stayed locked: %s", w.Body.String())
 		}
 	}
 }
@@ -125,14 +125,14 @@ func Test066SavedDerivedWorkCannotResume(t *testing.T) {
 	a := independentTestApp(t)
 	queue := indexQueueState{Schema: 1, Entries: []indexQueueEntry{
 		{Request: indexBuildRequest{Index: "bitmap"}, Job: indexJob{ID: "derived", Index: "bitmap", State: "queued"}},
-		{Request: indexBuildRequest{Index: "blocks", Outputs: []string{"sat-state"}}, Job: indexJob{ID: "shared", Index: "blocks", Outputs: []string{"sat-state"}, State: "queued"}},
+		{Request: indexBuildRequest{Index: "blocks", Outputs: []string{"bitmap-compatibility"}}, Job: indexJob{ID: "shared", Index: "blocks", Outputs: []string{"bitmap-compatibility"}, State: "queued"}},
 	}}
 	queuePath := filepath.Join(a.dataDir, "indexes", "queue.json")
 	if err := atomicWriteJSON(queuePath, queue); err != nil {
 		t.Fatal(err)
 	}
 	before, _ := os.ReadFile(queuePath)
-	for _, p := range []indexLivePolicy{{Index: "bitmap", Enabled: true, Retention: "ephemeral"}, {Index: "blocks", Enabled: true, Retention: "ephemeral", Outputs: []string{"sat-state"}}} {
+	for _, p := range []indexLivePolicy{{Index: "bitmap", Enabled: true, Retention: "ephemeral"}, {Index: "blocks", Enabled: true, Retention: "ephemeral", Outputs: []string{"bitmap-compatibility"}}} {
 		if err := a.writeIndexLivePolicy(p); err != nil {
 			t.Fatal(err)
 		}

@@ -57,6 +57,7 @@ func cloneIndexJob(j indexJob) indexJob {
 }
 
 type indexStatusView struct {
+	Sats               *indexSatStatusView077  `json:"sats,omitempty"`
 	Addresses          *indexAddressStatusView `json:"addresses,omitempty"`
 	UTXO               *indexUTXOStatusView    `json:"utxo,omitempty"`
 	BlockBodyMigration *blocksBodyMigration    `json:"block_body_migration,omitempty"`
@@ -178,6 +179,20 @@ func (a *app) indexStatus() indexStatusView {
 	}
 	out.UTXO = a.indexUTXOStatus(out.Jobs)
 	out.Addresses, out.Instances = a.indexAddressStatus(out.Instances)
+	out.Sats = a.indexSatStatus077()
+	for i := range out.Instances {
+		instance := &out.Instances[i]
+		if instance.Definition != "sat-state" {
+			continue
+		}
+		instance.Coverage = append([]heightInterval{}, out.Sats.OutputCoverage...)
+		instance.Gaps = []heightInterval{}
+		instance.Completeness = "ranges_for_retained_outputs; separate_identity_and_history_coverage"
+		instance.Verification = "header_anchored_processing; consensus_validated=false"
+		instance.Serveable = false
+		instance.Queryable = out.Sats.State == "ready" && instance.Checkpoint.Commitment == out.Sats.ProcessedCommitment
+		instance.Note = out.Sats.Note
+	}
 	out.Timeline = a.indexTimeline(out.Definitions, out.Providers, out.Instances, out.Errors...)
 	return out
 }
@@ -218,7 +233,7 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 	}
 	var s *indexStore
 	var e error
-	if req.Rebuild && (req.Index == "utxo-state" || req.Index == "address-state") {
+	if req.Rebuild && (req.Index == "utxo-state" || req.Index == "address-state" || req.Index == "sat-state") {
 		d, err := findIndexDefinition(req.Index)
 		if err != nil {
 			return indexJob{}, err
@@ -315,6 +330,8 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 	}
 	if req.Index == "utxo-state" {
 		go a.runUTXOIndexBuild(ctx, cloneIndexJob(j))
+	} else if req.Index == "sat-state" {
+		go a.runSatIndexBuild077(ctx, cloneIndexJob(j))
 	} else if req.Index == "address-state" || req.Index == "address-history" {
 		go a.runAddressIndexBuild(ctx, cloneIndexJob(j))
 	} else if len(req.Outputs) > 0 || req.Index == "sat-state" || req.Index == "txo-spender" || req.Index == "inscriptions" && p.ConventionalIDs {
@@ -604,6 +621,9 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 	}
 	if id == "utxo-state" {
 		return a.queryUTXOIndex(context.Background(), limit)
+	}
+	if id == "sat-state" {
+		return a.indexSatStatus077(), nil
 	}
 	if id == "address-state" || id == "address-history" {
 		view, _ := a.indexAddressStatus(nil)

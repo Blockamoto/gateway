@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"sort"
@@ -161,7 +162,7 @@ func (b appSatlineBackend) transactionContext(ctx context.Context, txid string, 
 				return eligible[i].TxIndex > eligible[j].TxIndex
 			})
 			loc := eligible[0]
-			r, err := a.verifyTxLocation(txid, txLocation{TxID: txid, BlockHash: loc.BlockHash, Height: loc.Height, TxIndex: loc.TxIndex}, "Bitcoin on Demand native graph")
+			r, err := a.verifyTxLocationContext(ctx, txid, txLocation{TxID: txid, BlockHash: loc.BlockHash, Height: loc.Height, TxIndex: loc.TxIndex}, "Bitcoin on Demand native graph")
 			if err == nil && transactionFitsHeightContext(r.Height, r.Transaction.Coinbase, beforeHeight) {
 				return satlineTxEvidence{Tx: r.Transaction, Height: r.Height, BlockHash: r.BlockHash, VerificationState: r.VerificationState, Source: "bod_native_graph"}, nil
 			}
@@ -176,7 +177,7 @@ func (b appSatlineBackend) transactionContext(ctx context.Context, txid string, 
 	a.cacheMu.RUnlock()
 	if cachedOK && transactionFitsHeightContext(cached.Height, cached.TxIndex == 0, beforeHeight) {
 		if canon, err := a.canonicalHashAtHeight(cached.Height); err == nil && strings.EqualFold(canon, cached.BlockHash) {
-			if r, err := a.verifyTxLocation(txid, cached, "verified Bitcoin on Demand tx locator"); err == nil && transactionFitsHeightContext(r.Height, r.Transaction.Coinbase, beforeHeight) {
+			if r, err := a.verifyTxLocationContext(ctx, txid, cached, "verified Bitcoin on Demand tx locator"); err == nil && transactionFitsHeightContext(r.Height, r.Transaction.Coinbase, beforeHeight) {
 				return satlineTxEvidence{Tx: r.Transaction, Height: r.Height, BlockHash: r.BlockHash, VerificationState: r.VerificationState, Source: "bod_tx_locator"}, nil
 			}
 		}
@@ -191,7 +192,7 @@ func (b appSatlineBackend) transactionContext(ctx context.Context, txid string, 
 	a.settingsMu.RUnlock()
 	if core := inspectCore(settings); core.Connected {
 		if loc, err := coreTxLocation(settings, txid); err == nil && transactionFitsHeightContext(loc.Height, loc.TxIndex == 0, beforeHeight) {
-			if r, err := a.verifyTxLocation(txid, loc, "Bitcoin Core tx locator"); err == nil && transactionFitsHeightContext(r.Height, r.Transaction.Coinbase, beforeHeight) {
+			if r, err := a.verifyTxLocationContext(ctx, txid, loc, "Bitcoin Core tx locator"); err == nil && transactionFitsHeightContext(r.Height, r.Transaction.Coinbase, beforeHeight) {
 				return satlineTxEvidence{Tx: r.Transaction, Height: r.Height, BlockHash: r.BlockHash, VerificationState: r.VerificationState, Source: "bitcoin_core"}, nil
 			}
 		}
@@ -320,6 +321,12 @@ func (r *satlineResolver) observeVerification(s string) {
 }
 
 func (r *satlineResolver) cacheBlock(b blockView) {
+	if len(r.blocks) >= 4 {
+		clear(r.blocks)
+	}
+	if len(r.values) > 131072 {
+		clear(r.values)
+	}
 	r.blocks[b.Height] = b
 	r.observeVerification(b.VerificationState)
 	for _, tx := range b.Transactions {
@@ -333,6 +340,9 @@ func (r *satlineResolver) cacheBlock(b blockView) {
 			}
 		}
 		if !already {
+			if len(r.txs) >= 8192 {
+				clear(r.txs)
+			}
 			r.txs[key] = append(r.txs[key], e)
 		}
 	}
@@ -446,6 +456,11 @@ func (r *satlineResolver) inputValue(tx transactionView, beforeHeight int64) (ui
 func (r *satlineResolver) transactionFee(tx transactionView, height int64) (uint64, error) {
 	if tx.Coinbase {
 		return 0, nil
+	}
+	if block, have := r.blocks[height]; have && tx.Index > 0 && tx.Index < len(block.Transactions) && block.Transactions[tx.Index].TxID == tx.TxID {
+		if prefix, ok := r.coreFeePrefix(block); ok && tx.Index+1 < len(prefix) && prefix[tx.Index+1] >= prefix[tx.Index] {
+			return prefix[tx.Index+1] - prefix[tx.Index], nil
+		}
 	}
 	in, err := r.inputValue(tx, height)
 	if err != nil {
@@ -610,6 +625,11 @@ func weakerVerification(a, b string) string {
 	return b
 }
 
+func satlineUnspendableScript077(script string) bool {
+	decoded, err := hex.DecodeString(script)
+	return err == nil && (len(decoded) > 10000 || len(decoded) > 0 && decoded[0] == 0x6a)
+}
+
 func (r *satlineResolver) traverse(start satlinePoint, maxHops int) satlineResult {
 	if maxHops <= 0 || maxHops > satlineMaxHops {
 		maxHops = satlineMaxHops
@@ -621,6 +641,33 @@ func (r *satlineResolver) traverse(start satlinePoint, maxHops int) satlineResul
 			res.State = "PAUSED"
 			res.Note = "Resolution stopped at the last completed checkpoint."
 			break
+		}
+		terminal := ""
+		if current.Height == 0 && current.BlockHash == genesisHashDisplay && current.TxIndex == 0 {
+			terminal = "GENESIS_UNSPENDABLE"
+		}
+		if b, ok := r.backend.(interface{ TerminalPoint(satlinePoint) string }); ok && terminal == "" {
+			terminal = b.TerminalPoint(current)
+		}
+		if terminal != "" {
+			res.State, res.LostAtHeight, res.LostAtBlockHash = terminal, current.Height, current.BlockHash
+			res.Note = "The sat is at a known unspendable output; no sparse miss is proof of unspentness."
+			res.VerificationState = r.weakest
+			return res
+		}
+		if b, have := r.blocks[current.Height]; have && b.Hash == current.BlockHash && current.TxIndex >= 0 && current.TxIndex < len(b.Transactions) {
+			tx := b.Transactions[current.TxIndex]
+			if tx.TxID == current.TxID && int(current.Vout) < len(tx.Outputs) {
+				if satlineUnspendableScript077(tx.Outputs[current.Vout].ScriptPubKey) || current.Height == 0 && b.Hash == genesisHashDisplay {
+					res.State, res.LostAtHeight, res.LostAtBlockHash = "LOST_BURNED_OUTPUT", current.Height, current.BlockHash
+					res.Note = "The sat occupies a provably unspendable output; no missing spender lookup is interpreted as unspent."
+					if current.Height == 0 && b.Hash == genesisHashDisplay {
+						res.State, res.Note = "GENESIS_UNSPENDABLE", "Genesis coinbase sats do not enter the spendable UTXO set."
+					}
+					res.VerificationState = r.weakest
+					return res
+				}
+			}
 		}
 		// Historical BIP30 duplicate txids need source-incarnation context before
 		// generic outpoint lookup, because the outpoint string itself is reused.
@@ -643,7 +690,13 @@ func (r *satlineResolver) traverse(start satlinePoint, maxHops int) satlineResul
 		if spendOverride != nil {
 			spend = *spendOverride
 		} else {
-			spend, err = r.backend.Spender(current.TxID, current.Vout)
+			if positional, ok := r.backend.(interface {
+				SpenderPoint(satlinePoint) (spenderLookupView, error)
+			}); ok {
+				spend, err = positional.SpenderPoint(current)
+			} else {
+				spend, err = r.backend.Spender(current.TxID, current.Vout)
+			}
 			if err != nil {
 				res.State = "UNRESOLVED"
 				res.Note = err.Error()
@@ -909,6 +962,16 @@ func (r *satlineResolver) resolveStartPoint(input string) (satlinePoint, error) 
 		norm = strings.TrimSuffix(v.Address, ".bitcoin")
 	}
 	if c, ok := parseBODCoordinate(norm); ok && c.Kind == coordSatpoint {
+		if b, ok := r.backend.(interface {
+			StartPoint(bodCoordinate) (satlinePoint, error)
+		}); ok {
+			if point, err := b.StartPoint(c); err == nil {
+				r.observeVerification("header_anchored")
+				return point, nil
+			} else if r.ctx != nil && r.ctx.Err() != nil {
+				return satlinePoint{}, r.ctx.Err()
+			}
+		}
 		b, err := r.block(c.Height)
 		if err != nil {
 			return satlinePoint{}, err

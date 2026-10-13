@@ -65,6 +65,7 @@ func (a *app) indexProviderViews() []indexProviderView {
 	a.settingsMu.RLock()
 	s := a.settings
 	a.settingsMu.RUnlock()
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
 	core := coreStatus{Height: -1}
 	if !s.CoreDisabled && strings.TrimSpace(s.BitcoinDataDir) != "" {
 		core = inspectCore(s)
@@ -99,15 +100,9 @@ func (a *app) indexProviderViews() []indexProviderView {
 			local.UTXOSnapshot = &chainSnapshot{Network: "mainnet", Height: cp.Height, Hash: cp.BlockHash, Source: "gateway_utxo_state"}
 		}
 	}
-	if store, err := indexStoreHead(a.dataDir, "sat-state"); err == nil && store.checkpoint != nil && a.indexChainState(store.checkpoint) == "selected_chain" {
-		batch, err := store.readBatch(store.checkpoint.Commitment)
-		if err == nil && batch.Sats != nil {
-			tree := newOrdinalTree(store.ordinalPages(), batch.Sats.UTXORoot)
-			if _, err = tree.read(batch.Sats.UTXORoot); err == nil {
-				local.CommittedSats = []heightInterval{{From: 0, To: store.checkpoint.Height}}
-				local.SatSnapshot = &chainSnapshot{Network: "mainnet", Height: store.checkpoint.Height, Hash: store.checkpoint.BlockHash, Source: "gateway_sat_index"}
-			}
-		}
+	if sat, err := satStateStatusContext(context.Background(), a.dataDir); err == nil && sat.Checkpoint != nil && a.satCheckpointSelected077(context.Background(), sat.Checkpoint, a.currentChainAuthority()) == nil {
+		local.CommittedSats = []heightInterval{{From: 0, To: sat.Checkpoint.Height}}
+		local.SatSnapshot = &chainSnapshot{Network: "mainnet", Height: sat.Checkpoint.Height, Hash: sat.Checkpoint.BlockHash, Source: "gateway_sat_index"}
 	}
 	if store, err := indexStoreHead(a.dataDir, "inscriptions"); err == nil && store.checkpoint != nil && a.indexChainState(store.checkpoint) == "selected_chain" {
 		if state, checkpoint, err := store.numberingView(); err == nil && state != nil && checkpoint != nil {
@@ -192,6 +187,7 @@ func (a *app) indexProviderViews() []indexProviderView {
 }
 
 func buildIndexProviderViews(s appSettings, core coreStatus, local indexProviderState) []indexProviderView {
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
 	rows := []indexProviderView{}
 	add := func(id, provider, completeness, verification string, queryable, serveable bool, coverage, public []heightInterval, snapshot *chainSnapshot, note string) {
 		rows = append(rows, indexProviderView{ID: id, Provider: provider, Coverage: mergeIntervals(coverage), PublicCoverage: mergeIntervals(public), Completeness: completeness, Verification: verification, Queryable: queryable, Serveable: serveable, Snapshot: snapshot, Note: note})

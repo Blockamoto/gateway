@@ -235,7 +235,12 @@ func TestIndexProvidersSatlineRequiresActualPublication(t *testing.T) {
 	if err := atomicWriteJSON(a.satlinePublicationPath(q), p); err != nil {
 		t.Fatal(err)
 	}
-	check(false) // Retained publications cannot bypass this release lock.
+	check(true) // Serving requires an explicit, structurally usable publication.
+	a.settings.SatlineEnabled = false
+	check(true) // The deprecated local tracing switch cannot disable Satline.
+	a.settings.SatlineServePublished = false
+	check(false) // Local tracing does not override the separate sharing choice.
+	a.settings.SatlineServePublished = true
 	p.Hops = nil
 	if err := atomicWriteJSON(a.satlinePublicationPath(q), p); err != nil {
 		t.Fatal(err)

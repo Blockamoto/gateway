@@ -65,6 +65,9 @@ func satHistoryBlock(batch indexBatch) (blockView, error) {
 	return block, nil
 }
 func (a *app) retainedSatStore(ctx context.Context) (*indexStore, error) {
+	return a.retainedSatStoreSelected077(ctx, a.currentChainAuthority())
+}
+func (a *app) retainedSatStoreSelected077(ctx context.Context, authority chainAuthorityView) (*indexStore, error) {
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
@@ -72,10 +75,29 @@ func (a *app) retainedSatStore(ctx context.Context) (*indexStore, error) {
 	if e != nil {
 		return nil, e
 	}
-	if s.checkpoint == nil || a.indexChainState(s.checkpoint) != "selected_chain" {
+	if s.checkpoint == nil || a.satChainState077(ctx, s.checkpoint, authority) != "selected_chain" {
 		return nil, fmt.Errorf("retained Sat history has no selected-chain snapshot")
 	}
 	return s, nil
+}
+
+// Membership, native identity and facts all come from the captured immutable
+// batch. The caller holds satStateMu so its pages cannot be collected mid-read.
+func retainedSatSnapshotOutput077(ctx context.Context, s *indexStore, batch indexBatch, id string, vout uint32) (satIndexOutput, bool, error) {
+	e := newSatEditor077(ctx, s, *batch.Sats)
+	var position string
+	have, err := e.bridge.get(ordinalOutpointKey(id, vout), &position)
+	if err != nil || !have {
+		return satIndexOutput{}, false, err
+	}
+	output, have, err := e.output(position)
+	if err != nil || !have {
+		return output, have, err
+	}
+	if !strings.EqualFold(output.Point.TxID, id) || output.Point.Vout != vout || output.Point.Height > batch.Checkpoint.Height {
+		return satIndexOutput{}, false, fmt.Errorf("%w: retained outpoint identity", ErrSatStateCorrupt)
+	}
+	return output, true, nil
 }
 func (a *app) retainedSatBatch(ctx context.Context, s *indexStore, height int64) (indexBatch, error) {
 	if height < s.checkpoint.From || height > s.checkpoint.Height {
@@ -156,7 +178,10 @@ func (a *app) retainedSatTransaction(ctx context.Context, id string, before int6
 	return *best, nil
 }
 func (a *app) retainedSatSpender(ctx context.Context, id string, vout uint32) (spenderLookupView, error) {
-	s, e := a.retainedSatStore(ctx)
+	authority := a.currentChainAuthority()
+	satStateMu.Lock()
+	defer satStateMu.Unlock()
+	s, e := a.retainedSatStoreSelected077(ctx, authority)
 	if e != nil {
 		return spenderLookupView{}, e
 	}
@@ -168,6 +193,25 @@ func (a *app) retainedSatSpender(ctx context.Context, id string, vout uint32) (s
 	if batch.Sats == nil {
 		return out, fmt.Errorf("missing Sat state")
 	}
+	if batch.Sats.Profile == satIndexProfile {
+		// New BPS snapshots retain current membership without retaining all
+		// historical transaction movements. A positive live output is sufficient;
+		// a miss still says nothing about its historical spender.
+		output, known, err := retainedSatSnapshotOutput077(ctx, s, batch, id, vout)
+		if err != nil {
+			return out, err
+		}
+		if known && output.State == "unspent" {
+			if a.satChainState077(ctx, s.checkpoint, authority) != "selected_chain" {
+				return out, fmt.Errorf("retained Sat snapshot anchor changed during membership read")
+			}
+			out.ConfirmedState = "unspent_at_snapshot"
+			out.Snapshot = &chainSnapshot{Network: s.definition.Network, Height: s.checkpoint.Height, Hash: s.checkpoint.BlockHash, Source: "local_sat_bps_state"}
+			out.Note = "Live output in the exact saved Sat checkpoint; no historical range retention is required."
+			return out, nil
+		}
+		return out, fmt.Errorf("current Sat membership does not establish a historical spender")
+	}
 	var output satIndexOutput
 	known, e := newOrdinalTree(s.ordinalPages(), batch.Sats.UTXORoot).withContext(ctx).get(ordinalOutpointKey(id, vout), &output)
 	if e != nil {
@@ -177,6 +221,9 @@ func (a *app) retainedSatSpender(ctx context.Context, id string, vout uint32) (s
 	// first. Generic outpoints refer to the current incarnation, so its UTXO
 	// wins over a retained spend of a displaced original.
 	if known && output.State == "unspent" {
+		if a.satChainState077(ctx, s.checkpoint, authority) != "selected_chain" {
+			return out, fmt.Errorf("retained Sat snapshot anchor changed during membership read")
+		}
 		out.ConfirmedState = "unspent_at_snapshot"
 		out.Snapshot = &chainSnapshot{Network: s.definition.Network, Height: s.checkpoint.Height, Hash: s.checkpoint.BlockHash, Source: satHistorySource}
 		out.Note = "Unspent output present in the selected continuous Sat snapshot; later blocks and mempool are outside this claim."
@@ -225,6 +272,9 @@ func (a *app) retainedSatSpender(ctx context.Context, id string, vout uint32) (s
 		out.Note = "Confirmed FIFO movement retained from checked Sat indexing."
 	}
 	if out.Found {
+		if a.satChainState077(ctx, s.checkpoint, authority) != "selected_chain" {
+			return spenderLookupView{}, fmt.Errorf("retained Sat snapshot anchor changed during spender read")
+		}
 		return out, nil
 	}
 	return out, fmt.Errorf("retained movement evidence does not establish this output's spender")

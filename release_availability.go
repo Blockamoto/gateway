@@ -7,9 +7,9 @@ import (
 
 // Release availability is deliberately independent of user settings and saved
 // state. Upgrading a profile cannot opt a testing build into unreleased work.
-// Keep the derivation recipes and data formats unchanged for future promotion.
+// Experimental Sat state has an explicitly versioned profile for reviewed rebuild.
 func releaseFeatureAvailable(id string) bool {
-	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state" || id == "address-state" || id == "address-history"
+	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state" || id == "address-state" || id == "address-history" || id == "sat-state" || id == "satline"
 }
 
 // Related inscription transaction locators ship with the transaction stage,
@@ -27,7 +27,7 @@ func releaseAvailability() map[string]bool {
 }
 
 func releaseLockReason(id string) string {
-	return fmt.Sprintf("%s is locked in this testing build. Headers, Bitcoin Blocks, Inscriptions, Transaction Index, TXIO, UTXO set and Addresses are available; additional features will be enabled after separate validation. Saved data is retained.", id)
+	return fmt.Sprintf("%s is locked in this testing build. Headers, Bitcoin Blocks, Inscriptions, Transaction Index, TXIO, UTXO set, Addresses and Sats are available; additional features will be enabled after separate validation. Saved data is retained.", id)
 }
 
 func requireReleaseFeature(id string) error {
@@ -44,6 +44,13 @@ func requireReleaseIndexRequest(req indexBuildRequest) error {
 	if req.RetainSatHistory {
 		if err := requireReleaseFeature("sat-state"); err != nil {
 			return err
+		}
+		hasSats := req.Index == "sat-state"
+		for _, id := range req.Outputs {
+			hasSats = hasSats || id == "sat-state"
+		}
+		if !hasSats {
+			return fmt.Errorf("historical Sat ranges belong to an explicit Sat index build")
 		}
 	}
 	for _, id := range append([]string{req.Index}, req.Outputs...) {

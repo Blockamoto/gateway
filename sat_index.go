@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const satIndexProfile = "gateway-sat-fifo-mainnet-v1"
+const satIndexProfile = "gateway-sat-fifo-mainnet-bps-v2"
 const ordinalRecoveryBlocks = 144
 
 type satRange struct {
@@ -20,31 +20,48 @@ type satRange struct {
 	End   uint64 `json:"end"`
 }
 type satIndexOutput struct {
-	Point      satlinePoint `json:"point"`
-	Value      uint64       `json:"value"`
-	Ranges     []satRange   `json:"ranges"`
-	RangesRoot string       `json:"ranges_root,omitempty"`
-	State      string       `json:"state"`
+	Output     string         `json:"output,omitempty"`
+	FactRef    *outputFactRef `json:"facts,omitempty"`
+	RangeCount uint64         `json:"range_count,omitempty"`
+	Point      satlinePoint   `json:"point"`
+	Value      uint64         `json:"value"`
+	Ranges     []satRange     `json:"ranges"`
+	RangesRoot string         `json:"ranges_root,omitempty"`
+	State      string         `json:"state"`
 }
 type satIndexLocation struct {
-	Start uint64       `json:"start"`
-	End   uint64       `json:"end"`
-	Point satlinePoint `json:"point"`
-	State string       `json:"state"`
+	Output     string       `json:"output,omitempty"`
+	Offset     uint64       `json:"offset,omitempty"`
+	LostHeight int64        `json:"lost_height,omitempty"`
+	LostHash   string       `json:"lost_hash,omitempty"`
+	Start      uint64       `json:"start"`
+	End        uint64       `json:"end"`
+	Point      satlinePoint `json:"point"`
+	State      string       `json:"state"`
 }
 type satIndexSnapshot struct {
-	DuplicateCoinbases []satIndexIncarnation `json:"duplicate_coinbases,omitempty"`
-	InscriptionRoot    string                `json:"inscription_root,omitempty"`
-	InscriptionState   string                `json:"inscription_state,omitempty"`
-	Movements          []satIndexMovement    `json:"movements,omitempty"`
-	HistoryCoverage    []heightInterval      `json:"history_coverage,omitempty"`
-	Profile            string                `json:"profile"`
-	UTXORoot           string                `json:"utxo_root"`
-	LocationRoot       string                `json:"location_root"`
-	LostSats           uint64                `json:"lost_sats"`
-	DestroyedSats      uint64                `json:"destroyed_sats"`
-	Outputs            uint64                `json:"outputs"`
-	RetainHistory      bool                  `json:"retain_history"`
+	Layout               int                   `json:"layout,omitempty"`
+	BridgeRoot           string                `json:"bridge_root,omitempty"`
+	TransactionRoot      string                `json:"transaction_root,omitempty"`
+	FactPinRoot          string                `json:"fact_pin_root,omitempty"`
+	HistoricalOutputRoot string                `json:"historical_output_root,omitempty"`
+	InscriptionBySatRoot string                `json:"inscription_by_sat_root,omitempty"`
+	IdentityCoverage     []heightInterval      `json:"identity_coverage,omitempty"`
+	LiveOutputs          uint64                `json:"live_outputs"`
+	OutputCountsRoot     string                `json:"output_counts_root,omitempty"`
+	OutputCoverage       []heightInterval      `json:"output_coverage,omitempty"`
+	DuplicateCoinbases   []satIndexIncarnation `json:"duplicate_coinbases,omitempty"`
+	InscriptionRoot      string                `json:"inscription_root,omitempty"`
+	InscriptionState     string                `json:"inscription_state,omitempty"`
+	Movements            []satIndexMovement    `json:"movements,omitempty"`
+	HistoryCoverage      []heightInterval      `json:"history_coverage,omitempty"`
+	Profile              string                `json:"profile"`
+	UTXORoot             string                `json:"utxo_root"`
+	LocationRoot         string                `json:"location_root"`
+	LostSats             uint64                `json:"lost_sats"`
+	DestroyedSats        uint64                `json:"destroyed_sats"`
+	Outputs              uint64                `json:"outputs"`
+	RetainHistory        bool                  `json:"retain_history"`
 }
 type satIndexIncarnation struct {
 	TxID   string `json:"txid"`
@@ -117,18 +134,29 @@ func satRangesValueContext(ctx context.Context, ranges []satRange) (uint64, erro
 // spending an output. Large interval sequences therefore live in independent
 // radix pages, never in one oversized UTXO JSON value.
 func (s *indexStore) storeSatOutput(output satIndexOutput) (satIndexOutput, error) {
+	output.RangeCount = uint64(len(output.Ranges))
 	if len(output.Ranges) <= 64 {
 		return output, nil
 	}
 	tree := newOrdinalTree(s.ordinalPages(), "").withContext(s.ordinalContext())
+	offset := uint64(0)
 	for i := 0; i < len(output.Ranges); i += 256 {
 		end := i + 256
 		if end > len(output.Ranges) {
 			end = len(output.Ranges)
 		}
-		if e := tree.put(satRangeKey(uint64(i)), output.Ranges[i:end]); e != nil {
+		var chunk any = output.Ranges[i:end]
+		if output.Output != "" {
+			chunk = satRangeSegment077{Offset: offset, Ranges: output.Ranges[i:end]}
+		}
+		if e := tree.put(satRangeKey(uint64(i)), chunk); e != nil {
 			return output, e
 		}
+		value, err := satRangesValueContext(s.ordinalContext(), output.Ranges[i:end])
+		if err != nil {
+			return output, err
+		}
+		offset += value
 	}
 	root, e := tree.flush()
 	if e != nil {
@@ -146,6 +174,9 @@ func loadSatOutputRangesContext(ctx context.Context, dir string, output satIndex
 		return nil, e
 	}
 	if output.RangesRoot == "" {
+		if output.Output != "" && output.RangeCount != uint64(len(output.Ranges)) {
+			return nil, fmt.Errorf("%w: inline range count", ErrSatStateCorrupt)
+		}
 		return output.Ranges, nil
 	}
 	if len(output.Ranges) != 0 {
@@ -153,19 +184,45 @@ func loadSatOutputRangesContext(ctx context.Context, dir string, output satIndex
 	}
 	tree := newOrdinalTree(dir, output.RangesRoot).withContext(ctx)
 	ranges := []satRange{}
-	var expected uint64
+	var expected, offset uint64
 	e := tree.walk(func(kv ordinalKV) error {
 		if kv.Key != satRangeKey(expected) {
 			return fmt.Errorf("segmented sat interval gap")
 		}
 		var chunk []satRange
-		if json.Unmarshal(kv.Value, &chunk) != nil || len(chunk) == 0 || len(chunk) > 256 {
+		if output.Output != "" {
+			var segment satRangeSegment077
+			if json.Unmarshal(kv.Value, &segment) != nil || segment.Offset != offset {
+				return fmt.Errorf("%w: invalid Sat range segment prefix", ErrSatStateCorrupt)
+			}
+			chunk = segment.Ranges
+		} else if json.Unmarshal(kv.Value, &chunk) != nil {
+			return fmt.Errorf("invalid Sat range segment")
+		}
+		if len(chunk) == 0 || len(chunk) > 256 {
 			return fmt.Errorf("invalid sat interval segment")
+		}
+		value, err := satRangesValueContext(ctx, chunk)
+		if err != nil {
+			return err
+		}
+		offset, err = addUint64(offset, value)
+		if err != nil {
+			return err
 		}
 		ranges = append(ranges, chunk...)
 		expected += uint64(len(chunk))
 		return nil
 	})
+	if e == nil && output.Output != "" && expected != output.RangeCount {
+		e = fmt.Errorf("%w: segmented range count", ErrSatStateCorrupt)
+	}
+	if e != nil && output.Output != "" {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fmt.Errorf("%w: segmented ranges (%v)", ErrSatStateCorrupt, e)
+	}
 	return ranges, e
 }
 
@@ -203,285 +260,7 @@ func (s *indexStore) deriveSatBlock(block blockView) (*satIndexSnapshot, error) 
 	return s.deriveSatPreparedBlock(block, nil)
 }
 func (s *indexStore) deriveSatPreparedBlock(block blockView, prepared *inscriptionBlockResult) (*satIndexSnapshot, error) {
-	if e := s.ordinalContext().Err(); e != nil {
-		return nil, e
-	}
-	if prepared != nil && (prepared.BlockHash != block.Hash || prepared.BlockHeight != block.Height || prepared.ParserProfile != inscriptionParserProfile) {
-		return nil, fmt.Errorf("prepared inscription evidence does not match Sat block")
-	}
-	if block.Height < 0 || !integrityVerified(block) || !block.Verification.HeaderChainMatch && !block.Verification.ConsensusValidated || len(block.Transactions) == 0 || !block.Transactions[0].Coinbase {
-		return nil, fmt.Errorf("Sat index requires an anchored complete Bitcoin block with coinbase")
-	}
-	snapshot := satIndexSnapshot{Profile: satIndexProfile, RetainHistory: s.retainSatHistory}
-	if s.checkpoint != nil {
-		previous, e := s.readBatch(s.checkpoint.Commitment)
-		if e != nil {
-			return nil, e
-		}
-		if previous.Sats == nil || previous.Sats.Profile != satIndexProfile {
-			return nil, fmt.Errorf("Sat index prerequisite snapshot is missing or incompatible")
-		}
-		snapshot = *previous.Sats
-		snapshot.RetainHistory = s.retainSatHistory
-	} else if block.Height != 0 {
-		return nil, fmt.Errorf("Sat index requires continuous history from genesis; isolated blocks cannot establish input sat identity")
-	}
-	utxos := newOrdinalTree(s.ordinalPages(), snapshot.UTXORoot).withContext(s.ordinalContext())
-	locations := newOrdinalTree(s.ordinalPages(), snapshot.LocationRoot).withContext(s.ordinalContext())
-	identities := newOrdinalTree(s.ordinalPages(), snapshot.InscriptionRoot).withContext(s.ordinalContext())
-	snapshot.Movements = nil
-	if block.Height == 91842 || block.Height == 91880 {
-		snapshot.DuplicateCoinbases = append(snapshot.DuplicateCoinbases, satIndexIncarnation{block.Transactions[0].TxID, block.Height})
-	}
-	if snapshot.RetainHistory {
-		snapshot.HistoryCoverage = mergeIntervals(append(snapshot.HistoryCoverage, heightInterval{From: block.Height, To: block.Height}))
-	}
-	byTx := map[string][]inscriptionOccurrence{}
-	var extracted inscriptionBlockResult
-	var extractionErr error
-	if prepared != nil {
-		extracted = *prepared
-	} else {
-		extracted, extractionErr = extractInscriptionOccurrences(block)
-	}
-	snapshot.InscriptionState = "complete_this_block"
-	if extractionErr != nil {
-		snapshot.InscriptionState = "identity_extraction_unavailable: " + extractionErr.Error()
-	} else {
-		for _, o := range extracted.Occurrences {
-			byTx[o.TxID] = append(byTx[o.TxID], o)
-		}
-	}
-	coinbase := []satRange{}
-	if subsidy := subsidyAtHeight(block.Height); subsidy > 0 {
-		first := firstSatAtHeight(block.Height)
-		coinbase = append(coinbase, satRange{first, first + subsidy})
-	}
-	locate := func(ranges []satRange, point satlinePoint, state string) error {
-		for _, r := range ranges {
-			loc := satIndexLocation{Start: r.Start, End: r.End, Point: point, State: state}
-			if e := locations.put(satRangeKey(r.Start), loc); e != nil {
-				return e
-			}
-			point.Offset += r.End - r.Start
-		}
-		return nil
-	}
-	process := func(tx transactionView, isCoinbase bool) error {
-		if e := s.ordinalContext().Err(); e != nil {
-			return e
-		}
-		if !validHash(tx.TxID) || tx.Coinbase != isCoinbase {
-			return fmt.Errorf("invalid Sat index transaction identity or coinbase position")
-		}
-		stream := []satRange{}
-		movement := satIndexMovement{TxID: tx.TxID, Index: tx.Index, Coinbase: isCoinbase}
-		inputValues := []uint64{}
-		if isCoinbase {
-			stream = append(stream, coinbase...)
-		} else {
-			for _, in := range tx.Inputs {
-				if in.Coinbase || !validHash(in.PrevTxID) {
-					return fmt.Errorf("invalid Sat index input")
-				}
-				key := ordinalOutpointKey(in.PrevTxID, in.PrevVout)
-				var old satIndexOutput
-				ok, e := utxos.get(key, &old)
-				if e != nil {
-					return e
-				}
-				if !ok {
-					return fmt.Errorf("Sat index missing historical input %s:%d; no partial current-state claim is possible", in.PrevTxID, in.PrevVout)
-				}
-				if old.State == "genesis_unspendable" || old.State == "burned" {
-					return fmt.Errorf("Sat index cannot spend a provably unspendable output")
-				}
-				old.Ranges, e = loadSatOutputRangesContext(s.ordinalContext(), s.ordinalPages(), old)
-				if e != nil {
-					return e
-				}
-				value, e := satRangesValueContext(s.ordinalContext(), old.Ranges)
-				if e != nil {
-					return e
-				}
-				if value != old.Value {
-					return fmt.Errorf("Sat index input interval/value mismatch")
-				}
-				stream = append(stream, old.Ranges...)
-				inputValues = append(inputValues, old.Value)
-				if snapshot.RetainHistory {
-					movement.Inputs = append(movement.Inputs, satMovementInput{in.PrevTxID, in.PrevVout, old.Value})
-				}
-				utxos.remove(key)
-				snapshot.Outputs--
-				for i, r := range old.Ranges {
-					if i%1024 == 0 {
-						if e := s.ordinalContext().Err(); e != nil {
-							return e
-						}
-					}
-					locations.remove(satRangeKey(r.Start))
-				}
-			}
-		}
-		if !isCoinbase {
-			total, e := sumOutputs(tx)
-			if e != nil {
-				return e
-			}
-			for _, o := range byTx[tx.TxID] {
-				if o.InputIndex < 0 || o.InputIndex >= len(inputValues) {
-					return fmt.Errorf("inscription input position is outside resolved sat stream")
-				}
-				identity := inscriptionSatResult{ID: o.ID, Profile: inscriptionSatProfile, State: "unbound", RevealHeight: block.Height, RevealHash: block.Hash, Note: "Derived with continuous Sat index FIFO state; current ownership is separate."}
-				if !o.Envelope.Unbound && inputValues[o.InputIndex] > 0 {
-					position := uint64(0)
-					for i := 0; i < o.InputIndex; i++ {
-						position += inputValues[i]
-					}
-					if o.Envelope.Pointer != nil && *o.Envelope.Pointer < total {
-						position = *o.Envelope.Pointer
-					}
-					for i, interval := range stream {
-						if i%1024 == 0 {
-							if e := s.ordinalContext().Err(); e != nil {
-								return e
-							}
-						}
-						if position < interval.End-interval.Start {
-							sat := interval.Start + position
-							identity.SatNumber = &sat
-							identity.Known = true
-							identity.State = "known"
-							break
-						}
-						position -= interval.End - interval.Start
-					}
-					if !identity.Known {
-						return fmt.Errorf("inscription sat offset exceeds resolved stream")
-					}
-				}
-				if e = identities.put(ordinalInscriptionKey(o.ID), identity); e != nil {
-					return e
-				}
-			}
-		}
-		for i, out := range tx.Outputs {
-			if snapshot.RetainHistory {
-				movement.Outputs = append(movement.Outputs, out.ValueSats)
-			}
-			if out.N != i {
-				return fmt.Errorf("Sat index output order mismatch")
-			}
-			ranges, e := takeSatRangesContext(s.ordinalContext(), &stream, out.ValueSats)
-			if e != nil {
-				return e
-			}
-			key := ordinalOutpointKey(tx.TxID, uint32(i))
-			var replaced satIndexOutput
-			if ok, e := utxos.get(key, &replaced); e != nil {
-				return e
-			} else if ok {
-				if !isCoinbase || block.Height != 91842 && block.Height != 91880 {
-					return fmt.Errorf("unexpected duplicate unspent outpoint")
-				}
-				replaced.Ranges, e = loadSatOutputRangesContext(s.ordinalContext(), s.ordinalPages(), replaced)
-				if e != nil {
-					return e
-				}
-				for i, r := range replaced.Ranges {
-					if i%1024 == 0 {
-						if e := s.ordinalContext().Err(); e != nil {
-							return e
-						}
-					}
-					locations.remove(satRangeKey(r.Start))
-				}
-				if e = locate(replaced.Ranges, replaced.Point, "bip30_destroyed"); e != nil {
-					return e
-				}
-				snapshot.DestroyedSats += replaced.Value
-				snapshot.Outputs--
-			}
-			state := "unspent"
-			if block.Height == 0 {
-				state = "genesis_unspendable"
-			} else if strings.HasPrefix(strings.ToLower(out.ScriptPubKey), "6a") {
-				state = "burned"
-			}
-			point := satlinePoint{TxID: tx.TxID, Vout: uint32(i), Height: block.Height, BlockHash: block.Hash, TxIndex: tx.Index}
-			stored, e := s.storeSatOutput(satIndexOutput{Point: point, Value: out.ValueSats, Ranges: ranges, State: state})
-			if e != nil {
-				return e
-			}
-			if e = utxos.put(key, stored); e != nil {
-				return e
-			}
-			snapshot.Outputs++
-			if e = locate(ranges, point, state); e != nil {
-				return e
-			}
-		}
-		if snapshot.RetainHistory {
-			snapshot.Movements = append(snapshot.Movements, movement)
-		}
-		if !isCoinbase {
-			coinbase = append(coinbase, stream...)
-		} else {
-			point := satlinePoint{TxID: strings.Repeat("0", 64), Vout: ^uint32(0), Offset: snapshot.LostSats, Height: block.Height, BlockHash: block.Hash}
-			if e := locate(stream, point, "lost"); e != nil {
-				return e
-			}
-			value, e := satRangesValueContext(s.ordinalContext(), stream)
-			if e != nil {
-				return e
-			}
-			snapshot.LostSats += value
-		}
-		return nil
-	}
-	for i, tx := range block.Transactions {
-		if tx.Index != i {
-			return nil, fmt.Errorf("Sat index transaction order mismatch")
-		}
-		if i > 0 {
-			if e := process(tx, false); e != nil {
-				return nil, e
-			}
-		}
-	}
-	if e := process(block.Transactions[0], true); e != nil {
-		return nil, e
-	}
-	var e error
-	snapshot.UTXORoot, e = utxos.flush()
-	if e != nil {
-		return nil, e
-	}
-	snapshot.LocationRoot, e = locations.flush()
-	if e != nil {
-		return nil, e
-	}
-	snapshot.InscriptionRoot, e = identities.flush()
-	if e != nil {
-		return nil, e
-	}
-	if snapshot.RetainHistory {
-		// Persist archive liveness before the head can select this snapshot.
-		// An interrupted orphan archive only delays reclamation; it cannot
-		// create selected coverage or cause retained history to be deleted.
-		dir := filepath.Join(s.dir, "ordinal-history")
-		if e = atomicWriteJSON(filepath.Join(dir, indexDigest(snapshot)+".json"), []string{snapshot.UTXORoot, snapshot.LocationRoot, snapshot.InscriptionRoot}); e != nil {
-			return nil, e
-		}
-		if e = syncDirectory(dir); e != nil {
-			return nil, e
-		}
-		if e = syncDirectory(s.dir); e != nil {
-			return nil, e
-		}
-	}
-	return &snapshot, nil
+	return s.deriveSat077Block(block, prepared)
 }
 func (a *app) indexedSat(ctx context.Context, sat uint64) (satIndexAnswer, error) {
 	if err := requireReleaseFeature("sat-state"); err != nil {
@@ -493,62 +272,48 @@ func (a *app) indexedSat(ctx context.Context, sat uint64) (satIndexAnswer, error
 // readIndexedSat validates an existing local snapshot. User-facing lookup must
 // go through indexedSat so retained data cannot bypass release policy.
 func (a *app) readIndexedSat(ctx context.Context, sat uint64) (satIndexAnswer, error) {
-	out := satIndexAnswer{Sat: sat, State: "unknown", ChainState: "unavailable", Note: "A current placement requires a continuous Sat index snapshot on the selected chain."}
-	origin, ok := issuanceForSat(sat)
-	if !ok {
-		return out, fmt.Errorf("sat number is outside Bitcoin's theoretical supply")
+	out := satIndexAnswer{Sat: sat, State: "unknown", ChainState: "unavailable", HistoryCoverage: []heightInterval{}, Note: "A placement requires an exact selected-chain Sat snapshot."}
+	origin, valid := issuanceForSat(sat)
+	if !valid {
+		return out, fmt.Errorf("sat outside theoretical supply")
 	}
 	out.Origin = &origin
-	if e := ctx.Err(); e != nil {
-		return out, e
+	authority := a.currentChainAuthority()
+	status, err := satStateStatusContext(ctx, a.dataDir)
+	if err != nil {
+		return out, err
 	}
-	s, e := indexStoreHead(a.dataDir, "sat-state")
-	if e != nil {
-		return out, e
-	}
-	if s.checkpoint == nil {
+	if status.Checkpoint == nil {
 		return out, nil
 	}
-	out.Snapshot = s.checkpoint
-	out.ChainState = a.indexChainState(s.checkpoint)
-	if out.ChainState != "selected_chain" {
+	out.Snapshot = status.Checkpoint
+	if err = a.satCheckpointSelected077(ctx, status.Checkpoint, authority); err != nil {
 		return out, nil
 	}
-	if origin.Height > s.checkpoint.Height {
-		out.State = "not_issued_at_snapshot"
+	result, err := querySatNumberContext(ctx, a.dataDir, sat)
+	if err != nil {
+		return out, err
+	}
+	if result.Snapshot == nil || result.Snapshot.Commitment != status.Checkpoint.Commitment {
 		return out, nil
 	}
-	b, e := s.readBatch(s.checkpoint.Commitment)
-	if e != nil {
-		return out, e
+	if err = a.satCheckpointSelected077(ctx, result.Snapshot, authority); err != nil {
+		return out, nil
 	}
-	if b.Sats == nil {
-		return out, fmt.Errorf("Sat index snapshot is missing")
-	}
-	var loc satIndexLocation
-	t := newOrdinalTree(s.ordinalPages(), b.Sats.LocationRoot)
-	ok, e = t.predecessor(satRangeKey(sat), &loc)
-	if e != nil {
-		return out, e
-	}
-	if !ok || sat < loc.Start || sat >= loc.End {
-		return out, fmt.Errorf("Sat index snapshot has an unexplained identity gap")
-	}
-	point := loc.Point
-	point.Offset += sat - loc.Start
-	out.Known = true
-	out.State = loc.State
-	out.Point = &point
-	out.HistoryRecording = b.Sats.RetainHistory
-	out.HistoryCoverage = append([]heightInterval{}, b.Sats.HistoryCoverage...)
-	out.HistoryRetained = len(out.HistoryCoverage) == 1 && out.HistoryCoverage[0].From == 0 && out.HistoryCoverage[0].To == s.checkpoint.Height
-	out.Note = "Ordinal FIFO placement at the stated verified-chain snapshot. Header anchoring is not full script/UTXO consensus validation; later blocks may move this sat."
+	out.ChainState = "selected_chain"
+	out.Known = result.Known
+	out.State = result.State
+	out.Point = result.Point
+	out.HistoryRecording = status.Snapshot.RetainHistory
+	out.HistoryCoverage = status.HistoricalCoverage
+	out.HistoryRetained = len(indexCoverageGaps(out.HistoryCoverage, 0, result.Snapshot.Height)) == 0
+	out.Note = "FIFO placement at the stated saved snapshot; header anchoring is not full consensus validation."
 	return out, nil
 }
 func (s *indexStore) ordinalRoots(b indexBatch) []string {
 	roots := []string{}
 	if b.Sats != nil {
-		roots = append(roots, b.Sats.UTXORoot, b.Sats.LocationRoot, b.Sats.InscriptionRoot)
+		roots = append(roots, satSnapshotRoots077(*b.Sats)...)
 	}
 	if b.Numbering != nil {
 		roots = append(roots, b.Numbering.StateRoot, b.Numbering.RecordsRoot)
@@ -561,7 +326,7 @@ func (a *app) indexInstanceNote(s *indexStore) string {
 		return "No committed coverage."
 	}
 	if s.definition.ID == "sat-state" {
-		return "Ordinal FIFO identity and placement at this selected-chain snapshot; it is not full Bitcoin script consensus validation. Raw blocks and full movement history are independent retention choices. Recent 144-block recovery state is essential; older recovery needs retained history or an explicit rebuild."
+		return "Ordinal FIFO identity and placement at this selected-chain snapshot; it is not full Bitcoin script consensus validation. Raw blocks and full movement history are independent retention choices. Savepoints retain the newest two heights divisible by12 and newest two divisible by144; recovery restores a saved point and replays, with deeper recovery requiring a reviewed rebuild."
 	}
 	if s.definition.ID == "inscriptions" {
 		if state, checkpoint, e := s.numberingView(); e == nil && state != nil && checkpoint != nil {
@@ -585,6 +350,9 @@ func (a *app) indexInstanceNote(s *indexStore) string {
 // Movement archives are independent of block retention. The recent recovery
 // window is essential state, not a claim to retain complete historical lineage.
 func (s *indexStore) collectOrdinalState() error {
+	if s.definition.ID == "sat-state" {
+		return s.collectSat077State()
+	}
 	if s.checkpoint == nil || s.checkpoint.Height%256 != 255 && !ordinalCollectionPending(s.ordinalPages()) {
 		return nil
 	}

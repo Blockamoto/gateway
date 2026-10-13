@@ -92,6 +92,9 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 	if req.Index == "utxo-state" {
 		return a.planUTXOIndexBuild(req)
 	}
+	if req.Index == "sat-state" {
+		return a.planSatIndexBuild077(req)
+	}
 	if req.Index == "address-state" || req.Index == "address-history" {
 		return a.planAddressIndexBuild(req)
 	}
@@ -125,7 +128,20 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 	if len(req.Outputs) > 0 && req.Index != "blocks" {
 		return indexPlan{}, fmt.Errorf("combined outputs belong to the Bitcoin blocks plan")
 	}
-	s, err := indexStoreHead(a.dataDir, req.Index)
+	var s *indexStore
+	var err error
+	if req.Index == "sat-state" && req.Rebuild {
+		d, e := findIndexDefinition(req.Index)
+		if e != nil {
+			return indexPlan{}, e
+		}
+		s = &indexStore{profileRoot: a.dataDir, definition: d, head: indexHead{Mode: "lean", Retention: "pruned"}}
+		if req.From != nil && *req.From != 0 {
+			return indexPlan{}, fmt.Errorf("Sat rebuild must start at genesis")
+		}
+	} else {
+		s, err = indexStoreHead(a.dataDir, req.Index)
+	}
 	if err != nil {
 		return indexPlan{}, err
 	}
@@ -168,7 +184,13 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 		if id != req.Index && id != inscriptionLocatorIndex && id != "sat-state" && id != "tx-locator" && id != "inscriptions" && id != "bitmap" && id != "txo-spender" {
 			return p, fmt.Errorf("unsupported combined output %q", id)
 		}
-		store, e := indexStoreHead(a.dataDir, id)
+		var store *indexStore
+		var e error
+		if id == "sat-state" && req.Rebuild {
+			store = s
+		} else {
+			store, e = indexStoreHead(a.dataDir, id)
+		}
 		if e != nil {
 			return p, fmt.Errorf("%s cannot reuse its saved rules/state: %w", id, e)
 		}
@@ -213,7 +235,11 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 			if out.Mode == "" {
 				out.Mode = "full"
 			}
-			switch a.indexChainState(store.checkpoint) {
+			chainState := a.indexChainState(store.checkpoint)
+			if id == "sat-state" {
+				chainState = a.satChainState077(context.Background(), store.checkpoint, a.currentChainAuthority())
+			}
+			switch chainState {
 			case "selected_chain":
 				end := store.checkpoint.Height
 				if out.To >= 0 && out.To < end {
@@ -298,7 +324,7 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 			a.indexMu.Unlock()
 		}
 		if j.Live {
-			if state == "failed" {
+			if state == "failed" || state == "rebuild_required" {
 				a.failLiveIndexRuntime(j.Index, err)
 			} else if state == "complete" || state == "yielded" {
 				a.clearLiveIndexRuntime(j.Index)
@@ -307,9 +333,13 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 	}
 	// Re-plan at execution time because an earlier queued job may have added
 	// reusable coverage after this request was reviewed.
-	plan, err := a.planIndexBuild(indexBuildRequest{Index: j.Index, From: &j.From, To: &j.To, Mode: j.Mode, Retention: j.Retention, Outputs: j.Outputs, RetainSatHistory: j.RetainSatHistory, SatHistoryConfigured: true, ConventionalIDs: j.ConventionalIDs, RetainOutputValues: outputHistoryOption(j.Index, j.RetainOutputValues), RetainOutputScripts: outputHistoryOption(j.Index, j.RetainOutputScripts), OutputHistoryFrom: &j.OutputHistoryFrom})
+	plan, err := a.planIndexBuild(indexBuildRequest{Rebuild: j.Rebuild, Index: j.Index, From: &j.From, To: &j.To, Mode: j.Mode, Retention: j.Retention, Outputs: j.Outputs, RetainSatHistory: j.RetainSatHistory, SatHistoryConfigured: true, ConventionalIDs: j.ConventionalIDs, RetainOutputValues: outputHistoryOption(j.Index, j.RetainOutputValues), RetainOutputScripts: outputHistoryOption(j.Index, j.RetainOutputScripts), OutputHistoryFrom: &j.OutputHistoryFrom})
 	if err != nil {
-		finish("failed", err)
+		if satTerminalError077(err) {
+			finish("rebuild_required", err)
+		} else {
+			finish("failed", err)
+		}
 		return
 	}
 	stores := map[string]*indexStore{}
@@ -318,6 +348,10 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 		p := indexOutputProgress{Index: output.Index, State: "running", From: output.From, To: j.To, Height: output.From - 1}
 		s, e := openIndexStoreContext(ctx, a.dataDir, output.Index)
 		if e != nil {
+			if output.Index == "sat-state" && satTerminalError077(e) {
+				finish("rebuild_required", e)
+				return
+			}
 			p.State, p.Error = "failed", e.Error()
 		} else {
 			s.head.Mode = output.Mode
@@ -449,13 +483,27 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 		}
 	}
 	initialReusable := map[string]int64{}
+	hasSat := stores["sat-state"] != nil
+	fixedSatTarget := j.To >= 0 && !j.Live
 	for {
 		if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
 			finish("paused", nil)
 			return
 		}
+		authority := a.currentChainAuthority()
+		selectedTarget := func(h int64) (blockTarget, error) {
+			if hasSat {
+				return a.utxoSelectedTarget(ctx, authority, h)
+			}
+			return a.indexTarget(h)
+		}
+		if hasSat && (authority.Height < 0 || j.To < 0 && authority.Source == "bod_headers" && a.getStatus().Syncing) {
+			if !wait(fmt.Errorf("waiting for selected Sat chain evidence")) {
+				return
+			}
+			continue
+		}
 		if j.To < 0 {
-			authority := a.currentChainAuthority()
 			if authority.Height < j.From || (authority.Source == "bod_headers" && a.getStatus().Syncing) {
 				a.needHeaders(j.From)
 				if !wait(fmt.Errorf("waiting for a verified tip at or beyond %d", j.From)) {
@@ -463,6 +511,12 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 				}
 				continue
 			}
+			j.To = authority.Height
+			for i := range j.Progress {
+				j.Progress[i].To = j.To
+			}
+		}
+		if hasSat && !fixedSatTarget && j.To > authority.Height {
 			j.To = authority.Height
 			for i := range j.Progress {
 				j.Progress[i].To = j.To
@@ -476,7 +530,17 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 				continue
 			}
 			s := stores[p.Index]
-			if err := s.reconcile(func(h int64) (string, error) { t, e := a.indexTarget(h); return t.HashDisplay, e }); err != nil {
+			var reconcileErr error
+			if p.Index == "sat-state" {
+				reconcileErr = s.reconcileSatStateSelected(ctx, authority.Height, a.addressSelectedHashes(ctx, authority))
+			} else {
+				reconcileErr = s.reconcile(func(h int64) (string, error) { t, e := selectedTarget(h); return t.HashDisplay, e })
+			}
+			if err := reconcileErr; err != nil {
+				if p.Index == "sat-state" && satTerminalError077(err) {
+					finish("rebuild_required", err)
+					return
+				}
 				p.State, p.Error = "waiting", err.Error()
 				continue
 			}
@@ -530,6 +594,12 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 			if failure != nil {
 				finish("failed", failure)
 			} else {
+				if hasSat {
+					if err := stores["sat-state"].collectOrdinalState(); err != nil && !errors.Is(err, errOrdinalMaintenancePending) {
+						finish("failed", err)
+						return
+					}
+				}
 				finish("complete", nil)
 			}
 			return
@@ -539,7 +609,7 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 			finish("yielded", nil)
 			return
 		}
-		target, e := a.indexTarget(next)
+		target, e := selectedTarget(next)
 		if e != nil {
 			if !wait(e) {
 				return
@@ -586,7 +656,7 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 			finish("paused", nil)
 			return
 		}
-		current, e := a.indexTarget(next)
+		current, e := selectedTarget(next)
 		if e != nil {
 			if !wait(e) {
 				return
@@ -595,6 +665,14 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 		}
 		if current.HashDisplay != block.Hash {
 			continue
+		}
+		if hasSat {
+			if _, err := a.utxoSelectedTarget(ctx, authority, authority.Height); err != nil {
+				if !wait(err) {
+					return
+				}
+				continue
+			}
 		}
 		var extracted *inscriptionBlockResult
 		for _, i := range pending {
@@ -631,10 +709,21 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 				} else {
 					appendErr = stores[p.Index].appendInscriptionLocators(source, &block, p.From, j.Retention)
 				}
+			} else if p.Index == "sat-state" {
+				appendErr = appendSatSelectedBlock077(ctx, stores[p.Index], block, p.From, j.Retention, extracted, a.addressSelectedHashes(ctx, authority))
 			} else {
 				appendErr = stores[p.Index].appendPreparedBlock(block, p.From, j.Retention, extracted)
 			}
 			if appendErr != nil {
+				var changed satPublicationAnchorError077
+				if p.Index == "sat-state" && errors.As(appendErr, &changed) {
+					p.State, p.Error = "waiting", appendErr.Error()
+					continue
+				}
+				if p.Index == "sat-state" && satTerminalError077(appendErr) {
+					finish("rebuild_required", appendErr)
+					return
+				}
 				p.State, p.Error = "failed", appendErr.Error()
 				continue
 			}
@@ -647,6 +736,12 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 		committed++
 		j.BlocksChecked = int(committed)
 		j.State, j.Error = "running", ""
+		if hasSat && committed%128 == 0 {
+			if err := stores["sat-state"].collectOrdinalState(); err != nil && !errors.Is(err, errOrdinalMaintenancePending) {
+				finish("failed", err)
+				return
+			}
+		}
 		if e := a.saveIndexJob(j); e != nil {
 			finish("failed", e)
 			return

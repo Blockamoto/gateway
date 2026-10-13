@@ -123,7 +123,7 @@ func Test064InitialCardOnPersistsWithoutWorkAndLiveAuthorizesHistory(t *testing.
 	if view, err := a.setIndexLivePolicy(indexLiveRequest{Index: "blocks", Action: "enable"}); err != nil || !view.On || !view.Enabled {
 		t.Fatal("explicit Live failed on fresh index", err)
 	}
-	if r := indexInterfaceCall(h, "POST", "/api/v1/index/live", `{"index":"sat-state","action":"start"}`); r.Code != 409 {
+	if r := indexInterfaceCall(h, "POST", "/api/v1/index/live", `{"index":"bitmap","action":"start"}`); r.Code != 409 {
 		t.Fatal("unsupported capability became buildable", r.Code)
 	}
 }

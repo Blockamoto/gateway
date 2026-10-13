@@ -209,6 +209,20 @@ func (a *app) indexTimeline(defs []indexDefinition, providers []indexProviderVie
 		}
 		out.Tracks = append(out.Tracks, track)
 	}
+	for i := range out.Tracks {
+		track := &out.Tracks[i]
+		if track.ID != "sat-state" {
+			continue
+		}
+		track.ID = "txio-sat-ranges"
+		track.CoverageComplete = false
+		track.Gaps = []heightInterval{}
+		track.Note = "Creation heights of outputs with retained Sat ranges; partial output coverage does not assert complete blocks. Live ranges, optional history and recovery savepoints have separate retention."
+		for j := range track.Sources {
+			track.Sources[j].Complete = false
+			track.Sources[j].Note = track.Note
+		}
+	}
 	if layers, err := a.timelineTXIOLayers(h, out.TipHeight); err == nil {
 		out.Tracks = append(out.Tracks, layers...)
 	} else {

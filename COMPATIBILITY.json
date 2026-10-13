@@ -1,5 +1,5 @@
 {
-  "app_version": "0.7.6",
+  "app_version": "0.7.7",
   "minimum_compatible_app": "0.3.9",
   "wire_protocol": 1,
   "minimum_wire_protocol": 1,
@@ -32,7 +32,10 @@
   "derived_recheck_required": true,
   "ord_storage_schema": 1,
   "archive_storage_schema": 1,
-  "note": "UTXO state is a genesis-first projection with 288 self-contained recovery transitions; full consensus validation is deferred. Positional TXIO v3 shares optional output facts and uses separate transaction-locator translation. Earlier immutable TXIO records and raw-backed Blocks remain readable and retained. Addresses project the saved UTXO checkpoint or retain historical outputs over explicit creation ranges. Inscription holdings, Gateway peerhood and later indexes remain locked. Hosted update readiness is recorded separately in release acceptance.",
+  "sat_state_profile": "gateway-sat-fifo-mainnet-bps-v2",
+  "sat_savepoint_intervals": [12, 144],
+  "sat_savepoints_per_interval": 2,
+  "note": "UTXO retains its 288 self-contained recovery transitions. Sats process ordinal identity from genesis, sharing output facts and retaining two savepoints every 12 blocks and two every 144 blocks. Older experimental Sat state requires a reviewed rebuild and remains preserved. Historical ranges are optional; Satline caches visited paths. Addresses, positional TXIO and raw-backed Blocks remain compatible. Known inscription holdings require matching checkpoints and disclose identity coverage. Complete consensus validation and Gateway peerhood remain deferred. Release and hosted update promotion require later review.",
   "satline_wire": 1,
   "satline_publication_schema": 1,
   "release_status": "prerelease"

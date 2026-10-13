@@ -183,10 +183,14 @@ func TestSatlinePrivacyFlagsAndImmutablePublication(t *testing.T) {
 		t.Fatal(e)
 	}
 	a.settings.SatlineEnabled = false
-	if _, e = a.readSatlineSegment(req); e == nil {
-		t.Fatal("disabled module served")
+	if _, e = a.readSatlineSegment(req); e != nil {
+		t.Fatalf("obsolete local opt-out hid an explicitly retained publication: %v", e)
 	}
-	a.settings.SatlineEnabled = true
+	a.settings.SatlineServePublished = false
+	if _, e = a.readSatlineSegment(req); e == nil {
+		t.Fatal("explicit publication sharing preference was ignored")
+	}
+	a.settings.SatlineServePublished = true
 	if e = a.storeSatlinePublication(q, false); e != nil {
 		t.Fatal(e)
 	}
@@ -216,7 +220,7 @@ func TestSatlineExplicitPublicationAndStepStart(t *testing.T) {
 		t.Fatal(e)
 	}
 	r = a.runSatlineLocal(context.Background(), q, "next", 1, nil)
-	if r.State != "CURRENTLY_UNSPENT" {
+	if r.State != "GENESIS_UNSPENDABLE" {
 		t.Fatalf("next failed: %+v", r)
 	}
 	if e := a.removeSatlineRecord(q.Kind, q.key()); e != nil {
@@ -246,7 +250,7 @@ func TestSatlineGatewayAdvertisementStaysLocked(t *testing.T) {
 	}
 	a.settings.SatlineEnabled = false
 	if has() {
-		t.Fatal("disabled module advertises")
+		t.Fatal("legacy local setting bypassed Gateway networking release lock")
 	}
 }
 func TestSatlineRateBudget(t *testing.T) {
@@ -294,8 +298,14 @@ func TestSatlineEmbeddedUIAssets(t *testing.T) {
 		r.RemoteAddr = "127.0.0.1:3333"
 		w := httptest.NewRecorder()
 		a.handleSatlinePage(w, r)
-		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Satline locked") || strings.Contains(w.Body.String(), "<script") {
+		if w.Code != http.StatusOK || w.Body.Len() == 0 {
+			t.Fatalf("Satline asset missing %s %d", path, w.Code)
+		}
+		if !releaseFeatureAvailable("satline") && (!strings.Contains(w.Body.String(), "Satline locked") || strings.Contains(w.Body.String(), "<script")) {
 			t.Fatalf("locked UI was exposed %s %d", path, w.Code)
+		}
+		if releaseFeatureAvailable("satline") && strings.Contains(w.Body.String(), "Satline locked") {
+			t.Fatalf("enabled Satline still served lock page %s", path)
 		}
 	}
 }

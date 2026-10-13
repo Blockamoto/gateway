@@ -29,7 +29,7 @@ type bitcoinP2PServingView struct {
 }
 
 func bitcoinListenerEnabled(s appSettings) bool {
-	return s.ServeData || (releaseFeatureAvailable("gateway-peerhood") && (s.ServeGatewayData || (s.SatlineEnabled && s.SatlineServePublished)))
+	return s.ServeData || (releaseFeatureAvailable("gateway-peerhood") && (s.ServeGatewayData || (releaseFeatureAvailable("satline") && s.SatlineServePublished)))
 }
 
 func (a *app) startBitcoinListener() error {

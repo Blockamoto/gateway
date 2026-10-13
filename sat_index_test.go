@@ -49,6 +49,9 @@ func TestSatOutpointPagesAvoidSharedTransactionPrefix(t *testing.T) {
 
 func satIndexTestBlock(height int64, previous string, txs ...transactionView) blockView {
 	b := testBlock(height, txs...)
+	if height == 0 {
+		b.Hash = genesisHashDisplay
+	}
 	b.PreviousBlockHash = previous
 	b.TransactionCount = uint64(len(txs))
 	b.Verification = verificationView{VerifierVersion: blockVerifierVersion, HeaderHash: true, ProofOfWork: true, MerkleRoot: true, TransactionsParsed: true, HeaderChainMatch: true, WitnessPresent: true, WitnessCommitment: true}
@@ -65,6 +68,12 @@ func satTestLocation(t *testing.T, s *indexStore, n uint64) satIndexLocation {
 	ok, e := tree.predecessor(satRangeKey(n), &loc)
 	if e != nil || !ok || n < loc.Start || n >= loc.End {
 		t.Fatal(n, loc, e)
+	}
+	if loc.Output != "" {
+		loc.Point, e = s.satLocationPoint077(context.Background(), *b.Sats, loc)
+		if e != nil {
+			t.Fatal(e)
+		}
 	}
 	return loc
 }
@@ -115,8 +124,13 @@ func TestSatIndexFIFOFeesLossRestartAndReorg(t *testing.T) {
 	}); e != nil {
 		t.Fatal(e)
 	}
-	if s.checkpoint.Height != 1 {
+	if s.checkpoint.Height != 0 {
 		t.Fatal(s.checkpoint)
+	}
+	// With sparse savepoints recovery selects genesis, then the ordinary
+	// builder replays the shared branch before processing replacement blocks.
+	if e = s.appendBlock(b1, 0, "ephemeral"); e != nil {
+		t.Fatal(e)
 	}
 	if loc := satTestLocation(t, s, first+3); loc.Point.TxID != testID(2) {
 		t.Fatal("reorg did not restore root", loc)
@@ -140,14 +154,24 @@ func TestSatIndexBIP30DestructionAndIsolatedRange(t *testing.T) {
 	}
 	// Small synthetic persisted precursor isolates the historical duplicate
 	// rule; it is not a claim of having indexed mainnet's intervening blocks.
-	utxo := newOrdinalTree(s.ordinalPages(), "")
-	loc := newOrdinalTree(s.ordinalPages(), "")
-	old := satIndexOutput{Point: satlinePoint{TxID: testID(7)}, Value: 10, Ranges: []satRange{{100, 110}}, State: "unspent"}
-	_ = utxo.put(ordinalOutpointKey(testID(7), 0), old)
-	_ = loc.put(satRangeKey(100), satIndexLocation{100, 110, old.Point, "unspent"})
-	u, _ := utxo.flush()
-	l, _ := loc.flush()
-	b := indexBatch{Sats: &satIndexSnapshot{Profile: satIndexProfile, UTXORoot: u, LocationRoot: l, Outputs: 1}, Checkpoint: indexCheckpoint{Schema: s.definition.CheckpointSchema, Definition: s.definition.ID, Version: s.definition.Version, RuleHash: s.definition.RuleHash, Network: s.definition.Network, From: 0, Height: 91841, BlockHash: testID(991)}}
+	precursor := satIndexTestBlock(91812, testID(990), testCoinbase(testID(7), 10))
+	refs, e := storeBlockOutputFactsContext(context.Background(), s.profileRoot, precursor)
+	if e != nil {
+		t.Fatal(e)
+	}
+	ref := refs["0.0.91812"]
+	old := satIndexOutput{Output: "0.0.91812", FactRef: &ref, RangeCount: 1, Ranges: []satRange{{100, 110}}, State: "unspent"}
+	editor := newSatEditor077(context.Background(), s, satIndexSnapshot{Profile: satIndexProfile, Layout: 1})
+	if e = editor.add(old, testID(7), false); e != nil {
+		t.Fatal(e)
+	}
+	if e = editor.locate(old.Ranges, old.Output, old.State, precursor.Height, precursor.Hash, 0); e != nil {
+		t.Fatal(e)
+	}
+	if e = editor.flush(); e != nil {
+		t.Fatal(e)
+	}
+	b := indexBatch{Sats: &editor.snapshot, Checkpoint: indexCheckpoint{Schema: s.definition.CheckpointSchema, Definition: s.definition.ID, Version: s.definition.Version, RuleHash: s.definition.RuleHash, Network: s.definition.Network, From: 0, Height: 91841, BlockHash: testID(991)}}
 	b.Checkpoint.RecordsHash = batchRecordsHash(b)
 	b.Checkpoint.Commitment = checkpointHash(b.Checkpoint)
 	if e = atomicWriteJSON(filepath.Join(s.dir, "commits", b.Checkpoint.Commitment+".json"), b); e != nil {

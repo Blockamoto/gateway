@@ -58,11 +58,16 @@ func (a *app) knownInscriptionSat(id string, height int64, hash string) (*uint64
 	if json.Unmarshal(data, &result) != nil || result.ID != id || !result.Known || result.SatNumber == nil || result.Profile != inscriptionSatProfile || result.RevealHash != hash || result.RevealHeight != height {
 		return nil, nil
 	}
-	canonical, e := a.canonicalHashAtHeight(height)
+	ctx := context.Background()
+	authority := a.currentChainAuthority()
+	if _, e = a.utxoSelectedTarget(ctx, authority, authority.Height); e != nil {
+		return nil, e
+	}
+	target, e := a.utxoSelectedTarget(ctx, authority, height)
 	if e != nil {
 		return nil, e
 	}
-	if !strings.EqualFold(canonical, hash) {
+	if !strings.EqualFold(target.HashDisplay, hash) {
 		return nil, nil
 	}
 	return result.SatNumber, nil
@@ -103,18 +108,25 @@ func (a *app) enrichOrdIdentity(rec *ordRecord) {
 }
 
 func (a *app) indexedSatIdentity(id string, height int64, hash string) *inscriptionSatResult {
-	s, e := indexStoreHead(a.dataDir, "sat-state")
-	if e != nil || s.checkpoint == nil || a.indexChainState(s.checkpoint) != "selected_chain" {
+	ctx := context.Background()
+	authority := a.currentChainAuthority()
+	status, err := satStateStatusContext(ctx, a.dataDir)
+	if err != nil || status.Checkpoint == nil || a.satCheckpointSelected077(ctx, status.Checkpoint, authority) != nil {
 		return nil
 	}
-	b, e := s.readBatch(s.checkpoint.Commitment)
-	if e != nil || b.Sats == nil || b.Sats.InscriptionRoot == "" {
+	identity, have, err := satInscriptionIdentityContext(ctx, a.dataDir, id)
+	if err != nil || !have || identity.ID != id || identity.RevealHeight != height || identity.RevealHash != hash {
 		return nil
 	}
-	tree := newOrdinalTree(s.ordinalPages(), b.Sats.InscriptionRoot)
-	var identity inscriptionSatResult
-	ok, e := tree.get(ordinalInscriptionKey(id), &identity)
-	if e != nil || !ok || identity.ID != id || identity.RevealHeight != height || identity.RevealHash != hash {
+	target, err := a.utxoSelectedTarget(ctx, authority, height)
+	if err != nil || target.HashDisplay != hash {
+		return nil
+	}
+	latest, err := satStateStatusContext(ctx, a.dataDir)
+	if err != nil || latest.Checkpoint == nil || latest.Checkpoint.Commitment != status.Checkpoint.Commitment {
+		return nil
+	}
+	if _, err = a.utxoSelectedTarget(ctx, authority, authority.Height); err != nil {
 		return nil
 	}
 	return &identity
@@ -186,10 +198,16 @@ func (a *app) discoverInscriptionSat(ctx context.Context, id string) (inscriptio
 		}
 		return result, nil
 	}
-	backend := discoverySatBackend{contextSatlineBackend{appSatlineBackend{a}, ctx}}
+	backend := newSatlineEvidenceBackend077(a, ctx)
 	resolver := newSatlineResolver(backend)
 	resolver.ctx = ctx
-	block, e := resolver.block(rec.Height)
+	target, e := a.utxoSelectedTarget(ctx, backend.pin, rec.Height)
+	if e != nil {
+		return result, e
+	}
+	// Reveal parsing requires the original witness; compact FIFO evidence is
+	// used only for the subsequent sat path and amount dependencies.
+	block, e := a.indexSourceBlock(ctx, target, "pruned")
 	if e != nil {
 		return result, e
 	}
@@ -237,17 +255,21 @@ func (a *app) discoverInscriptionSat(ctx context.Context, id string) (inscriptio
 	if p := occurrence.Envelope.Pointer; p != nil && *p < outputValue {
 		position = *p
 	}
-	point, e := resolver.reverseInputPoint(tx, position, block.Height)
+	point, e := resolver.reverseInputPoint077(tx, position, block.Height, block.Hash)
 	if e != nil {
 		return result, e
 	}
-	sat, steps, e := resolver.reverseSatNumber(point)
-	result.Steps = steps
+	trace, e := a.reverseSatlineSatpointContext(ctx, fmt.Sprintf("%d.%d.%d.%d", point.Offset, point.Vout, point.TxIndex, point.Height))
+	result.Steps = trace.Steps
 	if e != nil {
 		return result, e
+	}
+	if trace.State != "known" || trace.SatNumber == nil {
+		result.State, result.Note = trace.State, trace.Note
+		return result, nil
 	}
 	result.Known = true
-	result.SatNumber = &sat
+	result.SatNumber = trace.SatNumber
 	result.State = "known"
 	result.Note = "Derived from ordinal FIFO input allocation and checked Bitcoin evidence. Sat identity does not imply known current ownership or retained full lineage."
 	// A cancellation or reorganization during a long trace must not publish an
@@ -255,7 +277,7 @@ func (a *app) discoverInscriptionSat(ctx context.Context, id string) (inscriptio
 	if e = ctx.Err(); e != nil {
 		return inscriptionSatResult{}, e
 	}
-	canonical, e := a.canonicalHashAtHeight(rec.Height)
+	canonical, e := backend.hashAt(rec.Height)
 	if e != nil || canonical != rec.BlockHash {
 		return inscriptionSatResult{}, fmt.Errorf("reveal anchor unavailable or changed during discovery")
 	}
@@ -395,25 +417,38 @@ func (a *app) locallyIndexedInscriptionSat(height int64, hash, txid string, env 
 	if height <= 0 || env.Unbound || !validHash(txid) {
 		return nil
 	}
-	if current, e := a.canonicalHashAtHeight(height); e != nil || current != hash {
+	ctx := context.Background()
+	authority := a.currentChainAuthority()
+	if _, err := a.utxoSelectedTarget(ctx, authority, authority.Height); err != nil {
 		return nil
 	}
-	s, e := indexStoreHead(a.dataDir, "sat-state")
-	if e != nil || s.checkpoint == nil || s.checkpoint.Height < height-1 || s.checkpoint.Height-(height-1) > ordinalRecoveryBlocks || a.indexChainState(s.checkpoint) != "selected_chain" {
+	if target, err := a.utxoSelectedTarget(ctx, authority, height); err != nil || target.HashDisplay != hash {
 		return nil
 	}
-	next := s.head.Commitment
+	satStateMu.Lock()
+	defer satStateMu.Unlock()
+	s, head, e := openSatQuery077(ctx, a.dataDir)
+	if e != nil || s.checkpoint == nil || a.satCheckpointSelected077(ctx, s.checkpoint, authority) != nil {
+		return nil
+	}
 	var satSnapshot *satIndexSnapshot
-	for n := 0; next != "" && n <= ordinalRecoveryBlocks; n++ {
-		b, e := s.readBatch(next)
+	if head.Checkpoint.Height == height-1 {
+		satSnapshot = head.Sats
+	}
+	for _, saved := range s.head.SatSavepoints {
+		if saved.Height != height-1 {
+			continue
+		}
+		prior, e := s.readBatch(saved.Commitment)
 		if e != nil {
 			return nil
 		}
-		if b.Checkpoint.Height == height-1 {
-			satSnapshot = b.Sats
-			break
+		target, e := a.utxoSelectedTarget(ctx, authority, saved.Height)
+		if e != nil || target.HashDisplay != saved.BlockHash {
+			return nil
 		}
-		next = b.Checkpoint.PreviousCommitment
+		satSnapshot = prior.Sats
+		break
 	}
 	if satSnapshot == nil {
 		return nil
@@ -444,11 +479,16 @@ func (a *app) locallyIndexedInscriptionSat(height int64, hash, txid string, env 
 	if tx == nil || env.Input < 0 || env.Input >= len(tx.Inputs) {
 		return nil
 	}
-	tree := newOrdinalTree(s.ordinalPages(), satSnapshot.UTXORoot)
+	editor := newSatEditor077(ctx, s, *satSnapshot)
 	outputs := make([]satIndexOutput, len(tx.Inputs))
 	for i, in := range tx.Inputs {
-		ok, e := tree.get(ordinalOutpointKey(in.PrevTxID, in.PrevVout), &outputs[i])
-		if e != nil || !ok {
+		var position string
+		have, e := editor.bridge.get(ordinalOutpointKey(in.PrevTxID, in.PrevVout), &position)
+		if e != nil || !have {
+			return nil
+		}
+		outputs[i], have, e = editor.output(position)
+		if e != nil || !have {
 			return nil
 		}
 	}
@@ -478,6 +518,12 @@ func (a *app) locallyIndexedInscriptionSat(height int64, hash, txid string, env 
 		for _, interval := range output.Ranges {
 			if position < interval.End-interval.Start {
 				sat := interval.Start + position
+				if _, err := a.utxoSelectedTarget(ctx, authority, authority.Height); err != nil {
+					return nil
+				}
+				if target, err := a.utxoSelectedTarget(ctx, authority, height); err != nil || target.HashDisplay != hash {
+					return nil
+				}
 				return &sat
 			}
 			position -= interval.End - interval.Start

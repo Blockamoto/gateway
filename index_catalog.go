@@ -117,7 +117,7 @@ func indexDefinitions() []indexDefinition {
 		{ID: "utxo-state", Name: "UTXO set", Buildable: true, Dependencies: []string{"blocks"}, Theory: "One complete live unspent-output state at an explicit processed chain tip; consensus validation is a later stage.", Rules: []string{"Process every block from genesis in Bitcoin transaction order; isolated ranges cannot establish a complete UTXO set.", "Retain the exact amount and scriptPubKey of every live output with its creation position and block identity.", "Commit live state, native-outpoint translation and self-contained undo together.", "Keep 288 reversible block transitions locally; raw block retention remains an independent policy.", "Reconcile disconnected blocks to the common ancestor; deeper reorgs require an explicit rebuild.", "Header-anchored processing does not assert complete consensus or script validation."}},
 		{ID: "address-state", Name: "Current address UTXOs", Buildable: true, Dependencies: []string{"utxo-state"}, Theory: "Exact script address lookup over one complete saved UTXO checkpoint; no historical scan or implicit UTXO build.", Rules: []string{"Amounts and exact scripts remain shared output facts; address rows retain positional identities and fact references.", "Publish the source UTXO commitment, block hash and reverse lookup together; stale projections cannot supply a balance.", "No address is invented for addressless scripts; consensus validation and inscriptions are separate."}},
 		{ID: "address-history", Name: "Historical address outputs", Buildable: true, Dependencies: []string{"blocks"}, Theory: "Optional sparse output history by exact script address, with independent coverage and retention; range totals are not a current balance.", ArbitraryStart: true, Rules: []string{"Explicitly commit scanned block anchors including blocks with no conventional addresses.", "Pin shared output facts after spend and raw-body eviction.", "Queries and pagination bind address and exact revision; disconnected anchors are excluded.", "No inscription ownership, inferred unspent status or mempool balance."}},
-		{ID: "sat-state", Name: "Sat index", Buildable: true, Dependencies: []string{"blocks"}, Theory: "Continuous ordinal FIFO state from genesis: sat identity, issuance and placement at an explicit verified-chain snapshot. Full movement history and raw block retention are independent.", Rules: []string{satIndexProfile, "Process all blocks from genesis in order; missing UTXO prerequisites fail closed.", "Allocate subsidy then transaction fees in Bitcoin transaction order; input sats move FIFO.", "Preserve lost sats, unspendable outputs and historical BIP30 destruction explicitly.", "Current placement belongs to the committed selected-chain snapshot, never an unresolved frontier.", "Keep 144 blocks of recovery roots; deeper recovery needs retained history or an explicit rebuild."}},
+		{ID: "sat-state", Name: "Sat index", Buildable: true, Dependencies: []string{"blocks"}, Theory: "Continuous ordinal FIFO state from genesis: sat identity, issuance and placement at an explicit header-anchored snapshot. Historical output ranges and raw block retention are independent.", Rules: []string{satIndexProfile, "Process all blocks from genesis in order; missing input identities fail closed.", "Allocate subsidy then transaction fees in Bitcoin transaction order; input sats move FIFO.", "Preserve lost sats, unspendable outputs and historical BIP30 destruction explicitly.", "Current placement belongs to the committed selected-chain snapshot, never an unresolved frontier.", "Keep the newest two savepoints at heights divisible by 12 and the newest two at heights divisible by 144, sharing reachable pages and facts.", "Restore an authenticated selected-chain savepoint then replay forward; recovery beyond saved points requires reviewed genesis rebuild.", "BPS output range records share amount and exact script facts; complete historical ranges are optional and off by default."}},
 		{ID: "satline", Name: "Satline", Dependencies: []string{"tx-locator", "txo-spender", "blocks"}, Theory: "On-demand verified lineage; deeper retained history is optional."},
 		{ID: "inscriptions", Name: "Inscriptions", Dependencies: []string{"blocks"}, Theory: "Bounded witness-envelope occurrences and content; canonical numbers remain unknown.", ArbitraryStart: true, Buildable: true},
 		{ID: "bitmap", Name: "Bitmap districts", Dependencies: []string{"inscriptions"}, StartHeight: 792435, Buildable: true, Theory: "First valid district claim in Bitcoin reveal order. Ownership is a separate optional dependency.", Rules: []string{"Mainnet; start at block 792435 or a locally validated prior checkpoint.", "Apply blocks, transactions, inputs and recognized envelopes in Bitcoin order.", "Gateway district profile: direct raw body must be canonical ASCII decimal followed by .bitmap, with no leading zero except 0; no decompression or delegate lookup.", "MIME and parser flags do not exclude a recognized occurrence; global curse, boundness and numbering are not assumed. This is not an OPI-equivalence claim.", "The target Bitcoin block must exist at the reveal height.", "First valid claim wins; preserve subsequent candidates with rejection reasons.", "Do not use canonical inscription numbering to reorder claims.", "Ownership is unknown without separately resolved sat/inscription evidence.", "Compatibility results never mutate the base index."}},
@@ -132,7 +132,7 @@ func indexDefinitions() []indexDefinition {
 		if d.ID == "bitmap" {
 			d.OutputSchema = 2
 		}
-		if d.ID == "inscriptions" || d.ID == "tx-locator" {
+		if d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "sat-state" {
 			d.Version, d.OutputSchema = 2, 2
 		}
 		d.CanonicalEncoding = "ordered Go JSON struct fields; UTF-8; no whitespace; ordered records; SHA-256"
@@ -234,8 +234,8 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 	if err != nil {
 		return indexPlan{}, err
 	}
-	if req.Rebuild && d.ID != "utxo-state" {
-		return indexPlan{}, fmt.Errorf("rebuild is supported only for the UTXO set")
+	if req.Rebuild && d.ID != "utxo-state" && d.ID != "sat-state" {
+		return indexPlan{}, fmt.Errorf("rebuild is supported only for the UTXO set and Sat state")
 	}
 	mode := req.Mode
 	if mode == "" {
@@ -244,13 +244,13 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 	if mode != "lean" && mode != "full" {
 		return indexPlan{}, fmt.Errorf("mode must be lean or full")
 	}
-	if d.ID == "utxo-state" && mode != "lean" {
-		return indexPlan{}, fmt.Errorf("UTXO stores one live state; lean is its supported mode")
+	if (d.ID == "utxo-state" || d.ID == "sat-state") && mode != "lean" {
+		return indexPlan{}, fmt.Errorf("%s stores one live state; lean is its supported mode", d.Name)
 	}
 	retention := req.Retention
 	if retention == "" {
 		retention = "ephemeral"
-		if d.ID == "utxo-state" {
+		if d.ID == "utxo-state" || d.ID == "sat-state" {
 			retention = "pruned"
 		}
 	}
@@ -284,7 +284,9 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 		p.Notes = append(p.Notes, "UTXO starts at genesis and resumes its atomic checkpoint. Values, exact scripts and recovery data are mandatory independently of optional TXIO history.", "Pruned discards fetched source bodies after processing; 288 refers to recovery transitions, not 288 full UTXO copies or mandatory raw bodies.", "Current means processed at the selected target, not fully consensus validated.")
 	}
 	if d.ID == "sat-state" {
-		p.Notes = append(p.Notes, "Sat identity requires continuous history from genesis; isolated ranges cannot establish current sat placement.", "Retaining raw blocks and retaining full movement history are separate choices. Recent recovery roots are essential state.")
+		p.Verification = "header_anchored_processing; consensus_validated=false"
+		p.StorageEstimate = "Live ordered output ranges, shared output facts and up to four savepoints; fragmentation determines size. Historical ranges are optional."
+		p.Notes = append(p.Notes, "Sat identity requires continuous history from genesis; isolated ranges cannot establish current sat placement.", "Pruned source bodies can be discarded after commit. Live ranges and savepoint pages remain local.", "Keep two savepoints every 12 blocks and two every 144 blocks; restore then replay. This is not a guaranteed 288-block rollback at every height.", "Historical ranges are optional; Satline can reconstruct and cache visited paths on demand.")
 	}
 	if d.ID == "inscriptions" {
 		p.Notes = append(p.Notes, "Lean retains compact inscription positions and transaction counts; Full also retains authenticated reveal bodies. Neither starts numbering or unrelated historical input work.", "Conventional-ID enrichment is independently committed and can be disabled without deleting existing locators.")

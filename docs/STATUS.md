@@ -1,5 +1,13 @@
 # Gateway status
 
+## Development: v0.7.7 Sats — verification in progress
+
+The `v0.7.7` branch starts from the tested Addresses source and adds genesis-first ordinal identities, ordered output ranges, shared output facts, a Sat explorer, compatible address UTXO/range views, and known inscription holdings with explicit identity coverage. Historical ranges are optional. Local Satline is always available when released, without a separate enable switch or Add Index entry; visited-path and fee-prefix caches support on-demand tracing. Known input/output BPS positions appear in the explorer, while unresolved native outpoints remain explicit.
+
+Sat recovery retains two savepoints every 12 blocks and two every 144 blocks, sharing matching heights and reachable pages. It restores an eligible state and replays forward; it does not guarantee 288-block recovery at every height. The UTXO index's 288 reversible transitions remain unchanged. Incompatible experimental Sat state is preserved for reviewed rebuild.
+
+Focused backend, browser and an initial compiled Windows build have passed within their recorded scopes, including genuine blocks zero and one, reviewed Build/Pause/Resume, readable paused queries, pruned raw-source eviction and restart. Additional refinements and the complete branch checks remain in progress; no final release acceptance or whole-mainnet benchmark is claimed. Main, publication and the live updater remain held for the user's later release instruction. See [the implementation brief](IMPLEMENTATION-BRIEF-0.7.7.md) and [Sat guide](SATS-INDEX.md).
+
 ## Development: v0.7.6 Addresses
 
 The `v0.7.6` development branch adds separate **Current UTXOs** and **Historical outputs** address indexes, strict mainnet address decoding, explorer address search/navigation, and independent coverage bands under Addresses. Current balances bind to the saved UTXO checkpoint; historical totals cover only reviewed creation ranges. Membership references shared output facts, with cached counts and totals for paginated queries. Inscription holdings remain deferred to Sats.

@@ -138,6 +138,9 @@ func validIndexRetention(retention string) bool {
 }
 
 func validIndexRetentionFor(id, retention string) bool {
+	if id == "sat-state" {
+		return validIndexRetention(retention)
+	}
 	if id == "utxo-state" {
 		return retention == "pruned" || retention == "cache" || retention == "retain"
 	}
@@ -280,7 +283,7 @@ func (a *app) setIndexLivePolicy(req indexLiveRequest) (indexLiveView, error) {
 	}
 	if !validIndexRetentionFor(req.Index, policy.Retention) {
 		policy.Retention = "ephemeral"
-		if req.Index == "utxo-state" {
+		if req.Index == "utxo-state" || req.Index == "sat-state" {
 			policy.Retention = "pruned"
 		}
 	}
@@ -406,6 +409,9 @@ func (a *app) indexLiveView(id string, policy indexLivePolicy) indexLiveView {
 		view.ChainState = a.indexChainState(s.checkpoint)
 	}
 	authority, fresh, reason := a.indexTipFreshness()
+	if id == "sat-state" && s.checkpoint != nil {
+		view.ChainState = a.satChainState077(context.Background(), s.checkpoint, authority)
+	}
 	view.TipHeight, view.TipSource, view.TipFresh, view.Reason = authority.Height, authority.Source, fresh, reason
 	// Updated identifies an explicit durable On policy even before the first
 	// checkpoint. The zero policy alone must not turn a fresh card on.
@@ -621,6 +627,35 @@ func (a *app) liveIndexTick() {
 			}
 			return
 		}
+		if id == "sat-state" {
+			s, err := indexStoreHead(a.dataDir, id)
+			if err != nil {
+				a.failLiveIndexRuntime(id, err)
+				continue
+			}
+			state := a.satChainState077(context.Background(), s.checkpoint, authority)
+			if state == "anchor_unavailable" {
+				continue
+			}
+			if state == "selected_chain" && s.checkpoint != nil && s.checkpoint.Height >= authority.Height {
+				continue
+			}
+			from, to := int64(0), authority.Height
+			if state == "selected_chain" && s.checkpoint != nil && to-s.checkpoint.Height > indexLiveBatchBlocks {
+				to = s.checkpoint.Height + indexLiveBatchBlocks
+			}
+			retention := policy.Retention
+			if !validIndexRetentionFor(id, retention) {
+				retention = "pruned"
+			}
+			a.indexLiveLast = id
+			a.startLiveIndexRuntime(id)
+			if _, err = a.startIndexBuildInternal(indexBuildRequest{Index: id, From: &from, To: &to, Mode: "lean", Retention: retention, RetainSatHistory: policy.RetainSatHistory, SatHistoryConfigured: policy.SatHistoryConfigured}, true); err != nil {
+				a.failLiveIndexRuntime(id, err)
+				continue
+			}
+			return
+		}
 		if id == "address-history" {
 			history, err := openAddressHistoryStoreContext(context.Background(), a.dataDir)
 			if err != nil {
@@ -718,7 +753,7 @@ func (a *app) liveIndexTick() {
 		}
 		if !validIndexRetentionFor(id, retention) {
 			retention = "ephemeral"
-			if id == "utxo-state" {
+			if id == "utxo-state" || id == "sat-state" {
 				retention = "pruned"
 			}
 		}

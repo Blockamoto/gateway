@@ -90,7 +90,7 @@ func Test064FreshOnDoesNotAuthorizeHistoryOrHeaderDemand(t *testing.T) {
 	if err != nil || view.On || !view.Stopped || view.Retention != "retain" {
 		t.Fatalf("fresh stop: %+v %v", view, err)
 	}
-	if _, err := restarted.setIndexLivePolicy(indexLiveRequest{Index: "sat-state", Action: "enable"}); err == nil {
+	if _, err := restarted.setIndexLivePolicy(indexLiveRequest{Index: "bitmap", Action: "enable"}); err == nil {
 		t.Fatal("unsupported index accepted Live history")
 	}
 }

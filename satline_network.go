@@ -77,7 +77,7 @@ func (a *app) satlineNetworkingEnabled() bool {
 	}
 	a.settingsMu.RLock()
 	defer a.settingsMu.RUnlock()
-	return a.settings.SatlineEnabled && (a.settings.SatlineUsePeers || a.settings.SatlineServePublished)
+	return a.settings.SatlineUsePeers || a.settings.SatlineServePublished
 }
 func (a *app) localGatewayProtocols() []gatewayProtocolSupport {
 	if !releaseFeatureAvailable("gateway-peerhood") {
@@ -149,10 +149,7 @@ func (a *app) storeSatlinePublication(q satlineQuery, publish bool) error {
 		}
 		return e
 	}
-	a.settingsMu.RLock()
-	enabled := a.settings.SatlineEnabled
-	a.settingsMu.RUnlock()
-	if !enabled {
+	if !a.satlineEnabled() {
 		return fmt.Errorf("Satline is disabled")
 	}
 	rec, ok := a.loadSatlineRecord(q.Kind, q.key())
@@ -201,7 +198,7 @@ func (a *app) buildSatlineSegment(req satlineSegmentRequest) (satlineSegment, er
 // and public callers must use the release-gated buildSatlineSegment wrapper.
 func (a *app) readSatlineSegment(req satlineSegmentRequest) (satlineSegment, error) {
 	a.settingsMu.RLock()
-	allowed := a.settings.SatlineEnabled && a.settings.SatlineServePublished
+	allowed := releaseFeatureAvailable("satline") && a.settings.SatlineServePublished
 	a.settingsMu.RUnlock()
 	if !allowed {
 		return satlineSegment{}, fmt.Errorf("disabled")
@@ -308,7 +305,7 @@ func (a *app) handleSatlineWire(c net.Conn, payload []byte, seen map[string]bool
 		return
 	}
 	a.settingsMu.RLock()
-	serving := a.settings.SatlineEnabled && a.settings.SatlineServePublished
+	serving := a.settings.SatlineServePublished
 	a.settingsMu.RUnlock()
 	if !serving {
 		writeSatlineUnavailable(c, env.ID, "unsupported")
@@ -622,7 +619,7 @@ func (a *app) importSatlinePeer(ctx context.Context, q satlineQuery, peer string
 		}
 	}()
 	a.settingsMu.RLock()
-	enabled := a.settings.SatlineEnabled && a.settings.SatlineUsePeers
+	enabled := a.settings.SatlineUsePeers
 	a.settingsMu.RUnlock()
 	if !enabled {
 		return result, fmt.Errorf("peer hints are disabled; enable them explicitly before querying")
@@ -672,7 +669,7 @@ func (a *app) importSatlinePeer(ctx context.Context, q satlineQuery, peer string
 		return base, fmt.Errorf("local prefix changed before commit; no peer hops were saved")
 	}
 	a.settingsMu.RLock()
-	stillAllowed := a.settings.SatlineEnabled && a.settings.SatlineUsePeers
+	stillAllowed := a.settings.SatlineUsePeers
 	a.settingsMu.RUnlock()
 	if !stillAllowed {
 		return base, fmt.Errorf("peer hints were disabled during verification; no received hops were saved")

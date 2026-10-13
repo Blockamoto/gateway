@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	appVersion              = "0.7.6"
+	appVersion              = "0.7.7"
 	bodWireVersion          = 1
 	minBODWireVersion       = 1
 	overlayProtocolVersion  = bodWireVersion

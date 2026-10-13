@@ -4,10 +4,17 @@
   "title": "v0.7.5: UTXO set",
   "repository": "Blockamoto/gateway",
   "recorded_date_utc": "2026-10-13",
-  "status": "source-verification-in-progress",
+  "status": "source-and-exact-client-verified; final-archive-and-hosted-verification-pending",
   "published": false,
   "release_kind": "prerelease",
-  "enabled_indexes": ["headers", "blocks", "inscriptions", "tx-locator", "txo-spender", "utxo-state"],
+  "enabled_indexes": [
+    "headers",
+    "blocks",
+    "inscriptions",
+    "tx-locator",
+    "txo-spender",
+    "utxo-state"
+  ],
   "storage": {
     "blocks_body_schema": 2,
     "txio_schema": 3,
@@ -20,13 +27,73 @@
   "validation_mode": "header_anchored_processing",
   "consensus_validated": false,
   "validation": {
-    "focused_engine_runtime_txio_ui": "passed in development source; final exact-source checks pending",
-    "windows_full_suite": "initial run had one queue merge failure; production correction passed focused regression; corrected full run pending",
-    "linux_ci_and_race": "pending",
-    "exact_packages_and_installer": "pending",
-    "real_mainnet_prefix_and_legacy_profiles": "pending",
+    "focused_engine_runtime_txio_ui": "passed; source verification and independent recovery/storage review",
+    "windows_full_suite": {
+      "result": "passed",
+      "pass": 1051,
+      "skip": 45,
+      "fail": 0,
+      "vet": "passed"
+    },
+    "linux_ci_and_race": {
+      "result": "passed",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38441735822",
+      "source_archive_sha256": "e57109ab488c93e71a2940bbdcffa3f7164bcf74f470a05bd534d171281cbf27",
+      "full": {
+        "pass": 1029,
+        "skip": 50,
+        "fail": 0
+      },
+      "race": {
+        "pass": 511,
+        "skip": 17,
+        "fail": 0
+      },
+      "updater_race": {
+        "pass": 159,
+        "skip": 1,
+        "fail": 0
+      },
+      "static_helpers_packaging_browser": "passed",
+      "scope": "Linux source-built client; final published cross-built ELF verification is separate"
+    },
+    "exact_windows_browser_native_and_local_updater": {
+      "result": "passed",
+      "checks": 36,
+      "skip": 0,
+      "scope": "Exact candidate client, native offline views, grouped UTXO controls, bootstrap and isolated local updater fixtures"
+    },
+    "real_mainnet_prefix_and_legacy_profiles": {
+      "result": "passed",
+      "mainnet_prefix": "genesis..170",
+      "blocks": 171,
+      "pause_resume_same_job": true,
+      "offline_after_raw_eviction_and_restart": true,
+      "simulated_rollback_ancestor": 169,
+      "real_block_replayed": 170,
+      "genuine_0_7_3_profile_migration": "complete_legacy_retained",
+      "filesystem": "exFAT",
+      "scope": "Genuine verified bytes reused locally with networking disabled; selected rollback is simulated"
+    },
+    "exact_packages_and_installer": "seven compiled components audited; final archives and old-client extraction pending",
+    "published_linux_execution": "pending",
     "hosted_signed_downloads": "pending",
-    "published_0_7_4_automatic_upgrade": "pending"
+    "published_0_7_4_automatic_upgrade": "pending",
+    "renewed_feed_acceptance": "pending",
+    "real_txio_history_and_shared_facts": {
+      "result": "passed",
+      "authentic_positional_range": "9..170",
+      "optional_history_heights": [
+        9,
+        170
+      ],
+      "bidirectional_lookup_after_raw_eviction_and_offline_restart": true,
+      "independent_values_scripts_coverage": true,
+      "verified_output_facts": 4,
+      "complete_fact_pages_reuse_utxo_live_or_undo_pins": true,
+      "resolved_txio_rows_have_no_transaction_ids": true,
+      "scope": "Exact candidate with authentic local early-chain bodies and read-only frozen-source fact authentication"
+    }
   },
   "limitations": [
     "Full Bitcoin consensus validation is deferred to v0.8.",
@@ -34,5 +101,14 @@
     "No address index, Sats/Satline, fee history, snapshot sharing or Gateway peerhood is enabled.",
     "Installer wizard, system registration, antivirus and SmartScreen acceptance are not established by archive checks.",
     "Publication, signed-feed promotion and automatic delivery require separate verification of the exact final artifacts."
-  ]
+  ],
+  "verified_runtime_source": "56bdc48864958b2c60dd41beb3b28a1897062cc0",
+  "exact_windows_client_sha256": "1c52175c8b7966555a70364fd4e0edadb0e6ce634ccce6be001c9601331f7be3",
+  "evidence_sha256": {
+    "windows_suite_receipt": "5ef10d0dd044c000626bae86f92b1a6aa02a714ec897898c6eb12f4ab6c4b36f",
+    "linux_ci_receipt": "3ac77092bfb0dec6aab562acc092ed6e9f7987c15d46868af04e4b277f7452af",
+    "exact_browser_receipt": "b288126691ec7bebb688ba0e3d40126864d96ea40ee9e92f2b2953928f1fa866",
+    "real_prefix_receipt": "c25d15adc5ecab4d7687a9012428321854b6e75dfa8d31e1cd775cbb565db215",
+    "real_txio_receipt": "7bdf42d40d5452010daf63577ba72670d9d5cd52148bb56a63d45867d237f037"
+  }
 }

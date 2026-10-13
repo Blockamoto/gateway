@@ -29,7 +29,7 @@ The engine stores membership separately from immutable output facts:
 
 These are separate JSON files under `indexes/utxo-state`, with bounded copy-on-write radix pages and content-addressed commits/journals. Shared output pages live under `indexes/output-facts-v1`. The transaction hash catalogue is not duplicated in each TXIO spend row. The optional historical **Transaction Locator** remains its own track/store; the engine's mandatory live bridge is published with live membership and does not depend on complete historical locator coverage.
 
-BPS remains the logical live-output identity. Internal live/transaction radix keys disperse those positions with SHA-256 to avoid deep common numeric prefixes; direct BPS lookup computes its key locally. The current checkpoint schema is version 2. Earlier unreleased development UTXO heads are rejected rather than interpreted with a different key encoding; published 0.7.4 profiles contain no enabled UTXO state.
+BPS remains the logical live-output identity. Internal live/transaction/native-bridge radix keys disperse their identities with SHA-256 to avoid deep common numeric prefixes; direct BPS or native-outpoint lookup computes its key locally and checks the original identity in the referenced records. The current checkpoint schema is version 2. Earlier unreleased development UTXO heads are rejected rather than interpreted with a different key encoding; published 0.7.4 profiles contain no enabled UTXO state.
 
 The following is an illustrative resolved lookup, not the physical membership record or a claim about an actual output:
 

@@ -97,6 +97,10 @@ assert.deepEqual(plain(trackModel(blocks,snapshot).coverage),[{from:10,to:13},{f
 const derived={id:'test-derived',name:'Derived test',buildable:true,start_height:0};
 assert.deepEqual(plain(trackModel(derived,{instances:[{definition:derived.id,coverage:[{from:10,to:20}],gaps:[{from:11,to:15}]}]}).coverage),[{from:10,to:10},{from:16,to:20}],'Derived committed coverage retains its own explicit gaps');
 assert.deepEqual(plain(trackModel(derived,{instances:[{definition:derived.id,checkpoint:{from:0,height:999999}}]}).coverage),[],'A checkpoint height alone never establishes an entire range');
+const txioLayer={id:'txio-values',owner:'txo-spender',name:'Values',buildable:true,start_height:0};
+assert.deepEqual(plain(trackModel(txioLayer,{instances:[{definition:'txo-spender',coverage:[{from:0,to:999999}],checkpoint:{height:999999}}]}).coverage),[],'An existing TXIO instance never supplies inferred Values coverage');
+assert.equal(trackModel(txioLayer,{}).complete,false,'Unreported layer coverage remains unknown');
+assert.deepEqual(plain(trackModel(txioLayer,{timeline:{tracks:[{id:'txio-values',coverage:[{from:150,to:170}],gaps:[{from:160,to:165}]}]}}).coverage),[{from:150,to:159},{from:166,to:170}],'TXIO output facts use independently reported exact coverage and gaps');
 for(const verification of ['stale_reorg','anchor_unavailable'])assert.deepEqual(plain(trackModel(derived,{instances:[{definition:derived.id,coverage:[{from:0,to:10}],verification}]}).coverage),[],'Unverified chain evidence cannot establish current fallback coverage');
 
 const inscriptions={id:'inscriptions',network:'bitcoin-mainnet',start_height:0,buildable:true};

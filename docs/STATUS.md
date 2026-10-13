@@ -1,5 +1,15 @@
 # Gateway status
 
+## Current source preparation: v0.7.5 UTXO set
+
+The development source adds genesis-first UTXO state, optional TXIO Values/ScriptPubKeys history, shared output-fact retention and grouped Blocks/TXIO coverage. Transaction Locator remains a separate track/store. UTXO has a dedicated state/build panel, an atomic head, mandatory live native-prevout translation and fixed 288 self-contained reversible transitions. Raw-body retention is independent. Deeper recovery requires an explicit reviewed rebuild which preserves prior engine data and its dependencies.
+
+UTXO processing is header anchored and reports `consensus_validated=false`; full Bitcoin consensus validation remains deferred to v0.8. This stage adds no Sats, fee/address indexing, snapshot download or Gateway peer/state-sharing protocol. See [the brief](IMPLEMENTATION-BRIEF-0.7.5.md), [UTXO guide](UTXO-INDEX.md), [test guide](TESTING-0.7.5.md) and [release notes](RELEASE-NOTES-v0.7.5.md).
+
+Focused development-worktree engine/rebuild tests passed on **13 October 2026**, covering ordered/same-block state changes, raw-free recovery, COW page splitting, interrupted head publication, missing/double-spent prerequisites, exact 288-transition recovery/deeper failure, ancient Coin fact pins, metadata/page cleanup, historical BIP30 restoration, corrupt head/root/facts/undo, and idempotent reviewed rebuild/archive preservation. These are bounded fixtures, not a full-chain UTXO build, disk/performance benchmark or exact package acceptance. Broader integration/static/race/browser results and final Windows/Linux packages must be recorded separately.
+
+The public release, exact packaged executables, genuine previous-client automatic upgrade, hosted signed feeds and renewal checks for **0.7.5 remain pending**. The published/approved delivery baseline below is still 0.7.4 until the release receipt records promotion. This source preparation does not itself change the hosted updater.
+
 ## Published prerelease: 0.7.4 TXIO and serialized block bodies
 
 The source enables TXIO bidirectional input/output relationships while retaining the `txo-spender` storage/API identity. Blocks use compact ordered transaction metadata and verified durable serialized bodies, with compatible versioned migration and shared temporary decoding. Legacy batches and decoded/hex duplicates are retained. The inscription potential range uses the catalog's suggested start without restricting explicit earlier scans; map controls occupy their own accessible toolbar. Gateway peerhood remains locked.

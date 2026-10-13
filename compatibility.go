@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	appVersion              = "0.7.4"
+	appVersion              = "0.7.5"
 	bodWireVersion          = 1
 	minBODWireVersion       = 1
 	overlayProtocolVersion  = bodWireVersion
@@ -36,6 +36,7 @@ type compatibilityView struct {
 	IndexRebuild           bool   `json:"index_rebuild_required"`
 	BlockBodySchema        int    `json:"block_body_schema"`
 	TXIOSchema             int    `json:"txio_schema"`
+	UTXOSchema             int    `json:"utxo_schema"`
 	CacheMetadataSchema    int    `json:"cache_metadata_schema"`
 	CacheMetadataRebuild   bool   `json:"cache_metadata_rebuild_required"`
 	CoreMountSchema        int    `json:"core_mount_schema"`
@@ -74,7 +75,8 @@ func currentCompatibility() compatibilityView {
 		IndexSchema:            indexSchemaVersion,
 		IndexRebuild:           false,
 		BlockBodySchema:        2,
-		TXIOSchema:             2,
+		TXIOSchema:             3,
+		UTXOSchema:             1,
 		CacheMetadataSchema:    cacheMetadataSchema,
 		CacheMetadataRebuild:   false,
 		CoreMountSchema:        coreMountSchemaVersion,
@@ -90,7 +92,7 @@ func currentCompatibility() compatibilityView {
 		MinimumOverlayProtocol: minBODWireVersion,
 		StorageIndexRebuild:    false,
 		BlockVerifier:          blockVerifierVersion, DerivedRecheck: true, OrdStorage: 1, ArchiveStorage: 1,
-		Note: "TXIO input/output links and raw-backed Blocks payloads use versioned records within the unchanged readable storage and index envelopes. Legacy bodies remain readable and are retained during resumable migration. Headers, Blocks, Inscriptions, Transaction Index and TXIO index are available; Gateway peerhood and later indexes remain locked. Fresh installs carry a separate validated header snapshot; application updates omit it and signed header chunks extend it independently. Inscription reveal evidence does not establish global numbering, current ownership or parent-child provenance. Hosted update readiness is recorded separately in release acceptance.",
+		Note: "UTXO state is a sequential genesis-first projection with 288 self-contained recovery transitions; full consensus validation is deferred. Positional TXIO version 3 shares optional output facts and uses separate transaction-locator translation. Earlier immutable TXIO and raw-backed Blocks records remain readable without destructive conversion. Headers, Blocks, Inscriptions, Transaction Index, TXIO and UTXO are available; Gateway peerhood and later indexes remain locked. Application updates preserve headers and use the separate signed header feed. Hosted update readiness is recorded separately in release acceptance.",
 	}
 }
 

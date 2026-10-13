@@ -62,6 +62,10 @@ type indexCheckpoint struct {
 }
 
 type indexBuildRequest struct {
+	Rebuild              bool     `json:"rebuild,omitempty"`
+	OutputHistoryFrom    *int64   `json:"output_history_from,omitempty"`
+	RetainOutputValues   *bool    `json:"retain_output_values,omitempty"`
+	RetainOutputScripts  *bool    `json:"retain_output_scripts,omitempty"`
 	ConventionalIDs      *bool    `json:"conventional_ids,omitempty"`
 	SatHistoryConfigured bool     `json:"sat_history_configured,omitempty"`
 	RetainSatHistory     bool     `json:"retain_sat_history,omitempty"`
@@ -76,21 +80,32 @@ type indexBuildRequest struct {
 }
 
 type indexPlan struct {
-	ConventionalIDs  bool              `json:"conventional_ids"`
-	RetainSatHistory bool              `json:"retain_sat_history,omitempty"`
-	Outputs          []indexPlanOutput `json:"outputs,omitempty"`
-	Live             bool              `json:"live"`
-	Mode             string            `json:"mode"`
-	Definition       indexDefinition   `json:"definition"`
-	Dependencies     []indexDefinition `json:"dependencies"`
-	From             int64             `json:"from"`
-	To               int64             `json:"to"`
-	Retention        string            `json:"retention"`
-	Sequential       bool              `json:"sequential"`
-	SourceBytes      string            `json:"source_bytes"`
-	StorageEstimate  string            `json:"storage_estimate"`
-	Verification     string            `json:"verification"`
-	Notes            []string          `json:"notes"`
+	Rebuild             bool              `json:"rebuild,omitempty"`
+	OutputHistoryFrom   int64             `json:"output_history_from"`
+	RetainOutputValues  bool              `json:"retain_output_values"`
+	RetainOutputScripts bool              `json:"retain_output_scripts"`
+	ConventionalIDs     bool              `json:"conventional_ids"`
+	RetainSatHistory    bool              `json:"retain_sat_history,omitempty"`
+	Outputs             []indexPlanOutput `json:"outputs,omitempty"`
+	Live                bool              `json:"live"`
+	Mode                string            `json:"mode"`
+	Definition          indexDefinition   `json:"definition"`
+	Dependencies        []indexDefinition `json:"dependencies"`
+	From                int64             `json:"from"`
+	To                  int64             `json:"to"`
+	Retention           string            `json:"retention"`
+	Sequential          bool              `json:"sequential"`
+	SourceBytes         string            `json:"source_bytes"`
+	StorageEstimate     string            `json:"storage_estimate"`
+	Verification        string            `json:"verification"`
+	Notes               []string          `json:"notes"`
+}
+
+func outputHistoryOption(index string, value bool) *bool {
+	if index != "txo-spender" && index != "blocks" {
+		return nil
+	}
+	return boolPointer(value)
 }
 
 func indexDefinitions() []indexDefinition {
@@ -99,6 +114,7 @@ func indexDefinitions() []indexDefinition {
 		{ID: "blocks", Name: "Bitcoin blocks", Buildable: true, Dependencies: []string{"headers"}, Theory: "Sparse verified blocks from interchangeable providers.", ArbitraryStart: true},
 		{ID: "tx-locator", Name: "Transaction locator", Buildable: true, Dependencies: []string{"blocks"}, Theory: "Transaction ID to block location. Verify membership against the block.", ArbitraryStart: true},
 		{ID: "txo-spender", Name: "TXO spender", Buildable: true, Dependencies: []string{"blocks"}, Theory: "Outpoint to spender; absent knowledge is not proof of unspent.", ArbitraryStart: true},
+		{ID: "utxo-state", Name: "UTXO set", Buildable: true, Dependencies: []string{"blocks"}, Theory: "One complete live unspent-output state at an explicit processed chain tip; consensus validation is a later stage.", Rules: []string{"Process every block from genesis in Bitcoin transaction order; isolated ranges cannot establish a complete UTXO set.", "Retain the exact amount and scriptPubKey of every live output with its creation position and block identity.", "Commit live state, native-outpoint translation and self-contained undo together.", "Keep 288 reversible block transitions locally; raw block retention remains an independent policy.", "Reconcile disconnected blocks to the common ancestor; deeper reorgs require an explicit rebuild.", "Header-anchored processing does not assert complete consensus or script validation."}},
 		{ID: "address-state", Name: "Current address UTXOs", Dependencies: []string{"txo-spender"}, Theory: "Current state at an explicit snapshot, independent of history."},
 		{ID: "address-history", Name: "Historical address activity", Dependencies: []string{"blocks"}, Theory: "Explicit optional historical coverage, never implied by a current-state query.", ArbitraryStart: true},
 		{ID: "sat-state", Name: "Sat index", Buildable: true, Dependencies: []string{"blocks"}, Theory: "Continuous ordinal FIFO state from genesis: sat identity, issuance and placement at an explicit verified-chain snapshot. Full movement history and raw block retention are independent.", Rules: []string{satIndexProfile, "Process all blocks from genesis in order; missing UTXO prerequisites fail closed.", "Allocate subsidy then transaction fees in Bitcoin transaction order; input sats move FIFO.", "Preserve lost sats, unspendable outputs and historical BIP30 destruction explicitly.", "Current placement belongs to the committed selected-chain snapshot, never an unresolved frontier.", "Keep 144 blocks of recovery roots; deeper recovery needs retained history or an explicit rebuild."}},
@@ -218,6 +234,9 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 	if err != nil {
 		return indexPlan{}, err
 	}
+	if req.Rebuild && d.ID != "utxo-state" {
+		return indexPlan{}, fmt.Errorf("rebuild is supported only for the UTXO set")
+	}
 	mode := req.Mode
 	if mode == "" {
 		mode = "lean"
@@ -225,12 +244,18 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 	if mode != "lean" && mode != "full" {
 		return indexPlan{}, fmt.Errorf("mode must be lean or full")
 	}
+	if d.ID == "utxo-state" && mode != "lean" {
+		return indexPlan{}, fmt.Errorf("UTXO stores one live state; lean is its supported mode")
+	}
 	retention := req.Retention
 	if retention == "" {
 		retention = "ephemeral"
+		if d.ID == "utxo-state" {
+			retention = "pruned"
+		}
 	}
-	if retention != "ephemeral" && retention != "cache" && retention != "retain" {
-		return indexPlan{}, fmt.Errorf("retention must be ephemeral, cache or retain")
+	if !validIndexRetentionFor(d.ID, retention) {
+		return indexPlan{}, fmt.Errorf("invalid retention for %s", d.ID)
 	}
 	from := defaultIndexFrom(d)
 	if req.From != nil {
@@ -249,7 +274,15 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 	p := indexPlan{Live: req.Live, Mode: mode, Definition: d, From: from, To: to, Retention: retention, Sequential: !d.ArbitraryStart, Dependencies: []indexDefinition{}, SourceBytes: retention, StorageEstimate: "Unknown until source coverage is examined; derived records grow with the selected range.", Verification: "Locally checked Bitcoin block and witness evidence anchored to selected headers or Core active chain.", Notes: []string{"Core and Ord are optional providers, not required installations.", "Peer claims never become locally verified state without evidence.", "All new derived index records are private until explicitly published.", "A negative end height snapshots the available verified tip when work starts."}}
 	seen := map[string]bool{}
 	p.RetainSatHistory = req.RetainSatHistory
+	p.Rebuild = req.Rebuild
+	p.RetainOutputValues = req.RetainOutputValues != nil && *req.RetainOutputValues
+	p.RetainOutputScripts = req.RetainOutputScripts != nil && *req.RetainOutputScripts
 	p.ConventionalIDs = inscriptionIDsEnabled(req.ConventionalIDs)
+	if d.ID == "utxo-state" {
+		p.Verification = "header_anchored_processing; consensus_validated=false"
+		p.StorageEstimate = "Live output facts, native-outpoint translations and 288 complete reversible transitions; raw bodies may be discarded after commit."
+		p.Notes = append(p.Notes, "UTXO starts at genesis and resumes its atomic checkpoint. Values, exact scripts and recovery data are mandatory independently of optional TXIO history.", "Pruned discards fetched source bodies after processing; 288 refers to recovery transitions, not 288 full UTXO copies or mandatory raw bodies.", "Current means processed at the selected target, not fully consensus validated.")
+	}
 	if d.ID == "sat-state" {
 		p.Notes = append(p.Notes, "Sat identity requires continuous history from genesis; isolated ranges cannot establish current sat placement.", "Retaining raw blocks and retaining full movement history are separate choices. Recent recovery roots are essential state.")
 	}

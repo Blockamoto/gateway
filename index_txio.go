@@ -27,6 +27,14 @@ type txioCreation struct{ Position, BlockHash string }
 // shape through this accessor without rewriting canonical batches.
 func txioSpendRow(p *indexSpenderBlock, index int) indexSpendRecord {
 	r := p.Rows[index]
+	if p.Version == 3 {
+		for _, pending := range p.PendingTranslations {
+			if pending.Row == uint32(index) {
+				r.PrevTxID = pending.PrevTxID
+				break
+			}
+		}
+	}
 	if p.Version == 2 {
 		if r.TxIndex >= 0 && r.TxIndex < len(p.Origins) {
 			r.TxID = p.Origins[r.TxIndex].TxID
@@ -48,6 +56,23 @@ func txioKey(direction, position string) string {
 // this keeps the row offset stable without claiming any output position.
 func txioBatchKeys(b indexBatch) []string {
 	p := b.Spenders
+	if p.Version == 3 {
+		keys := make([]string, 0, 2*len(p.Rows)+len(p.PendingTranslations))
+		for _, r := range p.Rows {
+			keys = append(keys, txioKey("input", inputCoordinate(r.Vin, r.TxIndex, b.Checkpoint.Height)))
+		}
+		for _, r := range p.Rows {
+			if r.Output != "" {
+				keys = append(keys, txioKey("output", r.Output))
+			} else {
+				keys = append(keys, txioKey("unresolved", inputCoordinate(r.Vin, r.TxIndex, b.Checkpoint.Height)))
+			}
+		}
+		for _, r := range p.PendingTranslations {
+			keys = append(keys, indexSpendKey(r.PrevTxID, p.Rows[r.Row].Vout))
+		}
+		return keys
+	}
 	keys := make([]string, 0, 3*len(p.Rows)+len(p.Origins))
 	for i := range p.Rows {
 		r := txioSpendRow(p, i)
@@ -71,6 +96,9 @@ func txioBatchKeys(b indexBatch) []string {
 
 func validateTXIOBatch(b indexBatch) error {
 	p := b.Spenders
+	if p.Version == 3 {
+		return validateTXIOV3Batch(b)
+	}
 	if p.Version == 0 {
 		if len(p.Origins) != 0 || len(p.CreationAnchors) != 0 || len(p.PreviousTransactions) != 0 {
 			return fmt.Errorf("legacy spender payload contains TXIO metadata")
@@ -138,6 +166,9 @@ func (s *indexStore) ownTXIOCreation(ctx context.Context, in inputView, height i
 	if s.checkpoint == nil {
 		return txioCreation{}, nil
 	}
+	if c, e := s.bridgeTXIOCreation(ctx, in, height); e != nil || c.Position != "" {
+		return c, e
+	}
 	rows, err := s.bitcoinLocatorRecords(ctx, txioKey("origin", in.PrevTxID))
 	if err != nil {
 		return txioCreation{}, err
@@ -198,15 +229,24 @@ func (s *indexStore) deriveTXIOBlock(block blockView) (*indexSpenderBlock, error
 	if err != nil {
 		return nil, err
 	}
-	out.Version = 2
+	out.Version = 3
 	out.CreationAnchors = map[string]string{}
-	previous := map[string]uint32{}
-	for i, tx := range block.Transactions {
-		out.Origins = append(out.Origins, txioOrigin{tx.TxID, i, uint32(len(tx.Outputs)), tx.Coinbase})
+	out.TransactionCount = uint32(len(block.Transactions))
+	for _, tx := range block.Transactions {
+		out.OutputCounts = append(out.OutputCounts, uint32(len(tx.Outputs)))
 	}
 	ctx := s.locatorContext
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	parents := []txioTranslationParent{}
+	parentSeen := map[string]bool{}
+	out.Values, out.Scripts = s.retainOutputValues, s.retainOutputScripts
+	if out.Values || out.Scripts {
+		out.OutputFacts, err = storeBlockOutputFactLayersContext(ctx, s.profileRoot, block, out.Values, out.Scripts)
+		if err != nil {
+			return nil, err
+		}
 	}
 	for i := range out.Rows {
 		if err := ctx.Err(); err != nil {
@@ -250,16 +290,19 @@ func (s *indexStore) deriveTXIOBlock(block blockView) (*indexSpenderBlock, error
 			}
 			out.CreationAnchors[h] = creation.BlockHash
 			r.Output = creation.Position
-		} // Sparse missing predecessor retains the original outpoint without inventing a position.
-		n, known := previous[r.PrevTxID]
-		if !known {
-			n = uint32(len(out.PreviousTransactions))
-			previous[r.PrevTxID] = n
-			out.PreviousTransactions = append(out.PreviousTransactions, r.PrevTxID)
+			if !parentSeen[r.Output] {
+				parents = append(parents, txioTranslationParent{r.PrevTxID, r.Output, creation.BlockHash})
+				parentSeen[r.Output] = true
+			}
+		} else { // Pending translation is separate from resolved positional rows.
+			out.PendingTranslations = append(out.PendingTranslations, txioPendingTranslation{uint32(i), r.PrevTxID})
 		}
-		r.PreviousTransaction = &n
 		r.PrevTxID = ""
 		r.TxID = ""
+	}
+	out.LocatorRef, err = s.storeTXIOTranslation(ctx, block, parents...)
+	if err != nil {
+		return nil, err
 	}
 	if err = validateTXIOBatch(indexBatch{Checkpoint: indexCheckpoint{Height: block.Height, BlockHash: block.Hash}, Spenders: out}); err != nil {
 		return nil, err
@@ -380,10 +423,19 @@ func (a *app) lookupTXIO(ctx context.Context, direction, position string) (txioR
 		if direction == "output" {
 			offset = 2 * n
 		}
+		if b.Spenders.Version == 3 {
+			offset = 0
+			if direction == "output" {
+				offset = n
+			}
+		}
 		if pointer.TxIndex < offset || pointer.TxIndex >= offset+n {
 			return out, fmt.Errorf("TXIO pointer direction mismatch")
 		}
-		r := txioSpendRow(b.Spenders, pointer.TxIndex-offset)
+		r, e := s.expandedTXIORow(ctx, b, pointer.TxIndex-offset)
+		if e != nil {
+			return out, e
+		}
 		input := inputCoordinate(r.Vin, r.TxIndex, b.Checkpoint.Height)
 		if direction == "input" && input != position || direction == "output" && r.Output != position {
 			return out, fmt.Errorf("TXIO pointer key mismatch")
@@ -475,6 +527,9 @@ func (a *app) fallbackTXIO(ctx context.Context, out txioResult) (txioResult, err
 func (a *app) registerTXIORoutes(mux *http.ServeMux) {
 	for _, path := range []string{"/api/txio/lookup", "/api/v1/txio/lookup"} {
 		mux.HandleFunc(path, a.handleTXIOLookup)
+	}
+	for _, path := range []string{"/api/txio/output-facts", "/api/v1/txio/output-facts"} {
+		mux.HandleFunc(path, a.handleTXIOOutputFacts)
 	}
 }
 func (a *app) handleTXIOLookup(w http.ResponseWriter, r *http.Request) {

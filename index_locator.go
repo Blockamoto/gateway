@@ -938,6 +938,12 @@ func (s *indexStore) bitcoinLocatorRecordsReadOnly(ctx context.Context, txid str
 }
 
 func (s *indexStore) bitcoinLocatorRecordsWithRepair(ctx context.Context, txid string, repair bool) ([]indexLocatorRecord, error) {
+	return s.bitcoinLocatorRecordsWithBudget(ctx, txid, repair, 128, 0)
+}
+
+// A translation catalogue may contain many output aliases for one creation;
+// its bounded pointer budget must not count them as transaction incarnations.
+func (s *indexStore) bitcoinLocatorRecordsWithBudget(ctx context.Context, txid string, repair bool, maxMatches int, maxShardBytes int64) ([]indexLocatorRecord, error) {
 	path, err := graphShardPath(s.dir, s.locatorKind(), txid)
 	if err != nil {
 		return nil, err
@@ -979,6 +985,9 @@ func (s *indexStore) bitcoinLocatorRecordsWithRepair(ctx context.Context, txid s
 	if err != nil || !info.Mode().IsRegular() || info.Size() != r.Bytes {
 		return nil, fmt.Errorf("locator shard length differs from its committed receipt")
 	}
+	if maxShardBytes > 0 && r.Bytes > maxShardBytes {
+		return nil, fmt.Errorf("locator shard exceeds translation lookup byte budget")
+	}
 	h := sha256.New()
 	buffer := make([]byte, indexLocatorRecordBytes)
 	out := []indexLocatorRecord{}
@@ -1000,7 +1009,7 @@ func (s *indexStore) bitcoinLocatorRecordsWithRepair(ctx context.Context, txid s
 		}
 		key := fmt.Sprintf("%s:%d", record.Commit, record.TxIndex)
 		if !seen[key] {
-			if len(out) >= 128 {
+			if len(out) >= maxMatches {
 				return nil, fmt.Errorf("transaction has too many recorded incarnations; use a containing-block coordinate")
 			}
 			seen[key] = true

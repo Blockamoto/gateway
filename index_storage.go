@@ -73,6 +73,9 @@ func (a *app) indexStorage(ctx context.Context, id string) (any, error) {
 	if err := requireReleaseFeature(id); err != nil {
 		return nil, err
 	}
+	if id == "utxo-state" {
+		return a.inspectUTXOStorage(ctx)
+	}
 	if id != "inscriptions" {
 		return nil, fmt.Errorf("storage inspection currently describes Inscriptions")
 	}

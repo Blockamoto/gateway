@@ -130,7 +130,7 @@ func Test064InitialCardOnPersistsWithoutWorkAndLiveAuthorizesHistory(t *testing.
 
 func Test071TimelineAssetsAndNoIndexDropdowns(t *testing.T) {
 	a := &app{}
-	for _, name := range []string{"index-cards.js", "index-timeline.css", "index-timeline.js", "index-workspace.js", "timeline-explorer.js"} {
+	for _, name := range []string{"index-cards.js", "index-timeline.css", "index-timeline.js", "index-workspace.js", "timeline-explorer.js", "utxo-panel.js"} {
 		r := httptest.NewRecorder()
 		a.handleShellAsset(r, httptest.NewRequest("GET", "/shell/"+name, nil))
 		if r.Code != 200 {

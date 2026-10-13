@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "version": "0.7.5",
+  "title": "v0.7.5: UTXO set",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-13",
+  "status": "source-verification-in-progress",
+  "published": false,
+  "release_kind": "prerelease",
+  "enabled_indexes": ["headers", "blocks", "inscriptions", "tx-locator", "txo-spender", "utxo-state"],
+  "storage": {
+    "blocks_body_schema": 2,
+    "txio_schema": 3,
+    "utxo_schema": 1,
+    "recovery_transitions": 288,
+    "legacy_copies": "retained without automatic removal",
+    "optional_history": "Values and ScriptPubKeys have independent coverage and retention",
+    "raw_retention": "Pruned raw bodies are independent of mandatory live and recovery facts"
+  },
+  "validation_mode": "header_anchored_processing",
+  "consensus_validated": false,
+  "validation": {
+    "focused_engine_runtime_txio_ui": "passed in development source; final exact-source checks pending",
+    "windows_full_suite": "initial run had one queue merge failure; production correction passed focused regression; corrected full run pending",
+    "linux_ci_and_race": "pending",
+    "exact_packages_and_installer": "pending",
+    "real_mainnet_prefix_and_legacy_profiles": "pending",
+    "hosted_signed_downloads": "pending",
+    "published_0_7_4_automatic_upgrade": "pending"
+  },
+  "limitations": [
+    "Full Bitcoin consensus validation is deferred to v0.8.",
+    "No complete mainnet UTXO replay or mainnet-scale performance result is established by these focused checks.",
+    "No address index, Sats/Satline, fee history, snapshot sharing or Gateway peerhood is enabled.",
+    "Installer wizard, system registration, antivirus and SmartScreen acceptance are not established by archive checks.",
+    "Publication, signed-feed promotion and automatic delivery require separate verification of the exact final artifacts."
+  ]
+}

@@ -77,6 +77,8 @@ func (a *app) startLiveIndexRuntime(id string) {
 }
 
 type indexLivePolicy struct {
+	RetainOutputValues   *bool    `json:"retain_output_values,omitempty"`
+	RetainOutputScripts  *bool    `json:"retain_output_scripts,omitempty"`
 	ConventionalIDs      *bool    `json:"conventional_ids,omitempty"`
 	SatHistoryConfigured bool     `json:"sat_history_configured,omitempty"`
 	Outputs              []string `json:"outputs,omitempty"`
@@ -97,37 +99,48 @@ type indexLiveState struct {
 }
 
 type indexLiveRequest struct {
-	ConventionalIDs *bool  `json:"conventional_ids,omitempty"`
-	Index           string `json:"index"`
-	Action          string `json:"action"`
-	Retention       string `json:"retention,omitempty"`
+	RetainOutputValues  *bool  `json:"retain_output_values,omitempty"`
+	RetainOutputScripts *bool  `json:"retain_output_scripts,omitempty"`
+	ConventionalIDs     *bool  `json:"conventional_ids,omitempty"`
+	Index               string `json:"index"`
+	Action              string `json:"action"`
+	Retention           string `json:"retention,omitempty"`
 }
 
 type indexLiveView struct {
-	ConventionalIDs  *bool    `json:"conventional_ids,omitempty"`
-	Outputs          []string `json:"outputs,omitempty"`
-	RetainSatHistory bool     `json:"retain_sat_history"`
-	InitialFrom      int64    `json:"initial_from"`
-	On               bool     `json:"on"` // Work is permitted; retained data remains readable when off.
-	Stopped          bool     `json:"stopped"`
-	Index            string   `json:"index"`
-	Enabled          bool     `json:"enabled"`
-	Paused           bool     `json:"paused"`
-	Retention        string   `json:"retention"`
-	State            string   `json:"state"`
-	CheckpointHeight int64    `json:"checkpoint_height"`
-	TipHeight        int64    `json:"tip_height"`
-	Lag              int64    `json:"lag"`
-	LagKnown         bool     `json:"lag_known"`
-	TipFresh         bool     `json:"tip_fresh"`
-	TipSource        string   `json:"tip_source,omitempty"`
-	ChainState       string   `json:"chain_state,omitempty"`
-	Reason           string   `json:"reason,omitempty"`
-	Error            string   `json:"error,omitempty"`
-	Updated          string   `json:"updated,omitempty"`
+	RetainOutputValues  bool     `json:"retain_output_values"`
+	RetainOutputScripts bool     `json:"retain_output_scripts"`
+	ConventionalIDs     *bool    `json:"conventional_ids,omitempty"`
+	Outputs             []string `json:"outputs,omitempty"`
+	RetainSatHistory    bool     `json:"retain_sat_history"`
+	InitialFrom         int64    `json:"initial_from"`
+	On                  bool     `json:"on"` // Work is permitted; retained data remains readable when off.
+	Stopped             bool     `json:"stopped"`
+	Index               string   `json:"index"`
+	Enabled             bool     `json:"enabled"`
+	Paused              bool     `json:"paused"`
+	Retention           string   `json:"retention"`
+	State               string   `json:"state"`
+	CheckpointHeight    int64    `json:"checkpoint_height"`
+	TipHeight           int64    `json:"tip_height"`
+	Lag                 int64    `json:"lag"`
+	LagKnown            bool     `json:"lag_known"`
+	TipFresh            bool     `json:"tip_fresh"`
+	TipSource           string   `json:"tip_source,omitempty"`
+	ChainState          string   `json:"chain_state,omitempty"`
+	Reason              string   `json:"reason,omitempty"`
+	Error               string   `json:"error,omitempty"`
+	Updated             string   `json:"updated,omitempty"`
 }
 
 func validIndexRetention(retention string) bool {
+	return retention == "ephemeral" || retention == "cache" || retention == "retain" || retention == "pruned"
+}
+
+func validIndexRetentionFor(id, retention string) bool {
+	if id == "utxo-state" {
+		return retention == "pruned" || retention == "cache" || retention == "retain"
+	}
 	return retention == "ephemeral" || retention == "cache" || retention == "retain"
 }
 
@@ -147,7 +160,7 @@ func readIndexLiveState(root string) (indexLiveState, error) {
 		return indexLiveState{}, fmt.Errorf("unsupported live-index policy schema")
 	}
 	for id, policy := range state.Policies {
-		if policy.Index != id || !validIndexRetention(policy.Retention) {
+		if policy.Index != id || !validIndexRetentionFor(id, policy.Retention) {
 			return indexLiveState{}, fmt.Errorf("invalid live-index policy for %s", id)
 		}
 		if policy.Mode != "" && policy.Mode != "lean" && policy.Mode != "full" {
@@ -251,15 +264,29 @@ func (a *app) setIndexLivePolicy(req indexLiveRequest) (indexLiveView, error) {
 		value := *req.ConventionalIDs
 		policy.ConventionalIDs = &value
 	}
+	if req.RetainOutputValues != nil || req.RetainOutputScripts != nil {
+		if req.Index != "txo-spender" {
+			return indexLiveView{}, fmt.Errorf("output value and script history options belong to TXIO")
+		}
+		if req.RetainOutputValues != nil {
+			policy.RetainOutputValues = boolPointer(*req.RetainOutputValues)
+		}
+		if req.RetainOutputScripts != nil {
+			policy.RetainOutputScripts = boolPointer(*req.RetainOutputScripts)
+		}
+	}
 	if err := requireReleaseIndexRequest(indexBuildRequest{Index: req.Index, Outputs: policy.Outputs, RetainSatHistory: policy.RetainSatHistory, ConventionalIDs: policy.ConventionalIDs}); err != nil {
 		return indexLiveView{}, err
 	}
-	if !validIndexRetention(policy.Retention) {
+	if !validIndexRetentionFor(req.Index, policy.Retention) {
 		policy.Retention = "ephemeral"
+		if req.Index == "utxo-state" {
+			policy.Retention = "pruned"
+		}
 	}
 	if req.Retention != "" {
-		if !validIndexRetention(req.Retention) {
-			return indexLiveView{}, fmt.Errorf("retention must be ephemeral, cache or retain")
+		if !validIndexRetentionFor(req.Index, req.Retention) {
+			return indexLiveView{}, fmt.Errorf("invalid retention for %s", req.Index)
 		}
 		policy.Retention = req.Retention
 	}
@@ -353,6 +380,8 @@ func (a *app) indexLiveView(id string, policy indexLivePolicy) indexLiveView {
 		return view
 	}
 	view.Outputs, view.RetainSatHistory = policy.Outputs, policy.RetainSatHistory
+	view.RetainOutputValues = policy.RetainOutputValues != nil && *policy.RetainOutputValues
+	view.RetainOutputScripts = policy.RetainOutputScripts != nil && *policy.RetainOutputScripts
 	view.ConventionalIDs = policy.ConventionalIDs
 	if !policy.SatHistoryConfigured && (id == "sat-state" || id == "blocks") {
 		if sat, err := indexStoreHead(a.dataDir, "sat-state"); err == nil && sat.checkpoint != nil {
@@ -459,6 +488,8 @@ func (a *app) indexLiveView(id string, policy indexLivePolicy) indexLiveView {
 	setLag()
 	if view.Lag > 0 {
 		view.State = "catching_up"
+	} else if a.liveOutputHistoryNeedsWork(id, policy, authority.Height) {
+		view.State, view.Reason = "catching_up", "Positional links are caught up; selected historical output layers still need processing."
 	} else {
 		view.State = "synced"
 	}
@@ -585,7 +616,7 @@ func (a *app) liveIndexTick() {
 			if chainState == "anchor_unavailable" {
 				continue
 			}
-			if chainState == "selected_chain" && s.checkpoint.Height >= authority.Height && !a.sharedLiveNeedsWork(workOutputs, authority.Height) {
+			if chainState == "selected_chain" && s.checkpoint.Height >= authority.Height && !a.sharedLiveNeedsWork(workOutputs, authority.Height) && !a.liveOutputHistoryNeedsWork(id, policy, authority.Height) {
 				continue
 			}
 			from, next, mode = s.checkpoint.From, s.checkpoint.Height+1, s.head.Mode
@@ -601,15 +632,18 @@ func (a *app) liveIndexTick() {
 			to = next + indexLiveBatchBlocks - 1
 		}
 		retention := policy.Retention
-		if !validIndexRetention(retention) {
+		if !validIndexRetentionFor(id, retention) {
 			retention = s.head.Retention
 		}
-		if !validIndexRetention(retention) {
+		if !validIndexRetentionFor(id, retention) {
 			retention = "ephemeral"
+			if id == "utxo-state" {
+				retention = "pruned"
+			}
 		}
 		a.indexLiveLast = id
 		a.startLiveIndexRuntime(id)
-		if _, err := a.startIndexBuildInternal(indexBuildRequest{Index: id, From: &from, To: &to, Mode: mode, Retention: retention, Outputs: outputs, RetainSatHistory: policy.RetainSatHistory, SatHistoryConfigured: policy.SatHistoryConfigured, ConventionalIDs: policy.ConventionalIDs}, true); err != nil {
+		if _, err := a.startIndexBuildInternal(indexBuildRequest{Index: id, From: &from, To: &to, Mode: mode, Retention: retention, Outputs: outputs, RetainSatHistory: policy.RetainSatHistory, SatHistoryConfigured: policy.SatHistoryConfigured, ConventionalIDs: policy.ConventionalIDs, RetainOutputValues: policy.RetainOutputValues, RetainOutputScripts: policy.RetainOutputScripts}, true); err != nil {
 			a.failLiveIndexRuntime(id, err)
 			continue
 		}

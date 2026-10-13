@@ -377,6 +377,14 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 			value, args = args[0], args[1:]
 		}
 		if c.Action == "live" {
+			if (key == "--retain-output-values" || key == "--retain-output-scripts") && (value == "true" || value == "false") {
+				if key == "--retain-output-values" {
+					c.Request.RetainOutputValues = boolPointer(value == "true")
+				} else {
+					c.Request.RetainOutputScripts = boolPointer(value == "true")
+				}
+				continue
+			}
 			if key == "--conventional-ids" && (value == "true" || value == "false") {
 				v := value == "true"
 				c.Request.ConventionalIDs = &v
@@ -400,6 +408,20 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 			continue
 		}
 		switch key {
+		case "--rebuild":
+			if value != "true" && value != "false" {
+				return c, fmt.Errorf("rebuild requires true or false")
+			}
+			c.Request.Rebuild = value == "true"
+		case "--retain-output-values", "--retain-output-scripts":
+			if value != "true" && value != "false" {
+				return c, fmt.Errorf("%s requires true or false", key)
+			}
+			if key == "--retain-output-values" {
+				c.Request.RetainOutputValues = boolPointer(value == "true")
+			} else {
+				c.Request.RetainOutputScripts = boolPointer(value == "true")
+			}
 		case "--conventional-ids":
 			if value != "true" && value != "false" {
 				return c, fmt.Errorf("conventional-ids requires true or false")
@@ -461,7 +483,7 @@ func (a *app) runIndexCLI(args []string) (any, error) {
 	case "pause":
 		return a.pauseIndexBuild()
 	case "live":
-		return a.setIndexLivePolicy(indexLiveRequest{Index: c.Request.Index, Action: c.LiveAction, Retention: c.Request.Retention, ConventionalIDs: c.Request.ConventionalIDs})
+		return a.setIndexLivePolicy(indexLiveRequest{Index: c.Request.Index, Action: c.LiveAction, Retention: c.Request.Retention, ConventionalIDs: c.Request.ConventionalIDs, RetainOutputValues: c.Request.RetainOutputValues, RetainOutputScripts: c.Request.RetainOutputScripts})
 	case "query":
 		return a.indexQuery(c.Request.Index, c.Limit)
 	case "lookup":
@@ -643,7 +665,7 @@ func forwardIndexCLI(ctx context.Context, dataDir string, command indexCLIComman
 	case "pause":
 		body = struct{}{}
 	case "live":
-		body = indexLiveRequest{Index: command.Request.Index, Action: command.LiveAction, Retention: command.Request.Retention, ConventionalIDs: command.Request.ConventionalIDs}
+		body = indexLiveRequest{Index: command.Request.Index, Action: command.LiveAction, Retention: command.Request.Retention, ConventionalIDs: command.Request.ConventionalIDs, RetainOutputValues: command.Request.RetainOutputValues, RetainOutputScripts: command.Request.RetainOutputScripts}
 	case "publish", "unpublish":
 		body = struct {
 			Index string `json:"index"`

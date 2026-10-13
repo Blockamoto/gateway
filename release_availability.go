@@ -9,7 +9,7 @@ import (
 // state. Upgrading a profile cannot opt a testing build into unreleased work.
 // Keep the derivation recipes and data formats unchanged for future promotion.
 func releaseFeatureAvailable(id string) bool {
-	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio"
+	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state"
 }
 
 // Related inscription transaction locators ship with the transaction stage,

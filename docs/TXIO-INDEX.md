@@ -4,7 +4,30 @@ The Input index finds the original output consumed by a particular input. The Ou
 
 Positions are zero based. Input `i1.2.840000` means input one (the second input) in transaction two of block 840000. Output `0.7.839999` means output zero in transaction seven of block 839999. A supplied position needs no transaction hash lookup. Transaction zero is coinbase, whose input has no previous output.
 
-## Canonical version 2
+## Canonical version 3 (0.7.5)
+
+New batches keep resolved BPS relationships without repeating transaction IDs in their rows. Transaction locator and TXIO stores remain separate. The native-ID translation catalogue lives under `indexes/tx-locator/txio-translation-v1`; a TXIO batch authenticates it through one `locator_ref`. This includes verified aliases for creation outputs outside the indexed range, so native outpoint compatibility and later sequential builds survive body eviction. A standalone TXIO build still creates the minimal translation records it needs; selecting the full Transaction Index is not required for known BPS queries.
+
+```json
+{
+  "version": 3,
+  "transaction_count": 3,
+  "output_counts": [1, 2, 2],
+  "locator_ref": "<immutable separate translation catalogue digest>",
+  "rows": [
+    {"vout": 0, "tx_index": 2, "vin": 1, "output": "0.7.839999"}
+  ],
+  "creation_anchors": {"839999": "<verified creation block hash>"}
+}
+```
+
+An unresolved input retains its native predecessor in a separate `pending_translations` entry keyed by row. Such evidence cannot be represented as a BPS link yet; dropping it would lose sparse coverage. Once a link is resolved, its canonical row carries no predecessor/spender ID table. Compatible API responses may normalize transaction IDs from authenticated separate locator data.
+
+Optional **Values** and **ScriptPubKeys** history have independent coverage and physical fields. Values-only pages omit scripts. Full pages are shared with UTXO coin facts when their exact content matches. Enriching older history publishes a checksummed per-block overlay instead of rewriting immutable legacy spend commits. Explicit range builds authenticate selected existing history and repair missing/damaged pages from matching verified block data; malformed canonical manifests fail closed. Read lookups never manufacture missing output facts.
+
+Version-three directional pointers use `81 × (2 × spend_count + unresolved_input_count)` bytes in the TXIO store. Separate translation catalogues, their pointers/receipts, output pages, heads and filesystem allocation are additional. This is not a measurement of total disk space. Previous committed version-zero and version-two batches remain readable and are not automatically rewritten or removed.
+
+## Historical canonical version 2
 
 The existing immutable JSON block batch and checkpoint envelope remains the visibility boundary. Shared checkpoint fields carry the spending block height, hash, chain identity, previous commitment and record digest. The `spenders` payload is versioned independently:
 

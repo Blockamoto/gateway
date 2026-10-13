@@ -21,11 +21,18 @@ type indexSpendRecord struct {
 	PreviousTransaction *uint32 `json:"previous_transaction,omitempty"`
 }
 type indexSpenderBlock struct {
-	Version              int                `json:"version,omitempty"`
-	Rows                 []indexSpendRecord `json:"rows"`
-	Origins              []txioOrigin       `json:"origins,omitempty"`
-	CreationAnchors      map[string]string  `json:"creation_anchors,omitempty"`
-	PreviousTransactions []string           `json:"previous_transactions,omitempty"`
+	Version              int                      `json:"version,omitempty"`
+	Rows                 []indexSpendRecord       `json:"rows"`
+	Origins              []txioOrigin             `json:"origins,omitempty"`
+	CreationAnchors      map[string]string        `json:"creation_anchors,omitempty"`
+	PreviousTransactions []string                 `json:"previous_transactions,omitempty"`
+	TransactionCount     uint32                   `json:"transaction_count,omitempty"`
+	OutputCounts         []uint32                 `json:"output_counts,omitempty"`
+	LocatorRef           string                   `json:"locator_ref,omitempty"`
+	PendingTranslations  []txioPendingTranslation `json:"pending_translations,omitempty"`
+	OutputFacts          map[string]outputFactRef `json:"output_facts,omitempty"`
+	Values               bool                     `json:"values,omitempty"`
+	Scripts              bool                     `json:"scripts,omitempty"`
 }
 
 func indexSpendKey(txid string, vout uint32) string {
@@ -84,6 +91,13 @@ func (a *app) lookupIndexSpender(ctx context.Context, key string) (indexSpendRes
 	if err = s.ensureIndexLocators(ctx); err != nil {
 		return out, err
 	}
+	// New positional rows reach this legacy API through the separate native-ID
+	// locator bridge. TXIO does not keep a duplicate resolved outpoint index.
+	positioned, err := a.txioSpendersViaLocator(ctx, s, txid, uint32(vout))
+	if err != nil {
+		return out, err
+	}
+	out.Rows = append(out.Rows, positioned...)
 	rows, err := s.bitcoinLocatorRecords(ctx, indexSpendKey(txid, uint32(vout)))
 	if err != nil {
 		return out, err
@@ -96,10 +110,24 @@ func (a *app) lookupIndexSpender(ctx context.Context, key string) (indexSpendRes
 		if !current {
 			continue
 		}
-		if b.Spenders == nil || row.TxIndex >= len(b.Spenders.Rows) {
+		if b.Spenders == nil {
 			return out, fmt.Errorf("spender pointer does not match committed records")
 		}
-		r := txioSpendRow(b.Spenders, row.TxIndex)
+		slot := row.TxIndex
+		if b.Spenders.Version == 3 {
+			n := slot - 2*len(b.Spenders.Rows)
+			if n < 0 || n >= len(b.Spenders.PendingTranslations) {
+				return out, fmt.Errorf("pending spender pointer mismatch")
+			}
+			slot = int(b.Spenders.PendingTranslations[n].Row)
+		}
+		if slot < 0 || slot >= len(b.Spenders.Rows) {
+			return out, fmt.Errorf("spender pointer does not match committed rows")
+		}
+		r, e := s.expandedTXIORow(ctx, b, slot)
+		if e != nil {
+			return out, e
+		}
 		if r.PrevTxID != txid || r.Vout != uint32(vout) {
 			return out, fmt.Errorf("spender pointer key mismatch")
 		}

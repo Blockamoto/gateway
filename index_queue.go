@@ -23,7 +23,7 @@ func (a *app) waitQueuedIndexJob(ctx context.Context, id string) (indexJob, erro
 			}
 			found = true
 			if j.State != "queued" && j.State != "running" && j.State != "waiting" && j.State != "pausing" {
-				if j.State == "failed" {
+				if j.State == "failed" || j.State == "rebuild_required" {
 					return j, fmt.Errorf("%s", j.Error)
 				}
 				return j, nil
@@ -50,6 +50,16 @@ type indexQueueEntry struct {
 }
 
 func cloneIndexBuildRequest(req indexBuildRequest) indexBuildRequest {
+	if req.OutputHistoryFrom != nil {
+		h := *req.OutputHistoryFrom
+		req.OutputHistoryFrom = &h
+	}
+	if req.RetainOutputValues != nil {
+		req.RetainOutputValues = boolPointer(*req.RetainOutputValues)
+	}
+	if req.RetainOutputScripts != nil {
+		req.RetainOutputScripts = boolPointer(*req.RetainOutputScripts)
+	}
 	if req.ConventionalIDs != nil {
 		value := *req.ConventionalIDs
 		req.ConventionalIDs = &value
@@ -194,7 +204,21 @@ func (a *app) indexJobsSnapshot() ([]indexJob, error) {
 
 func sameIndexWork(a, b indexBuildRequest) bool {
 	// Range extent is handled separately; retention and mode are user choices.
-	return a.Index == b.Index && a.Mode == b.Mode && a.Retention == b.Retention && a.Live == b.Live && a.LiveConfigured == b.LiveConfigured && a.RetainSatHistory == b.RetainSatHistory && inscriptionIDsEnabled(a.ConventionalIDs) == inscriptionIDsEnabled(b.ConventionalIDs) && reflect.DeepEqual(a.Outputs, b.Outputs) && a.From != nil && b.From != nil
+	return a.Index == b.Index && a.Rebuild == b.Rebuild && a.Mode == b.Mode && a.Retention == b.Retention && a.Live == b.Live && a.LiveConfigured == b.LiveConfigured && a.RetainSatHistory == b.RetainSatHistory && inscriptionIDsEnabled(a.ConventionalIDs) == inscriptionIDsEnabled(b.ConventionalIDs) && reflect.DeepEqual(a.RetainOutputValues, b.RetainOutputValues) && reflect.DeepEqual(a.RetainOutputScripts, b.RetainOutputScripts) && reflect.DeepEqual(a.Outputs, b.Outputs) && a.From != nil && b.From != nil
+}
+
+func indexOutputHistoryStart(req indexBuildRequest) int64 {
+	if req.OutputHistoryFrom != nil {
+		return *req.OutputHistoryFrom
+	}
+	if req.From != nil {
+		return *req.From
+	}
+	return 0
+}
+
+func indexOutputHistoryEnabled(req indexBuildRequest) bool {
+	return req.RetainOutputValues != nil && *req.RetainOutputValues || req.RetainOutputScripts != nil && *req.RetainOutputScripts
 }
 
 // Caller holds indexLiveControlMu across admission and start, preventing policy
@@ -205,8 +229,12 @@ func (a *app) acceptIndexBuild(req indexBuildRequest) (indexJob, error) {
 		return indexJob{}, err
 	}
 	req.From, req.To, req.Mode, req.Retention = &plan.From, &plan.To, plan.Mode, plan.Retention
+	req.OutputHistoryFrom = &plan.OutputHistoryFrom
 	req.RetainSatHistory, req.SatHistoryConfigured = plan.RetainSatHistory, true
 	req.ConventionalIDs = boolPointer(plan.ConventionalIDs)
+	if req.Index == "txo-spender" || req.Index == "blocks" {
+		req.RetainOutputValues, req.RetainOutputScripts = boolPointer(plan.RetainOutputValues), boolPointer(plan.RetainOutputScripts)
+	}
 	req.Outputs = normalizedIndexOutputs(req)
 	if req.Index != "blocks" {
 		req.Outputs = nil
@@ -230,7 +258,8 @@ func (a *app) acceptIndexBuild(req indexBuildRequest) (indexJob, error) {
 		if (e.Job.State != "queued" && e.Job.State != "running" && e.Job.State != "waiting") || !sameIndexWork(e.Request, req) {
 			continue
 		}
-		if plan.From >= e.Job.From && (e.Job.To < 0 || (plan.To >= 0 && e.Job.To >= plan.To)) {
+		historyCovered := !indexOutputHistoryEnabled(req) || indexOutputHistoryStart(e.Request) <= plan.OutputHistoryFrom
+		if historyCovered && plan.From >= e.Job.From && (e.Job.To < 0 || (plan.To >= 0 && e.Job.To >= plan.To)) {
 			j := cloneIndexJob(e.Job)
 			a.indexMu.Unlock()
 			return j, nil
@@ -245,6 +274,8 @@ func (a *app) acceptIndexBuild(req indexBuildRequest) (indexJob, error) {
 			}
 			e.Request.From, e.Job.From = &from, from
 			e.Request.To, e.Job.To = &to, to
+			historyFrom := min(indexOutputHistoryStart(prior.Request), plan.OutputHistoryFrom)
+			e.Request.OutputHistoryFrom, e.Job.OutputHistoryFrom = &historyFrom, historyFrom
 			e.Job.Progress = nil // Recomputed from the merged range when the writer starts.
 			if err = a.persistIndexQueueLocked(); err != nil {
 				*e = prior
@@ -259,6 +290,9 @@ func (a *app) acceptIndexBuild(req indexBuildRequest) (indexJob, error) {
 		return indexJob{}, fmt.Errorf("index queue is full; finish or cancel outstanding work")
 	}
 	j := indexJob{ID: fmt.Sprintf("%d", time.Now().UnixNano()), Index: req.Index, State: "queued", From: plan.From, To: plan.To, Height: plan.From - 1, Mode: plan.Mode, Live: req.Live, Retention: plan.Retention, Outputs: req.Outputs, RetainSatHistory: req.RetainSatHistory, ConventionalIDs: req.ConventionalIDs}
+	j.RetainOutputValues, j.RetainOutputScripts = plan.RetainOutputValues, plan.RetainOutputScripts
+	j.OutputHistoryFrom = plan.OutputHistoryFrom
+	j.Rebuild = req.Rebuild
 	for _, output := range plan.Outputs {
 		j.Progress = append(j.Progress, indexOutputProgress{Index: output.Index, State: "queued", From: output.From, To: output.To, Height: output.From - 1})
 	}

@@ -1,5 +1,10 @@
 # Gateway updates
 
+## Gateway 0.7.5 preparation
+
+The UTXO set prerelease is being verified on a development branch. This preparation entry does not promote the public feed. The previously approved release remains active until exact packages, the signed bundle and hosted automatic upgrade have been verified. See [the release notes](RELEASE-NOTES-v0.7.5.md) and [the current acceptance record](RELEASE-ACCEPTANCE-0.7.5.json).
+
+
 Gateway supports signed application updates and separately signed header delivery. The bundled Gateway channel provisions `https://gateway-updates.onrender.com` and its public verification key on first launch. Ordinary users need no publisher account, access token or private key. The configured address and mode are shown in **Settings → Updates**. The service currently delivers the approved [0.7.4 public prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.4); its initial hosted automatic-upgrade acceptance passed, as recorded in [status](STATUS.md).
 
 ## Choose when updates happen

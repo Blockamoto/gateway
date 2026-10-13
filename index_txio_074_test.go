@@ -329,7 +329,7 @@ func Test074TXIOExactGrammarCancellationAndStorageMeasurement(t *testing.T) {
 	newJSON, _ := json.Marshal(modern)
 	keys := txioBatchKeys(indexBatch{Checkpoint: indexCheckpoint{Height: b.Height}, Spenders: modern})
 	t.Logf("Measured fixture (3 spends,3 origin transactions,2 distinct previous IDs): legacy canonical %d bytes; TXIO canonical %d bytes; private pointer payload %d bytes; active commit table36 bytes/block; JSON receipts and filesystem allocation additional", len(oldJSON), len(newJSON), len(keys)*indexLocatorRecordBytes)
-	if modern.Rows[0].PreviousTransaction == nil || modern.Rows[1].PreviousTransaction == nil || *modern.Rows[0].PreviousTransaction != *modern.Rows[1].PreviousTransaction || modern.Rows[0].PrevTxID != "" || modern.Rows[0].TxID != "" {
-		t.Fatal("new canonical hashes were not deduplicated")
+	if modern.Version != 3 || len(modern.Origins) != 0 || len(modern.PreviousTransactions) != 0 || modern.Rows[0].PreviousTransaction != nil || modern.Rows[0].PrevTxID != "" || modern.Rows[0].TxID != "" || len(modern.PendingTranslations) != 2 || modern.Rows[2].Output == "" {
+		t.Fatal("new resolved positional records retained transaction identities or lost sparse evidence")
 	}
 }

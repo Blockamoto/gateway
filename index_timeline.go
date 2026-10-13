@@ -209,6 +209,11 @@ func (a *app) indexTimeline(defs []indexDefinition, providers []indexProviderVie
 		}
 		out.Tracks = append(out.Tracks, track)
 	}
+	if layers, err := a.timelineTXIOLayers(h, out.TipHeight); err == nil {
+		out.Tracks = append(out.Tracks, layers...)
+	} else {
+		out.Errors = append(out.Errors, "TXIO layer coverage unavailable: "+err.Error())
+	}
 	return out
 }
 

@@ -2,6 +2,16 @@
 
 The [public 0.7.4 prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.4) builds on the timeline, inscription and transaction stages with TXIO relationships and durable serialized block bodies. Hosted downloads, genuine 0.7.3 automatic upgrade and renewal acceptance passed. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for validation and its limits.
 
+## In preparation: v0.7.5 UTXO set
+
+- Build a complete live-output state from genesis to an explicit processed selected-chain tip, with exact values/scripts, BPS creation identity and a durable native-prevout bridge.
+- Pause/resume at an atomic head; retain a fixed 288 complete recovery transitions, independently of raw-body retention. Deeper reorganizations require an explicit reviewed rebuild and preserve prior state archives.
+- Add optional TXIO Values and ScriptPubKeys output history with independent coverage and shared fact retention. Transaction Locator and TXIO remain separate stores/tracks.
+- Group Blocks into Headers/raw bodies and TXIO into Positional links/Values/ScriptPubKeys; give UTXO its own state/build panel with honest progress, anchors and measured storage.
+- Report header-anchored processing with `consensus_validated=false`. Independent full consensus validation is deferred to v0.8; this release adds no snapshot, new peer/state-sharing, Sats, fees or address features.
+
+Exact packaging, public release and hosted delivery acceptance remain pending. See [the implementation brief](IMPLEMENTATION-BRIEF-0.7.5.md), [UTXO guide](UTXO-INDEX.md) and [test guide](TESTING-0.7.5.md).
+
 ## Available in the 0.7.4 prerelease
 
 - TXIO has one canonical spend set and automatic Input/Output lookup, retaining legacy identifiers and unknown-state distinctions.
@@ -27,7 +37,7 @@ See [status](STATUS.md) for release acceptance and [the timeline tester guide](T
 
 The timeline is the first step in the design overhaul. Further interaction and index-specific features will be scoped individually as testing informs the next brief.
 
-The inscription and transaction stages are available; Gateway peers remain the next locked stage. Each stage needs its own validation before promotion:
+The inscription and transaction stages are available; Gateway peers remain a locked stage with separate scope and validation before promotion:
 
 1. **Inscriptions:** a content viewport within the timeline workspace, compact positional indexing, Lean/Full storage choices and visible unresolved content dependencies. Positional lookup works from a known block without a global transaction index.
 2. **Transactions:** the Transaction Index, plus the optional inscription-related transaction locator choice and its retroactive action in the Inscription inspector, connect conventional transaction/inscription IDs to block positions. Both inscription enrichment controls were gated during the earlier inscription-only stage.
@@ -44,6 +54,6 @@ These stages describe order, not promised dates. They do not enable current owne
 
 ## Future, currently locked
 
-Beyond the inscription/transaction/TXIO work, address, UTXO, Sat/Satline, Bitmap and parcel capabilities remain unavailable. **Bitmap: Terrain Claim Chains** is the name of the locked Terrain Claim Chains feature; it introduces no active behavior in this release.
+Beyond the inscription/transaction/TXIO/UTXO work, address, Sat/Satline, fees, Bitmap and parcel capabilities remain unavailable. **Bitmap: Terrain Claim Chains** is the name of the locked Terrain Claim Chains feature; it introduces no active behavior in this release. UTXO amount/script facts do not identify individual sats: future sat state needs ordinal ranges and their provenance, with separate recovery/history coverage.
 
 Gateway-to-Gateway peerhood and index sharing also remain locked. Their eventual scope and trust model require separate validation. Related schema and reference-project alignment can inform future work without implying conformance or a release commitment today.

@@ -116,8 +116,11 @@ source change waits for staged-update or recovery work to retain its original
 verification authority. Access credentials are configured only in Settings.
 No publisher signing secrets or GitHub credentials belong in a client package.
 
-This prerelease enables Headers, Bitcoin Blocks, Inscriptions, Transaction Index
-and TXIO (Transaction Input/Output) index. TXIO unknown results do not prove unspentness.
+This prerelease enables Headers, Bitcoin Blocks, Inscriptions, Transaction Index,
+TXIO (Transaction Input/Output) and the UTXO set index. TXIO unknown results do not
+prove unspentness. UTXO processing starts at genesis, retains exact live output
+facts and 288 reversible transitions, and supports Pruned raw-body retention.
+Its state is header-anchored; full consensus validation remains a later release.
 Blocks retain verified serialized raw bodies and compact transaction metadata;
 compatible migration retains legacy copies without automatic deletion.
 Related inscription transaction locator construction is also available. The

@@ -44,12 +44,18 @@ type indexBatch struct {
 	Diagnostics            []inscriptionExtractionDiagnostic `json:"diagnostics,omitempty"`
 }
 type indexHead struct {
-	Mode       string `json:"mode,omitempty"`
-	Commitment string `json:"commitment"`
-	Retention  string `json:"retention"`
-	Published  bool   `json:"published"`
+	TXIOLayersSchema   int                         `json:"txio_layers_schema,omitempty"`
+	TXIOLayers         map[string][]heightInterval `json:"txio_layers,omitempty"`
+	TXIOLayersComplete bool                        `json:"txio_layers_complete,omitempty"`
+	TXIOLayersHash     string                      `json:"txio_layers_hash,omitempty"`
+	Mode               string                      `json:"mode,omitempty"`
+	Commitment         string                      `json:"commitment"`
+	Retention          string                      `json:"retention"`
+	Published          bool                        `json:"published"`
 }
 type indexStore struct {
+	retainOutputValues       bool
+	retainOutputScripts      bool
 	profileRoot              string
 	stagedMigration          bool
 	spenderOrigin            func(context.Context, inputView, int64, int) (txioCreation, error)
@@ -84,6 +90,10 @@ func openIndexStoreContext(ctx context.Context, root, id string) (*indexStore, e
 		return nil, e
 	}
 	s.locatorContext = ctx
+	if id == "txo-spender" {
+		s.head.TXIOLayersSchema, s.head.TXIOLayersComplete = 1, true
+		s.head.TXIOLayers = map[string][]heightInterval{}
+	}
 	e = s.walk(func(batch indexBatch) error {
 		if e := ctx.Err(); e != nil {
 			return e
@@ -91,6 +101,12 @@ func openIndexStoreContext(ctx context.Context, root, id string) (*indexStore, e
 		for _, r := range batch.Bitmap {
 			if r.Accepted && r.District != nil {
 				s.winners[*r.District] = r.Inscription
+			}
+		}
+		if id == "txo-spender" {
+			updateTXIOLayerCoverage(&s.head, batch)
+			if e := s.addTXIOEnrichmentCoverage(ctx, &s.head, batch.Checkpoint.Height, batch.Checkpoint.BlockHash); e != nil {
+				return e
 			}
 		}
 		return nil
@@ -126,6 +142,9 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 		}
 	}
 	s := &indexStore{profileRoot: root, dir: dir, definition: d, winners: map[uint64]string{}}
+	if id == "utxo-state" {
+		return utxoIndexStoreHead(root, s)
+	}
 	b, e := os.ReadFile(filepath.Join(s.dir, "head.json"))
 	if os.IsNotExist(e) {
 		return s, nil
@@ -143,6 +162,11 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 		}
 		c := b.Checkpoint
 		s.checkpoint = &c
+	}
+	if id == "txo-spender" && s.head.TXIOLayersSchema != 0 {
+		if e := validateTXIOLayerCoverage(s.head, s.checkpoint); e != nil {
+			return nil, e
+		}
 	}
 	return s, nil
 }
@@ -288,7 +312,7 @@ func (s *indexStore) readBatch(commit string) (indexBatch, error) {
 		}
 		for i := range b.Spenders.Rows {
 			r := txioSpendRow(b.Spenders, i)
-			if !validHash(r.PrevTxID) || !validHash(r.TxID) || r.Vin < 0 || r.TxIndex < 1 {
+			if b.Spenders.Version < 3 && (!validHash(r.PrevTxID) || !validHash(r.TxID)) || r.Vin < 0 || r.TxIndex < 1 {
 				return b, fmt.Errorf("invalid spender record")
 			}
 		}
@@ -595,7 +619,12 @@ func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash s
 	}
 	// The atomic head is the only visibility boundary. An interrupted orphan
 	// commit is harmless and cannot advance advertised coverage.
-	head := indexHead{Mode: s.head.Mode, Commitment: c.Commitment, Retention: retention, Published: s.head.Published}
+	head := cloneTXIOLayerCoverage(s.head)
+	head.Mode, head.Commitment, head.Retention = s.head.Mode, c.Commitment, retention
+	if b.Spenders != nil {
+		updateTXIOLayerCoverage(&head, b)
+		head.TXIOLayersHash = txioLayerCoverageHash(head)
+	}
 	if e = atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); e != nil {
 		return e
 	}
@@ -639,7 +668,7 @@ func (s *indexStore) reconcile(hashAt func(int64) (string, error)) error {
 	if hash == s.checkpoint.BlockHash {
 		return nil
 	}
-	head := s.head
+	head := cloneTXIOLayerCoverage(s.head)
 	head.Commitment = ""
 	next := s.checkpoint.PreviousCommitment
 	for next != "" {
@@ -672,6 +701,26 @@ func (s *indexStore) reconcile(hashAt func(int64) (string, error)) error {
 			return err
 		}
 		active = &b.Checkpoint
+	}
+	if s.definition.ID == "txo-spender" {
+		end := int64(-1)
+		if active != nil {
+			end = active.Height
+		}
+		for id, ranges := range head.TXIOLayers {
+			var kept []heightInterval
+			for _, interval := range ranges {
+				if interval.From > end {
+					continue
+				}
+				if interval.To > end {
+					interval.To = end
+				}
+				kept = append(kept, interval)
+			}
+			head.TXIOLayers[id] = kept
+		}
+		head.TXIOLayersHash = txioLayerCoverageHash(head)
 	}
 	if e = s.writeActiveLocatorHead(active); e != nil {
 		return e

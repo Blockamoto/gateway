@@ -46,6 +46,8 @@ type indexProviderState struct {
 	BrowseInscriptionsComplete     bool
 	CommittedSpends                []heightInterval
 	CommittedSats                  []heightInterval
+	CommittedUTXO                  []heightInterval
+	UTXOSnapshot                   *chainSnapshot
 	SatSnapshot                    *chainSnapshot
 	NumberingSnapshot              *chainSnapshot
 }
@@ -85,6 +87,10 @@ func (a *app) indexProviderViews() []indexProviderView {
 		}
 	}
 	local.CoreHeaderServing = a.currentBitcoinServing().Archival
+	if store, err := indexStoreHead(a.dataDir, "utxo-state"); err == nil && store.checkpoint != nil && a.indexChainState(store.checkpoint) == "selected_chain" {
+		local.CommittedUTXO = []heightInterval{{From: 0, To: store.checkpoint.Height}}
+		local.UTXOSnapshot = &chainSnapshot{Network: "mainnet", Height: store.checkpoint.Height, Hash: store.checkpoint.BlockHash, Source: "gateway_utxo_state"}
+	}
 	if store, err := indexStoreHead(a.dataDir, "sat-state"); err == nil && store.checkpoint != nil && a.indexChainState(store.checkpoint) == "selected_chain" {
 		batch, err := store.readBatch(store.checkpoint.Commitment)
 		if err == nil && batch.Sats != nil {
@@ -240,6 +246,8 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 		"Core historical spender provider. Local positives verify the actual input; local negatives also require a synced index and an existing confirmed UTXO at the stated snapshot. Mempool observations remain separate.")
 	add("address-state", "bitcoin_core_chainstate", "on_demand_snapshot", "provider_reported", connected, false, nil, nil, coreSnapshot,
 		"Local explicit scantxoutset request for a current UTXO snapshot. Successful scan, returned height and best-block hash belong to the answer; no address index is prebuilt and remote-triggered scans are unsupported.")
+	add("utxo-state", "gateway_utxo_state", "complete_genesis_prefix_at_snapshot", "header_anchored_processing; consensus_validated=false", local.UTXOSnapshot != nil, false, local.CommittedUTXO, nil, local.UTXOSnapshot,
+		"Locally processed live unspent outputs at this exact selected-chain checkpoint. Complete coin facts and 288 self-contained recovery transitions survive raw-body eviction. Full consensus validation and snapshot sharing are deferred.")
 	add("address-history", "none", "unavailable", "unknown", false, false, nil, nil, nil,
 		"No historical address activity index or provider is implemented. Current UTXO scans do not supply spent outputs or historical activity; deeper indexing requires explicit opt-in implementation.")
 	satline := s.SatlineEnabled && local.SatlineReady

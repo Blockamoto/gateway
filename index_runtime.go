@@ -12,26 +12,31 @@ import (
 )
 
 type indexJob struct {
-	ConventionalIDs  *bool                 `json:"conventional_ids,omitempty"`
-	Limitations      []string              `json:"limitations,omitempty"`
-	QueueManaged     bool                  `json:"queue_managed,omitempty"`
-	Outputs          []string              `json:"outputs,omitempty"`
-	Progress         []indexOutputProgress `json:"progress,omitempty"`
-	RetainSatHistory bool                  `json:"retain_sat_history,omitempty"`
-	QueuePosition    int                   `json:"queue_position,omitempty"`
-	WaitingReason    string                `json:"waiting_reason,omitempty"`
-	Live             bool                  `json:"live,omitempty"`
-	Mode             string                `json:"mode,omitempty"`
-	ID               string                `json:"id"`
-	Index            string                `json:"index"`
-	State            string                `json:"state"`
-	From             int64                 `json:"from"`
-	To               int64                 `json:"to"`
-	Height           int64                 `json:"height"`
-	Error            string                `json:"error,omitempty"`
-	Retention        string                `json:"retention"`
-	BlocksChecked    int                   `json:"blocks_checked"`
-	DistrictsFound   int                   `json:"districts_found"`
+	Rebuild             bool                  `json:"rebuild,omitempty"`
+	OutputHistoryFrom   int64                 `json:"output_history_from"`
+	RetainOutputValues  bool                  `json:"retain_output_values"`
+	RetainOutputScripts bool                  `json:"retain_output_scripts"`
+	ConventionalIDs     *bool                 `json:"conventional_ids,omitempty"`
+	Limitations         []string              `json:"limitations,omitempty"`
+	QueueManaged        bool                  `json:"queue_managed,omitempty"`
+	Outputs             []string              `json:"outputs,omitempty"`
+	Progress            []indexOutputProgress `json:"progress,omitempty"`
+	RetainSatHistory    bool                  `json:"retain_sat_history,omitempty"`
+	QueuePosition       int                   `json:"queue_position,omitempty"`
+	WaitingReason       string                `json:"waiting_reason,omitempty"`
+	Live                bool                  `json:"live,omitempty"`
+	Mode                string                `json:"mode,omitempty"`
+	ID                  string                `json:"id"`
+	Index               string                `json:"index"`
+	State               string                `json:"state"`
+	Stage               string                `json:"stage,omitempty"`
+	From                int64                 `json:"from"`
+	To                  int64                 `json:"to"`
+	Height              int64                 `json:"height"`
+	Error               string                `json:"error,omitempty"`
+	Retention           string                `json:"retention"`
+	BlocksChecked       int                   `json:"blocks_checked"`
+	DistrictsFound      int                   `json:"districts_found"`
 }
 
 // Workers, stored jobs and returned status views own their mutable slices.
@@ -52,6 +57,7 @@ func cloneIndexJob(j indexJob) indexJob {
 }
 
 type indexStatusView struct {
+	UTXO               *indexUTXOStatusView `json:"utxo,omitempty"`
 	BlockBodyMigration *blocksBodyMigration `json:"block_body_migration,omitempty"`
 	Browse             []indexBrowsePolicy  `json:"browse"`
 	Timeline           indexTimelineView    `json:"timeline"`
@@ -138,7 +144,7 @@ func (a *app) indexStatus() indexStatusView {
 	} else {
 		out.Live = live
 	}
-	for _, id := range []string{"blocks", "tx-locator", "inscriptions", "bitmap", "txo-spender", "sat-state"} {
+	for _, id := range []string{"blocks", "tx-locator", "inscriptions", "bitmap", "txo-spender", "sat-state", "utxo-state"} {
 		s, e := indexStoreHead(a.dataDir, id)
 		if e != nil {
 			out.Errors = append(out.Errors, id+": "+e.Error())
@@ -155,12 +161,21 @@ func (a *app) indexStatus() indexStatusView {
 		}
 		out.Instances = append(out.Instances, indexInstance{Mode: s.head.Mode, Definition: id, Version: s.definition.Version, Network: s.definition.Network, Coverage: []heightInterval{{s.checkpoint.From, s.checkpoint.Height}}, Gaps: []heightInterval{}, Completeness: "recorded_contiguous_range; history_rechecked_on_resume", Verification: "locally_derived; " + a.indexChainState(s.checkpoint), Provenance: "Bitcoin block and witness evidence", Retention: s.head.Retention, Queryable: true, Serveable: a.indexPublicationMatches(id, s.checkpoint), Checkpoint: s.checkpoint, Note: a.indexInstanceNote(s)})
 		out.Instances[len(out.Instances)-1].RetainSatHistory = retainHistory
+		if id == "utxo-state" {
+			instance := &out.Instances[len(out.Instances)-1]
+			instance.Completeness = "complete_genesis_prefix_at_snapshot"
+			instance.Verification = "header_anchored_processing; consensus_validated=false; " + a.indexChainState(s.checkpoint)
+			instance.Note = "Live output facts and 288 reversible transitions are retained locally; source bodies may be pruned. Full consensus validation is deferred."
+			instance.Serveable = false
+			instance.Queryable = a.indexChainState(s.checkpoint) == "selected_chain"
+		}
 		if !releaseFeatureAvailable(id) {
 			instance := &out.Instances[len(out.Instances)-1]
 			instance.Queryable, instance.Serveable = false, false
 			instance.Note = releaseLockReason(id)
 		}
 	}
+	out.UTXO = a.indexUTXOStatus(out.Jobs)
 	out.Timeline = a.indexTimeline(out.Definitions, out.Providers, out.Instances, out.Errors...)
 	return out
 }
@@ -199,7 +214,17 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 	if a.indexCancel != nil {
 		return cloneIndexJob(a.indexJob), fmt.Errorf("an index build is already active")
 	}
-	s, e := indexStoreHead(a.dataDir, req.Index)
+	var s *indexStore
+	var e error
+	if req.Rebuild && req.Index == "utxo-state" {
+		d, err := findIndexDefinition(req.Index)
+		if err != nil {
+			return indexJob{}, err
+		}
+		s = &indexStore{profileRoot: a.dataDir, definition: d, head: indexHead{Mode: "lean", Retention: "pruned"}}
+	} else {
+		s, e = indexStoreHead(a.dataDir, req.Index)
+	}
 	if e != nil {
 		return indexJob{}, e
 	}
@@ -216,6 +241,8 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 	}
 	req.RetainSatHistory, req.SatHistoryConfigured = p.RetainSatHistory, true
 	req.ConventionalIDs = boolPointer(p.ConventionalIDs)
+	req.RetainOutputValues = outputHistoryOption(req.Index, p.RetainOutputValues)
+	req.RetainOutputScripts = outputHistoryOption(req.Index, p.RetainOutputScripts)
 	if !p.Definition.Buildable {
 		return indexJob{}, fmt.Errorf("%s has no derivation executor; inspect its provider capabilities", req.Index)
 	}
@@ -241,6 +268,7 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 		policy.Index, policy.Retention = req.Index, p.Retention
 		policy.Outputs, policy.RetainSatHistory = req.Outputs, req.RetainSatHistory
 		policy.ConventionalIDs = req.ConventionalIDs
+		policy.RetainOutputValues, policy.RetainOutputScripts = req.RetainOutputValues, req.RetainOutputScripts
 		policy.SatHistoryConfigured = true
 		if !live && req.LiveConfigured {
 			// An explicitly reviewed fixed-range build turns following off.
@@ -257,6 +285,7 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 			return indexJob{}, e
 		}
 	}
+	queueManaged := id != ""
 	if id == "" {
 		id = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
@@ -264,6 +293,10 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 		return indexJob{}, e
 	}
 	j := indexJob{Live: live, Mode: p.Mode, ID: id, Index: req.Index, State: "running", From: p.From, To: p.To, Height: p.From - 1, Retention: p.Retention, Outputs: req.Outputs, RetainSatHistory: req.RetainSatHistory, ConventionalIDs: req.ConventionalIDs}
+	j.RetainOutputValues, j.RetainOutputScripts = p.RetainOutputValues, p.RetainOutputScripts
+	j.OutputHistoryFrom = p.OutputHistoryFrom
+	j.Rebuild = req.Rebuild
+	j.QueueManaged = queueManaged
 	if s.checkpoint != nil {
 		j.Height = s.checkpoint.Height
 	}
@@ -278,7 +311,9 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 		a.indexCancel = nil
 		return j, err
 	}
-	if len(req.Outputs) > 0 || req.Index == "sat-state" || req.Index == "txo-spender" || req.Index == "inscriptions" && p.ConventionalIDs {
+	if req.Index == "utxo-state" {
+		go a.runUTXOIndexBuild(ctx, cloneIndexJob(j))
+	} else if len(req.Outputs) > 0 || req.Index == "sat-state" || req.Index == "txo-spender" || req.Index == "inscriptions" && p.ConventionalIDs {
 		go a.runSharedIndexBuild(ctx, cloneIndexJob(j))
 	} else {
 		go a.runIndexBuild(ctx, cloneIndexJob(j), s)
@@ -355,7 +390,7 @@ func (a *app) waitIndexBuild(ctx context.Context) (indexJob, error) {
 	for {
 		j := a.indexJobSnapshot()
 		if j.State != "running" && j.State != "waiting" {
-			if j.State == "failed" {
+			if j.State == "failed" || j.State == "rebuild_required" {
 				return j, fmt.Errorf("%s", j.Error)
 			}
 			return j, nil
@@ -417,6 +452,7 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 	}
 	s = checked
 	a.configureTXIOStore(s)
+	s.retainOutputValues, s.retainOutputScripts = j.RetainOutputValues, j.RetainOutputScripts
 	s.head.Mode = j.Mode
 	s.retainSatHistory = j.RetainSatHistory
 	liveBlocksProcessed := int64(0)
@@ -562,6 +598,9 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
+	if id == "utxo-state" {
+		return a.queryUTXOIndex(context.Background(), limit)
+	}
 	s, e := indexStoreHead(a.dataDir, id)
 	if e != nil {
 		return nil, e
@@ -689,6 +728,9 @@ func (a *app) indexLookup(id, key string) (any, error) {
 	}
 	if id == "txo-spender" {
 		return a.lookupIndexSpender(context.Background(), key)
+	}
+	if id == "utxo-state" {
+		return a.lookupUTXOIndex(context.Background(), key)
 	}
 	if id != "bitmap" {
 		return nil, fmt.Errorf("key lookup is implemented for Bitmap districts")

@@ -40,6 +40,32 @@ func (a *app) sharedLiveNeedsWork(outputs []string, tip int64) bool {
 	return false
 }
 
+func (a *app) liveOutputHistoryNeedsWork(id string, policy indexLivePolicy, tip int64) bool {
+	values := policy.RetainOutputValues != nil && *policy.RetainOutputValues
+	scripts := policy.RetainOutputScripts != nil && *policy.RetainOutputScripts
+	if !values && !scripts {
+		return false
+	}
+	if id != "txo-spender" {
+		found := false
+		for _, output := range policy.Outputs {
+			found = found || output == "txo-spender"
+		}
+		if !found {
+			return false
+		}
+	}
+	s, err := indexStoreHead(a.dataDir, "txo-spender")
+	if err != nil || s.checkpoint == nil {
+		return true
+	}
+	from := s.checkpoint.From
+	if policy.InitialFrom != nil && *policy.InitialFrom > from {
+		from = *policy.InitialFrom
+	}
+	return len(s.txioEnrichmentRanges(from, min(tip, s.checkpoint.Height), values, scripts)) != 0
+}
+
 func normalizedIndexOutputs(req indexBuildRequest) []string {
 	seen := map[string]bool{req.Index: true}
 	var ids []string
@@ -56,6 +82,32 @@ func normalizedIndexOutputs(req indexBuildRequest) []string {
 // Planning examines only local manifests and current chain authority. It never
 // downloads a block, enables an index, or repairs incompatible stores.
 func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
+	historyFrom := int64(-1)
+	if req.From != nil {
+		historyFrom = *req.From
+	}
+	if req.OutputHistoryFrom != nil {
+		historyFrom = *req.OutputHistoryFrom
+	}
+	if req.Index == "utxo-state" {
+		return a.planUTXOIndexBuild(req)
+	}
+	if (req.RetainOutputValues != nil || req.RetainOutputScripts != nil) && req.Index != "txo-spender" && req.Index != "blocks" {
+		return indexPlan{}, fmt.Errorf("output value and script history options belong to TXIO")
+	}
+	if req.Index == "txo-spender" || req.Index == "blocks" {
+		policies, err := a.indexLivePolicies()
+		if err != nil {
+			return indexPlan{}, err
+		}
+		policy := policies[req.Index]
+		if req.RetainOutputValues == nil {
+			req.RetainOutputValues = policy.RetainOutputValues
+		}
+		if req.RetainOutputScripts == nil {
+			req.RetainOutputScripts = policy.RetainOutputScripts
+		}
+	}
 	for _, id := range req.Outputs {
 		if id == inscriptionLocatorIndex {
 			return indexPlan{}, fmt.Errorf("conventional inscription locators belong to the inscription build option")
@@ -94,6 +146,13 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 	p, err := planIndex(req)
 	if err != nil {
 		return p, err
+	}
+	p.OutputHistoryFrom = p.From
+	if historyFrom >= 0 && historyFrom >= p.From {
+		p.OutputHistoryFrom = historyFrom
+	}
+	if p.To >= 0 && p.OutputHistoryFrom > p.To {
+		return p, fmt.Errorf("output history start exceeds the selected end")
 	}
 	if !p.Definition.Buildable {
 		return p, fmt.Errorf("%s has no derivation executor", req.Index)
@@ -184,6 +243,9 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 // bytes remain cached. Their content-addressed batches were integrity-checked at
 // ingestion and are anchored again to the current selected header here.
 func (a *app) indexSourceBlock(ctx context.Context, target blockTarget, retention string) (blockView, error) {
+	if retention == "pruned" {
+		retention = "ephemeral"
+	}
 	if retention == "ephemeral" {
 		s, err := indexStoreHead(a.dataDir, "blocks")
 		if err != nil {
@@ -242,7 +304,7 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 	}
 	// Re-plan at execution time because an earlier queued job may have added
 	// reusable coverage after this request was reviewed.
-	plan, err := a.planIndexBuild(indexBuildRequest{Index: j.Index, From: &j.From, To: &j.To, Mode: j.Mode, Retention: j.Retention, Outputs: j.Outputs, RetainSatHistory: j.RetainSatHistory, SatHistoryConfigured: true, ConventionalIDs: j.ConventionalIDs})
+	plan, err := a.planIndexBuild(indexBuildRequest{Index: j.Index, From: &j.From, To: &j.To, Mode: j.Mode, Retention: j.Retention, Outputs: j.Outputs, RetainSatHistory: j.RetainSatHistory, SatHistoryConfigured: true, ConventionalIDs: j.ConventionalIDs, RetainOutputValues: outputHistoryOption(j.Index, j.RetainOutputValues), RetainOutputScripts: outputHistoryOption(j.Index, j.RetainOutputScripts), OutputHistoryFrom: &j.OutputHistoryFrom})
 	if err != nil {
 		finish("failed", err)
 		return
@@ -257,6 +319,7 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 		} else {
 			s.head.Mode = output.Mode
 			a.configureTXIOStore(s)
+			s.retainOutputValues, s.retainOutputScripts = j.RetainOutputValues, j.RetainOutputScripts
 			s.retainSatHistory = j.RetainSatHistory
 			stores[output.Index] = s
 			if s.checkpoint != nil {
@@ -293,6 +356,95 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 		}
 	}
 	committed := int64(0)
+	enriched := int64(0)
+	if s := stores["txo-spender"]; s != nil && (j.RetainOutputValues || j.RetainOutputScripts) {
+		if err := s.reconcile(func(h int64) (string, error) { t, e := a.indexTarget(h); return t.HashDisplay, e }); err != nil {
+			finish("failed", err)
+			return
+		}
+		end := int64(-1)
+		if s.checkpoint != nil {
+			end = s.checkpoint.Height
+		}
+		if j.To >= 0 && end > j.To {
+			end = j.To
+		}
+		ranges := s.txioEnrichmentRanges(max(plan.OutputHistoryFrom, j.From), end, j.RetainOutputValues, j.RetainOutputScripts)
+		reviewed := !j.Live || j.QueueManaged
+		if reviewed && end >= max(plan.OutputHistoryFrom, j.From) {
+			ranges = []heightInterval{{max(plan.OutputHistoryFrom, j.From), end}}
+		}
+		for _, interval := range ranges {
+			for h := interval.From; h <= interval.To; {
+				if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
+					finish("paused", nil)
+					return
+				}
+				target, e := a.indexTarget(h)
+				if e != nil {
+					if !wait(e) {
+						return
+					}
+					continue
+				}
+				needed, e := s.txioHistoryNeedsEnrichment(ctx, h, target.HashDisplay, j.RetainOutputValues, j.RetainOutputScripts, reviewed)
+				if e != nil {
+					finish("failed", e)
+					return
+				}
+				if !needed {
+					h++
+					continue
+				}
+				block, e := a.indexSourceBlock(ctx, target, j.Retention)
+				if e != nil {
+					if ctx.Err() != nil {
+						finish("paused", nil)
+						return
+					}
+					var unavailable blockUnavailableError
+					if !errors.As(e, &unavailable) {
+						finish("failed", e)
+						return
+					}
+					if !wait(e) {
+						return
+					}
+					continue
+				}
+				current, e := a.indexTarget(h)
+				if e != nil {
+					if !wait(e) {
+						return
+					}
+					continue
+				}
+				if current.HashDisplay != block.Hash {
+					finish("failed", fmt.Errorf("selected chain changed during TXIO history enrichment; resume to reconcile"))
+					return
+				}
+				if e = s.enrichTXIOBlockContext(ctx, block, j.RetainOutputValues, j.RetainOutputScripts); e != nil {
+					finish("failed", e)
+					return
+				}
+				if e = s.recordTXIOEnrichmentCoverage(h, block.Hash, j.RetainOutputValues, j.RetainOutputScripts); e != nil {
+					finish("failed", e)
+					return
+				}
+				j.State, j.Error = "running", ""
+				if e = a.saveIndexJob(j); e != nil {
+					finish("failed", e)
+					return
+				}
+				enriched++
+				if j.Live && !j.QueueManaged && enriched >= indexLiveBatchBlocks {
+					finish("yielded", nil)
+					return
+				}
+				h++
+			}
+		}
+	}
 	initialReusable := map[string]int64{}
 	for {
 		if ctx.Err() != nil || a.indexPauseRequested(j.ID) {

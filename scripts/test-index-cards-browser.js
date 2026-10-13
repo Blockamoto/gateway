@@ -91,9 +91,36 @@ async function run() {
     page.on('request', request => { if (!request.url().startsWith(endpoint + '/')) external.push(request.url()); });
     await page.goto(endpoint + '/indexes', {waitUntil:'networkidle'});await page.locator('#timeline-expand').click();
     await page.locator('.timeline-track[data-index="headers"]').waitFor();
-    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(node=>node.dataset.index)),['headers','blocks','utxo-state'],'A fresh profile has the two Blocks layers and the separate UTXO state track');
+    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(node=>node.dataset.index)),['headers','blocks','utxo-state','address-state','address-history'],'A fresh profile has the Blocks layers, separate UTXO state and both Addresses children');
     assert.equal(await page.locator('.timeline-group[data-group="blocks"]').count(),1,'Headers and raw Blocks share their expandable group');
     assert.equal(await page.locator('.timeline-track[data-index="utxo-state"][data-group]').count(),0,'UTXO state stays separate from block-body coverage');
+    assert.equal(await page.locator('.timeline-group[data-group="addresses"]').count(),1,'Current UTXOs and Historical outputs share their own expandable group');
+    assert.equal(await page.locator('#timeline-group-addresses').getAttribute('aria-expanded'),'false','Addresses starts collapsed');
+    for(const id of ['address-state','address-history']){
+      assert.equal(await page.locator('.timeline-track[data-index="'+id+'"][data-group="addresses"]').count(),1,'Addresses contains its '+id+' child');
+      assert.equal(await page.locator('.timeline-track[data-index="'+id+'"]').isVisible(),false,'Collapsed Addresses hides its '+id+' child row');
+      assert.equal(await page.locator('.timeline-group-band[data-index="'+id+'"]').isVisible(),true,'Collapsed Addresses retains a distinct '+id+' coverage band');
+      assert.deepEqual(JSON.parse(await page.locator('.timeline-group-band[data-index="'+id+'"]').getAttribute('data-coverage')),[],'Fresh '+id+' has no invented coverage');
+    }
+    const addressColors=await page.locator('.timeline-group[data-group="addresses"] .timeline-group-labels span').evaluateAll(nodes=>nodes.map(node=>getComputedStyle(node).getPropertyValue('--layer-color')));
+    assert.equal(new Set(addressColors).size,2,'Current and historical address coverage have independent colors');
+    await page.locator('#timeline-group-addresses').click();
+    for(const id of ['address-state','address-history'])assert.equal(await page.locator('.timeline-track[data-index="'+id+'"]').isVisible(),true,'Expanded Addresses reveals '+id);
+    await page.locator('.timeline-track[data-index="address-state"] .timeline-track-select').click();
+    assert.equal(await page.locator('#address-current-state').innerText(),'UTXO set required','Fresh current addresses do not imply a saved UTXO checkpoint');
+    assert.equal(await page.locator('#address-current-primary').innerText(),'Open UTXO set');
+    assert.equal(await page.locator('#address-current-primary').getAttribute('data-action'),'dependency','Missing UTXOs require explicit dependency navigation');
+    assert.equal(await page.locator('#build-range-picker').isVisible(),false,'Current addresses have no arbitrary range picker');
+    assert.match(await page.locator('#address-current-metrics').innerText(),/Unavailable/,'Fresh address metrics do not invent a source checkpoint');
+    await page.locator('#address-current-primary').click();
+    assert.equal(await page.locator('#index').inputValue(),'utxo-state','Dependency action opens the separate UTXO build controls');
+    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Opening the address dependency does not start UTXO or address work');
+    await page.locator('.timeline-track[data-index="address-history"] .timeline-track-select').click();
+    await page.locator('#timeline-details').evaluate(el=>el.open=true);
+    assert.equal(await page.locator('#build-range-picker').isVisible(),true,'Historical outputs retain explicit creation ranges');
+    assert.equal(await page.locator('#from').evaluate(el=>el.readOnly),false,'Historical ranges may start at an explicitly chosen height');
+    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Inspecting historical ranges does not start a build');
+    await page.locator('#timeline-group-addresses').click();
     await page.locator('#timeline-group-blocks').click();
     for(const id of ['headers','blocks']){
       assert.equal(await page.locator('.timeline-track[data-index="'+id+'"]').isVisible(),false,'Collapsing Blocks hides its '+id+' child row');
@@ -114,8 +141,8 @@ async function run() {
 
     await page.locator('#timeline-add-index').click();
     assert.equal(await page.locator('#timeline-index-picker [data-index="inscriptions"]').isDisabled(),false,'The inscription stage permits adding its track');
-    for(const id of ['tx-locator','txo-spender'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),false,id+' is available in the UTXO stage');for(const id of ['sat-state','address-history','bitmap-compatibility'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),true,id+' remains gated');
-    assert.equal(await page.locator('#timeline-index-picker [data-index="utxo-state"]').count(),0,'The existing UTXO state track is not offered as a duplicate addition');
+    for(const id of ['tx-locator','txo-spender'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),false,id+' is available in the Addresses stage');for(const id of ['sat-state','bitmap-compatibility'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),true,id+' remains gated');
+    for(const id of ['utxo-state','address-state','address-history'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').count(),0,'The existing '+id+' track is not offered as a duplicate addition');
     assert.equal(await page.locator('.timeline-track[data-index="inscriptions"]').count(),0,'An available index does not occupy a track until added');
     await page.screenshot({path:path.join(out,'locked-features.png'),fullPage:true});
     await page.locator('#timeline-add-index').click();
@@ -255,7 +282,7 @@ async function run() {
     assert.deepEqual(errors, [], 'Uncaught browser errors');
     assert.deepEqual(external, [], 'Fresh offline workspace requested an external origin');
     const finalUpdate = await (await fetch(endpoint+'/api/v1/updates/status')).json();assert.equal(finalUpdate.state,'disabled_offline');assert.equal(finalUpdate.last_checked,undefined,'UI traversal did not start a hosted update check');
-    const result = {result:'PASS', scope:'Native offline runtime; actual Chromium DOM/CSP, independent browse defaults/persistence/reload/off consent, transaction stage available and later stages gated, all available fresh persisted On controls, initial Live enabling On/reload/stop, honest offline no-scan, reviewed bundled updater trust and notification defaults persisted before UI interaction with offline checks paused, top-bar Home/Indexes/Peers/Settings, profile-saved light/dark theme and embedded theme, all three setup stages in both themes at desktop/narrow with pending browser/native readiness preserved, address entry and history; no external-origin requests', version:ping.version, binary:path.resolve(options.binary), binary_sha256:createHash('sha256').update(fs.readFileSync(path.resolve(options.binary))).digest('hex'), update_channel:expectedChannel.id, update_publisher:expectedChannel.publisher_url, browser:executablePath, browser_version:browser.version(), platform:process.platform, page_errors:errors, external_requests:external};
+    const result = {result:'PASS', scope:'Native offline runtime; actual Chromium DOM/CSP, independent fresh Addresses children with empty coverage and distinct collapsed bands, explicit current UTXO dependency and historical ranges without autobuild, independent browse defaults/persistence/reload/off consent, Addresses stage available and later stages gated, all available fresh persisted On controls, initial Live enabling On/reload/stop, honest offline no-scan, reviewed bundled updater trust and notification defaults persisted before UI interaction with offline checks paused, top-bar Home/Indexes/Peers/Settings, profile-saved light/dark theme and embedded theme, all three setup stages in both themes at desktop/narrow with pending browser/native readiness preserved, address entry and history; no external-origin requests', version:ping.version, binary:path.resolve(options.binary), binary_sha256:createHash('sha256').update(fs.readFileSync(path.resolve(options.binary))).digest('hex'), update_channel:expectedChannel.id, update_publisher:expectedChannel.publisher_url, browser:executablePath, browser_version:browser.version(), platform:process.platform, page_errors:errors, external_requests:external};
     fs.writeFileSync(path.join(out, 'result.json'), JSON.stringify(result, null, 2));
     console.log('Index timeline runtime browser: PASS (' + result.scope + ').');
   } catch (error) {

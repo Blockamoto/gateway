@@ -1,5 +1,5 @@
 {
-  "app_version": "0.7.5",
+  "app_version": "0.7.6",
   "minimum_compatible_app": "0.3.9",
   "wire_protocol": 1,
   "minimum_wire_protocol": 1,
@@ -32,7 +32,7 @@
   "derived_recheck_required": true,
   "ord_storage_schema": 1,
   "archive_storage_schema": 1,
-  "note": "UTXO state is a genesis-first projection with 288 self-contained recovery transitions; full consensus validation is deferred. Positional TXIO v3 shares optional output facts and uses separate transaction-locator translation. Earlier immutable TXIO records and raw-backed Blocks remain readable and retained. Gateway peerhood and later indexes remain locked. Hosted update readiness is recorded separately in release acceptance.",
+  "note": "UTXO state is a genesis-first projection with 288 self-contained recovery transitions; full consensus validation is deferred. Positional TXIO v3 shares optional output facts and uses separate transaction-locator translation. Earlier immutable TXIO records and raw-backed Blocks remain readable and retained. Addresses project the saved UTXO checkpoint or retain historical outputs over explicit creation ranges. Inscription holdings, Gateway peerhood and later indexes remain locked. Hosted update readiness is recorded separately in release acceptance.",
   "satline_wire": 1,
   "satline_publication_schema": 1,
   "release_status": "prerelease"

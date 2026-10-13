@@ -43,10 +43,10 @@ Indexes:
   gateway-client index live <index-id> <enable|pause|resume|disable> [--retention ephemeral|cache|retain]
   gateway-client index pause              Pause after the current source request
 
-Headers, Bitcoin Blocks and Inscriptions are available in this release.
-Related inscription transaction locators, the standalone Transaction Index,
-address/spender lookup, Satline, Bitmap analysis and Gateway peer sharing remain
-locked. The same restrictions apply in the UI, API and command line.
+Headers, Bitcoin Blocks, Inscriptions, Transaction Locator, TXIO, UTXO set and
+Addresses are available in this development source. Current addresses builds
+from saved UTXO state; historical addresses use explicit sparse ranges.
+Satline, Bitmap analysis and Gateway peer sharing remain locked.
 A transaction ID alone may need a block hint when its block is not locally indexed.
 
 Aliases:

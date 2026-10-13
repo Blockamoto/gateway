@@ -121,8 +121,8 @@ func TestIndexProvidersCoreAddressStateIsLocalAndOnDemand(t *testing.T) {
 	a := &app{dataDir: t.TempDir(), settings: appSettings{BitcoinDataDir: dir, RPCAuthMode: "auto", ServeData: true}, status: appStatus{HeaderHeight: -1}, cacheIndex: newCacheIndex()}
 	rows := a.indexProviderViews()
 	current := indexProviderRow(t, rows, "address-state", "bitcoin_core_chainstate")
-	history := indexProviderRow(t, rows, "address-history", "none")
-	if current.Queryable || current.Serveable || current.Readiness != "locked" || current.Completeness != "on_demand_snapshot" || len(current.Coverage) != 0 || history.Queryable || history.Serveable {
+	history := indexProviderRow(t, rows, "address-history", "gateway_address_history")
+	if current.Queryable || current.Serveable || current.Readiness == "locked" || current.Completeness != "on_demand_snapshot" || len(current.Coverage) != 0 || history.Queryable || history.Serveable || history.Readiness != "not_built" {
 		t.Fatalf("current state and history confused: current=%+v history=%+v", current, history)
 	}
 	if scans.Load() != 0 {

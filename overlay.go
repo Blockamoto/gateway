@@ -1121,7 +1121,7 @@ func (a *app) queryPeers(req overlayRequest, capability string) (overlayResponse
 	// Capability locks also cover the Core/cache shortcuts used by CLI location
 	// commands; those are distinct from known-block positional navigation.
 	for _, requested := range []string{capability, req.Type} {
-		feature := map[string]string{"txloc": "tx-locator", "spendloc": "txo-spender", "utxos": "address-state"}[requested]
+		feature := map[string]string{"txloc": "tx-locator", "spendloc": "txo-spender", "utxos": "gateway-peerhood"}[requested]
 		if feature != "" {
 			if err := requireReleaseFeature(feature); err != nil {
 				return overlayResponse{}, overlayPeer{}, err

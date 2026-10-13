@@ -13,7 +13,7 @@ import (
 func Test074IndexReleaseAvailability(t *testing.T) {
 	a := independentTestApp(t)
 	for _, d := range indexDefinitions() {
-		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender" || d.ID == "utxo-state"
+		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender" || d.ID == "utxo-state" || d.ID == "address-state" || d.ID == "address-history"
 		if d.Locked == available || releaseFeatureAvailable(d.ID) != available {
 			t.Fatalf("wrong release availability: %+v", d)
 		}
@@ -63,7 +63,7 @@ func Test066ManualIndexAndModuleRequestsAreLocked(t *testing.T) {
 			t.Fatalf("%s bypass: %d %s", tc.path, r.Code, r.Body.String())
 		}
 	}
-	for _, handler := range []http.HandlerFunc{a.handleOrdFollow, a.handleSatlineResolve, a.handleSatlineFollow, a.handleSatlineRun, a.handleAddressUTXOs, a.handleJobs} {
+	for _, handler := range []http.HandlerFunc{a.handleOrdFollow, a.handleSatlineResolve, a.handleSatlineFollow, a.handleSatlineRun, a.handleJobs} {
 		w := httptest.NewRecorder()
 		handler(w, httptest.NewRequest("POST", "/", strings.NewReader(`{}`)))
 		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "locked") {

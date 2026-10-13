@@ -204,7 +204,7 @@ func (a *app) indexJobsSnapshot() ([]indexJob, error) {
 
 func sameIndexWork(a, b indexBuildRequest) bool {
 	// Range extent is handled separately; retention and mode are user choices.
-	return a.Index == b.Index && a.Rebuild == b.Rebuild && a.Mode == b.Mode && a.Retention == b.Retention && a.Live == b.Live && a.LiveConfigured == b.LiveConfigured && a.RetainSatHistory == b.RetainSatHistory && inscriptionIDsEnabled(a.ConventionalIDs) == inscriptionIDsEnabled(b.ConventionalIDs) && reflect.DeepEqual(a.RetainOutputValues, b.RetainOutputValues) && reflect.DeepEqual(a.RetainOutputScripts, b.RetainOutputScripts) && reflect.DeepEqual(a.Outputs, b.Outputs) && a.From != nil && b.From != nil
+	return a.Index == b.Index && a.Rebuild == b.Rebuild && a.Mode == b.Mode && a.Retention == b.Retention && a.Live == b.Live && a.LiveConfigured == b.LiveConfigured && a.RetainSatHistory == b.RetainSatHistory && inscriptionIDsEnabled(a.ConventionalIDs) == inscriptionIDsEnabled(b.ConventionalIDs) && reflect.DeepEqual(a.RetainOutputValues, b.RetainOutputValues) && reflect.DeepEqual(a.RetainOutputScripts, b.RetainOutputScripts) && reflect.DeepEqual(a.Outputs, b.Outputs) && ((a.Index == "address-state" && a.From == nil && b.From == nil) || (a.From != nil && b.From != nil))
 }
 
 func indexOutputHistoryStart(req indexBuildRequest) int64 {
@@ -229,6 +229,9 @@ func (a *app) acceptIndexBuild(req indexBuildRequest) (indexJob, error) {
 		return indexJob{}, err
 	}
 	req.From, req.To, req.Mode, req.Retention = &plan.From, &plan.To, plan.Mode, plan.Retention
+	if req.Index == "address-state" {
+		req.From, req.To = nil, nil
+	}
 	req.OutputHistoryFrom = &plan.OutputHistoryFrom
 	req.RetainSatHistory, req.SatHistoryConfigured = plan.RetainSatHistory, true
 	req.ConventionalIDs = boolPointer(plan.ConventionalIDs)
@@ -257,6 +260,11 @@ func (a *app) acceptIndexBuild(req indexBuildRequest) (indexJob, error) {
 		e := &a.indexQueue[i]
 		if (e.Job.State != "queued" && e.Job.State != "running" && e.Job.State != "waiting") || !sameIndexWork(e.Request, req) {
 			continue
+		}
+		if req.Index == "address-state" {
+			j := cloneIndexJob(e.Job)
+			a.indexMu.Unlock()
+			return j, nil
 		}
 		historyCovered := !indexOutputHistoryEnabled(req) || indexOutputHistoryStart(e.Request) <= plan.OutputHistoryFrom
 		if historyCovered && plan.From >= e.Job.From && (e.Job.To < 0 || (plan.To >= 0 && e.Job.To >= plan.To)) {

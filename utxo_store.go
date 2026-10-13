@@ -128,10 +128,11 @@ type utxoJournal struct {
 }
 
 type utxoStore struct {
-	root       string
-	dir        string
-	head       *utxoHead
-	commitHook func(string) error // deterministic interruption tests; nil in production
+	root              string
+	dir               string
+	head              *utxoHead
+	commitHook        func(string) error // deterministic interruption tests; nil in production
+	addressCommitHook func(string) error // optional projection interruption tests
 }
 
 func utxoCheckpointDigest(c utxoCheckpoint) string {
@@ -540,6 +541,10 @@ func (s *utxoStore) writeRecord(kind, hash string, value any) error {
 	return syncDirectory(s.dir)
 }
 func (s *utxoStore) publish(c utxoCheckpoint, boundary int64, boundaryHash string) error {
+	return s.publishContext(context.Background(), c, boundary, boundaryHash)
+}
+
+func (s *utxoStore) publishContext(ctx context.Context, c utxoCheckpoint, boundary int64, boundaryHash string) error {
 	h := utxoHead{Checkpoint: c, RecoveryBoundaryHeight: boundary, RecoveryBoundaryHash: boundaryHash}
 	h.Recovery = []utxoRecoveryPoint{}
 	if s.head != nil {
@@ -567,7 +572,12 @@ func (s *utxoStore) publish(c utxoCheckpoint, boundary int64, boundaryHash strin
 		return e
 	}
 	s.head = &h
-	return s.hook("after_head")
+	if e := s.hook("after_head"); e != nil {
+		return e
+	}
+	// Source publication is authoritative. An optional address projection may
+	// catch up from saved recovery records; failure never rewinds this head.
+	return syncAddressStateContext(ctx, s, s.addressCommitHook)
 }
 
 func (s *utxoStore) ApplyBlock(ctx context.Context, block blockView) error {
@@ -741,7 +751,7 @@ func (s *utxoStore) ApplyBlock(ctx context.Context, block blockView) error {
 	if e = ctx.Err(); e != nil {
 		return e
 	}
-	return s.publish(c, boundary, boundaryHash)
+	return s.publishContext(ctx, c, boundary, boundaryHash)
 }
 
 // Reconcile identifies the common ancestor before changing anything. An
@@ -814,6 +824,7 @@ func (s *utxoStore) ReconcileSelected(ctx context.Context, selectedTipHeight int
 	if ancestor < 0 {
 		return ErrUTXORebuildRequired
 	}
+	var addressProjectionError error
 	for i := 0; i < ancestor; i++ {
 		c, parent := retained[i], retained[i+1]
 		journal, err := s.readJournal(ctx, c)
@@ -880,11 +891,15 @@ func (s *utxoStore) ReconcileSelected(ctx context.Context, selectedTipHeight int
 				return fmt.Errorf("selected UTXO chain changed during recovery")
 			}
 		}
-		if e = s.publish(parent, s.head.RecoveryBoundaryHeight, s.head.RecoveryBoundaryHash); e != nil {
+		if e = s.publishContext(ctx, parent, s.head.RecoveryBoundaryHeight, s.head.RecoveryBoundaryHash); e != nil {
+			if ctx.Err() == nil && optionalAddressProjectionError(e) {
+				addressProjectionError = e
+				continue
+			}
 			return e
 		}
 	}
-	return nil
+	return addressProjectionError
 }
 
 func (s *utxoStore) LookupBPS(ctx context.Context, position string) (utxoCoin, bool, error) {
@@ -1085,7 +1100,7 @@ func (s *utxoStore) collectPages(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	return nil
+	return collectAddressStatePagesLockedContext(ctx, s.root)
 }
 
 func (s *utxoStore) collectRecordFiles(ctx context.Context, retained []utxoCheckpoint) error {

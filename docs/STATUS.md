@@ -1,5 +1,13 @@
 # Gateway status
 
+## Development: v0.7.6 Addresses
+
+The `v0.7.6` development branch adds separate **Current UTXOs** and **Historical outputs** address indexes, strict mainnet address decoding, explorer address search/navigation, and independent coverage bands under Addresses. Current balances bind to the saved UTXO checkpoint; historical totals cover only reviewed creation ranges. Membership references shared output facts, with cached counts and totals for paginated queries. Inscription holdings remain deferred to Sats.
+
+Focused backend checks cover nonzero and empty balances, exact source anchors, shared-fact retention after eviction, sparse historical gaps, revision-bound cursors, staged resume, address damage, reviewed replacement builds, and optional-projection failures during authoritative UTXO recovery. The corrected full Windows root-package run passed in 786.677 seconds; internal package tests and static checks also pass. The complete address-focused run passed in 112.139 seconds, and final recovery regressions separately cover empty selected historical coverage and the distinction between corrupt mandatory UTXO facts and obsolete optional projection evidence. Explorer, build-panel, navigation, workspace and timeline browser checks have passed; final recovery browser checks cover reviewed rebuild/resume and a checkpoint-bound repair handoff. These bounded fixtures do not establish a full-chain address build or performance benchmark.
+
+Main and the published 0.7.5 updater remain unchanged. Publication, release packages and updater promotion require the user's later instruction. See [the implementation brief](IMPLEMENTATION-BRIEF-0.7.6.md), [address guide](ADDRESSES-INDEX.md), and [development test guide](TESTING-0.7.6.md).
+
 ## Published prerelease: v0.7.5 UTXO set
 
 Gateway 0.7.5 adds genesis-first UTXO state, optional TXIO Values/ScriptPubKeys history, shared output-fact retention and grouped Blocks/TXIO coverage. Transaction Locator remains a separate track/store. UTXO has a dedicated state/build panel, an atomic head, mandatory live native-prevout translation and fixed 288 self-contained reversible transitions. Raw-body retention is independent. Deeper recovery requires an explicit reviewed rebuild which preserves prior engine data and its dependencies.

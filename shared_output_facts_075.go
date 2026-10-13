@@ -1,7 +1,8 @@
 package main
 
-// Output pages are immutable, shared by optional TXIO history and mandatory
-// UTXO state/recovery. Readers authenticate the page, not just a file name.
+// Output pages are immutable, shared by optional TXIO history, historical
+// address outputs and mandatory UTXO state/recovery. Readers authenticate the
+// page, not just a file name.
 import (
 	"context"
 	"crypto/sha256"

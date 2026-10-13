@@ -145,6 +145,9 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 	if id == "utxo-state" {
 		return utxoIndexStoreHead(root, s)
 	}
+	if id == "address-state" || id == "address-history" {
+		return addressIndexStoreHead(root, s)
+	}
 	b, e := os.ReadFile(filepath.Join(s.dir, "head.json"))
 	if os.IsNotExist(e) {
 		return s, nil

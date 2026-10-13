@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+func optionalAddressProjectionError(err error) bool {
+	return !errors.Is(err, ErrUTXOStateCorrupt) && !errors.Is(err, ErrUTXORebuildRequired) && (errors.Is(err, ErrAddressStateStale) || errors.Is(err, ErrAddressStateCorrupt))
+}
+
 // The UTXO engine has one atomic state head, not an immutable historical batch
 // for every processed block. This projection lets the existing scheduler share
 // its single writer without interpreting a UTXO checkpoint as a block batch.
@@ -375,16 +379,43 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 			t, err := a.utxoSelectedTarget(ctx, authority, h)
 			return t.HashDisplay, err
 		}); err != nil {
-			if errors.Is(err, ErrUTXORebuildRequired) {
-				finish("rebuild_required", err)
-				return
+			if ctx.Err() == nil && optionalAddressProjectionError(err) {
+				// Reconcile completed the authoritative source rewind. A damaged
+				// optional address projection cannot strand UTXO processing.
+				if len(j.Limitations) < 8 {
+					j.Limitations = append(j.Limitations, "Current addresses require repair: "+err.Error())
+				}
+			} else {
+				if errors.Is(err, ErrUTXORebuildRequired) || errors.Is(err, ErrUTXOStateCorrupt) {
+					finish("rebuild_required", err)
+					return
+				}
+				if !wait(err) {
+					return
+				}
+				continue
 			}
-			if !wait(err) {
-				return
-			}
-			continue
 		}
 		// A reorganization can select a higher-work branch with fewer blocks.
+		if err := resumeAddressStateContext(ctx, a.dataDir); err != nil {
+			if ctx.Err() != nil {
+				finish("paused", nil)
+				return
+			}
+			if !optionalAddressProjectionError(err) {
+				state := "failed"
+				if errors.Is(err, ErrUTXOStateCorrupt) || errors.Is(err, ErrUTXORebuildRequired) {
+					state = "rebuild_required"
+				}
+				finish(state, err)
+				return
+			}
+			// The UTXO commit is authoritative; a failed reverse projection must
+			// not claim that the source commit was rolled back.
+			if len(j.Limitations) < 8 {
+				j.Limitations = append(j.Limitations, "Current addresses require repair: "+err.Error())
+			}
+		}
 		// Its authenticated tip replaces a target that no longer exists.
 		if authority.Height >= 0 && j.To > authority.Height {
 			j.To = authority.Height
@@ -443,12 +474,18 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 			continue
 		}
 		if err = s.ApplyBlock(ctx, block); err != nil {
-			if ctx.Err() != nil {
-				finish("paused", nil)
+			if optionalAddressProjectionError(err) {
+				if len(j.Limitations) < 8 {
+					j.Limitations = append(j.Limitations, "UTXO committed; current addresses require repair: "+err.Error())
+				}
 			} else {
-				finish("failed", err)
+				if ctx.Err() != nil {
+					finish("paused", nil)
+				} else {
+					finish("failed", err)
+				}
+				return
 			}
-			return
 		}
 		processed++
 		j.Height, j.BlocksChecked = next, int(next+1)

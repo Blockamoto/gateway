@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	appVersion              = "0.7.5"
+	appVersion              = "0.7.6"
 	bodWireVersion          = 1
 	minBODWireVersion       = 1
 	overlayProtocolVersion  = bodWireVersion
@@ -92,7 +92,7 @@ func currentCompatibility() compatibilityView {
 		MinimumOverlayProtocol: minBODWireVersion,
 		StorageIndexRebuild:    false,
 		BlockVerifier:          blockVerifierVersion, DerivedRecheck: true, OrdStorage: 1, ArchiveStorage: 1,
-		Note: "UTXO state is a sequential genesis-first projection with 288 self-contained recovery transitions; full consensus validation is deferred. Positional TXIO version 3 shares optional output facts and uses separate transaction-locator translation. Earlier immutable TXIO and raw-backed Blocks records remain readable without destructive conversion. Headers, Blocks, Inscriptions, Transaction Index, TXIO and UTXO are available; Gateway peerhood and later indexes remain locked. Application updates preserve headers and use the separate signed header feed. Hosted update readiness is recorded separately in release acceptance.",
+		Note: "UTXO state is a sequential genesis-first projection with 288 self-contained recovery transitions; full consensus validation is deferred. Positional TXIO version 3 shares optional output facts and uses separate transaction-locator translation. Earlier immutable TXIO and raw-backed Blocks records remain readable without destructive conversion. Headers, Blocks, Inscriptions, Transaction Index, TXIO, UTXO and Addresses are available. Current addresses project the saved UTXO checkpoint; historical addresses cover explicitly indexed creation ranges. Inscription holdings, Gateway peerhood and later indexes remain locked. Application updates preserve headers and use the separate signed header feed. Hosted update readiness is recorded separately in release acceptance.",
 	}
 }
 

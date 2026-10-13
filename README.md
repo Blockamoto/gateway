@@ -2,9 +2,9 @@
 
 Gateway is a Bitcoin block explorer that retrieves the blocks you ask for. Explore blocks, transactions, inputs, outputs and positions within outputs without downloading the whole blockchain. Bitcoin Core is optional.
 
-**[0.7.4 is a public prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.4), with hosted automatic-upgrade and renewal acceptance passed.** Its active indexes are **Headers**, **Bitcoin Blocks**, **Inscriptions**, **Transactions** and **Transaction Input/Output (TXIO)**. Gateway peerhood and later index features remain locked. See [current status](docs/STATUS.md) for validation and its limits.
+**[0.7.5 is the public UTXO prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.5).** This development branch prepares **v0.7.6: Addresses**, adding Current UTXOs and Historical outputs to the existing Headers, Bitcoin Blocks, Inscriptions, Transactions, TXIO and UTXO set indexes. See [current status](docs/STATUS.md) for validation and publication status.
 
-TXIO connects inputs to their original outputs and outputs to their spending inputs. Blocks retain compact transaction order metadata and verified durable serialized bodies; compatible legacy conversion keeps the old copies and does not immediately reclaim their disk space. The shared workspace shows block maps, transaction flows and isolated inscription content. See [the 0.7.4 test guide](docs/TESTING-0.7.4.md) and [indexing](docs/INDEXING.md).
+TXIO connects inputs to their original outputs and outputs to their spending inputs. Blocks retain compact transaction order metadata and verified durable serialized bodies; compatible legacy conversion keeps the old copies and does not immediately reclaim their disk space. Addresses provides balances at the saved UTXO checkpoint and optional sparse output history, using shared output facts. Inscription holdings wait for Sats. See [Addresses](docs/ADDRESSES-INDEX.md), [UTXO state](docs/UTXO-INDEX.md) and [indexing](docs/INDEXING.md).
 
 ## Start here
 
@@ -32,7 +32,7 @@ The Peers page uses aliases until you reveal an address. Aliases are a display c
 
 Gateway verifies block identity, proof of work, transaction and witness commitments and selected-chain context. It does not replace Bitcoin Core's full script and UTXO consensus validation. Missing data is not proof of nonexistence, and a position inside an output is not proof of current ownership.
 
-Lean positional inscription records and optional Full reveal records do not infer global inscription numbers, sat identity, current ownership or parent-child provenance. Transaction-ID lookup uses available locators; missing locations remain unresolved. TXIO unknown results do not prove an output is unspent. Gateway peerhood, address, Sat/Satline, Bitmap and **Bitmap: Terrain Claim Chains** features remain gated. Their presence in the source does not make them supported features. The [roadmap](docs/GATEWAY-ROADMAP.md) separates available work from future work without promising release dates.
+Lean positional inscription records and optional Full reveal records do not infer global inscription numbers, sat identity, current ownership or parent-child provenance. Transaction-ID lookup uses available locators; missing locations remain unresolved. TXIO unknown results do not prove an output is unspent. Addresses is enabled in this development source; historical received totals are not current balances. Gateway peerhood, Sat/Satline, Bitmap and **Bitmap: Terrain Claim Chains** remain gated. The [roadmap](docs/GATEWAY-ROADMAP.md) separates available work from future work without promising release dates.
 
 ## Test, contribute and build
 

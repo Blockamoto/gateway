@@ -21,6 +21,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <div id="workspace-state" class="timeline-status-strip" role="status" hidden>Reading your local workspace…</div><div id="message" role="status" aria-live="polite" hidden></div><section id="index-timeline" aria-label="Index timeline"></section><div id="index-workspace" hidden><h2 id="selected-index-label" class="selected-index-label" hidden></h2><nav id="index-details-nav" class="workspace-tabs" aria-label="Selected index details" hidden><button type="button" data-view="build">Build a range</button><button type="button" data-view="results">Records & sharing</button><button type="button" data-view="providers">Data sources</button><button type="button" data-view="peers">Peer claims</button></nav>
 <section class="panel" id="current-job-panel" aria-labelledby="job-heading"><h2 id="job-heading">Current job</h2><p id="job-summary" class="muted small">Loading local status…</p><progress id="job-progress" hidden></progress><dl id="job-meta" class="index-meta"></dl><p id="job-error" class="small"></p><p id="job-limitations" class="hint small" hidden></p><div class="actions"><button id="job-records" type="button">Progress & records</button><button id="pause" disabled>Pause build</button><button id="resume" disabled>Load previous request</button></div><p class="small muted">Pause takes effect after an in-flight source request returns. Resume retries the same range from its saved checkpoint. Completed checkpoints are reused.</p><details><summary>Exact job JSON</summary><pre id="job-json"></pre></details><div id="job-queue" class="index-section"></div></section><div class="index-layout" data-pane="build">
 <section id="utxo-build-panel" aria-label="UTXO build and committed state" hidden></section>
+<section id="address-state-build-panel" aria-label="Current address UTXO build and snapshot" hidden></section>
 <section class="panel" aria-labelledby="build-heading">
 <h2 id="build-heading">What would you like to build?</h2>
 <form id="plan-form">
@@ -56,6 +57,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <script src="/shell/index-cards.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-timeline.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/utxo-panel.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/address-panel.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-workspace.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/transaction-flow-layout.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/block-viewport.js" nonce="__INDEX_NONCE__"></script>
@@ -66,7 +68,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 'use strict';
 const $ = id => document.getElementById(id);
 if (new URLSearchParams(location.search).get('embedded') === '1') document.body.classList.add('embedded');
-let currentView = "catalog", selectedIndex = "", timeline, explorer, viewport, utxoPanel, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
+let currentView = "catalog", selectedIndex = "", timeline, explorer, viewport, utxoPanel, addressPanel, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
 let workspaceBoot={};try{workspaceBoot=JSON.parse($('index-bootstrap').textContent);}catch{}
 function selectView(view) {
   currentView = view;
@@ -105,7 +107,8 @@ async function api(action, body, requestOptions={}) {
 function request() {
   if(selectedDefinition()?.locked) throw new Error('This index is locked in this testing build.');
   if($('index').value==='utxo-state')return window.GatewayUTXOPanel.request();
-  const result = {index: $('index').value, retention: $('retention').value, live: $('initial-live').checked, live_configured: true, mode: ['bitmap','inscriptions'].includes($('index').value) ? $('mode').value : 'full'};
+  if($('index').value==='address-state')return window.GatewayAddressPanel.request();
+  const result = {index: $('index').value, retention: $('retention').value, live: $('initial-live').checked, live_configured: true, mode: $('index').value==='address-history'?'lean':['bitmap','inscriptions'].includes($('index').value) ? $('mode').value : 'full'};
   if(result.index==='inscriptions')result.conventional_ids=inscriptionLocatorsAvailable()&&$('conventional-ids').checked;
   for (const field of ['from', 'to']) if (!(field === 'to' && result.live) && $(field).value !== '' && !(field === 'from' && $('index').value === 'bitmap')) {
     const n = Number($(field).value);
@@ -123,6 +126,7 @@ function syncOutputEnrichment(){const enabled=selectedIndex==='txo-spender'||sel
 function inscriptionLocatorsAvailable(){return definitions.some(x=>x.id==='tx-locator'&&!x.locked);}
 function syncRetainedStart() {
   const d=selectedDefinition(); if(!selectedIndex||!d?.buildable||d.locked)return;
+  if(d.id==='address-history'){$('from').readOnly=false;return;}
   const instance=status?.instances?.find(x=>x.definition===selectedIndex), saved=instance?.checkpoint?.from;
   const fixed=Number.isSafeInteger(saved)&&saved>=0?saved:!d.arbitrary_start?d.start_height:null;
   $('from').readOnly=Boolean(instance)||!d.arbitrary_start;
@@ -142,7 +146,7 @@ function selectIndex(id, view, initialLive = false) {
   $('selected-index-label').textContent = d.name;
   $('selected-index-label').hidden = false; $('index-details-nav').hidden = false;
   $('from').value = instance?.checkpoint?.from ?? (id === 'inscriptions' && d.network === 'bitcoin-mainnet' ? Math.max(d.start_height || 0,767430) : d.start_height || 0);
- $('initial-live').checked = initialLive || Boolean(status?.live?.find(x => x.index === id)?.enabled); syncLiveForm(); $('from').readOnly = Boolean(instance) || !d.arbitrary_start;
+ $('initial-live').checked = initialLive || Boolean(status?.live?.find(x => x.index === id)?.enabled); syncLiveForm(); $('from').readOnly = id!=='address-history'&&Boolean(instance) || !d.arbitrary_start;
   $('to').value = ''; $('retention').value = status?.live?.find(x => x.index === id)?.retention || instance?.retention || 'ephemeral';
   $('mode').value = instance ? instance.mode || 'full' : 'lean'; $('mode').disabled = Boolean(instance); $('retain-sat-history').checked=Boolean(status?.live?.find(x=>x.index===id)?.retain_sat_history??instance?.retain_sat_history);
   $('conventional-ids').checked=inscriptionLocatorsAvailable()&&(status?.live?.find(x=>x.index===id)?.conventional_ids??instance?.conventional_ids??true);
@@ -159,7 +163,7 @@ function selectIndex(id, view, initialLive = false) {
 }
 function showRules() {
   const d = selectedDefinition(); if (!d || d.locked) return;
-  const isUTXO=d.id==='utxo-state';$('utxo-build-panel').hidden=!isUTXO;$('plan-form').closest('section').hidden=isUTXO;$('index-details-nav').hidden=isUTXO;$('selected-index-label').hidden=isUTXO;
+  const isUTXO=d.id==='utxo-state',isAddress=d.id==='address-state',isState=isUTXO||isAddress;$('utxo-build-panel').hidden=!isUTXO;$('address-state-build-panel').hidden=!isAddress;$('plan-form').closest('section').hidden=isState;$('index-details-nav').hidden=isState;$('selected-index-label').hidden=isState;
   $('txio-enrichment').hidden=!['txo-spender','blocks'].includes(d.id);
   $('current-job-panel').hidden=!d.buildable;const peerSupported=false;$('peer-unavailable').hidden=peerSupported;$('peer-claims').hidden=!peerSupported;$('peer-form').hidden=!peerSupported;
   $('mode').closest('.field').hidden = !['bitmap','inscriptions'].includes(d.id);
@@ -181,7 +185,7 @@ function showRules() {
   $('rule-json').textContent = pretty(d);
   $('from').placeholder = String(d.start_height);
   $('from-start-note').textContent=d.id==='inscriptions'&&d.network==='bitcoin-mainnet'?'Mainnet inscriptions suggest 767430 (inscription zero). Custom starts remain available; this is not preceding sat history.':'Block heights are inclusive. Review the plan before fetching data.';
-  $('from-note').textContent = d.id === 'bitmap' ? 'Bitmap history always begins at block ' + d.start_height + '. Choose only the last block to index.' : (d.arbitrary_start ? 'A fresh bounded scan may start at any block. Compatible overlapping or adjacent ranges reuse saved coverage; disjoint ranges and prepending history are not supported.' : 'Fresh state starts at block ' + d.start_height + '; a mid-history fresh start is not valid.');
+  $('from-note').textContent = d.id==='address-history'?'Choose inclusive output-creation ranges. Overlapping ranges reuse saved coverage; separate ranges and earlier history are supported. Gaps remain unknown.':d.id === 'bitmap' ? 'Bitmap history always begins at block ' + d.start_height + '. Choose only the last block to index.' : (d.arbitrary_start ? 'A fresh bounded scan may start at any block. Compatible overlapping or adjacent ranges reuse saved coverage; disjoint ranges and prepending history are not supported.' : 'Fresh state starts at block ' + d.start_height + '; a mid-history fresh start is not valid.');
   metadata($('rule-meta'), [['Definition', d.name + ' · ' + d.id], ['Version / network', d.version + ' / ' + d.network], ['Rule identity', d.rule_hash], ['Dependencies', d.dependencies.join(' → ') || 'None'], ['Build support', d.buildable ? 'Available in this release' : 'No derivation executor; inspect provider capabilities'], ['Checkpoint / output schema', d.checkpoint_schema + ' / ' + d.output_schema], ['Encoding', d.canonical_encoding]]);
   $('rule-list').replaceChildren(...d.rules.map(x => element('li', x)));
   syncOutputEnrichment();
@@ -242,7 +246,7 @@ function showProviders(providers) {
 
 function showSelectedStatus(){
  if(!selectedIndex||!status||selectedDefinition()?.locked)return;
- $('utxo-build-panel').hidden=selectedIndex!=='utxo-state';$('current-job-panel').hidden=selectedIndex==='utxo-state'||!selectedDefinition()?.buildable;utxoPanel?.render(status,$('index-timeline').dataset.healthy!=='false');
+ $('utxo-build-panel').hidden=selectedIndex!=='utxo-state';$('address-state-build-panel').hidden=selectedIndex!=='address-state';$('current-job-panel').hidden=['utxo-state','address-state'].includes(selectedIndex)||!selectedDefinition()?.buildable;utxoPanel?.render(status,$('index-timeline').dataset.healthy!=='false');addressPanel?.render(status,$('index-timeline').dataset.healthy!=='false');
  showJob(window.GatewayIndexCards.jobFor(selectedIndex,status));
  const instances=(status.instances||[]).filter(x=>x.definition===selectedIndex),providers=(status.providers||[]).filter(x=>x.id===selectedIndex);
  const ik=selectedIndex+pretty(instances),pk=selectedIndex+pretty(providers);
@@ -296,7 +300,7 @@ async function refresh() {
         const key = selectedIndex + ':' + (instance?.checkpoint?.commitment || 'empty') + ':' + (instance?.verification || '');
         if (key !== recordKey && !recordLoading) { if (await loadRecords()) recordKey = key; }
       }
-    } catch (error) { timeline.health(false);utxoPanel?.health(false); explorer?.health(false); message('Status unavailable: ' + error.message, true); }
+    } catch (error) { timeline.health(false);utxoPanel?.health(false);addressPanel?.health(false); explorer?.health(false); message('Status unavailable: ' + error.message, true); }
     finally { fetching = false; }
   })();
   return refreshPromise;
@@ -446,25 +450,28 @@ function focusedAddress(value){return value.address||value.query||(value.kind===
 function publishFocus(value){if(parent!==window&&Number.isSafeInteger(value.height)&&value.height>=0)parent.postMessage({type:'gateway:workspace-focused',address:focusedAddress(value),resolved:value.resolved===true},location.origin);}
 function syncFocusedEntity(value){if(!value||!Number.isSafeInteger(value.height)||value.height<0)return;movingEntity=true;try{timeline.syncResource(value,value.metadata);}finally{movingEntity=false;}publishFocus(value);}
 function focusEntity(value,options={}){if(!value?.address)return;explorer.navigate(value.address).catch(error=>message(error.message,true));}
-let workspaceReady=false,pendingAddress=null;
+let workspaceReady=false,pendingAddress=null,pendingIndex=null;
 function isInscriptionAddress(value){return /^(?:[0-9]+|[0-9a-f]{64})(?:\.)?i[0-9]+(?:\.[0-9]+(?:\.bitcoin)?)?$/i.test(value)||value.endsWith('.ord');}
 async function navigateWorkspace(value,options={}){
  const address=String(typeof value==='string'?value:value?.address||value?.query||'').trim();if(!address||address.length>1024||/[\x00-\x1f]/.test(address))return;timeline?.cancelPendingNavigation();
  if(!workspaceReady){pendingAddress={address,options};return;}
  if(address==='ord.gateway'){if(definitions.some(d=>d.id==='inscriptions'&&!d.locked)){selectIndex('inscriptions','build');explorer.setTab('inscriptions');}return;}
  if(isInscriptionAddress(address)){if(!definitions.some(d=>d.id==='inscriptions'&&!d.locked)){message('Inscriptions are unavailable in this build.',true);return;}selectIndex('inscriptions','build');const result=await viewport.open(address,{block:options.blockHint});if(result?.resolution_state==='location_unknown'&&parent!==window)parent.postMessage({type:'gateway:workspace-location-needed',address},location.origin);return result;}
- if(selectedIndex==='utxo-state')selectIndex('blocks','providers');
+ if(['utxo-state','address-state'].includes(selectedIndex))selectIndex('blocks','providers');
  return explorer.navigate(address,{blockHint:options.blockHint});
 }
 window.addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin||event.data?.type!=='gateway:workspace-address')return;navigateWorkspace(event.data.address,{blockHint:event.data.blockHint}).catch(error=>message(error.message,true));});
+function openIndexBuild(value){selectIndex(value.index,'build');if(value.index==='address-state'&&value.rebuild_snapshot)addressPanel?.reviewRebuild(value.rebuild_snapshot);}
+window.addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin||event.data?.type!=='gateway:workspace-select-index'||!['utxo-state','address-state','address-history'].includes(event.data.index))return;const value={index:event.data.index,rebuild_snapshot:event.data.rebuild_snapshot};if(!workspaceReady){pendingIndex=value;return;}openIndexBuild(value);});
 function showSemantic(){timeline.zoomIntoFocus();}
 utxoPanel=window.GatewayUTXOPanel.mount({root:$('utxo-build-panel'),api,refresh,notify:message});
+addressPanel=window.GatewayAddressPanel?.mount({root:$('address-state-build-panel'),api,refresh,notify:message,select:selectIndex});
 timeline = window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:prepareTimelineRange,openEntity:openTimelineEntity,onFocus:value=>{if(movingEntity)return;explorer?.focus(value);if(value.immediate!==false)publishFocus({...value,kind:'block'});},onDetail:showSemantic,onEntity:focusEntity,loadHierarchy:(entity,options)=>explorer.loadHierarchy(entity,options),loadRevealMarkers:async(value,{signal})=>{const result=await api('query?index=inscriptions&height='+value.height+'&limit=1000',undefined,{signal});return {markers:inscriptionRows(result.rows).map(inscriptionMarker).filter(Boolean),known:result.known===true,truncated:result.truncated};},onInscription:marker=>viewport.open(marker.address)});
 window.GatewayIndexWorkspace.mountLayout($('index-timeline'),$('message'));
 explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message,viewport:$('workspace-viewport-body'),onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:()=>timeline.cancelPendingNavigation()});
 viewport=window.GatewayInscriptionViewport.mount({document,explorer,viewport:$('workspace-viewport-body'),contentOrigin:workspaceBoot.content_origin,notify:message,onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:()=>timeline.cancelPendingNavigation()});
 selectView('catalog');
-refresh().then(()=>{workspaceReady=true;const focus=new URLSearchParams(location.search).get('focus'),request=pendingAddress||{address:focus|| (new URLSearchParams(location.search).get('viewer')==='1'?'ord.gateway':''),options:{}};pendingAddress=null;if(request.address)return navigateWorkspace(request.address,request.options);}).catch(error=>message(error.message,true));
+refresh().then(()=>{workspaceReady=true;if(pendingIndex){openIndexBuild(pendingIndex);pendingIndex=null;}const focus=new URLSearchParams(location.search).get('focus'),request=pendingAddress||{address:focus|| (new URLSearchParams(location.search).get('viewer')==='1'?'ord.gateway':''),options:{}};pendingAddress=null;if(request.address)return navigateWorkspace(request.address,request.options);}).catch(error=>message(error.message,true));
 window.addEventListener('pagehide',()=>{viewport?.teardown();explorer?.teardown();});
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 </script>

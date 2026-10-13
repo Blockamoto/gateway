@@ -1,6 +1,6 @@
 # Indexing and positional inscriptions
 
-The 0.7.5 source enables **Headers**, **Bitcoin Blocks**, **Inscriptions**, **Transaction Locator**, **Transaction Input/Output (TXIO)** and **UTXO set**. TXIO adds optional Values and exact ScriptPubKeys history. Related inscription transaction locator construction remains available. Gateway peerhood and later index stages remain gated; locked implementations cannot be enabled through a setting, command or API. Exact prerelease publication and delivery acceptance are tracked in [status](STATUS.md).
+The 0.7.6 development source enables **Headers**, **Bitcoin Blocks**, **Inscriptions**, **Transaction Locator**, **Transaction Input/Output (TXIO)**, **UTXO set** and **Addresses**. Addresses offers Current UTXOs and independently retained Historical outputs; see [the Addresses guide](ADDRESSES-INDEX.md). TXIO retains optional Values and exact ScriptPubKeys history. Gateway peerhood and later index stages remain gated. The public release and updater remain tracked separately in [status](STATUS.md).
 
 ## What coverage means
 
@@ -10,7 +10,7 @@ Blocks records processing and availability for requested ranges. A block can als
 
 The schema and explorer work with a known block's transactions, inputs, outputs and output-relative offsets. A transaction-ID lookup can use evidence already available from Blocks; an unknown ID may need a containing-block hint. An offset is not proof of global sat identity, ownership or movement history.
 
-Address, Sat/Satline, Bitmap, parcel and Terrain Claim Chains features remain gated. Gateway peerhood and index sharing are gated too. Fetching or viewing a block does not start historical index jobs. Transaction and Inscription indexing as you browse remain independent opt-in choices.
+Sat/Satline, Bitmap, parcel and Terrain Claim Chains features remain gated. Gateway peerhood and index sharing are gated too. Fetching or viewing a block or address does not start historical index jobs. Transaction and Inscription indexing as you browse remain independent opt-in choices.
 
 TXIO keeps one committed set of spend relationships with automatic lookup in both directions. A supplied BPS needs no transaction-hash locator. Construction still needs verified creation evidence; sparse missing predecessors remain unresolved. Relationships survive source-body eviction, while navigation may need to fetch the target's bytes. See [the canonical format and measured overhead](TXIO-INDEX.md).
 
@@ -64,7 +64,7 @@ An unknown location, temporarily unavailable block bytes and unverified relation
 
 ## Plans, jobs and Live
 
-Selecting a track or range does not start a scan. Historical builds select an explicit range, mode and source-retention choice; UTXO uses its genesis-only state workflow and fixed Pruned policy. Requests containing locked outputs fail before fetching or writing data. One index writer runs at a time; accepted additional requests enter a durable queue. Pause and cancellation preserve committed work.
+Selecting a track or range does not start a scan. Historical builds select an explicit range, mode and source-retention choice; UTXO uses its genesis-only state workflow and fixed Pruned policy. Current addresses build from saved UTXO state without starting that dependency. Historical addresses allow sparse creation ranges and reuse complete retained output facts before fetching raw fallback blocks. Requests containing locked outputs fail before fetching or writing data. One index writer runs at a time; accepted additional requests enter a durable queue. Pause and cancellation preserve committed work.
 
 **On** permits an available index to run. **Live** authorizes catch-up and following the selected chain in batches. It starts work immediately from the saved/default start, which may be genesis. Review a small bounded range first. Header pause and outbound-network disable remain effective controls.
 

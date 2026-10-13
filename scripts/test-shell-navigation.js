@@ -50,6 +50,8 @@ function browserPath(chromium) {
 }
 
 let origin; // A fresh loopback fixture server owns this origin for each run.
+const bitcoinAddress='1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+const addressCheckpoint={height:170,block_hash:'b'.repeat(64),commitment:'address-head'};
 const fixtures = {
   '/api/v1/settings': {settings:{bitcoin_peers:[], satline_enabled:true, ord_enabled:true}, core:{connected:false}, core_store:{}},
   '/api/v1/browser/status': {browser:{native_active:false}},
@@ -65,7 +67,7 @@ const fixtures = {
   '/api/v1/data-coverage': {headers:{header_height:0}, cache:{}, transaction_locations:{}, spender_knowledge:{}, mounted:{}, mounted_preparation:{}, core:{connected:false}, serving:{}},
 };
 
-async function harness(browser, address = '.gateway', failStatus = false) {
+async function harness(browser, address = '.gateway', failStatus = false, addressLookupState='not_built') {
   const context = await browser.newContext({serviceWorkers:'block'});
   const page = await context.newPage();
   page.setDefaultTimeout(5000);
@@ -87,11 +89,16 @@ async function harness(browser, address = '.gateway', failStatus = false) {
     if (url.pathname.endsWith('.css')) return fulfill('', 'text/css');
     if (url.pathname === '/shell/gateway.ico') return fulfill('', 'image/x-icon');
     if (url.pathname === '/shell/gateway-mark.svg') return fulfill('<svg xmlns="http://www.w3.org/2000/svg"/>', 'image/svg+xml');
-    if (['/satline', '/indexes'].includes(url.pathname)) return fulfill('<!doctype html><title>Module fixture</title><h1>Embedded module fixture</h1>', 'text/html');
+    if (['/satline', '/indexes'].includes(url.pathname)) return fulfill('<!doctype html><title>Module fixture</title><h1>Embedded module fixture</h1><script>window.addEventListener("message",e=>{if(e.source===parent&&e.origin===location.origin&&e.data.type==="gateway:workspace-select-index"){document.body.dataset.index=e.data.index;document.body.dataset.rebuildSnapshot=JSON.stringify(e.data.rebuild_snapshot||null);}});</script>', 'text/html');
     if(url.pathname==='/api/v1/appearance'){if(request.method()==='POST')appearance={...appearance,...request.postDataJSON()};return fulfill(JSON.stringify(appearance),'application/json')}
     if(url.pathname==='/api/v1/navigate'&&request.method()==='POST'){
       const address=request.postDataJSON().address,txid='a'.repeat(64),block='b'.repeat(64);
+      if(address===bitcoinAddress)return fulfill(JSON.stringify({resource:{kind:'address',query:address,address:{address},address_index:{address,state:'ready'}}}),'application/json');
       if(address===txid||address===txid+'.840000.bitcoin'){const located=address===txid;return fulfill(JSON.stringify({resource:{query:address,transaction:{txid,height:840000,block_hash:block,tx_index:7,locator_verified:true,transaction_verified:!located,source_network:located?'local_index_locator':'local_index',locator_peer:'committed transaction locator',verification_state:located?'header_anchored_locator':'header_anchored',resolution_state:located?'located_bytes_unavailable':'',note:'<img src="https://untrusted.invalid/pixel"> A provider must supply the containing block.',transaction:located?{index:0,inputs:null,outputs:null}:{txid,index:7,inputs:[],outputs:[{n:0,value_sats:123,type:'script'}]}}}}),'application/json')}
+    }
+    if(url.pathname==='/api/v1/address/view'){
+      assert.equal(request.method(),'GET');assert.equal(url.searchParams.get('address'),bitcoinAddress);assert.equal(url.searchParams.get('mode'),'current');
+      return fulfill(JSON.stringify({address:bitcoinAddress,mode:'current',state:addressLookupState,snapshot:addressLookupState==='rebuild_required'?addressCheckpoint:{},current_balance_sats:null,current_output_count:null,outputs:[],complete:false,note:'Current UTXOs require inspection or a reviewed build.'}),'application/json');
     }
     if (request.method() === 'GET' && Object.hasOwn(fixtures, url.pathname)) {
       if (failStatus && url.pathname === '/api/v1/settings') return fulfill(JSON.stringify({error:'Fixture services unavailable'}), 'application/json', 503);
@@ -121,13 +128,13 @@ async function checkRoute(page, address, selector) {
   await healthy(page, address);
   assert.equal(await page.locator('#address').inputValue(), address);
   const selected = page.locator('.nav-item.active');
-  const primary = ['.gateway','indexes.gateway','peers.gateway','settings.gateway'].includes(address);
+  const positionalInput=/^i[0-9]+\.[0-9]+\.[0-9]+(?:\.bitcoin)?$/.test(address),primary = ['.gateway','indexes.gateway','peers.gateway','settings.gateway'].includes(address)||positionalInput;
   assert.equal(await selected.count(), primary ? 1 : 0, `${address}: primary workspace selection`);
   if (primary) {
-    assert.equal(await selected.getAttribute('data-route'), address);
+    assert.equal(await selected.getAttribute('data-route'), positionalInput?'indexes.gateway':address);
     assert.equal(await selected.getAttribute('aria-current'), 'page');
   }
-  if (!['satline.gateway', 'indexes.gateway'].includes(address)) {
+  if (!['satline.gateway', 'indexes.gateway'].includes(address)&&!positionalInput) {
     assert.equal(await page.locator('#content').evaluate(node => node.classList.contains('embed-host')), false, `${address}: stale embedded layout`);
   }
 }
@@ -216,6 +223,18 @@ async function run() {
       await located.page.locator('iframe.indexes-frame').waitFor();await healthy(located.page,'Transaction address in the shared workspace');
       assert.equal(await located.page.locator('#address').inputValue(),'a'.repeat(64));assert.equal(located.requests.some(request=>request.path==='/api/v1/navigate'),false,'Shell forwards resource entry to the workspace instead of resolving twice');assert.equal(await located.page.locator('#transaction-location').count(),0,'Shell does not duplicate transaction Details outside the workspace');assert.deepEqual(located.errors,[]);assert.deepEqual(located.unexpected,[]);
     }finally{await located.context.close()}
+    if(scripts.has('/shell/address-view.js')){
+      const addressView=await harness(browser,bitcoinAddress);
+      try{
+        await addressView.page.locator('#address-balance').waitFor();await checkRoute(addressView.page,bitcoinAddress,'#address-balance');assert.equal(await addressView.page.locator('#address-balance').innerText(),'Unavailable');assert.equal(await addressView.page.locator('#content').getByText('[object Object]').count(),0,'Legacy typed address envelope is not passed as the address string');
+        await addressView.page.getByRole('button',{name:'Build Current UTXOs',exact:true}).click();await checkRoute(addressView.page,'indexes.gateway','iframe.indexes-frame');const frame=addressView.page.frameLocator('#indexes-module');await frame.locator('body[data-index="address-state"]').waitFor();
+        await addressView.page.goBack();await addressView.page.locator('#address-balance').waitFor();await checkRoute(addressView.page,bitcoinAddress,'#address-balance');const resolutions=addressView.requests.filter(r=>r.path==='/api/v1/navigate').length;await addressView.page.locator('#address').fill('i0.3.150');await addressView.page.locator('#address-form').evaluate(form=>form.requestSubmit());await checkRoute(addressView.page,'i0.3.150','iframe.indexes-frame');assert.equal(addressView.requests.filter(r=>r.path==='/api/v1/navigate').length,resolutions,'Spending-input BPS navigation uses the shared workspace');assert.equal(addressView.requests.some(r=>r.path==='/api/v1/index/build'),false,'Address navigation never starts a build');assert.deepEqual(addressView.errors,[]);assert.deepEqual(addressView.unexpected,[]);
+      }finally{await addressView.context.close()}
+      const damagedAddress=await harness(browser,bitcoinAddress,false,'rebuild_required');
+      try{
+        await damagedAddress.page.getByRole('button',{name:'Review Current UTXOs rebuild'}).click();await checkRoute(damagedAddress.page,'indexes.gateway','iframe.indexes-frame');const frame=damagedAddress.page.frameLocator('#indexes-module');await frame.locator('body[data-index="address-state"]').waitFor();assert.deepEqual(JSON.parse(await frame.locator('body').getAttribute('data-rebuild-snapshot')),addressCheckpoint,'Outer shell passes the damaged lookup checkpoint to the existing same-origin workspace');assert.equal(damagedAddress.requests.some(r=>r.path==='/api/v1/index/build'||r.path==='/api/v1/index/plan'),false,'Rebuild navigation requires a later explicit review');assert.deepEqual(damagedAddress.errors,[]);assert.deepEqual(damagedAddress.unexpected,[]);
+      }finally{await damagedAddress.context.close()}
+    }
     const degraded = await harness(browser, '.gateway', true);
     try {
       await degraded.page.locator('#home-state').getByText('Status unavailable', {exact:true}).waitFor();

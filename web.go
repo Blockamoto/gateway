@@ -69,17 +69,18 @@ func (a *app) handleFetch(w http.ResponseWriter, r *http.Request) {
 }
 
 type searchResponse struct {
-	Module      string                 `json:"module,omitempty"`
-	Ord         *ordRecord             `json:"inscription,omitempty"`
-	Kind        string                 `json:"kind"`
-	Query       string                 `json:"query"`
-	Coordinate  string                 `json:"coordinate,omitempty"`
-	FocusKind   string                 `json:"focus_kind,omitempty"`
-	FocusIndex  int                    `json:"focus_index"`
-	FocusOffset *uint64                `json:"focus_offset,omitempty"`
-	Block       *blockView             `json:"block,omitempty"`
-	Tx          *txResolutionView      `json:"transaction,omitempty"`
-	Address     *addressResolutionView `json:"address,omitempty"`
+	AddressIndex *addressViewResult     `json:"address_index,omitempty"`
+	Module       string                 `json:"module,omitempty"`
+	Ord          *ordRecord             `json:"inscription,omitempty"`
+	Kind         string                 `json:"kind"`
+	Query        string                 `json:"query"`
+	Coordinate   string                 `json:"coordinate,omitempty"`
+	FocusKind    string                 `json:"focus_kind,omitempty"`
+	FocusIndex   int                    `json:"focus_index"`
+	FocusOffset  *uint64                `json:"focus_offset,omitempty"`
+	Block        *blockView             `json:"block,omitempty"`
+	Tx           *txResolutionView      `json:"transaction,omitempty"`
+	Address      *addressResolutionView `json:"address,omitempty"`
 }
 
 func looksLikeAddress(q string) bool {
@@ -120,11 +121,11 @@ func (a *app) searchQueryContext(ctx context.Context, q string) (searchResponse,
 		}
 		out.Coordinate, out.FocusKind, out.FocusIndex, out.FocusOffset = r.Coordinate, r.FocusKind, r.FocusIndex, r.FocusOffset
 	} else if looksLikeAddress(q) {
-		v, err := a.resolveAddressUTXOsViaOverlay(q)
+		v, err := a.addressViewContext(ctx, q, "current", "", 50)
 		if err != nil {
 			return searchResponse{}, err
 		}
-		out.Kind, out.Address = "address", &v
+		out.Kind, out.AddressIndex, out.Query = "address", &v, v.Address
 	} else if _, err := strconv.ParseInt(q, 10, 64); err == nil || strings.EqualFold(q, "tip") || strings.EqualFold(q, "latest") {
 		v, err := a.fetchAndDecodeContext(ctx, q)
 		if err != nil {
@@ -170,7 +171,7 @@ func (a *app) handleSearch(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 400, err)
 		return
 	}
-	out, err := a.resolveSearchInput(req.Query)
+	out, err := a.resolveSearchInputContext(r.Context(), req.Query)
 	if err != nil {
 		jsonError(w, 400, err)
 		return

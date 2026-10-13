@@ -1,8 +1,18 @@
 # Gateway roadmap
 
-The [public 0.7.4 prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.4) builds on the timeline, inscription and transaction stages with TXIO relationships and durable serialized block bodies. Hosted downloads, genuine 0.7.3 automatic upgrade and renewal acceptance passed. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for validation and its limits.
+The [public 0.7.5 prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.5) adds UTXO state and optional TXIO values/scripts to the timeline, inscription and transaction stages. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for exact publication and validation evidence.
 
-## In preparation: v0.7.5 UTXO set
+## In development: v0.7.6 Addresses
+
+- Build Current UTXOs from saved complete UTXO state, with checkpoint-specific balances and a deeper paginated output view.
+- Offer independently retained Historical outputs over explicit sparse creation ranges, with coverage and range totals rather than inferred balances.
+- Share existing output values/scripts and retain address-to-output BPS membership; do not copy complete decoded blocks.
+- Add typed-address entry, clickable output addresses and independent Current/Historical timeline bands.
+- Defer inscription holdings, Sats, fees and full consensus validation. Main, release publication and updater changes require a later explicit instruction.
+
+See [the Addresses brief](IMPLEMENTATION-BRIEF-0.7.6.md) and [guide](ADDRESSES-INDEX.md).
+
+## Available: v0.7.5 UTXO set
 
 - Build a complete live-output state from genesis to an explicit processed selected-chain tip, with exact values/scripts, BPS creation identity and a durable native-prevout bridge.
 - Pause/resume at an atomic head; retain a fixed 288 complete recovery transitions, independently of raw-body retention. Deeper reorganizations require an explicit reviewed rebuild and preserve prior state archives.
@@ -10,7 +20,7 @@ The [public 0.7.4 prerelease](https://github.com/Blockamoto/gateway/releases/tag
 - Group Blocks into Headers/raw bodies and TXIO into Positional links/Values/ScriptPubKeys; give UTXO its own state/build panel with honest progress, anchors and measured storage.
 - Report header-anchored processing with `consensus_validated=false`. Independent full consensus validation is deferred to v0.8; this release adds no snapshot, new peer/state-sharing, Sats, fees or address features.
 
-Exact packaging, public release and hosted delivery acceptance remain pending. See [the implementation brief](IMPLEMENTATION-BRIEF-0.7.5.md), [UTXO guide](UTXO-INDEX.md) and [test guide](TESTING-0.7.5.md).
+Exact packaging, public release and hosted delivery acceptance are recorded in [status](STATUS.md). See [the implementation brief](IMPLEMENTATION-BRIEF-0.7.5.md), [UTXO guide](UTXO-INDEX.md) and [test guide](TESTING-0.7.5.md).
 
 ## Available in the 0.7.4 prerelease
 
@@ -54,6 +64,6 @@ These stages describe order, not promised dates. They do not enable current owne
 
 ## Future, currently locked
 
-Beyond the inscription/transaction/TXIO/UTXO work, address, Sat/Satline, fees, Bitmap and parcel capabilities remain unavailable. **Bitmap: Terrain Claim Chains** is the name of the locked Terrain Claim Chains feature; it introduces no active behavior in this release. UTXO amount/script facts do not identify individual sats: future sat state needs ordinal ranges and their provenance, with separate recovery/history coverage.
+Beyond the inscription/transaction/TXIO/UTXO and development Addresses work, Sat/Satline, fees, Bitmap and parcel capabilities remain unavailable. **Bitmap: Terrain Claim Chains** is the name of the locked Terrain Claim Chains feature; it introduces no active behavior in this release. UTXO amount/script facts do not identify individual sats: future sat state needs ordinal ranges and their provenance, with separate recovery/history coverage.
 
 Gateway-to-Gateway peerhood and index sharing also remain locked. Their eventual scope and trust model require separate validation. Related schema and reference-project alignment can inform future work without implying conformance or a release commitment today.

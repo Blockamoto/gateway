@@ -57,17 +57,18 @@ func cloneIndexJob(j indexJob) indexJob {
 }
 
 type indexStatusView struct {
-	UTXO               *indexUTXOStatusView `json:"utxo,omitempty"`
-	BlockBodyMigration *blocksBodyMigration `json:"block_body_migration,omitempty"`
-	Browse             []indexBrowsePolicy  `json:"browse"`
-	Timeline           indexTimelineView    `json:"timeline"`
-	Jobs               []indexJob           `json:"jobs"`
-	Definitions        []indexDefinition    `json:"definitions"`
-	Providers          []indexProviderView  `json:"providers"`
-	Instances          []indexInstance      `json:"instances"`
-	Live               []indexLiveView      `json:"live"`
-	Job                indexJob             `json:"job"`
-	Errors             []string             `json:"errors,omitempty"`
+	Addresses          *indexAddressStatusView `json:"addresses,omitempty"`
+	UTXO               *indexUTXOStatusView    `json:"utxo,omitempty"`
+	BlockBodyMigration *blocksBodyMigration    `json:"block_body_migration,omitempty"`
+	Browse             []indexBrowsePolicy     `json:"browse"`
+	Timeline           indexTimelineView       `json:"timeline"`
+	Jobs               []indexJob              `json:"jobs"`
+	Definitions        []indexDefinition       `json:"definitions"`
+	Providers          []indexProviderView     `json:"providers"`
+	Instances          []indexInstance         `json:"instances"`
+	Live               []indexLiveView         `json:"live"`
+	Job                indexJob                `json:"job"`
+	Errors             []string                `json:"errors,omitempty"`
 }
 
 func (a *app) loadIndexJobLocked() {
@@ -176,6 +177,7 @@ func (a *app) indexStatus() indexStatusView {
 		}
 	}
 	out.UTXO = a.indexUTXOStatus(out.Jobs)
+	out.Addresses, out.Instances = a.indexAddressStatus(out.Instances)
 	out.Timeline = a.indexTimeline(out.Definitions, out.Providers, out.Instances, out.Errors...)
 	return out
 }
@@ -216,7 +218,7 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 	}
 	var s *indexStore
 	var e error
-	if req.Rebuild && req.Index == "utxo-state" {
+	if req.Rebuild && (req.Index == "utxo-state" || req.Index == "address-state") {
 		d, err := findIndexDefinition(req.Index)
 		if err != nil {
 			return indexJob{}, err
@@ -231,7 +233,7 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 	// Suggested starts apply only to fresh instances. An omitted resume range
 	// retains its authenticated checkpoint even when the current UI suggestion
 	// differs; an explicit conflicting start still fails below.
-	if s.checkpoint != nil && req.From == nil {
+	if s.checkpoint != nil && req.From == nil && req.Index != "address-state" && req.Index != "address-history" {
 		from := s.checkpoint.From
 		req.From = &from
 	}
@@ -246,7 +248,7 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 	if !p.Definition.Buildable {
 		return indexJob{}, fmt.Errorf("%s has no derivation executor; inspect its provider capabilities", req.Index)
 	}
-	if s.checkpoint != nil && s.checkpoint.From != p.From {
+	if s.checkpoint != nil && s.checkpoint.From != p.From && req.Index != "address-history" {
 		return indexJob{}, fmt.Errorf("existing instance begins at %d; use that range to resume", s.checkpoint.From)
 	}
 	if s.checkpoint != nil {
@@ -313,6 +315,8 @@ func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (in
 	}
 	if req.Index == "utxo-state" {
 		go a.runUTXOIndexBuild(ctx, cloneIndexJob(j))
+	} else if req.Index == "address-state" || req.Index == "address-history" {
+		go a.runAddressIndexBuild(ctx, cloneIndexJob(j))
 	} else if len(req.Outputs) > 0 || req.Index == "sat-state" || req.Index == "txo-spender" || req.Index == "inscriptions" && p.ConventionalIDs {
 		go a.runSharedIndexBuild(ctx, cloneIndexJob(j))
 	} else {
@@ -601,6 +605,10 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 	if id == "utxo-state" {
 		return a.queryUTXOIndex(context.Background(), limit)
 	}
+	if id == "address-state" || id == "address-history" {
+		view, _ := a.indexAddressStatus(nil)
+		return view, nil
+	}
 	s, e := indexStoreHead(a.dataDir, id)
 	if e != nil {
 		return nil, e
@@ -731,6 +739,13 @@ func (a *app) indexLookup(id, key string) (any, error) {
 	}
 	if id == "utxo-state" {
 		return a.lookupUTXOIndex(context.Background(), key)
+	}
+	if id == "address-state" || id == "address-history" {
+		mode := "current"
+		if id == "address-history" {
+			mode = "historical"
+		}
+		return a.addressViewContext(context.Background(), key, mode, "", 50)
 	}
 	if id != "bitmap" {
 		return nil, fmt.Errorf("key lookup is implemented for Bitmap districts")

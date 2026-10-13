@@ -51,6 +51,11 @@ type indexProviderState struct {
 	UTXOSnapshot                   *chainSnapshot
 	SatSnapshot                    *chainSnapshot
 	NumberingSnapshot              *chainSnapshot
+	AddressCurrentState            string
+	AddressCurrentSnapshot         *chainSnapshot
+	AddressHistoryState            string
+	AddressHistoryCoverage         []heightInterval
+	AddressHistorySnapshot         *chainSnapshot
 }
 
 // indexProviderViews performs no Bitcoin scans, materialization, peer discovery or
@@ -173,6 +178,16 @@ func (a *app) indexProviderViews() []indexProviderView {
 	if s.SatlineEnabled && s.SatlineServePublished {
 		local.PublishedSatline = a.hasPublishedIndexSatline()
 	}
+	addressStatus, _ := a.indexAddressStatus(nil)
+	local.AddressCurrentState = addressStatus.Current.State
+	if cp := addressStatus.Current.Snapshot; cp != nil {
+		local.AddressCurrentSnapshot = &chainSnapshot{Network: "mainnet", Height: cp.Height, Hash: cp.BlockHash, Source: "gateway_address_state"}
+	}
+	local.AddressHistoryState = addressStatus.Historical.State
+	local.AddressHistoryCoverage = addressStatus.Historical.Coverage
+	if cp := addressStatus.Historical.Snapshot; cp != nil {
+		local.AddressHistorySnapshot = &chainSnapshot{Network: "mainnet", Height: cp.Height, Hash: cp.BlockHash, Source: "gateway_address_history"}
+	}
 	return buildIndexProviderViews(s, core, local)
 }
 
@@ -247,12 +262,18 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 	spendCov := indexCoreCoverage(core, core.SpenderIndexHeight, spendEnabled)
 	add("txo-spender", "bitcoin_core_txospenderindex", indexCoreCompleteness(core, core.SpenderIndexHeight, spendEnabled, core.SpenderIndex), "rechecked_on_query", spendEnabled, s.ServeData && spendEnabled && core.SpenderIndex, spendCov, spendCov, coreSnapshot,
 		"Core historical spender provider. Local positives verify the actual input; local negatives also require a synced index and an existing confirmed UTXO at the stated snapshot. Mempool observations remain separate.")
-	add("address-state", "bitcoin_core_chainstate", "on_demand_snapshot", "provider_reported", connected, false, nil, nil, coreSnapshot,
-		"Local explicit scantxoutset request for a current UTXO snapshot. Successful scan, returned height and best-block hash belong to the answer; no address index is prebuilt and remote-triggered scans are unsupported.")
+	add("address-state", "bitcoin_core_chainstate", "on_demand_snapshot", "provider_reported", false, false, nil, nil, coreSnapshot,
+		"Core chainstate can supply an explicit scan, but this release's address explorer uses the saved local address index. Opening an address never starts scantxoutset or a remote scan.")
+	var addressCurrentCoverage []heightInterval
+	if local.AddressCurrentSnapshot != nil {
+		addressCurrentCoverage = []heightInterval{{From: local.AddressCurrentSnapshot.Height, To: local.AddressCurrentSnapshot.Height}}
+	}
+	add("address-state", "gateway_address_state", "complete_live_address_set_at_snapshot", "header_anchored_processing; consensus_validated=false", local.AddressCurrentState == "ready", false, addressCurrentCoverage, nil, local.AddressCurrentSnapshot,
+		"Current address membership and cached balances derived from the exact saved UTXO checkpoint. Output values and scripts remain in shared facts. A missing or stale index never reports a zero balance.")
 	add("utxo-state", "gateway_utxo_state", "complete_genesis_prefix_at_snapshot", "header_anchored_processing; consensus_validated=false", local.UTXOSnapshot != nil, false, local.CommittedUTXO, nil, local.UTXOSnapshot,
 		"Locally processed live unspent outputs at this exact selected-chain checkpoint. Complete coin facts and 288 self-contained recovery transitions survive raw-body eviction. Full consensus validation and snapshot sharing are deferred.")
-	add("address-history", "none", "unavailable", "unknown", false, false, nil, nil, nil,
-		"No historical address activity index or provider is implemented. Current UTXO scans do not supply spent outputs or historical activity; deeper indexing requires explicit opt-in implementation.")
+	add("address-history", "gateway_address_history", "explicit_scanned_ranges", "header_anchored_output_evidence; consensus_validated=false", local.AddressHistoryState == "ready", false, local.AddressHistoryCoverage, nil, local.AddressHistorySnapshot,
+		"Historical address outputs from explicitly scanned sparse ranges, retained after spend and raw-block eviction. Range totals describe received outputs within coverage; they are not current balances and unknown spend status remains unknown.")
 	satline := s.SatlineEnabled && local.SatlineReady
 	add("sat-state", "gateway_sat_index", "continuous_genesis_snapshot", "locally_derived_selected_chain", local.SatSnapshot != nil, false, local.CommittedSats, nil, local.SatSnapshot, "Global ordinal FIFO identity, issuance and placement at the explicit snapshot. Lost, burned, genesis-unspendable and BIP30-destroyed sats remain distinct. Header anchoring is not full script consensus validation. Full movement history and raw block retention are independent.")
 	add("sat-state", "gateway_satline_resolver", "on_demand", "rechecked_on_query", satline, false, nil, nil, nil,
@@ -296,7 +317,19 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 				}
 			}
 		}
-		if r.ID == "address-history" || r.ID == "inscription-numbering" {
+		if r.Provider == "gateway_address_state" {
+			r.Readiness = local.AddressCurrentState
+			if r.Readiness == "" {
+				r.Readiness = "not_built"
+			}
+		}
+		if r.Provider == "gateway_address_history" {
+			r.Readiness = local.AddressHistoryState
+			if r.Readiness == "" {
+				r.Readiness = "not_built"
+			}
+		}
+		if r.ID == "inscription-numbering" {
 			r.Readiness = "not_implemented"
 		}
 		if !releaseFeatureAvailable(r.ID) {

@@ -92,6 +92,9 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 	if req.Index == "utxo-state" {
 		return a.planUTXOIndexBuild(req)
 	}
+	if req.Index == "address-state" || req.Index == "address-history" {
+		return a.planAddressIndexBuild(req)
+	}
 	if (req.RetainOutputValues != nil || req.RetainOutputScripts != nil) && req.Index != "txo-spender" && req.Index != "blocks" {
 		return indexPlan{}, fmt.Errorf("output value and script history options belong to TXIO")
 	}

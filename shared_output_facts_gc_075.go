@@ -55,6 +55,16 @@ func collectSharedOutputFactsContext(ctx context.Context, root string) error {
 	}); e != nil {
 		return e
 	}
+	// Historical address outputs own their exact facts independently of
+	// optional TXIO history and live UTXO membership. Retained branch roots are
+	// authenticated before any shared page can be collected.
+	history, e := openAddressHistoryStoreContext(ctx, root)
+	if e != nil {
+		return e
+	}
+	if e = history.VisitFactPagesContext(ctx, func(hash string) error { pins[hash] = true; return nil }); e != nil {
+		return e
+	}
 	base := outputFactDirectory(root)
 	if e = updateapply.CheckPath(base); e != nil {
 		return e

@@ -439,6 +439,15 @@ func (a *app) indexLiveView(id string, policy indexLivePolicy) indexLiveView {
 		baseline = initialFrom - 1
 	}
 	setLag := func() {
+		if id == "address-history" && fresh {
+			if history, err := openAddressHistoryStoreContext(context.Background(), a.dataDir); err == nil {
+				view.LagKnown, view.Lag = true, 0
+				for _, gap := range indexCoverageGaps(history.head.Coverage, initialFrom, authority.Height) {
+					view.Lag += gap.To - gap.From + 1
+				}
+				return
+			}
+		}
 		if fresh && authority.Height >= baseline {
 			view.LagKnown, view.Lag = true, authority.Height-baseline
 		}
@@ -480,6 +489,18 @@ func (a *app) indexLiveView(id string, policy indexLivePolicy) indexLiveView {
 		view.State, view.Reason = "catching_up", fmt.Sprintf("Live starts applicable history at block %d, then follows the selected tip in bounded batches.", initialFrom)
 		setLag()
 		return view
+	}
+	if id == "address-state" {
+		status, err := addressStateStatusContext(context.Background(), a.dataDir)
+		if err != nil {
+			view.State, view.Error = "error", err.Error()
+			return view
+		}
+		if status.State != "ready" {
+			view.State, view.Reason = "catching_up", "The address lookup needs to match the saved UTXO checkpoint."
+			setLag()
+			return view
+		}
 	}
 	if !fresh || authority.Height < baseline {
 		view.State = "offline_unknown"
@@ -576,6 +597,70 @@ func (a *app) liveIndexTick() {
 	for i := range ids {
 		id := ids[(start+i)%len(ids)]
 		policy := policies[id]
+		runtime := a.liveIndexRuntime(id)
+		if runtime.State == "error" || time.Now().Before(runtime.RetryAfter) {
+			continue
+		}
+		if id == "address-state" {
+			status, err := addressStateStatusContext(context.Background(), a.dataDir)
+			if err == nil && status.State == "ready" {
+				continue
+			}
+			u, err := utxoStoreHead(a.dataDir)
+			if err != nil || u.Head() == nil {
+				continue
+			}
+			if a.utxoSelectedChainState(context.Background(), u.Head(), authority) != "selected_chain" {
+				continue
+			}
+			a.indexLiveLast = id
+			a.startLiveIndexRuntime(id)
+			if _, err := a.startIndexBuildInternal(indexBuildRequest{Index: id, Mode: "lean", Retention: policy.Retention}, true); err != nil {
+				a.failLiveIndexRuntime(id, err)
+				continue
+			}
+			return
+		}
+		if id == "address-history" {
+			history, err := openAddressHistoryStoreContext(context.Background(), a.dataDir)
+			if err != nil {
+				a.failLiveIndexRuntime(id, err)
+				continue
+			}
+			from := int64(0)
+			if policy.InitialFrom != nil {
+				from = *policy.InitialFrom
+			}
+			if authority.Height < from {
+				continue
+			}
+			to := authority.Height
+			chainState := "selected_chain"
+			definition, _ := findIndexDefinition(id)
+			if cp := addressHistoryIndexCheckpoint(history.head, definition); cp != nil {
+				chainState = a.indexChainState(cp)
+				if chainState == "anchor_unavailable" {
+					continue
+				}
+			}
+			gaps := indexCoverageGaps(history.head.Coverage, from, to)
+			if chainState == "selected_chain" {
+				if len(gaps) == 0 {
+					continue
+				}
+				from, to = gaps[0].From, gaps[0].To
+			}
+			if to-from >= indexLiveBatchBlocks {
+				to = from + indexLiveBatchBlocks - 1
+			}
+			a.indexLiveLast = id
+			a.startLiveIndexRuntime(id)
+			if _, err := a.startIndexBuildInternal(indexBuildRequest{Index: id, From: &from, To: &to, Mode: "lean", Retention: policy.Retention}, true); err != nil {
+				a.failLiveIndexRuntime(id, err)
+				continue
+			}
+			return
+		}
 		outputs := []string{}
 		for _, output := range policy.Outputs {
 			if !policies[output].Stopped && !policies[output].Paused {
@@ -589,10 +674,6 @@ func (a *app) liveIndexTick() {
 		d, err := findIndexDefinition(id)
 		if err != nil || !d.Buildable {
 			a.failLiveIndexRuntime(id, fmt.Errorf("index is not continuously maintainable"))
-			continue
-		}
-		runtime := a.liveIndexRuntime(id)
-		if runtime.State == "error" || time.Now().Before(runtime.RetryAfter) {
 			continue
 		}
 		s, err := indexStoreHead(a.dataDir, id)

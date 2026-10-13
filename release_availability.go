@@ -9,7 +9,7 @@ import (
 // state. Upgrading a profile cannot opt a testing build into unreleased work.
 // Keep the derivation recipes and data formats unchanged for future promotion.
 func releaseFeatureAvailable(id string) bool {
-	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state"
+	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state" || id == "address-state" || id == "address-history"
 }
 
 // Related inscription transaction locators ship with the transaction stage,
@@ -27,7 +27,7 @@ func releaseAvailability() map[string]bool {
 }
 
 func releaseLockReason(id string) string {
-	return fmt.Sprintf("%s is locked in this testing build. Headers, Bitcoin Blocks, Inscriptions, Transaction Index and TXIO index are available; additional features will be enabled after separate validation. Saved data is retained.", id)
+	return fmt.Sprintf("%s is locked in this testing build. Headers, Bitcoin Blocks, Inscriptions, Transaction Index, TXIO, UTXO set and Addresses are available; additional features will be enabled after separate validation. Saved data is retained.", id)
 }
 
 func requireReleaseFeature(id string) error {

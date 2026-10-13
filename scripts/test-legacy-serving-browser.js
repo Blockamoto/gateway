@@ -24,7 +24,7 @@ async function run(){
     '/api/v1/system/status':{supported:false},
     '/api/v1/browser/status':{namespaces:[]},
     '/api/v1/graph/status':{native_complete_through:-1},
-    '/api/v1/satline/status':{enabled:false},
+    '/api/v1/satline/status':{enabled:true},
     '/api/v1/sync/status':{mode:'on-demand',running:false}
    };
    if(!Object.hasOwn(responses,url.pathname)){unexpected.push(url.pathname);return route.abort()}
@@ -40,6 +40,9 @@ async function run(){
   assert(!((await notice.innerText()).includes('48333')),'Do not substitute the default port');
   assert.match(await notice.innerText(),/served 2 blocks.*3 notfound/,'Keep serving counters visible');
   assert.equal(await page.locator('#serve').isChecked(),true);
+  assert.equal(await page.locator('#satlineEnabled').count(),0,'Legacy controls must not offer the deprecated Satline switch');
+  assert.match(await page.locator('#settingsBody').innerText(),/Local Satline tracing is available automatically/);
+  assert(!fs.readFileSync(path.join(root,'skins/default/index.html'),'utf8').includes('satlineEnabled'),'The shipped default skin must match automatic local tracing');
   async function render(listener){
    fixture.bitcoin_p2p=listener;fixture.settings.serve_data=listener.requested;
    const before=structuredClone(fixture);

@@ -1,12 +1,16 @@
 # Gateway status
 
-## Development: v0.7.7 Sats — verification in progress
+## Development: v0.7.7 Sats
 
 The `v0.7.7` branch starts from the tested Addresses source and adds genesis-first ordinal identities, ordered output ranges, shared output facts, a Sat explorer, compatible address UTXO/range views, and known inscription holdings with explicit identity coverage. Historical ranges are optional. Local Satline is always available when released, without a separate enable switch or Add Index entry; visited-path and fee-prefix caches support on-demand tracing. Known input/output BPS positions appear in the explorer, while unresolved native outpoints remain explicit.
 
 Sat recovery retains two savepoints every 12 blocks and two every 144 blocks, sharing matching heights and reachable pages. It restores an eligible state and replays forward; it does not guarantee 288-block recovery at every height. The UTXO index's 288 reversible transitions remain unchanged. Incompatible experimental Sat state is preserved for reviewed rebuild.
 
-Focused backend, browser and an initial compiled Windows build have passed within their recorded scopes, including genuine blocks zero and one, reviewed Build/Pause/Resume, readable paused queries, pruned raw-source eviction and restart. Additional refinements and the complete branch checks remain in progress; no final release acceptance or whole-mainnet benchmark is claimed. Main, publication and the live updater remain held for the user's later release instruction. See [the implementation brief](IMPLEMENTATION-BRIEF-0.7.7.md) and [Sat guide](SATS-INDEX.md).
+The corrected full Windows run passed with **1,127 passing and 42 skipped test/subtest events, zero failures**, in 781.282 seconds against engine source `8fc462000e254e7c351b33deaf85fc0661babc3f`. The later legacy-settings presentation change passed exact compiled-page acceptance. The final Windows app at source `5040ac9b1f2a9cb69698505fec8ee1485837cea9`, SHA-256 `aec63f9520d1499df13b25486d70d89225009b3893e90e30041a917547f518ad`, passed genuine blocks zero/one, reviewed Build/Waiting/Pause/Resume, readable paused queries, automatic Satline despite the old false setting, BPS controls, raw-source eviction/restart and narrow themes. All 25 workflow browser scripts also passed locally against those bytes. User instances and profiles were preserved.
+
+[Complete Linux development CI](https://github.com/Blockamoto/gateway/actions/runs/38486470079) passed against source `2356aaacde37859c838b3ce9f4f183f9fd784638`: full Go (**1,105 passing, 47 skipped test events**), regression race (**583 passing, 17 skipped**), updater race (**159 passing, one skipped**), vet, companion/helpers, packaging and all actual browser/native checks. The preserved source archive matches its recorded digest. This commit changes only browser fixtures after the accepted application source. Earlier runs identified obsolete feature-lock fixtures and an unnecessary Core probe with no Sat state; the corrected fast path and final checks pass.
+
+Whole-mainnet storage, replay speed and highly fragmented FIFO peak memory remain unmeasured. Full consensus validation and public package/update acceptance are outside this development result. Main, publication and the live updater remain held for the user's later release instruction. See [the implementation brief](IMPLEMENTATION-BRIEF-0.7.7.md), [Sat guide](SATS-INDEX.md), and [development test guide](TESTING-0.7.7.md).
 
 ## Development: v0.7.6 Addresses
 

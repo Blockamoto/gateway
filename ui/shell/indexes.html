@@ -453,7 +453,7 @@ let movingEntity=false;
 function focusedAddress(value){return value.address||value.query||(value.kind==='transaction'&&Number.isSafeInteger(value.txIndex)?value.txIndex+'.'+value.height+'.bitcoin':value.height+'.bitcoin');}
 function publishFocus(value){if(parent!==window&&Number.isSafeInteger(value.height)&&value.height>=0)parent.postMessage({type:'gateway:workspace-focused',address:focusedAddress(value),resolved:value.resolved===true},location.origin);}
 function syncFocusedEntity(value){if(!value||!Number.isSafeInteger(value.height)||value.height<0)return;movingEntity=true;try{timeline.syncResource(value,value.metadata);}finally{movingEntity=false;}publishFocus(value);}
-function focusEntity(value,options={}){if(!value?.address)return;explorer.navigate(value.address).catch(error=>message(error.message,true));}
+function focusEntity(value,options={}){if(!value?.address)return;if(value.kind==='satpoint'){explorer.entity(value);return;}explorer.navigate(value.address).catch(error=>message(error.message,true));}
 let workspaceReady=false,pendingAddress=null,pendingIndex=null;
 function isInscriptionAddress(value){return /^(?:[0-9]+|[0-9a-f]{64})(?:\.)?i[0-9]+(?:\.[0-9]+(?:\.bitcoin)?)?$/i.test(value)||value.endsWith('.ord');}
 async function navigateWorkspace(value,options={}){

@@ -19,7 +19,7 @@ Run from the repository root with Go, Node.js and the existing Playwright/browse
 ```powershell
 $env:GO111MODULE = 'off'
 $env:CGO_ENABLED = '0'
-go test . -run 'Test077Sat(HTTP|Address|Reverse|Issuance)' -count=1
+go test . -run 'Test077(Sat(HTTP|Address|Point|Name|Issuance)|NumberNavigation|SatlineRelease)' -count=1
 go test . -run '^Test077' -count=1 -timeout 40m
 go test ./... -count=1 -timeout 40m
 go vet ./...
@@ -44,23 +44,23 @@ node scripts/test-index-timeline.js
 Browser fixtures exercise real DOM controls with controlled responses; they are separate from compiled-backend acceptance. To test a newly built native candidate, supply its exact path and a new receipt directory:
 
 ```text
-node scripts/test-sats-native-077.js --binary work/qa-077/validation-5040ac9/GatewayClient.exe --out work/qa-077/browser-sats-new-candidate
+node scripts/test-sats-native-077.js --binary path/to/GatewayClient.exe --out work/qa-077/browser-sats-new-candidate
 ```
 
-This script starts its own disposable profile, uses genuine serialized genesis and block 1, and records the binary SHA-256 in `result.json`. It checks reviewed genesis/pruned/history-off build, missing-source Waiting, Pause and saved-job Resume, exact Sat/output snapshots, addressless genesis state, always-available local tracing controls, own-input BPS, narrow themes, and queries after raw-source eviction and process restart. It must not connect to, stop or modify an existing user instance. Keep earlier receipts when retesting a rebuilt candidate.
+This script starts its own disposable profile, uses genuine serialized genesis and block 1, and records the binary SHA-256 in `result.json`. It checks reviewed genesis/pruned/history-off build, missing-source Waiting, Pause and saved-job Resume, exact Sat/output snapshots, addressless genesis state, blocked Satline entry points and absent trace controls, selected-tip number navigation, numeric/named `.sat` activation/display, retained output-offset identity, plain-wheel scrolling and intentional zoom, own-input BPS, narrow themes, and queries after raw-source eviction and process restart. It must not connect to, stop or modify an existing user instance. Keep earlier receipts when retesting a rebuilt candidate.
 
 ## Explorer and controls
 
 1. Open `0.sat` and `5000000000.sat`, including browser back navigation. Check issuance/properties, saved height/hash, output BPS and offset. Genesis is unspendable and addressless; a non-address script must not receive an invented address. Unissued, missing, stale and terminal states must remain distinct.
-2. Open a Sat before building global Sat state. Confirm **Trace Satline** is available and runs only after an explicit click. Shell Settings has no enable switch; `/legacy?settings=1` has no `satlineEnabled` control and says local tracing is available automatically. Add Index has one Sat index choice and no separate Satline entry, including old saved preferences. Opening a view must not start indexing or tracing.
-3. Open transaction inputs. Show their own input BPS immediately and the verified original-output BPS when supplied; unresolved creation positions retain the native outpoint fallback. **Follow a sat** on an output requires an explicit valid offset and opens the existing Satline journey.
+2. Open a Sat before building global Sat state. Confirm **Trace Satline** is absent. Shell and legacy Settings have no enable switch; both explain that tracing is deferred. Direct Satline and reverse API/CLI requests cannot start or resume work, even with an old saved enable flag. Add Index has one Sat index choice and no separate Satline entry. Opening a view starts no indexing or tracing. Individual Sat pages use the main address bar without a duplicate form; the Sats landing accepts a number or ordinal name.
+3. Open transaction inputs. Show their own input BPS immediately and the verified original-output BPS when supplied; unresolved creation positions retain the native outpoint fallback. Deferred **Follow a sat** actions are absent. Selecting a timeline Sat offset reads retained authenticated ranges and opens the numbered Sat. Missing ranges show unavailable identity and start no raw-block fetch or historical scan; stale replies and health recovery cannot navigate over a newer selection.
 4. Expand current address UTXOs into ordered Sat ranges. Range ends are exclusive, output offsets are contiguous, and all pages agree with the output value. FIFO range order need not be ascending by Sat number. Require exact address/Sat height and block hash; their different index commitments must not be compared as equal.
 5. Page known indexed inscription holdings. Check both snapshot identities, explicit identity coverage and partial completeness. No known rows is not proof that the address has no inscriptions. Changed checkpoints/cursors, unavailable responses and navigation away must clear or discard stale pages.
    P2PK outputs expose a separately labelled public-key destination in Sat locations, output range views and holdings queries. Its current balance and historical outputs use the same exact script identity as the Addresses explorer; same-key P2PKH outputs and other key encodings remain separate.
 6. Review the genesis-first Sat build before Start. History starts off and raw retention is pruned. One-off target changes invalidate review; Live resolves the selected tip when queued work starts. Missing evidence waits without replacing readable committed state. Pause/Resume uses the saved job, including an explicitly reviewed rebuild.
 7. Check the TXIO **Sat ranges** child has independent retained coverage. A few live outputs do not establish whole-block or full-history coverage. Enabling historical ranges later leaves earlier gaps; disabling the option preserves already retained history.
 8. Check actual savepoint heights: newest two at multiples of 12 and newest two at multiples of 144, with shared heights deduplicated. Display the saved recovery boundary. Reorg recovery needs an eligible selected-chain savepoint and replay evidence; deeper failure requires reviewed rebuild with previous evidence preserved. There is no unconditional 288-block Sat recovery guarantee.
-9. Exercise explicit output-relative identity discovery through the local reverse API and inscription discovery, independently of global historical ranges. Verify a cached interrupted path resumes only while its block anchors remain selected. Fee-prefix reuse must preserve transaction order; missing/corrupt input values or prefixes must not produce an assumed identity. This backend reverse path does not imply a reverse-journey UI.
+9. Verify reverse history discovery is blocked before historical provider work, while previously known inscription identities and identities established during Sat indexing remain queryable. A saved publication or pending job cannot override the release gate or resume a trace. Private cancellation of an already-running exact trace remains possible without deleting its completed evidence or stopping another index job. Low-level FIFO/fee arithmetic remains unit-tested without exposing tracing.
 
 Check output/lost/destroyed counts where supplied. The current Sat status does not populate a storage-byte measurement or range-fragment count, so those fields may show **Unavailable**. Do not turn an absent measurement into zero or a whole-mainnet size/performance claim.
 

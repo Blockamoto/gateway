@@ -1,6 +1,6 @@
 # v0.7.6: Addresses
 
-Release candidate notes. Source checks have passed; exact release-package acceptance, publication and hosted automatic-update verification are pending.
+Public prerelease. Exact Windows/Linux packages, signed hosted delivery, genuine previous-client automatic upgrade and approved-feed renewal passed. See [release acceptance](RELEASE-ACCEPTANCE-0.7.6.json) for scope.
 
 Enter a supported Bitcoin mainnet address or P2PK public key, or click an output destination, to explore its saved balance and output positions.
 
@@ -17,4 +17,4 @@ When a profile contains newer experimental Sat state or rebuild archives, Addres
 
 Inscription holdings wait for Sats. Results exclude mempool activity, do not imply wallet ownership or spendability, and retain the underlying UTXO stage's `consensus_validated=false` status. Full consensus validation remains a later update.
 
-Full Linux source, race, packaging and browser checks pass, alongside focused Windows and authentic block-170 navigation checks. Those bounded checks do not establish a whole-mainnet address build, final release-package execution, system installation or live update delivery. See [the address guide](ADDRESSES-INDEX.md), [development checks](TESTING-0.7.6.md) and [release acceptance](RELEASE-ACCEPTANCE-0.7.6.json) for the current evidence and remaining checks.
+Full Linux source, race, packaging and browser checks pass, alongside focused Windows and authentic block-170 navigation checks. Exact published package and live-update checks are recorded separately; these bounded checks do not establish a whole-mainnet address build or system installation. See [the address guide](ADDRESSES-INDEX.md), [development checks](TESTING-0.7.6.md) and [release acceptance](RELEASE-ACCEPTANCE-0.7.6.json) for the current evidence and remaining checks.

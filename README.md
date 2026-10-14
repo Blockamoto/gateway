@@ -2,7 +2,7 @@
 
 Gateway is a Bitcoin block explorer that retrieves the blocks you ask for. Explore blocks, transactions, inputs, outputs and positions within outputs without downloading the whole blockchain. Bitcoin Core is optional.
 
-**[0.7.5 is the public UTXO prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.5).** This development branch prepares **v0.7.6: Addresses**, adding Current UTXOs and Historical outputs to the existing Headers, Bitcoin Blocks, Inscriptions, Transactions, TXIO and UTXO set indexes. See [current status](docs/STATUS.md) for validation and publication status.
+**[v0.7.6: Addresses is the public prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.6).** It adds Current UTXOs and Historical outputs, including exact P2PK public-key destinations, to the existing Headers, Bitcoin Blocks, Inscriptions, Transactions, TXIO and UTXO set indexes. See [current status](docs/STATUS.md) for validation and publication status.
 
 TXIO connects inputs to their original outputs and outputs to their spending inputs. Blocks retain compact transaction order metadata and verified durable serialized bodies; compatible legacy conversion keeps the old copies and does not immediately reclaim their disk space. Addresses provides balances at the saved UTXO checkpoint and optional sparse output history, using shared output facts. Inscription holdings wait for Sats. See [Addresses](docs/ADDRESSES-INDEX.md), [UTXO state](docs/UTXO-INDEX.md) and [indexing](docs/INDEXING.md).
 

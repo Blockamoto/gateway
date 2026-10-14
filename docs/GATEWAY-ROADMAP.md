@@ -55,6 +55,9 @@ For the next Sats update, review the expandable timeline's index-builder design 
 - Add an arm-for-indexing checkbox or toggle per track, similar to arming an audio track for recording. Arming selects participation; Play starts the selected work.
 - Feed all armed compatible index builders from one coordinated block scan, sharing block retrieval and decoding so the selected tracks can index together in the same pass.
 - Resolve dependency ordering and each index's checkpoint/resume requirements as part of that design review.
+- Review the top-level Build indexes / Inspector navigation and the inconsistent Turn on, review and build steps. Make the next action and current state clear across index types.
+- Keep everyday configuration, range selection, arming and build review accessible within the tracks themselves, connected to the shared transport controls. Complete that flow without a detour into Settings.
+- Use the Inspector for deeper information about the selected track or data, including output details and saved-state evidence. It should complement the track controls rather than be the only place to finish a build workflow.
 
 The inscription and transaction stages are available; Gateway peers remain a locked stage with separate scope and validation before promotion:
 

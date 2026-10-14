@@ -1,6 +1,6 @@
 # v0.7.7: Sats
 
-Development preview for testing. Publication, promotion to main and automatic-update promotion remain held for later approval. The acceptance record distinguishes prior source checks from pending checks of the new preview bytes.
+Development preview for testing. Publication, promotion to main and automatic-update promotion remain held for later approval. The acceptance record identifies the current preview, its exact executable and package checks, and the separately preserved earlier results.
 
 - Genesis-first Sat identity and live placement, with shared output facts and paginated ordered ranges.
 - A Sat ranges subtrack under TXIO, plus optional historical output ranges.

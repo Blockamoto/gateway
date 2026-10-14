@@ -229,15 +229,18 @@ func TestIndexProvidersSatlineRequiresActualPublication(t *testing.T) {
 		if line.Serveable != want || state.Serveable || len(line.Coverage) != 0 || len(state.Coverage) != 0 {
 			t.Fatalf("publication/state capability mismatch: line=%+v state=%+v", line, state)
 		}
+		if !releaseFeatureAvailable("satline") && (line.Readiness != "locked" || line.Queryable || state.Queryable || !strings.Contains(line.Note, "deferred")) {
+			t.Fatalf("saved publication bypassed trace deferral: line=%+v state=%+v", line, state)
+		}
 	}
 	check(false)
 	p := satlinePublication{VerifierVersion: blockVerifierVersion, Schema: 1, Query: q, Start: *r.BirthSatpoint, Hops: r.Hops[:1]}
 	if err := atomicWriteJSON(a.satlinePublicationPath(q), p); err != nil {
 		t.Fatal(err)
 	}
-	check(true) // Serving requires an explicit, structurally usable publication.
+	check(releaseFeatureAvailable("satline")) // An explicit publication cannot bypass the release gate.
 	a.settings.SatlineEnabled = false
-	check(true) // The deprecated local tracing switch cannot disable Satline.
+	check(releaseFeatureAvailable("satline")) // The deprecated setting never overrides release availability.
 	a.settings.SatlineServePublished = false
 	check(false) // Local tracing does not override the separate sharing choice.
 	a.settings.SatlineServePublished = true

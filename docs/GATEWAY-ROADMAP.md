@@ -47,7 +47,14 @@ See [status](STATUS.md) for release acceptance and [the timeline tester guide](T
 
 The timeline is the first step in the design overhaul. Further interaction and index-specific features will be scoped individually as testing informs the next brief.
 
-Next-update planning should include clear per-index deletion, replay/rescan and refresh/upgrade controls. Show when saved block-scan coverage predates support for a destination type, and distinguish resuming a saved job from starting a newly selected range. This follow-up is deferred from the Addresses release; the current testing discussion authorizes no index deletion or replay.
+Next-update planning should include clear per-index deletion, replay/rescan and refresh/upgrade controls. Show when saved block-scan coverage predates support for a destination type, and distinguish resuming a saved job from starting a newly selected range. These controls are deferred from the Addresses release.
+
+For the next Sats update, review the expandable timeline's index-builder design before the broader design review after all indexes are available:
+
+- Add shared Play and Pause controls, following familiar video/audio editor transport controls.
+- Add an arm-for-indexing checkbox or toggle per track, similar to arming an audio track for recording. Arming selects participation; Play starts the selected work.
+- Feed all armed compatible index builders from one coordinated block scan, sharing block retrieval and decoding so the selected tracks can index together in the same pass.
+- Resolve dependency ordering and each index's checkpoint/resume requirements as part of that design review.
 
 The inscription and transaction stages are available; Gateway peers remain a locked stage with separate scope and validation before promotion:
 

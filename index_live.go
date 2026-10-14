@@ -448,7 +448,7 @@ func (a *app) indexLiveView(id string, policy indexLivePolicy) indexLiveView {
 		if id == "address-history" && fresh {
 			if history, err := openAddressHistoryStoreContext(context.Background(), a.dataDir); err == nil {
 				view.LagKnown, view.Lag = true, 0
-				for _, gap := range indexCoverageGaps(history.head.Coverage, initialFrom, authority.Height) {
+				for _, gap := range indexCoverageGaps(history.head.P2PKCoverage, initialFrom, authority.Height) {
 					view.Lag += gap.To - gap.From + 1
 				}
 				return
@@ -678,7 +678,7 @@ func (a *app) liveIndexTick() {
 					continue
 				}
 			}
-			gaps := indexCoverageGaps(history.head.Coverage, from, to)
+			gaps := indexCoverageGaps(history.head.P2PKCoverage, from, to)
 			if chainState == "selected_chain" {
 				if len(gaps) == 0 {
 					continue

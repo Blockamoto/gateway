@@ -116,6 +116,7 @@ type outputView struct {
 	ScriptPubKey string `json:"script_pub_key"`
 	Type         string `json:"type"`
 	Address      string `json:"address,omitempty"`
+	Destination  string `json:"destination,omitempty"`
 }
 
 type p2pStatusView struct {

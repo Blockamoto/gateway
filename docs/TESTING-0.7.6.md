@@ -26,7 +26,9 @@ This source is for **v0.7.6: Addresses** on its development branch. It is not an
 
 ## Explorer and controls
 
-Enter and click P2PKH, P2SH, P2WPKH, P2WSH and P2TR addresses. Check mainnet checksums, witness encodings, mixed-case rejection and uppercase Bech32 canonicalization. Addressless scripts must keep their BPS/script views without an invented address.
+Enter and click P2PKH, P2SH, P2WPKH, P2WSH and P2TR addresses, plus valid compressed and uncompressed P2PK public keys. Check mainnet checksums, witness encodings, mixed-case rejection, uppercase Bech32 canonicalization and public-key curve validation. P2PK destinations must be clearly labelled and kept separate from same-key P2PKH and alternative key encodings. OP_RETURN and nonstandard scripts keep their BPS/script views.
+
+Open a profile built before P2PK support. Existing conventional-address results remain available, but incomplete P2PK coverage must not return a known zero balance or complete history. An explicit current rebuild and historical rescan backfill the new destination type while preserving previous evidence. Historical Live fills these coverage gaps before reporting synced. A profile containing newer Sat state or archives must defer shared-fact reclamation without preventing healthy UTXO or address processing.
 
 Confirm balance, saved checkpoint, current output pages and historical received totals remain distinct. Test dependency navigation, reviewed Build/Rebuild, Pause/Resume, browser back navigation and a rejected or changed cursor. Expand Addresses on the timeline and check separate child coverage/colors in both themes and at narrow widths. Opening a page or selecting a track must not start a scan.
 
@@ -40,6 +42,7 @@ go test -count=1 -timeout 25m ./...
 go vet ./...
 node scripts/test-address-panel.js
 node scripts/test-addresses-browser.js
+node scripts/test-p2pk-destinations-browser.js
 node scripts/test-shell-navigation.js
 node scripts/test-index-workspace.js
 node scripts/test-index-timeline.js

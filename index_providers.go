@@ -30,32 +30,33 @@ type indexProviderView struct {
 // These inputs keep policy projection independently testable. They contain no
 // credentials, filesystem paths, addresses queried, or remote peer identities.
 type indexProviderState struct {
-	Headers                        *chainSnapshot
-	Blocks, PublicBlocks, Mounted  []heightInterval
-	TxCoverage, PublicTxCoverage   []heightInterval
-	GraphCoverage                  []heightInterval
-	TxKnown, PublicTxKnown         bool
-	SpendKnown, PublicSpendKnown   bool
-	SatlineReady                   bool
-	PublishedSatline               bool
-	CoreHeaderServing              bool
-	BitcoinPeersAvailable          bool
-	CommittedBlocks                []heightInterval
-	CommittedTx                    []heightInterval
-	BrowsedTx, BrowsedInscriptions []heightInterval
-	BrowseTxComplete               bool
-	BrowseInscriptionsComplete     bool
-	CommittedSpends                []heightInterval
-	CommittedSats                  []heightInterval
-	CommittedUTXO                  []heightInterval
-	UTXOSnapshot                   *chainSnapshot
-	SatSnapshot                    *chainSnapshot
-	NumberingSnapshot              *chainSnapshot
-	AddressCurrentState            string
-	AddressCurrentSnapshot         *chainSnapshot
-	AddressHistoryState            string
-	AddressHistoryCoverage         []heightInterval
-	AddressHistorySnapshot         *chainSnapshot
+	Headers                          *chainSnapshot
+	Blocks, PublicBlocks, Mounted    []heightInterval
+	TxCoverage, PublicTxCoverage     []heightInterval
+	GraphCoverage                    []heightInterval
+	TxKnown, PublicTxKnown           bool
+	SpendKnown, PublicSpendKnown     bool
+	SatlineReady                     bool
+	PublishedSatline                 bool
+	CoreHeaderServing                bool
+	BitcoinPeersAvailable            bool
+	CommittedBlocks                  []heightInterval
+	CommittedTx                      []heightInterval
+	BrowsedTx, BrowsedInscriptions   []heightInterval
+	BrowseTxComplete                 bool
+	BrowseInscriptionsComplete       bool
+	CommittedSpends                  []heightInterval
+	CommittedSats                    []heightInterval
+	CommittedUTXO                    []heightInterval
+	UTXOSnapshot                     *chainSnapshot
+	SatSnapshot                      *chainSnapshot
+	NumberingSnapshot                *chainSnapshot
+	AddressCurrentState              string
+	AddressCurrentDestinationVersion int
+	AddressCurrentSnapshot           *chainSnapshot
+	AddressHistoryState              string
+	AddressHistoryCoverage           []heightInterval
+	AddressHistorySnapshot           *chainSnapshot
 }
 
 // indexProviderViews performs no Bitcoin scans, materialization, peer discovery or
@@ -175,6 +176,7 @@ func (a *app) indexProviderViews() []indexProviderView {
 	}
 	addressStatus, _ := a.indexAddressStatus(nil)
 	local.AddressCurrentState = addressStatus.Current.State
+	local.AddressCurrentDestinationVersion = addressStatus.Current.DestinationVersion
 	if cp := addressStatus.Current.Snapshot; cp != nil {
 		local.AddressCurrentSnapshot = &chainSnapshot{Network: "mainnet", Height: cp.Height, Hash: cp.BlockHash, Source: "gateway_address_state"}
 	}
@@ -264,8 +266,14 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 	if local.AddressCurrentSnapshot != nil {
 		addressCurrentCoverage = []heightInterval{{From: local.AddressCurrentSnapshot.Height, To: local.AddressCurrentSnapshot.Height}}
 	}
-	add("address-state", "gateway_address_state", "complete_live_address_set_at_snapshot", "header_anchored_processing; consensus_validated=false", local.AddressCurrentState == "ready", false, addressCurrentCoverage, nil, local.AddressCurrentSnapshot,
-		"Current address membership and cached balances derived from the exact saved UTXO checkpoint. Output values and scripts remain in shared facts. A missing or stale index never reports a zero balance.")
+	addressCompleteness := "complete_live_address_set_at_snapshot"
+	addressNote := "Current address membership and cached balances derived from the exact saved UTXO checkpoint. Output values and scripts remain in shared facts. A missing or stale index never reports a zero balance."
+	if local.AddressCurrentDestinationVersion == 0 {
+		addressCompleteness = "complete_live_conventional_address_set_at_snapshot"
+		addressNote += " Bare public-key destinations require a reviewed Current UTXOs rebuild."
+	}
+	add("address-state", "gateway_address_state", addressCompleteness, "header_anchored_processing; consensus_validated=false", local.AddressCurrentState == "ready", false, addressCurrentCoverage, nil, local.AddressCurrentSnapshot,
+		addressNote)
 	add("utxo-state", "gateway_utxo_state", "complete_genesis_prefix_at_snapshot", "header_anchored_processing; consensus_validated=false", local.UTXOSnapshot != nil, false, local.CommittedUTXO, nil, local.UTXOSnapshot,
 		"Locally processed live unspent outputs at this exact selected-chain checkpoint. Complete coin facts and 288 self-contained recovery transitions survive raw-body eviction. Full consensus validation and snapshot sharing are deferred.")
 	add("address-history", "gateway_address_history", "explicit_scanned_ranges", "header_anchored_output_evidence; consensus_validated=false", local.AddressHistoryState == "ready", false, local.AddressHistoryCoverage, nil, local.AddressHistorySnapshot,

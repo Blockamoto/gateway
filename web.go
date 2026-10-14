@@ -86,6 +86,9 @@ type searchResponse struct {
 
 func looksLikeAddress(q string) bool {
 	x := strings.ToLower(strings.TrimSpace(q))
+	if len(x) == 66 || len(x) == 130 {
+		return true // The destination decoder validates the exact SEC point.
+	}
 	if strings.HasPrefix(x, "bc1") && len(x) >= 14 {
 		return true
 	}

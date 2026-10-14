@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -100,13 +101,25 @@ func (a *app) indexSatStatus077() *indexSatStatusView077 {
 }
 
 type satViewLocation077 struct {
-	State      string `json:"state"`
-	Output     string `json:"output_coordinate,omitempty"`
-	Offset     uint64 `json:"offset"`
-	Address    string `json:"address,omitempty"`
-	ScriptType string `json:"script_type,omitempty"`
-	LostHeight *int64 `json:"lost_height,omitempty"`
+	State       string `json:"state"`
+	Output      string `json:"output_coordinate,omitempty"`
+	Offset      uint64 `json:"offset"`
+	Address     string `json:"address,omitempty"`
+	Destination string `json:"destination,omitempty"`
+	ScriptType  string `json:"script_type,omitempty"`
+	LostHeight  *int64 `json:"lost_height,omitempty"`
 }
+
+func satScriptDestinations077(script string) (kind, address, destination string, err error) {
+	raw, err := hex.DecodeString(script)
+	if err != nil || script != strings.ToLower(script) {
+		return "", "", "", fmt.Errorf("exact lowercase scriptPubKey required")
+	}
+	kind, address = describeScript(raw)
+	_, destination = describeDestinationScript(raw)
+	return kind, address, destination, nil
+}
+
 type satViewResult077 struct {
 	State      string               `json:"state"`
 	SatNumber  uint64               `json:"sat_number"`
@@ -146,11 +159,12 @@ func (a *app) satViewContext077(ctx context.Context, number uint64) (satViewResu
 	}
 	location := &satViewLocation077{State: r.State, Output: r.Output, Offset: r.Offset}
 	if r.ScriptPubKey != "" {
-		kind, address, err := addressStateScript(r.ScriptPubKey)
+		kind, address, destination, err := satScriptDestinations077(r.ScriptPubKey)
 		if err != nil {
 			return out, err
 		}
 		location.ScriptType, location.Address = kind, address
+		location.Destination = destination
 	}
 	if r.State == "lost" {
 		h := r.LostHeight
@@ -166,14 +180,17 @@ type satViewRange077 struct {
 	Offset uint64 `json:"output_offset"`
 }
 type satOutputView077 struct {
-	State      string               `json:"state"`
-	Output     string               `json:"output_coordinate"`
-	Snapshot   *addressViewSnapshot `json:"snapshot"`
-	Value      uint64               `json:"value_sats"`
-	Ranges     []satViewRange077    `json:"ranges"`
-	NextCursor string               `json:"next_cursor"`
-	HasMore    bool                 `json:"has_more"`
-	Note       string               `json:"note"`
+	State       string               `json:"state"`
+	Output      string               `json:"output_coordinate"`
+	Address     string               `json:"address,omitempty"`
+	Destination string               `json:"destination,omitempty"`
+	ScriptType  string               `json:"script_type,omitempty"`
+	Snapshot    *addressViewSnapshot `json:"snapshot"`
+	Value       uint64               `json:"value_sats"`
+	Ranges      []satViewRange077    `json:"ranges"`
+	NextCursor  string               `json:"next_cursor"`
+	HasMore     bool                 `json:"has_more"`
+	Note        string               `json:"note"`
 }
 
 func (a *app) satOutputContext077(ctx context.Context, output string, limit int, cursor string) (satOutputView077, error) {
@@ -206,6 +223,12 @@ func (a *app) satOutputContext077(ctx context.Context, output string, limit int,
 		return out, nil
 	}
 	out.State, out.Value, out.NextCursor, out.HasMore = "ready", r.ValueSats, r.NextCursor, r.HasMore
+	if r.ScriptPubKey != "" {
+		out.ScriptType, out.Address, out.Destination, err = satScriptDestinations077(r.ScriptPubKey)
+		if err != nil {
+			return out, err
+		}
+	}
 	offset := r.RangeOffset
 	for _, rangeRow := range r.Ranges {
 		out.Ranges = append(out.Ranges, satViewRange077{rangeRow.Start, rangeRow.End, offset})
@@ -287,6 +310,8 @@ type satAddressHolding077 struct {
 type satAddressView077 struct {
 	State           string                 `json:"state"`
 	Address         string                 `json:"address"`
+	Destination     string                 `json:"destination"`
+	DestinationType string                 `json:"destination_type"`
 	Snapshot        *addressViewSnapshot   `json:"snapshot"`
 	AddressSnapshot *addressViewSnapshot   `json:"address_snapshot"`
 	Inscriptions    []satAddressHolding077 `json:"inscriptions"`
@@ -298,14 +323,14 @@ type satAddressView077 struct {
 }
 
 func (a *app) satAddressContext077(ctx context.Context, input string, limit int, cursor string) (satAddressView077, error) {
-	address, _, _, err := bitcoinAddressScript(input)
+	address, _, destinationType, err := bitcoinDestinationScript(input)
 	if err != nil {
 		return satAddressView077{}, err
 	}
 	if limit < 1 || limit > 100 {
 		return satAddressView077{}, fmt.Errorf("holdings page limit must be 1..100")
 	}
-	out := satAddressView077{State: "unavailable", Address: address, Inscriptions: []satAddressHolding077{}, Coverage: []heightInterval{}, Note: "Known indexed inscriptions only. Missing identity coverage does not establish an empty address."}
+	out := satAddressView077{State: "unavailable", Address: address, Destination: address, DestinationType: destinationType, Inscriptions: []satAddressHolding077{}, Coverage: []heightInterval{}, Note: "Known indexed inscriptions only. Missing identity coverage does not establish an empty address."}
 	authority := a.currentChainAuthority()
 	status, err := satStateStatusContext(ctx, a.dataDir)
 	if err != nil {

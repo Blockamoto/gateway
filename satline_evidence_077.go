@@ -241,12 +241,13 @@ func satlineTXIOBlockContext(ctx context.Context, root string, height int64, has
 			if f.Height != height || f.BlockHash != hash || f.TxIndex != ti || f.Vout != oi {
 				return blockView{}, fmt.Errorf("TXIO output value identity mismatch")
 			}
-			typ, address := "", ""
+			typ, address, destination := "", "", ""
 			if f.ScriptPubKey != "" {
 				raw, _ := hex.DecodeString(f.ScriptPubKey)
 				typ, address = describeScript(raw)
+				_, destination = describeDestinationScript(raw)
 			}
-			tx.Outputs = append(tx.Outputs, outputView{N: int(oi), ValueSats: f.ValueSats, ScriptPubKey: f.ScriptPubKey, Type: typ, Address: address})
+			tx.Outputs = append(tx.Outputs, outputView{N: int(oi), ValueSats: f.ValueSats, ScriptPubKey: f.ScriptPubKey, Type: typ, Address: address, Destination: destination})
 			tx.OutputSats, err = addUint64(tx.OutputSats, f.ValueSats)
 			if err != nil {
 				return blockView{}, err

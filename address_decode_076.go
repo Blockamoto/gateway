@@ -8,6 +8,60 @@ import (
 	"strings"
 )
 
+// A destination can be a conventional payment address or an exact SEC public
+// key for a bare CHECKSIG output. SEC encodings deliberately remain distinct:
+// neither a P2PKH script nor the other encoding of a key has the same script.
+func bitcoinDestinationScript(input string) (destination, script, kind string, err error) {
+	input = strings.TrimSpace(input)
+	if len(input) == 66 || len(input) == 130 {
+		key, decodeErr := hex.DecodeString(input)
+		if decodeErr != nil || !validDestinationPublicKey(key) {
+			return "", "", "", fmt.Errorf("enter a valid compressed or uncompressed secp256k1 public key")
+		}
+		raw := append([]byte{byte(len(key))}, key...)
+		raw = append(raw, 0xac)
+		return hex.EncodeToString(key), hex.EncodeToString(raw), "p2pk", nil
+	}
+	return bitcoinAddressScript(input)
+}
+
+func validDestinationPublicKey(key []byte) bool {
+	if len(key) != 33 && len(key) != 65 || len(key) == 33 && key[0] != 2 && key[0] != 3 || len(key) == 65 && key[0] != 4 {
+		return false
+	}
+	p, _ := new(big.Int).SetString("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f", 16)
+	x := new(big.Int).SetBytes(key[1:33])
+	if x.Cmp(p) >= 0 {
+		return false
+	}
+	rhs := new(big.Int).Exp(x, big.NewInt(3), p)
+	rhs.Add(rhs, big.NewInt(7)).Mod(rhs, p)
+	var y *big.Int
+	if len(key) == 65 {
+		y = new(big.Int).SetBytes(key[33:])
+		if y.Cmp(p) >= 0 {
+			return false
+		}
+	} else {
+		// secp256k1's prime is 3 mod 4, so exponentiation gives a square
+		// root exactly when the compressed x coordinate is on the curve.
+		exponent := new(big.Int).Add(p, big.NewInt(1))
+		exponent.Rsh(exponent, 2)
+		y = new(big.Int).Exp(rhs, exponent, p)
+	}
+	return new(big.Int).Exp(y, big.NewInt(2), p).Cmp(rhs) == 0
+}
+
+// Preserve describeScript's payment-address semantics. Only destination
+// indexing/navigation treats a valid bare public key as a destination.
+func describeDestinationScript(script []byte) (kind, destination string) {
+	kind, destination = describeScript(script)
+	if kind == "p2pk" && validDestinationPublicKey(script[1:len(script)-1]) {
+		destination = hex.EncodeToString(script[1 : len(script)-1])
+	}
+	return kind, destination
+}
+
 // Decode a payment address to its exact locking script. This is a script
 // identity, not a claim about the owner or other scripts using the same key.
 func bitcoinAddressScript(input string) (address, script, kind string, err error) {

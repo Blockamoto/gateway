@@ -25,6 +25,7 @@ node scripts/test-txio-workspace-browser.js
 node scripts/test-timeline-explorer-browser.js
 node scripts/test-transaction-workspace-browser.js
 node scripts/test-addresses-browser.js
+node scripts/test-p2pk-destinations-browser.js
 node scripts/test-index-workspace.js
 node scripts/test-index-timeline.js
 ```
@@ -44,6 +45,7 @@ This script starts its own disposable profile, uses genuine serialized genesis a
 3. Open transaction inputs. Show their own input BPS immediately and the verified original-output BPS when supplied; unresolved creation positions retain the native outpoint fallback. **Follow a sat** on an output requires an explicit valid offset and opens the existing Satline journey.
 4. Expand current address UTXOs into ordered Sat ranges. Range ends are exclusive, output offsets are contiguous, and all pages agree with the output value. FIFO range order need not be ascending by Sat number. Require exact address/Sat height and block hash; their different index commitments must not be compared as equal.
 5. Page known indexed inscription holdings. Check both snapshot identities, explicit identity coverage and partial completeness. No known rows is not proof that the address has no inscriptions. Changed checkpoints/cursors, unavailable responses and navigation away must clear or discard stale pages.
+   P2PK outputs expose a separately labelled public-key destination in Sat locations, output range views and holdings queries. Its current balance and historical outputs use the same exact script identity as the Addresses explorer; same-key P2PKH outputs and other key encodings remain separate.
 6. Review the genesis-first Sat build before Start. History starts off and raw retention is pruned. One-off target changes invalidate review; Live resolves the selected tip when queued work starts. Missing evidence waits without replacing readable committed state. Pause/Resume uses the saved job, including an explicitly reviewed rebuild.
 7. Check the TXIO **Sat ranges** child has independent retained coverage. A few live outputs do not establish whole-block or full-history coverage. Enabling historical ranges later leaves earlier gaps; disabling the option preserves already retained history.
 8. Check actual savepoint heights: newest two at multiples of 12 and newest two at multiples of 144, with shared heights deduplicated. Display the saved recovery boundary. Reorg recovery needs an eligible selected-chain savepoint and replay evidence; deeper failure requires reviewed rebuild with previous evidence preserved. There is no unconditional 288-block Sat recovery guarantee.

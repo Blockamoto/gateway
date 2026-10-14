@@ -65,3 +65,76 @@ func Test076AddressHistoryLiveFillsEarlierGapWhenSparseHeadAlreadyAtTip(t *testi
 		t.Fatal("filling a locally available earlier gap unnecessarily fetched the already indexed tip")
 	}
 }
+
+func Test076AddressHistoryLiveBackfillsLegacyDestinationCoverage(t *testing.T) {
+	ctx := context.Background()
+	a := prepareLiveTestApp063(t)
+	raw, hash := installBlockOneHeader063(t, a)
+	peer, _ := hashCoordinateBitcoinSource(t, raw)
+	hashCoordinateConnect(t, a, peer)
+	a.setStatus(func(st *appStatus) {
+		st.HeaderState, st.Syncing, st.Error = "current", false, ""
+	})
+	block, err := parseBlockDetailed(1, hash, raw[:80], raw, "real mainnet fixture", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := openAddressHistoryStoreContext(ctx, a.dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = history.CommitBlockContext(ctx, block, a.addressSelectedHashes(ctx, a.currentChainAuthority())); err != nil {
+		t.Fatal(err)
+	}
+	// A conventional-address-only scan of this real P2PK block was complete
+	// under the old destination rules, but contains no address rows.
+	blocks := history.tree("blocks", history.head.BlocksRoot, ctx)
+	var legacy addressHistoryBlock
+	if have, e := blocks.get(addressHistoryHeightKey(1), &legacy); e != nil || !have {
+		t.Fatal("missing saved block", e)
+	}
+	legacy.DestinationVersion, legacy.AddressOutputs = 0, 0
+	if err = blocks.put(addressHistoryHeightKey(1), legacy); err != nil {
+		t.Fatal(err)
+	}
+	h := history.head
+	if h.BlocksRoot, err = blocks.flush(); err != nil {
+		t.Fatal(err)
+	}
+	h.AddressRoot, h.P2PKCoverage = "", nil
+	if err = history.publish(ctx, h); err != nil {
+		t.Fatal(err)
+	}
+	one := int64(1)
+	if err = a.writeIndexLivePolicy(indexLivePolicy{Index: "address-history", InitialFrom: &one, Mode: "lean", Retention: "ephemeral"}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := a.setIndexLivePolicy(indexLiveRequest{Index: "address-history", Action: "enable"})
+	if err != nil || before.State != "catching_up" || !before.LagKnown || before.Lag != 1 {
+		t.Fatalf("old conventional coverage hid missing P2PK scan: %+v %v", before, err)
+	}
+	a.liveIndexTick()
+	job := waitLiveComplete064(t, a)
+	if job.Index != "address-history" || job.From != 1 || job.To != 1 || job.BlocksChecked != 1 {
+		t.Fatalf("Live failed to schedule destination backfill: %+v", job)
+	}
+	history, err = openAddressHistoryStoreContext(ctx, a.dataDir)
+	if err != nil || len(history.head.P2PKCoverage) != 1 || history.head.P2PKCoverage[0] != (heightInterval{1, 1}) {
+		t.Fatalf("P2PK coverage not published: %+v %v", history, err)
+	}
+	r, err := history.QueryContext(ctx, block.Transactions[0].Outputs[0].Destination, "", 10, a.addressSelectedHashes(ctx, a.currentChainAuthority()))
+	if err != nil || r.State != "known" || r.ReceivedOutputCount != 1 || r.ReceivedSats != 5000000000 {
+		t.Fatalf("backfilled P2PK output missing: %+v %v", r, err)
+	}
+	policies, err := a.indexLivePolicies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := a.indexLiveView("address-history", policies["address-history"])
+	if after.State != "synced" || !after.LagKnown || after.Lag != 0 {
+		t.Fatalf("destination backfill did not finish Live catchup: %+v", after)
+	}
+	if err = history.VisitFactPagesContext(ctx, func(string) error { return nil }); err != nil {
+		t.Fatal("legacy and replacement evidence no longer pinnable", err)
+	}
+}

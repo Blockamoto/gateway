@@ -34,6 +34,8 @@ Confirm balance, saved checkpoint, current output pages and historical received 
 
 ## Automated checks
 
+The P2PK extension and newer-Sat compatibility guard at runtime source `61fef459f7577f7c599b1e2d645deb4fee477629` pass [the full development workflow](https://github.com/Blockamoto/gateway/actions/runs/38595767731): full Go tests, vet, race checks, companion/helpers, packaging and actual browser/native checks. Local focused Addresses regressions passed in 126.738 seconds, and separate shared-fact compatibility checks preserve newer Sat state/archives while ordinary UTXO/address writes continue. The authentic block-170 parser regression and exact compiled navigation passed; `work/qa-076-p2pk/native-final/summary.json` records Windows binary SHA-256 `a97f0226d0dc9eeae437f6e5423a82cd6e179a6bdfd61214417913ac0a9b396a`. These are additional focused Windows checks, not a new full Windows suite.
+
 Use the repository's Go environment (`GO111MODULE=off`, `CGO_ENABLED=0`):
 
 ```text

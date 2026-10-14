@@ -26,9 +26,11 @@ var ErrAddressStateMissing = errors.New("current address index is not built")
 var ErrAddressStateStale = errors.New("current address index does not match the UTXO checkpoint; resume or rebuild required")
 var ErrAddressStateCorrupt = errors.New("current address index is incomplete or corrupt; rebuild required")
 var ErrAddressUTXORequired = errors.New("build UTXO state before building current addresses")
+var ErrAddressDestinationUpgrade = errors.New("rebuild Current UTXOs addresses to include bare public-key destinations; prior address evidence is retained")
 
 type addressStateCheckpoint struct {
 	Schema              int            `json:"schema"`
+	DestinationVersion  int            `json:"destination_version,omitempty"`
 	Network             string         `json:"network"`
 	Height              int64          `json:"height"`
 	BlockHash           string         `json:"block_hash"`
@@ -172,7 +174,7 @@ func readAddressBuildContext(ctx context.Context, root string) (*addressStateBui
 		return nil, fmt.Errorf("%w: staged build (%v)", ErrAddressStateCorrupt, err)
 	}
 	p := m.Projection
-	if m.Schema != 1 || m.Checksum != addressBuildDigest(m) || validateUTXOCheckpoint(m.Source) != nil || !validHash(p.PageGeneration) || m.OutputsChecked > m.Source.LiveOutputs || p.OutputCount > m.OutputsChecked || p.ExcludedOutputCount != m.OutputsChecked-p.OutputCount || p.ValueSats > m.Source.TotalValueSats || p.ExcludedValueSats > m.Source.TotalValueSats-p.ValueSats || m.OutputsChecked == 0 && m.After != "" || m.OutputsChecked > 0 && !validHash(m.After) || (p.OutputCount == 0) != (p.Root == "") || p.Root != "" && !validHash(p.Root) {
+	if m.Schema != 1 || p.DestinationVersion < 0 || p.DestinationVersion > 1 || m.Checksum != addressBuildDigest(m) || validateUTXOCheckpoint(m.Source) != nil || !validHash(p.PageGeneration) || m.OutputsChecked > m.Source.LiveOutputs || p.OutputCount > m.OutputsChecked || p.ExcludedOutputCount != m.OutputsChecked-p.OutputCount || p.ValueSats > m.Source.TotalValueSats || p.ExcludedValueSats > m.Source.TotalValueSats-p.ValueSats || m.OutputsChecked == 0 && m.After != "" || m.OutputsChecked > 0 && !validHash(m.After) || (p.OutputCount == 0) != (p.Root == "") || p.Root != "" && !validHash(p.Root) {
 		return nil, fmt.Errorf("%w: invalid staged build", ErrAddressStateCorrupt)
 	}
 	return &m, nil
@@ -235,7 +237,7 @@ func addressStateScript(script string) (kind, address string, err error) {
 	if err != nil || script != strings.ToLower(script) {
 		return "", "", fmt.Errorf("exact lowercase scriptPubKey required")
 	}
-	kind, address = describeScript(b)
+	kind, address = describeDestinationScript(b)
 	return kind, address, nil
 }
 
@@ -287,7 +289,7 @@ func readAddressStateContext(ctx context.Context, root string) (*addressStateChe
 		}
 		return nil, fmt.Errorf("%w: %v", ErrAddressStateCorrupt, err)
 	}
-	if c.Schema != 1 || c.Network != "bitcoin-mainnet" || c.Height != c.Source.Height || c.BlockHash != c.Source.BlockHash || c.UTXOCommitment != c.Source.Commitment || !validHash(c.PageGeneration) || c.Commitment != addressStateDigest(c) || c.Validation != "header_anchored_processing" || c.ConsensusValidated || validateUTXOCheckpoint(c.Source) != nil || c.OutputCount > c.Source.LiveOutputs || c.ExcludedOutputCount != c.Source.LiveOutputs-c.OutputCount || c.ValueSats > c.Source.TotalValueSats || c.ExcludedValueSats != c.Source.TotalValueSats-c.ValueSats || c.Root != "" && !validHash(c.Root) || (c.OutputCount == 0) != (c.Root == "") {
+	if c.Schema != 1 || c.DestinationVersion < 0 || c.DestinationVersion > 1 || c.Network != "bitcoin-mainnet" || c.Height != c.Source.Height || c.BlockHash != c.Source.BlockHash || c.UTXOCommitment != c.Source.Commitment || !validHash(c.PageGeneration) || c.Commitment != addressStateDigest(c) || c.Validation != "header_anchored_processing" || c.ConsensusValidated || validateUTXOCheckpoint(c.Source) != nil || c.OutputCount > c.Source.LiveOutputs || c.ExcludedOutputCount != c.Source.LiveOutputs-c.OutputCount || c.ValueSats > c.Source.TotalValueSats || c.ExcludedValueSats != c.Source.TotalValueSats-c.ValueSats || c.Root != "" && !validHash(c.Root) || (c.OutputCount == 0) != (c.Root == "") {
 		return nil, fmt.Errorf("%w: invalid address checkpoint", ErrAddressStateCorrupt)
 	}
 	if err = updateapply.CheckPath(addressStatePages(root, c.PageGeneration)); err != nil {
@@ -356,6 +358,13 @@ func (e *addressStateEditor) change(member utxoMember, add bool) error {
 	_, address, err := addressStateScript(f.ScriptPubKey)
 	if err != nil {
 		return err
+	}
+	// Old projections excluded P2PK. Keep their accounting and existing
+	// conventional lookups usable until an explicit complete traversal replaces
+	// them; an incremental transition cannot backfill old live outputs.
+	if e.cp.DestinationVersion == 0 {
+		raw, _ := hex.DecodeString(f.ScriptPubKey)
+		_, address = describeScript(raw)
 	}
 	if address == "" {
 		if add {
@@ -550,7 +559,7 @@ func buildAddressStateWithHookContext(ctx context.Context, root string, progress
 		return nil, err
 	}
 	source := u.head.Checkpoint
-	e := newAddressStateEditor(ctx, root, addressStateCheckpoint{PageGeneration: generation})
+	e := newAddressStateEditor(ctx, root, addressStateCheckpoint{PageGeneration: generation, DestinationVersion: 1})
 	trees := u.trees(ctx, source)
 	reader := newUTXOFactReader(ctx, root)
 	checked := uint64(0)
@@ -566,11 +575,11 @@ func buildAddressStateWithHookContext(ctx context.Context, root string, progress
 		return nil, stageErr
 	}
 	if staged != nil {
-		if staged.Source.Commitment != source.Commitment || staged.Source.BlockHash != source.BlockHash || staged.Source.Height != source.Height {
+		if staged.Source.Commitment != source.Commitment || staged.Source.BlockHash != source.BlockHash || staged.Source.Height != source.Height || staged.Projection.DestinationVersion != 1 {
 			if err = archiveAddressBuildContext(ctx, root); err != nil {
 				return nil, err
 			}
-			restartReason = "UTXO checkpoint changed; starting a new pinned traversal"
+			restartReason = "UTXO checkpoint or destination coverage changed; starting a new pinned traversal"
 		} else {
 			e = newAddressStateEditor(ctx, root, staged.Projection)
 			if _, err = e.summary.read(e.cp.Root); err != nil {
@@ -906,6 +915,9 @@ func lookupAddressStateContext(ctx context.Context, root, script string, limit i
 	}
 	if !addressStateMatches(c, u.head) {
 		return result, ErrAddressStateStale
+	}
+	if kind == "p2pk" && c.DestinationVersion != 1 {
+		return result, ErrAddressDestinationUpgrade
 	}
 	key, after := addressStateScriptKey(script), ""
 	if cursor != "" {

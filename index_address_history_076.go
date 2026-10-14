@@ -39,16 +39,18 @@ type addressHistoryBucket struct {
 	ValueSats   uint64 `json:"received_sats"`
 }
 type addressHistoryBlock struct {
-	Height         int64    `json:"height"`
-	BlockHash      string   `json:"block_hash"`
-	FactPages      []string `json:"fact_pages"`
-	AddressOutputs uint64   `json:"address_outputs"`
+	Height             int64    `json:"height"`
+	DestinationVersion int      `json:"destination_version,omitempty"`
+	BlockHash          string   `json:"block_hash"`
+	FactPages          []string `json:"fact_pages"`
+	AddressOutputs     uint64   `json:"address_outputs"`
 }
 type addressHistoryHead struct {
 	Schema        int              `json:"schema"`
 	AddressRoot   string           `json:"address_root"`
 	BlocksRoot    string           `json:"blocks_root"`
 	Coverage      []heightInterval `json:"coverage"`
+	P2PKCoverage  []heightInterval `json:"p2pk_coverage,omitempty"`
 	Height        int64            `json:"height"`
 	BlockHash     string           `json:"block_hash"`
 	LastHeight    int64            `json:"last_height"`
@@ -123,7 +125,7 @@ func addressHistoryBefore(key string) string {
 	return ""
 }
 func addressHistoryCanonicalAddress(address string) (string, error) {
-	canonical, _, _, e := bitcoinAddressScript(address)
+	canonical, _, _, e := bitcoinDestinationScript(address)
 	return canonical, e
 }
 func (s *addressHistoryStore) tree(name, root string, ctx context.Context) *ordinalTree {
@@ -192,6 +194,17 @@ func (s *addressHistoryStore) readCommit(ctx context.Context, commit string) (ad
 		if r.From < 0 || r.To < r.From || r.From <= previous+1 {
 			return h, fmt.Errorf("invalid sparse address coverage")
 		}
+		previous = r.To
+	}
+	previous = -2
+	for _, r := range h.P2PKCoverage {
+		if r.From < 0 || r.To < r.From || r.From <= previous+1 || len(indexCoverageGaps(h.Coverage, r.From, r.To)) != 0 {
+			return h, fmt.Errorf("invalid bare public-key history coverage")
+		}
+		previous = r.To
+	}
+	previous = -2
+	for _, r := range h.Coverage {
 		previous = r.To
 	}
 	if len(h.Coverage) == 0 {
@@ -297,7 +310,7 @@ func addressHistoryCoverage(ranges []heightInterval, height int64, add bool) []h
 	return merged
 }
 func (s *addressHistoryStore) visitBlockFacts(ctx context.Context, b addressHistoryBlock, visit func(string, string, outputFactRef, outputFact) error) error {
-	if b.Height < 0 || !validHash(b.BlockHash) {
+	if b.Height < 0 || !validHash(b.BlockHash) || b.DestinationVersion < 0 || b.DestinationVersion > 1 {
 		return fmt.Errorf("invalid address scanned block")
 	}
 	count := uint64(0)
@@ -320,6 +333,9 @@ func (s *addressHistoryStore) visitBlockFacts(ctx context.Context, b addressHist
 				return e
 			}
 			typ, address := describeScript(script)
+			if b.DestinationVersion == 1 {
+				typ, address = describeDestinationScript(script)
+			}
 			if address == "" {
 				continue
 			}
@@ -418,7 +434,7 @@ func (s *addressHistoryStore) commitFacts(ctx context.Context, height int64, has
 		}
 		pageSet[ref.Page] = true
 	}
-	b := addressHistoryBlock{Height: height, BlockHash: hash, FactPages: []string{}}
+	b := addressHistoryBlock{Height: height, BlockHash: hash, FactPages: []string{}, DestinationVersion: 1}
 	// Every row in a shared page must be present in the complete
 	// source mapping; a partial TXIO map cannot manufacture scanned coverage.
 	matched := 0
@@ -438,7 +454,7 @@ func (s *addressHistoryStore) commitFacts(ctx context.Context, height int64, has
 			}
 			matched++
 			script, _ := hex.DecodeString(*r.Script)
-			_, address := describeScript(script)
+			_, address := describeDestinationScript(script)
 			if address != "" {
 				addressed = true
 				b.AddressOutputs++
@@ -500,6 +516,7 @@ func (s *addressHistoryStore) commitFacts(ctx context.Context, height int64, has
 	h := s.head
 	h.AddressRoot, h.BlocksRoot = ar, br
 	h.Coverage = addressHistoryCoverage(h.Coverage, height, true)
+	h.P2PKCoverage = addressHistoryCoverage(h.P2PKCoverage, height, true)
 	h.LastHeight, h.LastBlockHash = height, hash
 	h.PinnedPages = append([]string(nil), b.FactPages...)
 	h.Height = h.Coverage[len(h.Coverage)-1].To
@@ -684,6 +701,7 @@ func (s *addressHistoryStore) ReconcileContext(ctx context.Context, hashAt func(
 	changed := map[string]*changedBucket{}
 	h := s.head
 	h.Coverage = append([]heightInterval(nil), h.Coverage...)
+	h.P2PKCoverage = append([]heightInterval(nil), h.P2PKCoverage...)
 	h.PinnedPages = nil
 	for _, b := range stale {
 		if e := s.visitBlockFacts(ctx, b, func(address, typ string, ref outputFactRef, f outputFact) error {
@@ -722,6 +740,7 @@ func (s *addressHistoryStore) ReconcileContext(ctx context.Context, hashAt func(
 		}
 		blocks.remove(addressHistoryHeightKey(b.Height))
 		h.Coverage = addressHistoryCoverage(h.Coverage, b.Height, false)
+		h.P2PKCoverage = addressHistoryCoverage(h.P2PKCoverage, b.Height, false)
 	}
 	for address, c := range changed {
 		root, e := c.rows.flush()
@@ -800,8 +819,21 @@ func (s *addressHistoryStore) QueryContext(ctx context.Context, address, cursor 
 	}
 	out.Snapshot = addressHistorySnapshot{s.head.Height, s.head.BlockHash, s.head.Commitment, "header_anchored_processing", false}
 	out.Coverage = append([]heightInterval{}, s.head.Coverage...)
+	_, _, destinationKind, _ := bitcoinDestinationScript(address)
+	if destinationKind == "p2pk" {
+		out.Coverage = append([]heightInterval{}, s.head.P2PKCoverage...)
+		if len(out.Coverage) == 0 {
+			out.State = "rebuild_required"
+			out.Note = "Rescan historical ranges to include bare public-key destinations; prior address evidence is retained."
+			return out, nil
+		}
+		out.Note = "Bare public-key outputs in P2PK-aware scanned ranges only; older scans require backfill. This is not a current balance."
+	}
 	for i := 1; i < len(out.Coverage); i++ {
 		out.Gaps = append(out.Gaps, heightInterval{out.Coverage[i-1].To + 1, out.Coverage[i].From - 1})
+	}
+	if destinationKind == "p2pk" && len(s.head.Coverage) != 0 {
+		out.Gaps = indexCoverageGaps(out.Coverage, s.head.Coverage[0].From, s.head.Height)
 	}
 	before := strings.Repeat("f", 32)
 	if cursor != "" {
@@ -884,7 +916,7 @@ func (s *addressHistoryStore) QueryContext(ctx context.Context, address, cursor 
 		if e != nil {
 			return out, e
 		}
-		typ, destination := describeScript(script)
+		typ, destination := describeDestinationScript(script)
 		if f.Height != c.Height || f.BlockHash != row.BlockHash || f.TxIndex != c.TxIndex || int(f.Vout) != c.IOIndex || destination != address || typ != bucket.ScriptType {
 			return out, fmt.Errorf("address output fact identity mismatch")
 		}
@@ -974,7 +1006,7 @@ func (s *addressHistoryStore) VisitFactPagesContext(ctx context.Context, visit f
 					}
 					c, _ := parseBODCoordinate(r.Output)
 					script, _ := hex.DecodeString(f.ScriptPubKey)
-					kind, destination := describeScript(script)
+					kind, destination := describeDestinationScript(script)
 					if f.Height != c.Height || f.BlockHash != r.BlockHash || f.TxIndex != c.TxIndex || int(f.Vout) != c.IOIndex || kind != typ || destination != address {
 						return fmt.Errorf("retained address fact identity mismatch")
 					}

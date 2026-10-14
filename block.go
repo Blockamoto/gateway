@@ -746,7 +746,11 @@ func parseTransaction(p *byteParser, index int) (transactionView, error) {
 		}
 		stripped.Write(p.b[outStart:p.off])
 		typ, address := describeScript(script)
-		outputs = append(outputs, outputView{N: int(i), ValueSats: value, ScriptPubKey: hex.EncodeToString(script), Type: typ, Address: address})
+		var destination string
+		if typ == "p2pk" {
+			_, destination = describeDestinationScript(script)
+		}
+		outputs = append(outputs, outputView{N: int(i), ValueSats: value, ScriptPubKey: hex.EncodeToString(script), Type: typ, Address: address, Destination: destination})
 		if value > 2100000000000000 || outputSats > 2100000000000000-value {
 			return transactionView{}, fmt.Errorf("output value outside Bitcoin money range")
 		}

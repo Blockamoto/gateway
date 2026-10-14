@@ -3,6 +3,13 @@
 window.GatewayAddressView=(()=>{
   const known=n=>Number.isSafeInteger(n)&&n>=0;
   const number=n=>known(n)?n.toLocaleString('en-GB'):'Unavailable';
+  // Routing hints only: the backend validates SEC keys and indexes the exact
+  // locking script. Never derive a P2PKH address or combine key encodings here.
+  function destination(output={}){
+    const value=typeof output==='string'?output:output?.destination||output?.address||'';
+    const isPublicKey=typeof value==='string'&&/^(?:(?:02|03)[0-9a-f]{64}|04[0-9a-f]{128})$/i.test(value);
+    return {value:isPublicKey?value.toLowerCase():value,isPublicKey,label:isPublicKey?'P2PK public key':'Address'};
+  }
   function model(value={}){
     const ready=value.state==='ready',snapshot=value.snapshot||{};
     const exact=ready&&known(snapshot.height)&&!!snapshot.block_hash&&!!snapshot.commitment;
@@ -12,7 +19,7 @@ window.GatewayAddressView=(()=>{
     const doc=root.ownerDocument,el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
     let dead=false,generation=0,current=null;
     root.classList.remove('embed-host');root.replaceChildren();
-    const header=el('header',undefined,'page-heading'),heading=el('div');heading.append(el('div','BITCOIN / ADDRESS','eyebrow'),el('h1','Address'),el('p',address,'mono break'));header.append(heading);
+    const target=destination(address),header=el('header',undefined,'page-heading'),heading=el('div');heading.append(el('div',target.isPublicKey?'BITCOIN / P2PK':'BITCOIN / ADDRESS','eyebrow'),el('h1',target.label),el('p',address,'mono break'));if(target.isPublicKey)heading.append(el('p','Outputs using this exact P2PK locking script. P2PKH outputs and other public-key encodings are counted separately.','small muted'));header.append(heading);
     const balance=el('section',undefined,'panel address-balance');balance.setAttribute('aria-label','Balance at the saved UTXO snapshot');balance.append(el('div','Current balance','eyebrow'));
     const amount=el('p','Unavailable','address-balance-value');amount.id='address-balance';const position=el('p','Reading the saved current-address snapshot…','muted small');position.id='address-snapshot';const status=el('p','','small');status.setAttribute('role','status');const actions=el('div',undefined,'actions');balance.append(amount,position,status,actions);
     function buildButton(id,label,rebuildSnapshot=null){const b=el('button',label);b.type='button';b.onclick=()=>onBuild?.(id,rebuildSnapshot);return b;}
@@ -47,5 +54,5 @@ window.GatewayAddressView=(()=>{
     load(utxos);
     return {teardown(){dead=true;generation++;},refresh(){return load(utxos);}};
   }
-  return {model,mount};
+  return {model,mount,destination};
 })();

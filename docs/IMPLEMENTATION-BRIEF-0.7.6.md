@@ -6,8 +6,8 @@ Implement on the `v0.7.6` development branch. Main, release publication and the 
 
 - Current UTXOs derives a complete reverse address lookup from the saved UTXO state. It reports a balance, output count and paginated output list at that exact height, block hash and state commitment. Building it never implicitly starts a UTXO genesis scan.
 - Historical outputs scans reviewed ranges, reuses retained values and scripts where verified, and fetches missing raw blocks through the existing on-demand providers. It retains facts after outputs are spent. Explicit coverage and gaps distinguish a sparse range total from a complete history or current balance.
-- Accept supported mainnet addresses with strict checksum and network checks. Index the exact scriptPubKey; do not invent addresses for bare public-key or nonstandard scripts. Their existing BPS and script access remains available.
-- Entering an address or clicking an output address opens the explorer. Balance leads the current view; UTXOs and historical outputs expand into paginated lists. Unavailable balances are never displayed as zero.
+- Accept supported mainnet addresses with strict checksum and network checks, and valid compressed or uncompressed public keys for exact P2PK destination lookup. Public keys remain labelled P2PK destinations. Each lookup identifies one exact locking script; different scripts or key encodings keep separate results.
+- Entering an address or public key, or clicking an output destination, opens the explorer. Balance leads the current view; UTXOs and historical outputs expand into paginated lists. Unavailable balances are never displayed as zero. OP_RETURN and nonstandard scripts retain their BPS/script views.
 
 ## Storage and recovery
 

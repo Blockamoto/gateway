@@ -18,13 +18,13 @@ Live historical processing fills missing ranges from its reviewed start before f
 
 ## Explore an address
 
-Enter a supported mainnet address in the explorer or click an address on an output. The page leads with its balance at the saved UTXO checkpoint, including the exact processed height and block identity. Expand Current UTXOs for a paginated output list, or Historical outputs for retained creation history. Clicking an output opens its BPS position; viewing details may fetch the raw block if it has been evicted.
+Enter a supported mainnet address or P2PK public key in the explorer, or click a destination on an output. The page leads with its balance at the saved UTXO checkpoint, including the exact processed height and block identity. Expand Current UTXOs for a paginated output list, or Historical outputs for retained creation history. Clicking an output opens its BPS position; viewing details may fetch the raw block if it has been evicted.
 
 A complete current index can return zero for an address with no live outputs. A missing, stale or damaged index returns an unavailable balance instead. Current results describe the saved checkpoint and can be behind the network tip. They exclude mempool activity and do not establish wallet spendability.
 
 Historical results show received-output totals within their explicit scanned ranges and report gaps. Those totals are not a current balance or a complete address transaction history. Outputs have unknown spend status unless separate evidence establishes it; creation history alone never proves that an output is spent or unspent. Pagination cursors bind the canonical address and exact revision, so changed checkpoints require a fresh first page.
 
-Supported destination scripts are P2PKH, P2SH, P2WPKH, P2WSH and P2TR. Input addresses require valid mainnet encoding, checksum and witness-version rules. Bare public-key, OP_RETURN and nonstandard scripts do not receive invented address entries; their existing output BPS and script views remain available.
+Supported destination scripts are P2PKH, P2SH, P2WPKH, P2WSH, P2TR and P2PK. Input addresses require valid mainnet encoding, checksum and witness-version rules. P2PK lookup accepts a valid compressed or uncompressed secp256k1 public key and shows a public-key destination label. It matches the exact bare public-key locking script, without combining P2PKH outputs or other encodings of the same key. A key mentioned inside a multisignature script does not make the whole script's funds a balance of that key. OP_RETURN and nonstandard scripts retain their output BPS and script views.
 
 Inscription holdings wait for the Sat update. Address records do not infer ownership, public keys hidden behind hashes, full consensus validation or peer-shared state.
 
@@ -33,6 +33,8 @@ Inscription holdings wait for the Sat update. Address records do not infer owner
 Current and historical reverse maps use separate versioned stores beneath the profile's indexes directory. They share output facts rather than copying the values, scripts or raw blocks into address rows. Historical commits bind scanned block anchors and coverage. Reorg reconciliation removes disconnected outputs from active results; retained prior revisions are preserved and continue to pin their evidence. Automatic cleanup of those revisions is not implemented.
 
 Existing profiles need no destructive migration. Addresses are optional new projections; upgrading does not start an address or UTXO build. Existing output-facts collection recognizes address dependencies and fails closed when their retention evidence is damaged. Turning an index off stops work without deleting its committed data.
+
+Profiles built before P2PK support keep their conventional-address evidence. Public-key lookups require an explicit Current UTXOs rebuild or historical range rescan before the new destination coverage is available. Historical Live includes those destination-coverage gaps. Addresses also defers shared-fact reclamation whenever newer Sat state or rebuild archives are present, preserving unknown owners without blocking healthy UTXO/address commits; a Sat-aware build can reclaim those facts safely later.
 
 Address processing remains header-anchored, with `consensus_validated=false`, matching the underlying UTXO stage. Full consensus validation, full-mainnet performance and whole-chain storage costs have not been established by the focused development tests.
 

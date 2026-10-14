@@ -24,6 +24,7 @@ type addressViewOutput struct {
 }
 type addressViewResult struct {
 	Address             string               `json:"address"`
+	DestinationType     string               `json:"destination_type"`
 	Mode                string               `json:"mode"`
 	State               string               `json:"state"`
 	Source              string               `json:"source"`
@@ -48,7 +49,7 @@ func addressSnapshot(c *addressStateCheckpoint) *addressViewSnapshot {
 	return &addressViewSnapshot{c.Height, c.BlockHash, c.Commitment, c.Validation, c.ConsensusValidated}
 }
 func (a *app) addressViewContext(ctx context.Context, input, mode, cursor string, limit int) (addressViewResult, error) {
-	address, script, _, err := bitcoinAddressScript(input)
+	address, script, destinationType, err := bitcoinDestinationScript(input)
 	if err != nil {
 		return addressViewResult{}, err
 	}
@@ -61,7 +62,7 @@ func (a *app) addressViewContext(ctx context.Context, input, mode, cursor string
 	if limit < 1 || limit > 100 {
 		return addressViewResult{}, fmt.Errorf("address page limit must be between 1 and 100")
 	}
-	out := addressViewResult{Address: address, Mode: mode, Source: "local_address_index", State: "not_built", Outputs: []addressViewOutput{}, Coverage: []heightInterval{}, Gaps: []heightInterval{}}
+	out := addressViewResult{Address: address, DestinationType: destinationType, Mode: mode, Source: "local_address_index", State: "not_built", Outputs: []addressViewOutput{}, Coverage: []heightInterval{}, Gaps: []heightInterval{}}
 	authority := a.currentChainAuthority()
 	if mode == "current" {
 		status, err := addressStateStatusContext(ctx, a.dataDir)
@@ -94,9 +95,9 @@ func (a *app) addressViewContext(ctx context.Context, input, mode, cursor string
 		}
 		result, err := lookupAddressStateContext(ctx, a.dataDir, script, limit, cursor)
 		if err != nil {
-			if errors.Is(err, ErrAddressStateStale) || errors.Is(err, ErrAddressStateCorrupt) || errors.Is(err, ErrAddressStateMissing) {
+			if errors.Is(err, ErrAddressStateStale) || errors.Is(err, ErrAddressStateCorrupt) || errors.Is(err, ErrAddressStateMissing) || errors.Is(err, ErrAddressDestinationUpgrade) {
 				out.State = "stale"
-				if errors.Is(err, ErrAddressStateCorrupt) {
+				if errors.Is(err, ErrAddressStateCorrupt) || errors.Is(err, ErrAddressDestinationUpgrade) {
 					out.State = "rebuild_required"
 				}
 				out.Note = err.Error()
@@ -186,6 +187,8 @@ func (a *app) handleAddressView(w http.ResponseWriter, r *http.Request) {
 
 type indexAddressCurrentStatus struct {
 	State               string               `json:"state"`
+	DestinationVersion  int                  `json:"destination_version"`
+	P2PKSupported       bool                 `json:"p2pk_supported"`
 	Snapshot            *addressViewSnapshot `json:"snapshot"`
 	UTXOSnapshot        *addressViewSnapshot `json:"utxo_snapshot"`
 	OutputCount         uint64               `json:"output_count"`
@@ -195,10 +198,11 @@ type indexAddressCurrentStatus struct {
 type indexAddressStatusView struct {
 	Current    indexAddressCurrentStatus `json:"current"`
 	Historical struct {
-		State    string               `json:"state"`
-		Coverage []heightInterval     `json:"coverage"`
-		Snapshot *addressViewSnapshot `json:"snapshot"`
-		Note     string               `json:"note"`
+		State        string               `json:"state"`
+		Coverage     []heightInterval     `json:"coverage"`
+		P2PKCoverage []heightInterval     `json:"p2pk_coverage"`
+		Snapshot     *addressViewSnapshot `json:"snapshot"`
+		Note         string               `json:"note"`
 	} `json:"historical"`
 }
 
@@ -228,6 +232,8 @@ func (a *app) indexAddressStatus(instances []indexInstance) (*indexAddressStatus
 		view.Current.Note = "Build the UTXO set before current addresses."
 	}
 	if cp := status.Checkpoint; cp != nil {
+		view.Current.DestinationVersion = cp.DestinationVersion
+		view.Current.P2PKSupported = cp.DestinationVersion == 1
 		view.Current.Snapshot = addressSnapshot(cp)
 		view.Current.OutputCount = cp.OutputCount
 		view.Current.ExcludedOutputCount = cp.ExcludedOutputCount
@@ -237,10 +243,18 @@ func (a *app) indexAddressStatus(instances []indexInstance) (*indexAddressStatus
 		}
 		def, _ := findIndexDefinition("address-state")
 		c := addressStateIndexCheckpoint(cp, def)
-		instances = append(instances, indexInstance{Mode: "lean", Definition: def.ID, Version: def.Version, Network: def.Network, Coverage: []heightInterval{{cp.Height, cp.Height}}, Gaps: []heightInterval{}, Completeness: "complete_live_address_set_at_snapshot", Verification: "header_anchored_processing; consensus_validated=false", Provenance: "Saved UTXO state and exact output scripts", Retention: retention(def.ID), Queryable: view.Current.State == "ready", Checkpoint: c, Note: view.Current.Note})
+		completeness := "complete_live_address_set_at_snapshot"
+		if cp.DestinationVersion == 0 {
+			completeness = "complete_live_conventional_address_set_at_snapshot"
+			if view.Current.State == "ready" {
+				view.Current.Note = "Conventional payment-address coverage only. Review a Current UTXOs rebuild to add bare public-key destinations; existing evidence is retained."
+			}
+		}
+		instances = append(instances, indexInstance{Mode: "lean", Definition: def.ID, Version: def.Version, Network: def.Network, Coverage: []heightInterval{{cp.Height, cp.Height}}, Gaps: []heightInterval{}, Completeness: completeness, Verification: "header_anchored_processing; consensus_validated=false", Provenance: "Saved UTXO state and exact output scripts", Retention: retention(def.ID), Queryable: view.Current.State == "ready", Checkpoint: c, Note: view.Current.Note})
 	}
 	view.Historical.State = "not_built"
 	view.Historical.Coverage = []heightInterval{}
+	view.Historical.P2PKCoverage = []heightInterval{}
 	if s, e := openAddressHistoryStoreContext(ctx, a.dataDir); e != nil {
 		view.Historical.State = "stale"
 		view.Historical.Note = e.Error()
@@ -248,6 +262,7 @@ func (a *app) indexAddressStatus(instances []indexInstance) (*indexAddressStatus
 		h := s.head
 		view.Historical.State = "ready"
 		view.Historical.Coverage = h.Coverage
+		view.Historical.P2PKCoverage = append([]heightInterval{}, h.P2PKCoverage...)
 		view.Historical.Snapshot = &addressViewSnapshot{h.Height, h.BlockHash, h.Commitment, "header_anchored_output_evidence", false}
 		if hash, e := a.addressSelectedHashes(ctx, authority)(h.Height); e != nil || hash != h.BlockHash {
 			view.Historical.State = "stale"
@@ -344,7 +359,7 @@ func (a *app) planAddressIndexBuild(req indexBuildRequest) (indexPlan, error) {
 		if e != nil {
 			return p, e
 		}
-		output.Reuse = append([]heightInterval{}, s.head.Coverage...)
+		output.Reuse = append([]heightInterval{}, s.head.P2PKCoverage...)
 		if p.To >= 0 {
 			output.Add = indexCoverageGaps(output.Reuse, p.From, p.To)
 		}
@@ -457,7 +472,7 @@ func (a *app) runAddressIndexBuild(ctx context.Context, j indexJob) {
 	}
 	// Reconcile has authenticated the selected-chain coverage. Avoid a second
 	// full history walk before an unchanged sparse build can resume.
-	coverage := append([]heightInterval{}, store.head.Coverage...)
+	coverage := append([]heightInterval{}, store.head.P2PKCoverage...)
 	missing := indexCoverageGaps(coverage, j.From, j.To)
 	processed := int64(0)
 	for _, gap := range missing {

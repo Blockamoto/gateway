@@ -1,6 +1,6 @@
 # Addresses development checks
 
-This source is for **v0.7.6: Addresses** on its development branch. It is not an approved public release or updater promotion. Use a disposable profile or a preserved copy when exercising damaged storage or alternate branches.
+This guide covers **v0.7.6: Addresses**. Source acceptance is complete; exact release package, publication and hosted delivery evidence is recorded separately in [release acceptance](RELEASE-ACCEPTANCE-0.7.6.json). Use a disposable profile or a preserved copy when exercising damaged storage or alternate branches.
 
 ## Current address state
 

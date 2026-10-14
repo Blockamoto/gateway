@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "version": "0.7.6",
+  "title": "v0.7.6: Addresses",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-14",
+  "status": "source-stage-accepted-release-package-and-hosted-delivery-pending",
+  "published": false,
+  "release_kind": "prerelease",
+  "verified_runtime_source": "61fef459f7577f7c599b1e2d645deb4fee477629",
+  "source_stage_head": "730865780d355190c86bfd18e911b89843dcaea3",
+  "source_identity_note": "The source-stage head adds only documentation to the verified runtime. The exact packaged source revision and artifact hashes must be recorded by the release build; the preview executable below is not a release-package identity.",
+  "enabled_indexes": [
+    "headers",
+    "blocks",
+    "inscriptions",
+    "tx-locator",
+    "txo-spender",
+    "utxo-state",
+    "address-state",
+    "address-history"
+  ],
+  "gated_features": [
+    "sat-state",
+    "satline",
+    "bitmap",
+    "gateway-peerhood"
+  ],
+  "validation_mode": "header_anchored_processing",
+  "consensus_validated": false,
+  "storage": {
+    "current_addresses": "Complete reverse membership and cached totals at one saved UTXO checkpoint, using shared output facts and the existing 288-transition recovery policy.",
+    "historical_outputs": "Optional explicit sparse creation ranges, with independent coverage and durable fact ownership after spend or raw-body eviction.",
+    "p2pk": "Strict compressed/uncompressed SEC public-key destinations identify exact P2PK scripts; P2PKH, alternative encodings and multisignature scripts are not aggregated.",
+    "legacy_address_coverage": "Conventional-address results remain usable. P2PK requires an explicit current rebuild or historical backfill, and missing coverage never establishes a known zero.",
+    "newer_sat_evidence": "Presence of Sat state or rebuild archives conservatively defers shared-fact sweeping without blocking healthy UTXO/address commits. This can retain otherwise reclaimable facts and does not migrate experimental Sat formats.",
+    "legacy_copies": "Retained without automatic removal; upgrading starts no optional address or UTXO build."
+  },
+  "validation": {
+    "final_linux_development_workflow": {
+      "result": "passed",
+      "source_revision": "61fef459f7577f7c599b1e2d645deb4fee477629",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38595767731",
+      "checks": [
+        "Linux runtime build and full Go tests",
+        "Vet and release regression race checks",
+        "Browser companion and UI helpers",
+        "Packaging regressions",
+        "Actual browser and native client regressions"
+      ],
+      "scope": "Source-built Linux runtime and controlled fixtures; final published Windows/Linux packages and hosted delivery require separate verification."
+    },
+    "focused_windows_addresses_and_compatibility": {
+      "result": "passed",
+      "address_run_elapsed_seconds": 126.738,
+      "checks": [
+        "Current and historical address state, exact balance totals, sparse coverage, pagination and recovery",
+        "Strict P2PK points, distinct script balances, legacy coverage upgrade and retained evidence",
+        "Preserved newer Sat state/archive facts with healthy UTXO/address writes and ordinary no-Sat collection",
+        "Authentic mainnet block-170 P2PK parser regression"
+      ],
+      "scope": "Focused checks on the final runtime source, not a new full Windows-suite run."
+    },
+    "compiled_windows_preview_navigation": {
+      "result": "passed",
+      "client_sha256": "a97f0226d0dc9eeae437f6e5423a82cd6e179a6bdfd61214417913ac0a9b396a",
+      "checks": [
+        "Actual compiled routes and CSS with genuine genesis map and transaction flow",
+        "P2PK destination navigation without implicit indexing",
+        "Reserved toolbar, narrow and constrained panels, keyboard controls and fullscreen"
+      ],
+      "scope": "Controlled Chromium against a development preview with no address/UTXO build; the correct balance was unavailable. Not final packaged executable or native WebView sharpness acceptance."
+    },
+    "earlier_windows_full_suite": {
+      "result": "passed-before-p2pk-refinement",
+      "elapsed_seconds": 786.677,
+      "scope": "Earlier Addresses implementation with subsequent focused recovery and P2PK checks; no claim of a final-source full Windows rerun."
+    },
+    "exact_release_packages_and_installer": {
+      "result": "pending",
+      "required": "Freeze the release source, build in a neutral workspace, audit executable versions and installer payload equality, validate header baseline and public updater configuration, then check archive members, provenance and hashes."
+    },
+    "exact_release_runtime_acceptance": {
+      "result": "pending",
+      "required": "Exercise the exact packaged Windows/Linux clients with disposable fresh and older profiles, authentic data, current/historical and P2PK lookups, offline restart, recovery and private access."
+    },
+    "github_prerelease_and_signed_hosted_delivery": {
+      "result": "pending",
+      "required": "Verify the published prerelease tag/source/assets and authenticated Render downloads, then promote the explicitly approved signed application/header feeds."
+    },
+    "published_previous_version_automatic_upgrade": {
+      "result": "pending",
+      "required": "Use the genuine published previous client in a disposable profile; verify automatic download, install and restart into the exact new payload while preserving saved preferences and data."
+    }
+  },
+  "limitations": [
+    "Full Bitcoin consensus and script validation remains deferred.",
+    "No full-mainnet address build, whole-chain storage benchmark or production-scale speed claim is established.",
+    "Historical received totals cover explicit creation ranges and do not establish current balance or complete transaction history.",
+    "Balances exclude mempool activity and do not imply wallet ownership or spendability.",
+    "Inscription holdings, Sats, snapshot/state exchange and Gateway peerhood are not enabled.",
+    "Final release-package execution, system installation, browser registration, antivirus/SmartScreen acceptance and hosted automatic delivery are not established by source checks.",
+    "The newer-Sat compatibility guard preserves evidence by retaining additional facts; it does not convert incompatible experimental Sat state."
+  ],
+  "delivery": {
+    "status": "pending",
+    "publisher_url": "https://gateway-updates.onrender.com",
+    "saved_update_preferences": "Must remain preserved; automatic installation applies to profiles already configured for Automatic."
+  }
+}

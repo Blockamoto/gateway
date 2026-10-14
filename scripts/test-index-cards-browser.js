@@ -8,19 +8,21 @@ const os = require('node:os');
 const {spawn} = require('node:child_process');
 const {once} = require('node:events');
 const {createHash} = require('node:crypto');
-const expectedVersion = fs.readFileSync(path.join(__dirname, '../VERSION.txt'), 'utf8').trim();
-const bundledChannels = JSON.parse(fs.readFileSync(path.join(__dirname, '../assets/bootstrap/update-channels.json'), 'utf8')).channels;
-const expectedChannel = bundledChannels.find(channel=>channel.id==='stable') || bundledChannels[0];
-assert.ok(expectedChannel, 'This release acceptance requires a reviewed bundled update channel');
-
 const options = {};
 for (let i = 2; i < process.argv.length; i++) {
   const key = process.argv[i];
   const value = process.argv[++i];
-  if (!['--binary', '--out', '--browser'].includes(key) || !value) throw Error('Usage: node scripts/test-index-cards-browser.js --binary PATH --out DIR [--browser PATH]');
+  if (!['--binary', '--out', '--browser', '--source'].includes(key) || !value) throw Error('Usage: node scripts/test-index-cards-browser.js --binary PATH --out DIR [--browser PATH] [--source FROZEN_SOURCE]');
   options[key.slice(2)] = value;
 }
 if (!options.binary || !options.out) throw Error('--binary and --out are required');
+// Operational verifier fixes can check unchanged published executables while
+// version and channel expectations still come from their exact frozen source.
+const source = path.resolve(options.source || path.join(__dirname, '..'));
+const expectedVersion = fs.readFileSync(path.join(source, 'VERSION.txt'), 'utf8').trim();
+const bundledChannels = JSON.parse(fs.readFileSync(path.join(source, 'assets/bootstrap/update-channels.json'), 'utf8')).channels;
+const expectedChannel = bundledChannels.find(channel=>channel.id==='stable') || bundledChannels[0];
+assert.ok(expectedChannel, 'This release acceptance requires a reviewed bundled update channel');
 const out = path.resolve(options.out);
 fs.mkdirSync(out, {recursive:true});
 
@@ -208,7 +210,16 @@ async function run() {
     await page.locator('.nav-item[data-route="indexes.gateway"]').click();
     assert.equal(await page.locator('.topbar [data-route="indexes.gateway"]').getAttribute('aria-current'),'page');
     const indexes = page.frameLocator('#indexes-module');
-    if(await indexes.locator('#timeline-expand').isVisible())await indexes.locator('#timeline-expand').click();await indexes.locator('.timeline-track').nth(1).waitFor();
+    async function waitForIndexesWorkspace() {
+      // A new iframe may not have mounted its controls when navigation returns.
+      // Child tracks can also stay hidden inside a legitimately collapsed group.
+      await indexes.locator('#timeline-expand').waitFor({state:'attached'});
+      await indexes.locator('#timeline-group-blocks').waitFor({state:'attached'});
+      if(await indexes.locator('#timeline-expand').isVisible())await indexes.locator('#timeline-expand').click();
+      await indexes.locator('.timeline-group[data-group="blocks"]').waitFor();
+      assert.equal(await indexes.locator('#index-timeline').getAttribute('data-timeline-collapsed'),'false');
+    }
+    await waitForIndexesWorkspace();
     assert.equal(await page.locator('#address').inputValue(), 'indexes.gateway');
     async function assertDocked() {
       const geometry = await page.locator('#indexes-module').evaluate(frame=>{
@@ -235,12 +246,12 @@ async function run() {
     await page.locator('#home-state').waitFor();
     await page.locator('#address').fill('indexes.gateway');
     await page.locator('#address-form').evaluate(form => form.requestSubmit());
-    if(await indexes.locator('#timeline-expand').isVisible())await indexes.locator('#timeline-expand').click();await indexes.locator('.timeline-track').nth(1).waitFor();
+    await waitForIndexesWorkspace();
     await page.goBack();
     await page.locator('#home-state').waitFor();
     assert.equal(await page.locator('#address').inputValue(), '.gateway');
     await page.goForward();
-    if(await indexes.locator('#timeline-expand').isVisible())await indexes.locator('#timeline-expand').click();await indexes.locator('.timeline-track').nth(1).waitFor();
+    await waitForIndexesWorkspace();
     assert.equal(await page.locator('#address').inputValue(), 'indexes.gateway');
 
     await page.goto(endpoint+'/?resolve=settings.gateway',{waitUntil:'networkidle'});
@@ -252,7 +263,7 @@ async function run() {
     await page.screenshot({path:path.join(out,'settings-dark.png'),fullPage:true});
     await page.locator('.settings-sections').getByRole('button',{name:'Updates',exact:true}).click();await page.screenshot({path:path.join(out,'updates-settings-dark.png'),fullPage:true});
     await page.evaluate(()=>localStorage.clear());await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();await page.evaluate(()=>window.GatewayTheme.ready);assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'dark','Profile choice survives loss of per-origin browser storage');
-    await page.locator('.nav-item[data-route="indexes.gateway"]').click();if(await indexes.locator('#timeline-expand').isVisible())await indexes.locator('#timeline-expand').click();await indexes.locator('.timeline-track[data-index="blocks"]').waitFor();assert.equal(await indexes.locator('html').getAttribute('data-theme'),'dark');await page.screenshot({path:path.join(out,'indexes-dark.png'),fullPage:true});
+    await page.locator('.nav-item[data-route="indexes.gateway"]').click();await waitForIndexesWorkspace();assert.equal(await indexes.locator('html').getAttribute('data-theme'),'dark');await page.screenshot({path:path.join(out,'indexes-dark.png'),fullPage:true});
     await page.locator('.nav-item[data-route="peers.gateway"]').click();await page.locator('#peer-data .panel').waitFor();await page.screenshot({path:path.join(out,'peers-dark.png'),fullPage:true});
     await page.locator('#settings-button').click();await page.locator('#theme-select').waitFor();
     await page.locator('#theme-select').selectOption('light');

@@ -15,12 +15,35 @@ import (
 
 var outputFactCollectionMu sync.Mutex
 
+// Addresses predates Sat shared-fact ownership. Do not deserialize newer Sat
+// manifests through the older index structs: unknown roots and savepoints would
+// be lost, making their facts appear unowned. Any Sat state or rebuild archive
+// (even empty, malformed, linked or unreadable storage) conservatively defers
+// this optional sweep until a Sat-aware build can enumerate those owners.
+// Lstat checks presence without following a link or interpreting profile data.
+func deferSharedOutputFactSweepForSat076(root string) bool {
+	for _, name := range []string{"sat-state", "sat-state-archives"} {
+		if _, err := os.Lstat(filepath.Join(root, "indexes", name)); !os.IsNotExist(err) {
+			return true
+		}
+	}
+	return false
+}
+
 // Run between index jobs / at a committed build boundary. Recent unpublished
 // pages receive a staging grace period. Every committed owner is enumerated
 // before any file is removed; damaged manifests fail closed without cleanup.
 func collectSharedOutputFactsContext(ctx context.Context, root string) error {
 	outputFactCollectionMu.Lock()
 	defer outputFactCollectionMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if deferSharedOutputFactSweepForSat076(root) {
+		// Deferring reclamation is not a source-state failure. Healthy UTXO
+		// and address commits must continue while newer evidence is retained.
+		return ctx.Err()
+	}
 	pins := map[string]bool{}
 	u, e := utxoStoreHead(root)
 	if e != nil {

@@ -47,6 +47,8 @@ See [status](STATUS.md) for release acceptance and [the timeline tester guide](T
 
 The timeline is the first step in the design overhaul. Further interaction and index-specific features will be scoped individually as testing informs the next brief.
 
+Next-update planning should include clear per-index deletion, replay/rescan and refresh/upgrade controls. Show when saved block-scan coverage predates support for a destination type, and distinguish resuming a saved job from starting a newly selected range. This follow-up is deferred from the Addresses release; the current testing discussion authorizes no index deletion or replay.
+
 The inscription and transaction stages are available; Gateway peers remain a locked stage with separate scope and validation before promotion:
 
 1. **Inscriptions:** a content viewport within the timeline workspace, compact positional indexing, Lean/Full storage choices and visible unresolved content dependencies. Positional lookup works from a known block without a global transaction index.

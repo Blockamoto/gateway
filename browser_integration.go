@@ -55,10 +55,9 @@ type browserValidation struct {
 }
 
 func gatewayBrowserNamespaces() []browserNamespace {
-	// v0.4.4 has one bundled browser-resolvable module. Keep this as a registry
-	// boundary so later modules can add namespaces without teaching the browser
-	// companion anything about Bitcoin itself.
-	return []browserNamespace{{Suffix: ".bitmap", Module: "Bitmap"}, {Suffix: ".bitcoin", Module: "Bitcoin on Demand"}, {Suffix: ".gateway", Module: "Gateway Client"}}
+	// The companion and optional Windows namespace routing share this registry.
+	// Resource parsing still validates each namespace's exact address grammar.
+	return []browserNamespace{{Suffix: ".bitmap", Module: "Bitmap"}, {Suffix: ".bitcoin", Module: "Bitcoin on Demand"}, {Suffix: ".gateway", Module: "Gateway Client"}, {Suffix: ".sat", Module: "Sats"}}
 }
 
 func browserCompanionDir(exe string) string {

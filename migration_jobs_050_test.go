@@ -171,8 +171,11 @@ func Test050InterruptedJobsRestartPaused(t *testing.T) {
 	if got == nil || got.Status != "paused" || !got.Done {
 		t.Fatalf("job not recoverable %+v", got)
 	}
-	if !strings.Contains(got.Stage, "Resume") {
+	if releaseFeatureAvailable("satline") && !strings.Contains(got.Stage, "Resume") {
 		t.Fatal("missing resume action explanation")
+	}
+	if !releaseFeatureAvailable("satline") && !strings.Contains(got.Stage, "deferred") {
+		t.Fatal("deferred job advertised a usable resume action")
 	}
 }
 func Test050JobsRejectMismatchedIdentity(t *testing.T) {

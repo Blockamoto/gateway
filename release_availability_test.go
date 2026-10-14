@@ -13,7 +13,7 @@ import (
 func Test074IndexReleaseAvailability(t *testing.T) {
 	a := independentTestApp(t)
 	for _, d := range indexDefinitions() {
-		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender" || d.ID == "utxo-state" || d.ID == "address-state" || d.ID == "address-history" || d.ID == "sat-state" || d.ID == "satline"
+		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender" || d.ID == "utxo-state" || d.ID == "address-state" || d.ID == "address-history" || d.ID == "sat-state"
 		if d.Locked == available || releaseFeatureAvailable(d.ID) != available {
 			t.Fatalf("wrong release availability: %+v", d)
 		}
@@ -24,10 +24,10 @@ func Test074IndexReleaseAvailability(t *testing.T) {
 			t.Fatal("locked definition has no explanation", d.ID)
 		}
 		for _, req := range []indexBuildRequest{{Index: d.ID}, {Index: "blocks", Outputs: []string{d.ID}}} {
-			if _, err := a.planIndexBuild(req); err == nil || !strings.Contains(err.Error(), "locked") {
+			if _, err := a.planIndexBuild(req); err == nil || !strings.Contains(err.Error(), d.LockReason) {
 				t.Fatal("plan bypass", req, err)
 			}
-			if _, err := a.startIndexBuild(req); err == nil || !strings.Contains(err.Error(), "locked") {
+			if _, err := a.startIndexBuild(req); err == nil || !strings.Contains(err.Error(), d.LockReason) {
 				t.Fatal("build bypass", req, err)
 			}
 		}
@@ -66,8 +66,8 @@ func Test077ManualUnavailableIndexesStayLocked(t *testing.T) {
 	for _, handler := range []http.HandlerFunc{a.handleSatlineResolve, a.handleJobs, a.handleOrdFollow} {
 		w := httptest.NewRecorder()
 		handler(w, httptest.NewRequest("POST", "/", strings.NewReader(`{`)))
-		if w.Code == http.StatusForbidden && strings.Contains(w.Body.String(), "locked") {
-			t.Fatalf("released local Sat API stayed locked: %s", w.Body.String())
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "deferred") {
+			t.Fatalf("deferred Satline API remained callable: %d %s", w.Code, w.Body.String())
 		}
 	}
 }

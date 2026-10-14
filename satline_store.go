@@ -52,6 +52,8 @@ type satlineStoreMeta struct {
 type satlineStoreStatus struct {
 	Enabled               bool   `json:"enabled"`
 	Ready                 bool   `json:"ready"`
+	State                 string `json:"state,omitempty"`
+	Note                  string `json:"note,omitempty"`
 	Error                 string `json:"error,omitempty"`
 	ModuleID              string `json:"module_id"`
 	ReservedProtocolID    string `json:"reserved_protocol_id"`
@@ -236,6 +238,9 @@ func (a *app) satlineStatus() satlineStoreStatus {
 	initErr := a.satlineInitErr
 	a.satlineMu.Unlock()
 	st := satlineStoreStatus{Enabled: a.satlineEnabled(), Ready: initErr == "", Error: initErr, ModuleID: satlineModuleID, ReservedProtocolID: satlineProtocolID, NetworkAdvertised: a.satlineNetworkingEnabled(), StorageSchema: satlineStorageSchema, Path: a.satlineRoot()}
+	if !st.Enabled {
+		st.Ready, st.State, st.Note = false, "deferred", releaseLockReason("satline")
+	}
 	scan := func(root string, sat bool) {
 		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d == nil || d.IsDir() || !strings.HasSuffix(strings.ToLower(d.Name()), ".json") {
@@ -310,6 +315,9 @@ func combineSatlineResult(base satlineResult, prefix []satlineHop, tail satlineR
 }
 
 func (a *app) cachedSatlineResult(rec satlineRecord, maxHops int) (satlineResult, bool) {
+	if !a.satlineEnabled() {
+		return satlineResult{}, false
+	}
 	if rec.VerifierVersion != blockVerifierVersion {
 		return satlineResult{}, false
 	}

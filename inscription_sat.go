@@ -198,6 +198,10 @@ func (a *app) discoverInscriptionSat(ctx context.Context, id string) (inscriptio
 		}
 		return result, nil
 	}
+	if !releaseFeatureAvailable("satline") {
+		result.Note = "Sat identity is not available in saved evidence. Satline history discovery is deferred in this version; no historical trace was started."
+		return result, nil
+	}
 	backend := newSatlineEvidenceBackend077(a, ctx)
 	resolver := newSatlineResolver(backend)
 	resolver.ctx = ctx

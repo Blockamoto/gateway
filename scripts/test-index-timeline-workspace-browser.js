@@ -29,7 +29,7 @@ async function run() {
   try {
     const context = await browser.newContext({viewport:{width:1440,height:1000}, reducedMotion:'reduce',hasTouch:true});
     const page = await context.newPage();
-    const errors=[], calls=[], unexpected=[];
+    const errors=[], calls=[], unexpected=[], wheelChecks=[];
     let snapshot=fixture();
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/*', async route => {
@@ -112,15 +112,34 @@ async function run() {
 
     const lane=page.locator('.timeline-lane[data-index="blocks"]');
     const pointer=async fraction=>{const box=await lane.boundingBox();const p={x:box.x+box.width*fraction,y:box.y+Math.min(30,box.height/2)};await page.mouse.move(p.x,p.y);return p;};
+    const wheelState=async()=>({view:await view(),selection:await lane.getAttribute('data-selection'),height:await page.locator('#index-timeline').evaluate(el=>el.style.getPropertyValue('--timeline-track-height'))});
+    const initialTrackViewport=page.locator('#timeline-track-viewport');
+    assert(await initialTrackViewport.evaluate(el=>el.scrollHeight<=el.clientHeight),'The short initial track list has no vertical overflow');
+    await pointer(.73);const beforePlainWheel=await wheelState();await page.mouse.wheel(0,120);await settle();
+    assert.deepEqual(await wheelState(),beforePlainWheel,'Plain lane wheel never zooms or edits selections/heights even when there are no tracks to scroll');
+    wheelChecks.push({case:'plain-lane-without-overflow',unchanged:true});
     await lane.evaluate(el=>el.addEventListener('wheel',event=>{window.acceptanceWheelX=event.clientX;},{once:true}));
     await pointer(.73);const beforeWheel=await view();
-    await page.mouse.wheel(0,-100);await settle();
+    await page.keyboard.down('Control');await page.mouse.wheel(0,-100);await page.keyboard.up('Control');await settle();
     const afterWheel=await view();assert(span(afterWheel)<span(beforeWheel));
     const wheelAnchor=await lane.evaluate(el=>(window.acceptanceWheelX-el.getBoundingClientRect().left)/el.getBoundingClientRect().width);
-    assert(Math.abs((beforeWheel.from+span(beforeWheel)*wheelAnchor)-(afterWheel.from+span(afterWheel)*wheelAnchor))<=3,'Ordinary wheel zoom preserves the block beneath the pointer');
+    assert(Math.abs((beforeWheel.from+span(beforeWheel)*wheelAnchor)-(afterWheel.from+span(afterWheel)*wheelAnchor))<=3,'Ctrl-wheel zoom preserves the block beneath the pointer');
+    async function anchoredModifiedWheel(target,modifier,name){
+      const box=await target.boundingBox(),point={x:box.x+box.width*.61,y:box.y+Math.min(15,box.height/2)},before=await view();
+      await target.evaluate(el=>el.addEventListener('wheel',event=>{window.acceptanceWheelX=event.clientX;},{once:true}));
+      await page.mouse.move(point.x,point.y);await page.keyboard.down(modifier);await page.mouse.wheel(0,-50);await page.keyboard.up(modifier);await settle();
+      const after=await view(),fraction=await page.locator('#timeline-ruler').evaluate(el=>Math.max(0,Math.min(1,(window.acceptanceWheelX-el.getBoundingClientRect().left)/el.getBoundingClientRect().width)));
+      assert(span(after)<span(before),name+' zooms intentionally');
+      assert(Math.abs(before.from+span(before)*fraction-after.from-span(after)*fraction)<=3,name+' keeps the pointer anchor');
+      wheelChecks.push({case:name,modifier,pointerFraction:fraction,rangeBefore:before,rangeAfter:after});
+    }
+    await anchoredModifiedWheel(lane,'Meta','Command-wheel over data');
+    await anchoredModifiedWheel(page.locator('#timeline-ruler'),'Control','Ctrl-wheel over ruler');
     await pointer(.5);const beforePan=await view();await page.keyboard.down('Shift');await page.mouse.wheel(0,120);await page.keyboard.up('Shift');await settle();
     assert.equal(span(await view()),span(beforePan));assert((await view()).from>beforePan.from,'Shift-wheel pans horizontally');
     const beforeTrackpad=await view();await page.mouse.wheel(-80,0);await settle();assert((await view()).from<beforeTrackpad.from,'Horizontal trackpad delta pans');
+    const beforeDiagonalPan=await view();await page.mouse.wheel(80,3);await settle();
+    assert.equal(span(await view()),span(beforeDiagonalPan));assert((await view()).from>beforeDiagonalPan.from,'Dominant horizontal trackpad movement still pans with slight vertical drift');
     const thumb=await page.locator(horizontal+' .timeline-scroll-thumb').boundingBox();await page.mouse.move(thumb.x+thumb.width/2,thumb.y+thumb.height/2);
     const beforeBarWheel=await view();await page.keyboard.down('Control');await page.mouse.wheel(0,-60);await page.keyboard.up('Control');await settle();
     assert(span(await view())<span(beforeBarWheel),'Ctrl-wheel on the custom scrollbar zooms the timeline');
@@ -154,7 +173,11 @@ async function run() {
     await page.locator('#timeline-fit').click();await pointer(.5);
     await page.keyboard.down('Control');await page.mouse.wheel(0,-100);await page.keyboard.up('Control');await settle();
     const touchBox=await lane.boundingBox(), mid=touchBox.x+touchBox.width*.6, y=touchBox.y+touchBox.height/2;
-    const cdp=await context.newCDPSession(page), beforePinch=await view();
+    const cdp=await context.newCDPSession(page),beforePrecisionPinch=await view();
+    await cdp.send('Input.dispatchMouseEvent',{type:'mouseWheel',x:mid,y,deltaX:0,deltaY:-16,modifiers:2});await settle();
+    assert(span(await view())<span(beforePrecisionPinch),'Precision trackpad pinch represented by pixel Ctrl-wheel still zooms');
+    assert.equal(await page.evaluate(()=>visualViewport.scale),1,'Timeline pinch does not zoom the browser page');
+    const beforePinch=await view();
     const touch=(a,b)=>[{x:mid-a,y,id:1},{x:mid+b,y,id:2}];
     await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:touch(35,35)});
     await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:touch(65,65)});
@@ -182,8 +205,61 @@ async function run() {
     snapshot.timeline.tracks[1]={id:'blocks',coverage:[{from:499990,to:500010}],gaps:[{from:500000,to:500000}],coverage_complete:false};
     await refresh();
     const trackViewport=page.locator('#timeline-track-viewport');
-    await lane.scrollIntoViewIfNeeded();const label=await page.locator('.timeline-track[data-index="blocks"] .timeline-track-heading').boundingBox();
-    assert(label,'Track label sidebar is visible');await page.mouse.move(label.x+label.width/2,label.y+label.height/2);await page.mouse.wheel(0,220);await settle();assert((await trackViewport.evaluate(el=>el.scrollTop))>0,'Plain wheel over the label sidebar scrolls tracks vertically');
+    await lane.scrollIntoViewIfNeeded();
+    async function verticalWheelCase(name,target,{dx=0,dy=120,modifiers=[],expectScroll=true}={}){
+      await trackViewport.evaluate(el=>el.scrollTop=0);await settle();
+      const point=typeof target==='function'?await target():await target.evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};});
+      const before=await wheelState(),scrollBefore=await trackViewport.evaluate(el=>el.scrollTop);
+      await page.mouse.move(point.x,point.y);for(const modifier of modifiers)await page.keyboard.down(modifier);
+      try{await page.mouse.wheel(dx,dy);}finally{for(const modifier of [...modifiers].reverse())await page.keyboard.up(modifier);}
+      await settle();const scrollAfter=await trackViewport.evaluate(el=>el.scrollTop);
+      assert.deepEqual(await wheelState(),before,name+' preserves timeline range, selections and row height');
+      if(expectScroll)assert(scrollAfter>scrollBefore,name+' scrolls the visible track list');
+      wheelChecks.push({case:name,point,dx,dy,modifiers,scrollBefore,scrollAfter});
+    }
+    for(const width of [1440,390]){
+      await page.setViewportSize({width,height:width===390?844:1000});await settle();
+      assert(await trackViewport.evaluate(el=>el.scrollHeight>el.clientHeight),'Overflow fixture needs a scrollable list at '+width);
+      const group=page.locator('.timeline-group[data-group="blocks"] .timeline-group-heading');
+      const heading=page.locator('.timeline-track[data-index="headers"] .timeline-track-heading');
+      const cases=[['group heading',group],['nested group control',group.locator('strong')],['ordinary nested label',heading.locator('strong')],['nested remove button',page.locator('.timeline-track[data-index="blocks"] .timeline-track-remove')],['label padding',async()=>heading.evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x+2,y:r.bottom-3};})],['ruler label padding',async()=>page.locator('.timeline-ruler-label').evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.right-2,y:r.y+r.height/2};})]];
+      for(const [name,target] of cases)await verticalWheelCase(width+' '+name,target);
+      for(const modifier of ['Control','Meta','Alt','Shift']){
+        await verticalWheelCase(width+' label '+modifier+' with diagonal drift',heading.locator('strong'),{dx:3,dy:120,modifiers:[modifier]});
+        await verticalWheelCase(width+' left navigation button '+modifier,page.locator('#timeline-pan-right'),{dx:3,dy:120,modifiers:[modifier]});
+      }
+      const dividerPoint=async offset=>page.locator('.timeline-ruler-label').evaluate((label,offset)=>{const r=label.getBoundingClientRect(),row=document.querySelector('.timeline-track[data-index="headers"]').getBoundingClientRect();return{x:offset<0?Math.floor(r.right+offset):Math.ceil(r.right+offset),y:row.y+row.height/2};},offset);
+      await verticalWheelCase(width+' one pixel left of column divider',()=>dividerPoint(-1),{dx:3,modifiers:['Control']});
+      await verticalWheelCase(width+' one pixel right of column divider plain',()=>dividerPoint(1),{dx:3});
+      await trackViewport.evaluate(el=>el.scrollTop=0);await settle();const right=await dividerPoint(1),rightBefore=await view();
+      await page.mouse.move(right.x,right.y);await page.keyboard.down('Control');await page.mouse.wheel(0,-80);await page.keyboard.up('Control');await settle();
+      assert(span(await view())<span(rightBefore),width+' one pixel right of the label divider permits intentional Ctrl zoom');
+      await verticalWheelCase(width+' data lane vertical with diagonal drift',lane,{dx:3,dy:120});
+      await verticalWheelCase(width+' right scrollbar gutter',page.locator('#timeline-scrollbar-vertical'),{modifiers:['Alt']});
+      const add=page.locator('.timeline-add-track-row');await add.scrollIntoViewIfNeeded();await settle();
+      const addPoint=await add.evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x+3,y:r.y+r.height/2};});
+      const addBefore=await wheelState(),addScroll=await trackViewport.evaluate(el=>el.scrollTop);
+      await page.mouse.move(addPoint.x,addPoint.y);await page.keyboard.down('Control');await page.mouse.wheel(3,-120);await page.keyboard.up('Control');await settle();
+      assert((await trackViewport.evaluate(el=>el.scrollTop))<addScroll,width+' add-row label gap scrolls upward');assert.deepEqual(await wheelState(),addBefore,width+' add-row gap cannot zoom');
+      wheelChecks.push({case:width+' add-row label gap',scrollBefore:addScroll,scrollAfter:await trackViewport.evaluate(el=>el.scrollTop)});
+      const selectedTrack=page.locator('.timeline-track[data-index="blocks"] .timeline-track-select');await selectedTrack.scrollIntoViewIfNeeded();await selectedTrack.click();
+      await page.locator('#timeline-inspector-tab').click();await page.locator('#timeline-details').evaluate(el=>el.open=true);
+      await page.locator('#timeline-collapse').click();await settle();
+      const inspectorScroll=page.locator('#timeline-inspector-panel');
+      assert(await inspectorScroll.evaluate(el=>el.scrollHeight>el.clientHeight),width+' collapsed inspector has visible overflow for wheel regression');
+      for(const [name,target,modifier] of [['compact text',page.locator('#timeline-current-height'),'Control'],['compact button',page.locator('#timeline-expand'),'Meta'],['compact padding',page.locator('.timeline-compact-label'),'Alt'],['compact text shift',page.locator('#timeline-current-height'),'Shift'],['compact actual lane',page.locator('#timeline-compact-scrubber'),null]]){
+        await inspectorScroll.evaluate(el=>el.scrollTop=0);const hiddenScroll=await trackViewport.evaluate(el=>el.scrollTop),before=await wheelState(),box=await target.boundingBox();
+        await page.mouse.move(box.x+box.width/2,box.y+box.height/2);if(modifier)await page.keyboard.down(modifier);
+        try{await page.mouse.wheel(3,120);}finally{if(modifier)await page.keyboard.up(modifier);}await settle();
+        assert((await inspectorScroll.evaluate(el=>el.scrollTop))>0,width+' '+name+' scrolls the visible collapsed inspector');
+        assert.equal(await trackViewport.evaluate(el=>el.scrollTop),hiddenScroll,width+' '+name+' cannot scroll the hidden track list');
+        assert.deepEqual(await wheelState(),before,width+' '+name+' preserves timeline range/picks/height');
+        wheelChecks.push({case:width+' '+name,modifier,visibleInspectorScroll:await inspectorScroll.evaluate(el=>el.scrollTop)});
+      }
+      await anchoredModifiedWheel(page.locator('#timeline-compact-scrubber'),'Control',width+' compact right-side Ctrl zoom');
+      await page.locator('#timeline-expand').click();await page.locator('#timeline-details').evaluate(el=>el.open=false);await settle();
+    }
+    await page.setViewportSize({width:1440,height:1000});await settle();
     const height=()=>page.locator('#index-timeline').evaluate(el=>Number.parseFloat(el.style.getPropertyValue('--timeline-track-height')));
     await trackViewport.evaluate(el=>el.scrollTop=0);await pointer(.5);const beforeHeight=await height();
     await page.keyboard.down('Alt');await page.mouse.wheel(0,-100);await page.keyboard.up('Alt');await settle();assert.notEqual(await height(),beforeHeight,'Alt-wheel changes track height');
@@ -294,7 +370,7 @@ async function run() {
       const current=await view(),box=await inscriptionLane.boundingBox();
       assert(block>=current.from&&block<=current.to);
       await page.mouse.move(box.x+(block-current.from+.5)/span(current)*box.width,box.y+Math.min(25,box.height/2));
-      await page.mouse.wheel(0,-180);await settle();
+      await page.keyboard.down('Control');await page.mouse.wheel(0,-180);await page.keyboard.up('Control');await settle();
     }
     for(let i=0;i<3;i++)await zoomAt(767430);
     const crossing=await view();
@@ -324,8 +400,8 @@ async function run() {
     assert.deepEqual(await potential(),[{from:767430,to:767430}],'Retained genesis history does not shift the potential span');
     await shot('workspace-inscription-ghost');
     onlyPlans();assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);
-    console.log('Index timeline workspace gestures PASS: docked layout, persistent splitter, add-index locks, two-edge scrollbar zoom/pan, anchored wheel and touch pinch, Space-grab, vertical scrolling/height, Bitcoin landmarks, range draft validation, themes, embedding, inscription potential boundaries and preserved custom history.');
-    if(out)fs.writeFileSync(path.join(out,'acceptance.json'),JSON.stringify({result:'PASS',scope:'Actual UI, synthetic sparse and empty APIs, disposable browser profile; no external network or real indexing',calls},null,2)+'\n');
+    console.log('Index timeline workspace gestures PASS: plain-wheel vertical track scrolling, complete label/modifier boundaries, anchored Ctrl/Command zoom and trackpad/touch pinch, Shift/horizontal pan, data-only Alt height, docked layout, persistent splitters, selection preservation and no implicit indexing.');
+    if(out)fs.writeFileSync(path.join(out,'acceptance.json'),JSON.stringify({result:'PASS',scope:'Actual UI, synthetic sparse and empty APIs, disposable browser profile; no external network or real indexing',wheelChecks,calls},null,2)+'\n');
   } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}
 }
 run().catch(error=>{console.error(error);process.exitCode=1;});

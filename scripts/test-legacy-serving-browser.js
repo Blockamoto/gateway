@@ -41,7 +41,9 @@ async function run(){
   assert.match(await notice.innerText(),/served 2 blocks.*3 notfound/,'Keep serving counters visible');
   assert.equal(await page.locator('#serve').isChecked(),true);
   assert.equal(await page.locator('#satlineEnabled').count(),0,'Legacy controls must not offer the deprecated Satline switch');
-  assert.match(await page.locator('#settingsBody').innerText(),/Local Satline tracing is available automatically/);
+  assert.match(await page.locator('#settingsBody').innerText(),/Satline history tracing is deferred in this version/);
+  assert.equal(await page.locator('#satlineNumber,#satlinePoint,[onclick*=resolveSatlineUI],[onclick*=followSatlineUI]').count(),0,'Deferred Satline cannot be launched from legacy settings');
+  assert.equal(await page.locator('a[href="/satline"]').count(),0,'Legacy page has no Satline launch link');
   assert(!fs.readFileSync(path.join(root,'skins/default/index.html'),'utf8').includes('satlineEnabled'),'The shipped default skin must match automatic local tracing');
   async function render(listener){
    fixture.bitcoin_p2p=listener;fixture.settings.serve_data=listener.requested;

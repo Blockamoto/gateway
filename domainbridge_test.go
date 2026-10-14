@@ -57,3 +57,41 @@ func TestBitcoinHTTPBridgeKeepsFriendlyHost(t *testing.T) {
 		t.Fatalf("host=%q resolve=%q", gotHost, gotResolve)
 	}
 }
+
+func Test077SatDNSAndHTTPBridgeUseExactSatHosts(t *testing.T) {
+	for _, name := range []string{"0.sat", "5000000000.sat", "5000000000.SAT", "nvtdijuwxlp.sat"} {
+		r := dnsResponse(makeDNSQuery(name, 1))
+		if len(r) < 16 || binary.BigEndian.Uint16(r[6:8]) != 1 || string(r[len(r)-4:]) != string([]byte{127, 0, 0, 1}) {
+			t.Fatalf("missing Sat loopback answer for %s", name)
+		}
+	}
+	for _, name := range []string{"sat", "bad-name.sat", "01.sat", "1.2.sat", "0.sat.example"} {
+		r := dnsResponse(makeDNSQuery(name, 1))
+		if len(r) < 12 || binary.BigEndian.Uint16(r[6:8]) != 0 || binary.BigEndian.Uint16(r[2:4])&0xf != 5 {
+			t.Fatalf("invalid Sat DNS answer for %s", name)
+		}
+	}
+	var gotHost, gotResolve string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Header.Get("X-Gateway-On-Demand-Host")
+		gotResolve = r.URL.Query().Get("resolve")
+		_, _ = io.WriteString(w, "sat fixture")
+	}))
+	defer backend.Close()
+	h, err := bitcoinProxyHandler(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, host := range []string{"5000000000.sat", "5000000000.SAT", "nvtdijuwxlp.sat"} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "http://"+host+"/", nil))
+		if w.Code != 200 || gotHost != strings.ToLower(host) || gotResolve != strings.ToLower(host) {
+			t.Fatalf("Sat proxy lost host: %d %q %q", w.Code, gotHost, gotResolve)
+		}
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "http://bad-name.sat/", nil))
+	if w.Code != 404 {
+		t.Fatal("HTTP bridge accepted noncanonical Sat host")
+	}
+}

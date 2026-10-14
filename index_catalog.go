@@ -286,7 +286,7 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 	if d.ID == "sat-state" {
 		p.Verification = "header_anchored_processing; consensus_validated=false"
 		p.StorageEstimate = "Live ordered output ranges, shared output facts and up to four savepoints; fragmentation determines size. Historical ranges are optional."
-		p.Notes = append(p.Notes, "Sat identity requires continuous history from genesis; isolated ranges cannot establish current sat placement.", "Pruned source bodies can be discarded after commit. Live ranges and savepoint pages remain local.", "Keep two savepoints every 12 blocks and two every 144 blocks; restore then replay. This is not a guaranteed 288-block rollback at every height.", "Historical ranges are optional; Satline can reconstruct and cache visited paths on demand.")
+		p.Notes = append(p.Notes, "Sat identity requires continuous history from genesis; isolated ranges cannot establish current sat placement.", "Pruned source bodies can be discarded after commit. Live ranges and savepoint pages remain local.", "Keep two savepoints every 12 blocks and two every 144 blocks; restore then replay. This is not a guaranteed 288-block rollback at every height.", "Historical ranges are optional; Satline history tracing is deferred in this version.")
 	}
 	if d.ID == "inscriptions" {
 		p.Notes = append(p.Notes, "Lean retains compact inscription positions and transaction counts; Full also retains authenticated reveal bodies. Neither starts numbering or unrelated historical input work.", "Conventional-ID enrichment is independently committed and can be disabled without deleting existing locators.")

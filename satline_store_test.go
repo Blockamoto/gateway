@@ -26,7 +26,7 @@ func TestSatlineStorePersistsRecordsAndStatus(t *testing.T) {
 		t.Fatalf("record not restored: %+v ok=%v", rec, ok)
 	}
 	st := a.satlineStatus()
-	if st.Enabled != releaseFeatureAvailable("satline") || !st.Ready || st.StoredSats != 1 || st.PersistedHops != 1 || st.StorageSchema != 1 {
+	if st.Enabled != releaseFeatureAvailable("satline") || st.Ready != releaseFeatureAvailable("satline") || st.StoredSats != 1 || st.PersistedHops != 1 || st.StorageSchema != 1 {
 		t.Fatalf("bad status: %+v", st)
 	}
 	if _, err := os.Stat(filepath.Join(a.satlineRoot(), "metadata.json")); err != nil {
@@ -202,7 +202,7 @@ func TestSatlineMetadataFailureIsIsolatedAndClearRepairs(t *testing.T) {
 	if err := a.clearSatlineStore(); err != nil {
 		t.Fatal(err)
 	}
-	if st := a.satlineStatus(); !st.Ready || st.Error != "" {
+	if st := a.satlineStatus(); st.Ready != releaseFeatureAvailable("satline") || st.Error != "" {
 		t.Fatalf("clear should repair Satline metadata: %+v", st)
 	}
 }

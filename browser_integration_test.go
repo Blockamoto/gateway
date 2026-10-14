@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalizeBrowserResourceAddress(t *testing.T) {
 	good := []string{
@@ -30,5 +33,23 @@ func TestNormalizeBrowserResourceAddress(t *testing.T) {
 		if got := normalizeBrowserResourceAddress(in); got.Valid {
 			t.Fatalf("%s should not be a browser Gateway resource", in)
 		}
+	}
+}
+
+func Test077SatBrowserNamespaceUsesExactCanonicalTokens(t *testing.T) {
+	for _, input := range []string{"0.sat", "5000000000.sat", "5000000000.SAT", "nvtdijuwxlp.sat", "nvtcsezkbth.sat"} {
+		got := normalizeBrowserResourceAddress(input)
+		want := strings.ToLower(input)
+		if !got.Valid || got.Address != want || got.Namespace != ".sat" || got.Module != "Sats" || got.WebURL != "http://"+want+"/" || got.GatewayURI != "god://"+want {
+			t.Fatalf("%q: %+v", input, got)
+		}
+	}
+	for _, input := range []string{".sat", "sat", "bad-name.sat", "nvtdijuwxlq.sat", "01.sat", "-1.sat", "1.2.sat", "18446744073709551616.sat", "1.sat.example", "1.sat/path", "what is 0.sat"} {
+		if got := normalizeBrowserResourceAddress(input); got.Valid {
+			t.Fatalf("noncanonical .sat accepted: %q", input)
+		}
+	}
+	if !strings.Contains(gatewayNamespacePowerShellArray(), "'.sat'") {
+		t.Fatal("optional Windows routing omitted the registered Sat namespace")
 	}
 }

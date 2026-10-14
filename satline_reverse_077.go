@@ -221,6 +221,15 @@ func (r *satlineResolver) reverseInputPoint077(tx transactionView, position uint
 // This follows one output-relative point. It never computes all ranges in an
 // output or starts a global Sat index. Only visited block anchors are cached.
 func (a *app) reverseSatlineSatpointContext(ctx context.Context, input string, rebuild ...bool) (satlineReverseResult, error) {
+	if err := requireReleaseFeature("satline"); err != nil {
+		return satlineReverseResult{State: "unavailable", Note: err.Error()}, err
+	}
+	return a.traceSatlineSatpointContext077(ctx, input, rebuild...)
+}
+
+// Internal traversal remains testable while the release entry point is gated.
+// No UI, API, CLI or persisted-job path calls this implementation directly.
+func (a *app) traceSatlineSatpointContext077(ctx context.Context, input string, rebuild ...bool) (satlineReverseResult, error) {
 	query, err := parseSatlineQuery(input)
 	if err != nil || query.Kind != "satpoint" {
 		return satlineReverseResult{}, fmt.Errorf("reverse Satline requires an output-relative satpoint")

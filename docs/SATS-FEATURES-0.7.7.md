@@ -2,18 +2,15 @@
 
 This document describes the implemented Sats development preview, following the published v0.7.6 Addresses release. It separates saved index answers from explicit tracing and optional history. It does not claim that v0.7.7 has been published or passed final public-package/updater acceptance.
 
-## Two ways to track a sat
+## Saved Sat tracking
 
-| Capability | What it establishes | How work starts |
-| --- | --- | --- |
-| Sats index | Individual Sat locations and ordered output ranges at one saved selected-chain checkpoint | An explicitly reviewed genesis-first build |
-| Satline | The visited FIFO path of one sat or output-relative point, using available evidence | An explicit trace, continuation or identity-discovery request |
+The Sats index supplies individual Sat locations and ordered output ranges at one saved selected-chain checkpoint. It starts through an explicitly reviewed genesis-first build. A saved UTXO set supplies values and scripts but cannot supply Sat identities by itself.
 
-A saved UTXO set supplies values and scripts, but cannot supply the identities of its sats. The Sats index derives those identities from genesis. Satline can investigate one path without first building complete global Sat state or retaining every historical output's ranges. Either operation can need missing Bitcoin evidence; neither promises an immediate answer for every query.
+**Satline history tracing is disabled for this version.** Long on-demand scans need a clearer cancellation and work-control design before release. The explorer does not offer Trace/Follow actions, and backend, CLI and browser entry points cannot start or resume a trace. Existing derived evidence is retained. This change does not disable the Sats index, saved location lookup, output ranges or compatible address holdings.
 
 ## Find a sat and its saved location
 
-Enter a sat number in the Sats view, or navigate to a canonical address such as `5000000000.sat`. Bare numeric searches elsewhere continue to mean block heights.
+Enter a sat number in the Sats view, or navigate to a canonical address such as `5000000000.sat`. In Gateway's address bar, a bare integer up to the selected chain tip opens that block; a larger integer opens a Sat. Explicit `N.sat` and `N.bitcoin` keep their meaning. Without a known selected tip, use an explicit suffix. Successful number entry is saved with its canonical suffix, so later tip changes do not change its history entry. Browser-companion `.sat` handoff is supported; ordinary browser number searches remain unchanged. Ordinal names such as `nvtdijuwxlp` or `nvtdijuwxlp.sat` open the same Sat as `0.sat`. Names decode locally without a chain-tip check or historical scan; existing hashes, destinations and explicit resource namespaces keep precedence. Explicit named `.sat` links also work through the companion.
 
 The explorer shows theoretical issuance information and ordinal properties: rarity, name, decimal notation, degree notation and percentile. These properties describe issuance; they do not themselves prove a current location. With a compatible Sat checkpoint, the page also shows the containing output's BPS position, offset within that output, location state, and exact snapshot height/hash. A paused index remains useful for answers at its saved checkpoint, which may precede the selected tip.
 
@@ -31,6 +28,8 @@ Ranges describe an output's sats in FIFO order, with exclusive ends. `[100,103)`
 
 Range views are paginated, with checkpoint-bound cursors and authenticated output offsets. The UI checks output identity, matching snapshots, contiguous offsets and total value. Users can open range endpoints or enter another Sat number from a displayed range. Stored fragments and read responses use bounded pages; FIFO processing can still materialize all input fragments in memory.
 
+An individual Sat page uses the main address bar rather than a duplicate search form. At the timeline's output-local Sat level, selecting an offset opens its numbered Sat when authenticated ranges are retained. Missing ranges show unavailable identity; the action does not start Satline, fetch history or fall back to a transaction page.
+
 ## Addresses and public-key destinations
 
 The Sat page links to its containing output and supported script destination. Current address UTXOs expand into ordered ranges and link back to individual sats. These joins require Address Current and Sats to share the same processed height and block hash; each retains its own commitment. Missing or lagging indexes remain unavailable/catching up, and opening the page does not build them.
@@ -43,32 +42,26 @@ Addresses retains its own coverage and compatibility rules. Older conventional-o
 
 The address page can list known indexed inscription identities whose sats occupy its saved UTXOs. The join uses inscription-to-Sat identity, current Sat placement and the exact output script, disclosing both Address and Sat snapshots. Results are paginated and checked against those snapshots; checkpoint changes invalidate old cursors/results.
 
-Identity coverage is explicit. No known rows does not prove an address has no inscriptions. The feature does not establish universal inscription completeness, wallet ownership or mempool holdings. Existing inscription content/locator indexes remain separate. Explicit sat discovery can establish an inscription's identity without silently creating a global Sat history index.
+Identity coverage is explicit. No known rows does not prove an address has no inscriptions. The feature does not establish universal inscription completeness, wallet ownership or mempool holdings. Existing inscription content/locator indexes remain separate. Inscription identities established during Sat indexing or retained from earlier work can be joined to saved locations; an address lookup does not start identity discovery.
 
-## Explicit Satline tracing
+## Deferred Satline history
 
-Local Satline is available automatically in this version. It has no separate enable checkbox or Add Index entry, including when an older configuration saved the former flag as false. Its availability does not enable Gateway peer exchange or publication.
+Satline's forward journeys, reverse identity discovery and continuation controls are unavailable in this version. Direct routes explain the deferral instead of starting work. A saved location answers where a Sat is at its checkpoint; it does not claim to show the Sat's complete transfer history.
 
-The Sat explorer's **Trace Satline** action starts a chosen sat's journey. Transaction-output **Follow a sat** requires an explicit valid offset. Satline accepts a sat number or output-relative satpoint, including positional `offset.output.transaction.block.bitcoin` and native `txid:vout:offset` forms. An `i<vin>` input coordinate alone does not identify one sat.
-
-The normal journey follows forward through ordered transaction inputs and outputs. A fee sat maps into coinbase after the subsidy and the fees of preceding transactions in that block. Explicit local reverse requests and inscription identity discovery can instead trace a point backward to its issuance identity, including fee-to-coinbase ancestry. This reverse capability is a backend/API operation, not a separate reverse-journey UI.
-
-Forward work exposes progress, cancellation, continuation and recheck/rebuild actions. Completed path evidence is cached. Reverse work preserves an anchored frontier when interrupted or unresolved. Cache reuse checks relevant selected-chain anchors, so a stale path is not silently trusted after a reorg. Reading a saved record is distinct from rechecking it. Traces have work/hop limits and can remain unresolved.
-
-Compact TXIO links, native-position translation and shared output values/scripts can supply authenticated evidence without decoding full raw blocks. Insufficient local facts fall back to existing verified providers. Missing spend coverage is not proof of unspentness; an unspent result requires an explicit supported snapshot. Any reported mempool spend is separate from confirmed lineage.
+Existing visited-path and fee-cache data is preserved. No full historical range index or on-demand scan starts when opening a Sat, output or address. Optional saved historical ranges still work where the user explicitly retained them during index processing.
 
 ## Fee caches and optional history
 
-Per-transaction fee totals and ordered block fee prefixes are stored in authenticated pages under a block-hash anchor. Sat processing writes receipts after resolving ordered input values; on-demand fee-prefix work can also cache a completed result. With a compatible cache, tracing need not retrieve every preceding transaction's input values again merely to place a fee sat in coinbase. Ordinary hops still require ordered input/output values and spend links. This is a tracing cache, not a new fee-market explorer or an end-to-end speed guarantee.
+Per-transaction fee totals and ordered block fee prefixes are stored in authenticated pages under a block-hash anchor. Sat processing writes receipts after resolving ordered input values. These retained receipts prepare future tracing without enabling it in this version. With a compatible cache, tracing need not retrieve every preceding transaction's input values again merely to place a fee sat in coinbase. Ordinary hops still require ordered input/output values and spend links. This is a tracing cache, not a new fee-market explorer or an end-to-end speed guarantee.
 
 | Retained information | Policy |
 | --- | --- |
 | Live Sat placement, terminal states and recovery dependencies | Required for the explicitly built Sat state |
 | Complete historical output ranges | Optional, off by default |
-| Visited Satline paths and fee receipts | Derived during explicit processing/tracing; do not establish complete history |
+| Visited Satline paths and fee receipts | Fee receipts are derived during index processing; prior trace evidence is preserved but tracing is disabled |
 | Serialized raw block bodies | Independent source-retention policy; may be pruned |
 
-Turning historical ranges on later affects newly processed blocks and leaves older gaps. Turning it off preserves history already retained. A few saved outputs or cached paths cannot establish whole-block historical coverage. An old spent output whose full ranges were not retained is unavailable as a complete range list; tracing one point may still succeed.
+Turning historical ranges on later affects newly processed blocks and leaves older gaps. Turning it off preserves history already retained. A few saved outputs or cached paths cannot establish whole-block historical coverage. An old spent output whose full ranges were not retained is unavailable as a complete range list; on-demand reconstruction is deferred with Satline.
 
 ## Build, pause, resume and recovery
 

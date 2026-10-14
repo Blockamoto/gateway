@@ -4,12 +4,12 @@
   "title": "v0.7.7: Sats",
   "repository": "Blockamoto/gateway",
   "recorded_date_utc": "2026-10-14",
-  "status": "development-preview-verified-wheel-followup-recorded-implementation-held",
+  "status": "updated-development-preview-in-validation",
   "published": false,
   "release_kind": "prerelease",
   "development_base_revision": "7869709d512149bf303c56477c3953a385d1913c",
   "verified_runtime_source": "2abda5d617e6d8bcc708da96a837e83b3bebbca6",
-  "source_identity_note": "The delivered development preview was built from clean frozen source d06cdd4dad78f948d77a9a4a824cb0cce6dc1305. Documentation after this source records acceptance without changing the frozen application or packages. Published Linux, live signed feed and real hosted upgrade acceptance remain separate release checks.",
+  "source_identity_note": "The delivered development preview was built from clean frozen source d06cdd4dad78f948d77a9a4a824cb0cce6dc1305. Documentation after this source records acceptance without changing the frozen application or packages. Published Linux, live signed feed and real hosted upgrade acceptance remain separate release checks. A later candidate adds wheel and number/name navigation, companion .sat handoff and Satline deferral. Prior source/package receipts do not certify that revised candidate.",
   "enabled_indexes": [
     "headers",
     "blocks",
@@ -23,7 +23,8 @@
   ],
   "gated_features": [
     "bitmap",
-    "gateway-peerhood"
+    "gateway-peerhood",
+    "satline"
   ],
   "validation_mode": "header_anchored_processing",
   "consensus_validated": false,
@@ -210,12 +211,30 @@
   "recorded_user_testing_followups": [
     {
       "area": "Timeline wheel routing",
-      "status": "investigated; implementation explicitly held by user",
+      "status": "implemented; focused browser regressions passed; revised package validation pending",
       "observed": "Ordinary labels scroll, group headings/gutters fall through to zoom; plain data-lane wheel zoom is now also unwanted. Modifier and any horizontal delta precede label handling.",
       "requested": "Ordinary vertical wheel scrolls across labels and tracks; Ctrl/Command is required for timeline wheel zoom. Shift remains horizontal pan.",
       "plan": "Classify the entire rendered label column first, remove unmodified wheel zoom fallback, preserve intentional timeline gestures and add group/gutter/diagonal/boundary/viewport regression coverage.",
       "preview_unchanged": true,
-      "record": "IMPLEMENTATION-BRIEF-0.7.7.md"
+      "record": "IMPLEMENTATION-BRIEF-0.7.7.md",
+      "prior_preview_note": "The previously delivered preview is immutable; the revised candidate requires a new package."
     }
-  ]
+  ],
+  "current_candidate": {
+    "status": "source implementation and focused validation in progress",
+    "satline": "Deferred: starts/resumes and reverse history discovery blocked; prior evidence retained; saved locations and ranges remain available.",
+    "wheel": "Plain vertical scroll across labels and tracks; explicit Ctrl/Command timeline zoom; intentional pan and pinch preserved.",
+    "navigation": "Internal bare integers classify against selected authoritative tip; explicit suffixes override. Ordinal names decode locally with or without .sat. Browser companion handles explicit numeric/named .sat tokens only.",
+    "source_revision": null,
+    "client_sha256": null,
+    "artifacts": [],
+    "sat_page": "Individual Sat pages use the main address bar. Deep timeline output offsets resolve via authenticated retained range segments to Sat identity; unavailable evidence starts no reconstruction or raw fallback.",
+    "focused_validation": {
+      "satline_backend": "77 passing events, four expected skips; new/resumed/API/CLI traces blocked, private exact-job cancellation preserved, saved state unchanged.",
+      "sat_point_backend": "13 passing events; genuine0/1,2305 output offsets across769 fragments, private read-only guards, anchor/corruption/cancellation checks.",
+      "sat_names": "Known boundary/standard-name vectors,1000 deterministic round trips and invalid/range/overflow checks passed.",
+      "source_browsers": "Wheel, dynamic number/name navigation, Sats/TXIO/transaction views, legacy deferral and retained Sat-point stale/status-recovery guards passed.",
+      "full_suite_note": "An initial concurrent source compile encountered an unfinished test import. It is fixed; full final-source checks are pending."
+    }
+  }
 }

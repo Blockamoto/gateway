@@ -6,10 +6,11 @@ The [public v0.7.6 Addresses prerelease](https://github.com/Blockamoto/gateway/r
 
 - Derive Sat identities from genesis, retaining live ordered output ranges, Sat-number lookup, terminal states and shared output facts at exact selected-chain checkpoints.
 - Add a Sat explorer, compatible address UTXO/range views, P2PK destination navigation and known inscription holdings with explicit identity coverage.
-- Make local Satline available automatically for explicit on-demand traces, with visited-path and fee-prefix caching; complete historical output ranges remain optional and off by default.
+- Defer Satline on-demand history tracing for this version; block new and resumed traces while preserving saved evidence. Saved Sat lookup/ranges and fee receipts remain. Complete historical output ranges are optional and off by default.
 - Retain the newest two savepoints at multiples of 12 and the newest two at multiples of 144, sharing matching heights. Restore an eligible selected-chain point and replay; preserve incompatible prior state for reviewed rebuild.
 - Use existing reviewed per-index Build/Pause/Resume/Live controls. Shared Play/Pause, arming, workflow redesign and general index-management controls are deferred until after Bitmap.
-- Recorded Sats testing follow-up, not yet implemented: make ordinary vertical wheel input scroll across the left track-name column and actual track lanes; require Ctrl/Command for wheel zoom in the timeline time/data area. Shift remains horizontal pan. The group-label/fallback cause is diagnosed and a correction proposed; the user has explicitly held implementation.
+- Authorized Sats testing correction: ordinary vertical wheel input scrolls across the left track-name column and actual track lanes; Ctrl/Command is required for wheel zoom in the timeline time/data area. Preserve Shift horizontal pan and trackpad/touch pinch zoom. This focused gesture correction is separate from the broader post-Bitmap redesign.
+- Route bare integers inside Gateway using the selected chain tip, with explicit `.sat`/`.bitcoin` overrides and `.sat` browser-companion handoff. Browser bare-number search stays unchanged.
 - Keep full consensus validation, assumed snapshots and Gateway peer/state sharing outside this scope. Sats publication/updater promotion require the user's release instruction.
 
 See [the Sats feature breakdown](SATS-FEATURES-0.7.7.md), [brief](IMPLEMENTATION-BRIEF-0.7.7.md), [guide](SATS-INDEX.md) and [test guide](TESTING-0.7.7.md).

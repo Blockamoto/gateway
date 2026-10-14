@@ -17,7 +17,9 @@ async function selectHeight(page, height, index = null) {
     if (span<=33) break;
     const box=await lane.boundingBox();
     await page.mouse.move(box.x+(height-current.from+.5)/span*box.width,box.y+Math.min(25,box.height/2));
-    await page.mouse.wheel(0,-300);
+    // Plain wheel scrolls tracks; zoom is an explicit modified gesture.
+    await page.keyboard.down('Control');
+    try { await page.mouse.wheel(0,-300); } finally { await page.keyboard.up('Control'); }
     await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   }
   while ((await view()).to-(await view()).from+1<33) {

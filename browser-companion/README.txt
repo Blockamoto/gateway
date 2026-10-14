@@ -18,6 +18,12 @@ CHROME / EDGE / BRAVE / CHROMIUM SETUP
    and open 0.bitcoin. Return to setup and choose Check readiness.
 6. Try 0.bitcoin in the browser's address bar and confirm the block opens in
    Gateway. Also try 0.0.bitcoin to open transaction zero within block zero.
+7. In a Sats-enabled Gateway, try 0.sat or 5000000000.sat to open that sat's
+   explorer view. Ordinal names also work explicitly, for example
+   nvtdijuwxlp.sat for Sat 0. The native resolver validates each name. Bare-number
+   or bare-word web searches and phrases such as "what is 0.sat" remain ordinary searches.
+   Gateway's own address bar separately interprets a bare number against its
+   selected chain tip; the companion does not apply that rule to web searches.
 
 The companion is supplied as an unpacked extension, not through a browser store.
 Approval in each browser profile is required. No browser policy or default search

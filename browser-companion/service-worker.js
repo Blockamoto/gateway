@@ -21,10 +21,13 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
     (async () => {
       const address = String(message.address || '');
       const stored = await chrome.storage.local.get('gatewayNamespaces');
-      const namespaces = stored.gatewayNamespaces || ['.bitcoin', '.gateway', '.bitmap'];
+      const namespaces = stored.gatewayNamespaces || ['.bitcoin', '.gateway', '.bitmap', '.sat'];
       // Unknown domain searches stay entirely in the browser. The native host
       // receives only an exact token in a locally registered namespace.
       if (!GatewaySearch.matchesNamespace(address, namespaces)) return {valid:false};
+      // Sat addresses contain canonical numbers or alphabetic ordinal names.
+      // Bare searches stay private; the native resolver validates name/range bounds.
+      if (/\.sat$/i.test(address.trim()) && !/^(0|[1-9][0-9]*|[a-z]+)\.sat$/i.test(address.trim())) return {valid:false};
       return native('validate',address);
     })().then(sendResponse).catch(() => sendResponse({valid:false}));return true;
   }

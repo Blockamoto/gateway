@@ -219,7 +219,7 @@ func (a *app) satOutputContext077(ctx context.Context, output string, limit int,
 		return out, nil
 	}
 	if r.State == "unknown" {
-		out.State, out.Note = "unavailable", "This output’s ranges were not retained. Satline can resolve a particular satpoint on request."
+		out.State, out.Note = "unavailable", "This output’s ranges were not retained. Satline history tracing is deferred in this version; no scan was started."
 		return out, nil
 	}
 	out.State, out.Value, out.NextCursor, out.HasMore = "ready", r.ValueSats, r.NextCursor, r.HasMore

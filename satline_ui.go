@@ -77,7 +77,7 @@ func (a *app) handleSatlinePage(w http.ResponseWriter, r *http.Request) {
 	if !releaseFeatureAvailable("satline") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; frame-ancestors 'self'; base-uri 'none'")
-		_, _ = io.WriteString(w, `<!doctype html><html lang="en"><meta charset="utf-8"><title>Satline locked</title><h1>🔒 Satline</h1><p>Locked in this testing build. Headers and Bitcoin Blocks are available. Saved Satline data is retained for later testing.</p><a href="/?resolve=indexes.gateway">View indexes</a></html>`)
+		_, _ = io.WriteString(w, `<!doctype html><html lang="en"><meta charset="utf-8"><title>Satline deferred</title><h1>Satline deferred</h1><p>Forward and reverse traces and resume are unavailable in v0.7.7. Saved trace data is retained. Sats indexing and saved range/location lookups remain available.</p><a href="/?resolve=indexes.gateway">View indexes</a></html>`)
 		return
 	}
 	// Gateway-served friendly origins are trusted management shells too.
@@ -260,7 +260,10 @@ func (a *app) handleSatlineJob(w http.ResponseWriter, r *http.Request) {
 	satlineReply(w, j)
 }
 func (a *app) handleSatlineCancel(w http.ResponseWriter, r *http.Request) {
-	if !releaseHTTPFeature(w, "satline") {
+	// Stopping already-running work remains possible even when this release
+	// forbids starting or resuming traces. This never opens or deletes evidence.
+	if !safeLocalRequest(r) {
+		jsonError(w, http.StatusForbidden, fmt.Errorf("Satline controls are private to the local Gateway UI"))
 		return
 	}
 	var q struct {
@@ -272,9 +275,17 @@ func (a *app) handleSatlineCancel(w http.ResponseWriter, r *http.Request) {
 	a.satlineJobsMu.Lock()
 	defer a.satlineJobsMu.Unlock()
 	j, ok := a.satlineJobs[q.ID]
-	if ok && !j.Done {
-		j.cancel()
+	if !ok {
+		jsonError(w, http.StatusNotFound, fmt.Errorf("Satline job not found"))
+		return
+	}
+	if !j.Done {
+		if j.cancel != nil {
+			j.cancel()
+		}
+		j.Status = "cancelled"
 		j.Stage = "Stopping at completed checkpoint"
+		a.persistJobLocked(j)
 	}
 	satlineReply(w, map[string]bool{"ok": true})
 }

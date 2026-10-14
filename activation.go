@@ -33,7 +33,7 @@ func validGatewayHost(host string) bool {
 		return true
 	} // historical local bridge compatibility
 	t, e := parseResourceAddress(host)
-	return e == nil && (t.Namespace == "gateway" || t.Namespace == "bitmap" || strings.HasSuffix(t.Friendly, ".bitcoin"))
+	return e == nil && (t.Namespace == "gateway" || t.Namespace == "bitmap" || t.Namespace == "sat" || strings.HasSuffix(t.Friendly, ".bitcoin"))
 }
 func safeLocalRequest(r *http.Request) bool {
 	h, _, e := net.SplitHostPort(r.RemoteAddr)
@@ -235,7 +235,7 @@ func (a *app) handleNativeControl(w http.ResponseWriter, r *http.Request) {
 		if a.domainBridge != nil {
 			st := a.domainBridge.status()
 			if st.DNSRunning && st.HTTPRunning && nrptRulePresent() {
-				if t, e := parseLocalResolverTarget(x.Address); e == nil && gatewayDNSAddress(t.Friendly) && (strings.HasSuffix(t.Friendly, ".bitcoin") || t.Namespace == "gateway") {
+				if t, e := parseLocalResolverTarget(x.Address); e == nil && gatewayDNSAddress(t.Friendly) && (strings.HasSuffix(t.Friendly, ".bitcoin") || t.Namespace == "gateway" || t.Namespace == "sat") {
 					destination = resourceWebURL(t.Friendly) + "?activation=" + url.QueryEscape(x.ID)
 				}
 			}

@@ -9,7 +9,7 @@ import (
 // state. Upgrading a profile cannot opt a testing build into unreleased work.
 // Experimental Sat state has an explicitly versioned profile for reviewed rebuild.
 func releaseFeatureAvailable(id string) bool {
-	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state" || id == "address-state" || id == "address-history" || id == "sat-state" || id == "satline"
+	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state" || id == "address-state" || id == "address-history" || id == "sat-state"
 }
 
 // Related inscription transaction locators ship with the transaction stage,
@@ -27,6 +27,9 @@ func releaseAvailability() map[string]bool {
 }
 
 func releaseLockReason(id string) string {
+	if id == "satline" {
+		return "Satline is deferred in v0.7.7; forward and reverse traces and resume are unavailable. Saved trace data is retained. Sats indexing and saved range/location lookups remain available."
+	}
 	return fmt.Sprintf("%s is locked in this testing build. Headers, Bitcoin Blocks, Inscriptions, Transaction Index, TXIO, UTXO set, Addresses and Sats are available; additional features will be enabled after separate validation. Saved data is retained.", id)
 }
 

@@ -119,7 +119,7 @@ func Test077SatlineCompactForwardFeeAndReverseWithoutRawOrFullRanges(t *testing.
 		t.Fatalf("compact forward FIFO: %+v", result)
 	}
 	position := fmt.Sprintf("%d.0.0.2.bitcoin", subsidyAtHeight(2)+40)
-	back, err := a.reverseSatlineSatpointContext(ctx, position)
+	back, err := a.traceSatlineSatpointContext077(ctx, position)
 	want := firstSatAtHeight(1) + 250
 	if err != nil || back.State != "known" || back.SatNumber == nil || *back.SatNumber != want || back.Steps != 2 || back.Snapshot.Hash != spend.Hash {
 		t.Fatal(back, err)
@@ -133,7 +133,7 @@ func Test077SatlineCompactForwardFeeAndReverseWithoutRawOrFullRanges(t *testing.
 	if err = os.Rename(filepath.Join(a.dataDir, "indexes", "txo-spender"), filepath.Join(a.dataDir, "indexes", "txo-spender-evicted-fixture")); err != nil {
 		t.Fatal(err)
 	}
-	cached, err := a.reverseSatlineSatpointContext(ctx, position)
+	cached, err := a.traceSatlineSatpointContext077(ctx, position)
 	if err != nil || cached.SatNumber == nil || *cached.SatNumber != want || calls.Load() != 0 {
 		t.Fatal("visited identity did not survive source eviction", cached, err, calls.Load())
 	}
@@ -210,7 +210,7 @@ func Test077SatlineCompactMissingValuesRemainUnresolved(t *testing.T) {
 	if _, err = satlineTXIOBlockContext(ctx, a.dataDir, 2, spend.Hash); err == nil {
 		t.Fatal("damaged output value accepted")
 	}
-	result, err := a.reverseSatlineSatpointContext(ctx, strconv.FormatUint(subsidyAtHeight(2)+40, 10)+".0.0.2.bitcoin")
+	result, err := a.traceSatlineSatpointContext077(ctx, strconv.FormatUint(subsidyAtHeight(2)+40, 10)+".0.0.2.bitcoin")
 	if err == nil || result.State == "known" || result.SatNumber != nil {
 		t.Fatal("missing compact/raw evidence became known", result, err)
 	}

@@ -169,7 +169,7 @@ window.GatewayIndexTimeline = (() => {
     for(const [cls,text] of [['saved','Available locally'],['potential','Potential · not stored'],['partial','Mixed coverage · zoom in'],['requested','Requested work']]){const item=el('span',undefined,'timeline-legend-item'),swatch=el('i',undefined,'timeline-swatch '+cls);swatch.setAttribute('aria-hidden','true');item.append(swatch,el('span',text));legend.append(item);}
     const viewportLabel=el('span','','timeline-viewport-label');viewportLabel.id='timeline-viewport-label';footer.append(legend,viewportLabel);
     const help=el('details',undefined,'timeline-help');help.append(el('summary','Navigation help'));
-    const instructions=el('p','Click a timeline lane to move the playhead; drag the lane to pan. Drag the ruler or its playhead and pause to load the focused item. Shift + click selects an inclusive indexing range. Ctrl / Command + click adds or removes a block. Wheel, Ctrl / Command + wheel or pinch: zoom at the pointer. Horizontal scrolling or Shift + wheel: pan. Alt + wheel: resize tracks. Scroll over track labels or use the vertical scrollbar to move through tracks. Hold Space and drag to pan in both directions. Drag scrollbar edges to zoom; drag its middle to move. With a track focused, + / − zoom, arrows pan, and Home fits the chain.','timeline-instructions');instructions.id='timeline-instructions';help.append(instructions);
+    const instructions=el('p','Click a timeline lane to move the playhead; drag the lane to pan. Drag the ruler or its playhead and pause to load the focused item. Shift + click selects an inclusive indexing range. Ctrl / Command + click adds or removes a block. Vertical wheel scrolling moves through tracks, including over the time lanes; when collapsed, it scrolls the visible details. Ctrl / Command + wheel or trackpad/touch pinch over the time area: zoom at the pointer. Horizontal trackpad scrolling or Shift + wheel over the time area: pan. Alt + wheel over expanded time lanes: resize tracks. The left track-label column and vertical scrollbar always scroll vertically. Hold Space and drag to pan in both directions. Drag scrollbar edges to zoom; drag its middle to move. With a track focused, + / − zoom, arrows pan, and Home fits the chain.','timeline-instructions');instructions.id='timeline-instructions';help.append(instructions);
     const coverageDetails=el('details',undefined,'timeline-exact'),coverageSummary=el('summary','Exact coverage'),coverageList=el('div',undefined,'timeline-exact-list');coverageDetails.append(coverageSummary,coverageList);
     const tooltip=el('div',undefined,'timeline-tooltip');tooltip.hidden=true;tooltip.setAttribute('role','status');
     help.firstChild.textContent='?';help.firstChild.setAttribute('aria-label','Timeline navigation help');help.firstChild.title='Timeline navigation help';rulerLabel.append(help);inspector.append(coverageDetails);
@@ -381,16 +381,30 @@ window.GatewayIndexTimeline = (() => {
     function finishPointer(event){const released=event.type==='pointerup'&&drag?.pointer===event.pointerId?drag:null,markerClick=released?.kind==='selection'&&!released.moved?released:null,plainClick=released?.plain&&!released.moved?released:null;if(pointers.has(event.pointerId)){pointers.delete(event.pointerId);if(pinch){pinch=null;hideDragClick();}}if(drag?.pointer===event.pointerId)endDrag();if(plainClick){if(plainClick.entry)hit(plainClick.entry,event);else focusPosition(heightAt(event.clientX),true);hideDragClick();}if(markerClick){const pick=markerClick.ranges[markerClick.rangeIndex];if(pick){hideDragClick();if(selected!==markerClick.id)select(markerClick.id,(snapshot.definitions||[]).find(d=>d.id===markerClick.id)?.buildable?'build':'providers');focusBlock(markerClick.edge==='out'?pick.to:pick.from,true);}}}
     doc.addEventListener('pointerup',finishPointer);doc.addEventListener('pointercancel',finishPointer);
     editor.addEventListener('lostpointercapture',event=>{if(drag?.pointer===event.pointerId)finishPointer(event);});
-    function wheel(event){
-      if(picker.contains(event.target)){if(event.ctrlKey||event.metaKey)event.preventDefault();return;}
-      if(event.target.closest?.('input,textarea,select,[contenteditable="true"]'))return;event.preventDefault();tooltip.hidden=true;if(rulerLabel.contains(event.target))return;const unit=event.deltaMode===1?16:event.deltaMode===2?Math.max(1,trackViewport.clientHeight):1,dx=event.deltaX*unit,dy=event.deltaY*unit;
-      if(event.ctrlKey||event.metaKey)zoom(Math.exp(clamp(dy,-300,300)*.006),pointerAnchor(event.clientX));
-      else if(event.altKey){const rect=trackViewport.getBoundingClientRect();setTrackHeight(trackHeight*Math.exp(clamp(dy,-300,300)*-.004),clamp((event.clientY-rect.top)/Math.max(1,rect.height),0,1));}
-      else if(event.shiftKey||dx)pan((event.shiftKey?(dy||dx):dx)/Math.max(1,ruler.clientWidth));
-      else if(event.target.closest('.timeline-track-heading')||vertical.bar.contains(event.target)){trackViewport.scrollTop+=dy;updateScrollbars();}
-      else if(dy)zoom(Math.exp(clamp(dy,-300,300)*.006),pointerAnchor(event.clientX));
+    function wheelScroller(){
+      if(!trackArea.hidden)return trackViewport;
+      const content=upperScroller();
+      return content.scrollHeight>content.clientHeight?content:inspector;
     }
-    trackArea.addEventListener('wheel',wheel,{passive:false});rulerRow.addEventListener('wheel',wheel,{passive:false});compactScrubber.addEventListener('wheel',wheel,{passive:false});horizontal.bar.addEventListener('wheel',wheel,{passive:false});
+    function scrollWheel(dy){const scroller=wheelScroller();scroller.scrollTop+=dy;if(scroller===trackViewport)updateScrollbars();}
+    function wheel(event){
+      const target=event.target;
+      if(picker.contains(target)){if(event.ctrlKey||event.metaKey)event.preventDefault();return;}
+      if(target.closest?.('input,textarea,select,[contenteditable="true"]'))return;
+      event.preventDefault();tooltip.hidden=true;
+      const unit=event.deltaMode===1?16:event.deltaMode===2?Math.max(1,wheelScroller().clientHeight):1,dx=event.deltaX*unit,dy=event.deltaY*unit;
+      const inTracks=trackArea.contains(target);
+      // The entire rendered left column scrolls before modifiers, including
+      // ruler/compact buttons, nested headings and gaps between elements.
+      const labels=vertical.bar.contains(target)||rulerLabel.contains(target)||compactLabel.contains(target)||target.closest?.('.timeline-track-heading,.timeline-group-heading')||event.clientX<rulerLabel.getBoundingClientRect().right;
+      const timeArea=inTracks||rulerRow.contains(target)||compact.contains(target)||horizontal.bar.contains(target)||hierarchyBar.contains(target);
+      if(labels||!timeArea){scrollWheel(dy);return;}
+      if(event.ctrlKey||event.metaKey){if(dy)zoom(Math.exp(clamp(dy,-300,300)*.006),pointerAnchor(event.clientX));}
+      else if(event.altKey&&!trackArea.hidden){const rect=trackViewport.getBoundingClientRect();setTrackHeight(trackHeight*Math.exp(clamp(dy,-300,300)*-.004),clamp((event.clientY-rect.top)/Math.max(1,rect.height),0,1));}
+      else if(event.shiftKey||Math.abs(dx)>Math.abs(dy)){if(dx||dy)pan((event.shiftKey?(dy||dx):dx)/Math.max(1,ruler.clientWidth));}
+      else scrollWheel(dy);
+    }
+    editor.addEventListener('wheel',wheel,{passive:false});
     function focusSelection(){returnParent(-1);const m=current();if(!m)return;const rs=selectedRanges(),r=rs.length?{from:rs[0].from,to:rs.at(-1).to}:m.coverage.length?{from:m.coverage[0].from,to:m.coverage.at(-1).to}:null;if(!r)return;const padding=r.to===r.from?4:Math.max(1,Math.round((r.to-r.from+1)*.04));view=clampView({from:Math.max(0,r.from-padding),to:Math.min(extent,r.to+padding)},extent);fit=false;redraw();}
     function setMeta(values){meta.replaceChildren();for(const [label,value] of values){const cell=el('div',undefined,'timeline-stat');cell.append(el('span',label),el('strong',value));meta.append(cell);}}
     function changeMarker(id,rangeIndex,edge,block){const picks=selectedRanges(id),r=picks[rangeIndex];if(!r)return;block=clamp(block,0,extent);if(edge==='single')r.from=r.to=block;else if(edge==='in')block=r.from=Math.min(block,r.to);else block=r.to=Math.max(block,r.from);if(block<view.from||block>view.to){const span=view.to-view.from+1;view=clampView({from:Math.max(0,block-Math.floor(span/2)),to:Math.max(0,block-Math.floor(span/2))+span-1},extent);fit=false;}pendingMarkerFocus={id,height:block,edge};chooseSet(id,picks,indexSelections.get(id)?.anchor);}

@@ -138,12 +138,10 @@ func Test077SatReverseRequiresLocalExplicitTrace(t *testing.T) {
 		a.handleSatReverse077(r, req)
 		return r
 	}
-	// A legacy false field no longer disables the released local trace tool.
-	if r := local("GET", ""); r.Code != 405 {
-		t.Fatal("trace was not explicit POST", r.Code, r.Body.String())
-	}
-	if r := local("POST", `{"input":"bad"}`); r.Code != 400 {
-		t.Fatal("malformed trace accepted", r.Code, r.Body.String())
+	for _, test := range []struct{ method, body string }{{"GET", ""}, {"POST", `{"input":"bad"}`}, {"POST", `{"input":"0.0.0.0","rebuild":true}`}} {
+		if r := local(test.method, test.body); r.Code != http.StatusForbidden || !strings.Contains(r.Body.String(), "deferred") {
+			t.Fatal("deferred reverse trace remained callable", r.Code, r.Body.String())
+		}
 	}
 	if _, err := os.Stat(filepath.Join(a.dataDir, "indexes", "sat-state", "head.json")); !os.IsNotExist(err) {
 		t.Fatal("trace guards started Sat builder", err)

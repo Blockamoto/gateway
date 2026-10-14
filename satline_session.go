@@ -126,13 +126,16 @@ func (a *app) prepareSatlineBase(q satlineQuery, rebuild bool, ctx context.Conte
 	return a.newSatlineStart(backend, q, ctx), -1
 }
 func (a *app) runSatlineLocal(ctx context.Context, q satlineQuery, op string, maxHops int, notify func(satlineResult)) satlineResult {
+	if err := requireReleaseFeature("satline"); err != nil {
+		return satlineError(q, "MODULE_DISABLED", err.Error())
+	}
 	a.satlineWorkMu.Lock()
 	defer a.satlineWorkMu.Unlock()
 	if !q.valid() {
 		return satlineError(q, "INVALID", "Malformed Satline query")
 	}
 	if !a.satlineEnabled() {
-		return satlineError(q, "MODULE_DISABLED", "Satline is disabled. Bitcoin on Demand remains available.")
+		return satlineError(q, "MODULE_DISABLED", releaseLockReason("satline"))
 	}
 	a.satlineMu.Lock()
 	initErr := a.satlineInitErr

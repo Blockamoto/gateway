@@ -200,6 +200,9 @@ func parseLocalResolverTarget(input string) (resolverTarget, error) {
 func parseResourceAddress(raw string) (resolverTarget, error) {
 	raw = strings.TrimSpace(raw)
 	low := strings.ToLower(raw)
+	if number, ok := parseSatAddress077(low); ok {
+		return resolverTarget{Namespace: "sat", Kind: "sat", Input: raw, SearchQuery: strconv.FormatUint(number, 10) + ".sat", Friendly: low, CanonicalURI: godURI(low)}, nil
+	}
 	if strings.HasSuffix(low, ".bitmap") {
 		district := strings.TrimSuffix(low, ".bitmap")
 		n, err := strconv.ParseUint(district, 10, 64)
@@ -262,6 +265,18 @@ func parseResourceAddress(raw string) (resolverTarget, error) {
 	}
 	return resolverTarget{}, fmt.Errorf("unregistered Gateway address")
 }
+
+// Bare ordinal names are local Gateway shorthand. Established block keywords
+// retain precedence; explicit namespaces and typed destinations are not names.
+func bareSatNameInput077(input string) bool {
+	q := strings.TrimSpace(input)
+	if q == "bitcoin" || q == "tip" || q == "latest" {
+		return false
+	}
+	_, ok := satNumberForName077(q)
+	return ok
+}
+
 func (a *app) resolveLocalTarget(input string) (localResolveResponse, error) {
 	return a.resolveLocalTargetContext(context.Background(), input)
 }
@@ -269,9 +284,24 @@ func (a *app) resolveLocalTargetContext(ctx context.Context, input string) (loca
 	if err := ctx.Err(); err != nil {
 		return localResolveResponse{}, err
 	}
+	original := input
+	bare := bareNumberInput077(input)
+	name := bareSatNameInput077(input)
+	if bare {
+		navigation, err := a.classifyNumberNavigation077(ctx, input)
+		if err != nil {
+			return localResolveResponse{}, err
+		}
+		input = navigation.Address
+	} else if name {
+		input = strings.TrimSpace(input) + ".sat"
+	}
 	t, e := parseLocalResolverTarget(input)
 	if e != nil {
 		return localResolveResponse{}, e
+	}
+	if bare || name {
+		t.Input = original
 	}
 	var result searchResponse
 	switch {
@@ -300,6 +330,14 @@ func (a *app) resolveLocalTargetContext(ctx context.Context, input string) (loca
 			return localResolveResponse{}, e
 		}
 		result = searchResponse{Kind: "inscription", Ord: &rec}
+	case t.Namespace == "bitcoin" && t.Kind == "block":
+		// An explicit .bitcoin address forces a block lookup even when its
+		// numeric height is beyond the selected tip. Do not reclassify it.
+		view, err := a.fetchAndDecodeContext(ctx, t.SearchQuery)
+		if err != nil {
+			return localResolveResponse{}, err
+		}
+		result = searchResponse{Kind: "block", Block: &view}
 	case t.Kind == "outpoint" || t.Kind == "raw_satpoint":
 		tx, e := a.resolveTransactionViaOverlay(t.TxID)
 		if e != nil {
@@ -332,6 +370,10 @@ func (a *app) resolveSearchInput(input string) (searchResponse, error) {
 	return a.resolveSearchInputContext(context.Background(), input)
 }
 func (a *app) resolveSearchInputContext(ctx context.Context, input string) (searchResponse, error) {
+	if bareNumberInput077(input) || bareSatNameInput077(input) {
+		x, err := a.resolveLocalTargetContext(ctx, input)
+		return x.Result, err
+	}
 	if _, e := parseLocalResolverTarget(input); e == nil {
 		x, e := a.resolveLocalTargetContext(ctx, input)
 		return x.Result, e

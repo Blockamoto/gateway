@@ -9,6 +9,16 @@ assert.equal(view.compatible(snapshot,{...snapshot,commitment:'independent-addre
 assert.equal(view.compatible(snapshot,{...snapshot,block_hash:'fork'}),false,'Same-height forks cannot join');
 assert.equal(view.compatible(snapshot,{...snapshot,height:145}),false,'Lagging Sat state cannot join current address membership');
 assert.equal(view.satAddress(0),'0.sat');
+assert.equal(view.nameNumber('nvtdijuwxlp'),0);
+assert.equal(view.nameNumber('nvtcsezkbth'),5000000000);
+assert.equal(view.nameNumber('satoshi'),2099994106992659);
+assert.equal(view.nameNumber('a'),2099999997689999);
+for(const invalid of ['', 'NVtdijuwxlp', ' satoshi', 'satoshi ', 'sat0shi', 'zzzzzzzzzzz', 'a'.repeat(100)])assert.equal(view.nameNumber(invalid),null,invalid);
+assert.equal(view.parseInput('nvtdijuwxlp').address,'nvtdijuwxlp.sat');
+assert.equal(view.parseAddress('satoshi.sat').number,2099994106992659);
+assert.equal(view.parseAddress('51.sat').number,51);
+assert.equal(view.parseAddress('satoshi'),null);
+assert.equal(view.parseAddress('00.sat'),null);
 const request=JSON.parse(JSON.stringify(panel.request()));assert.equal(request.from,0);assert.equal(request.retention,'pruned');assert.equal(request.retain_sat_history,false);assert.equal(request.live,true);assert.equal(Object.hasOwn(request,'rebuild'),false);
 assert.equal(panel.request({rebuild:true,history:true,live:false}).rebuild,true);
 assert.equal(panel.model({sats:{state:'current',processed_height:144,processed_hash:'hash',target_height:144,target_hash:'fork'}}).state,'reconciling');

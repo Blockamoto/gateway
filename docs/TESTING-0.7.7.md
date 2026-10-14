@@ -4,6 +4,14 @@ This source is for the **v0.7.7: Sats** development preview, following the publi
 
 Shared timeline Play/Pause, per-track arming, the redesigned track-local review/build workflow and general per-index deletion/replay/refresh controls are deferred until after Bitmap. Exercise the existing reviewed per-index controls. Do not count those deferred controls as missing Sats-preview acceptance, or mistake removing a track/status refresh for deleting/replaying an index.
 
+## Updated preview candidate
+
+The user has now authorized timeline wheel correction, selected-tip number entry, `.sat` browser-companion handoff and ordinal-name entry. Satline history tracing is explicitly disabled for this version, superseding earlier acceptance below describing automatic tracing. Keep old receipts tied to their original source and binaries.
+
+New checks must verify plain vertical scrolling across labels/lanes, Ctrl/Command anchored wheel zoom, Shift/horizontal pan and trackpad/touch pinch; exact-tip/tip-plus-one classification, changing tips, unknown authority and stale responses; known ordinal-name vectors, range/overflow rejection and existing hash/destination precedence; native numeric/named `.sat` validate/open/display acknowledgement without OS registrations; exact retained output-offset to Sat lookup, missing history, corrupt segments, stale replies and status recovery without raw-block fallback; blocked trace starts/resumes/identity fallback with preserved saved Sat lookup/ranges and no trace controls in either interface.
+
+Focused source browser checks for wheel routing, number navigation and the legacy deferred view have passed. Final candidate compile, exact-app acceptance and hosted source checks are recorded separately when complete. Earlier preview receipts do not certify the revised executable.
+
 ## Reproducible automated checks
 
 Run from the repository root with Go, Node.js and the existing Playwright/browser dependencies available. For Go, set `GO111MODULE=off` and `CGO_ENABLED=0`. In PowerShell:
@@ -17,11 +25,12 @@ go test ./... -count=1 -timeout 40m
 go vet ./...
 ```
 
-The focused API tests cover genuine genesis/block 1, local request guards, explicit tracing, known inscription identities, compatible address checkpoints and rooted cursors. The wider `Test077` selection adds FIFO/fees, terminal states, fragmentation, shared-fact retention, savepoint rotation, interruption and reorg/rebuild fixtures. Recovery fixtures process hundreds of synthetic heights and need a longer budget than the small API tests. Race checks require a supported host and toolchain with `CGO_ENABLED=1`; use the development workflow's race selection.
+The focused API tests cover genuine genesis/block 1, local request guards, trace release gates, known inscription identities, compatible address checkpoints and rooted cursors. The wider `Test077` selection adds FIFO/fees, terminal states, fragmentation, shared-fact retention, savepoint rotation, interruption and reorg/rebuild fixtures. Recovery fixtures process hundreds of synthetic heights and need a longer budget than the small API tests. Race checks require a supported host and toolchain with `CGO_ENABLED=1`; use the development workflow's race selection.
 
 ```text
 node scripts/test-sats-077.js
 node scripts/test-sats-077-browser.js
+node scripts/test-sat-point-browser-077.js
 node scripts/test-shell-navigation.js
 node scripts/test-txio-workspace-browser.js
 node scripts/test-timeline-explorer-browser.js

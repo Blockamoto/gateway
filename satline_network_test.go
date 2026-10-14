@@ -164,6 +164,15 @@ func TestSatlinePrivacyFlagsAndImmutablePublication(t *testing.T) {
 	}
 	req := satlineSegmentRequest{Query: q, Start: *r.BirthSatpoint, Limit: 32}
 	a.settings.SatlineServePublished = true
+	if !releaseFeatureAvailable("satline") {
+		if _, err := a.readSatlineSegment(req); err == nil || err.Error() != "disabled" {
+			t.Fatal("saved sharing preference bypassed deferred release", err)
+		}
+		if saved, ok := a.loadSatlineRecord(q.Kind, q.key()); !ok || len(saved.Result.Hops) != len(r.Hops) {
+			t.Fatal("deferral lost private saved evidence")
+		}
+		return
+	}
 	if _, e := a.readSatlineSegment(req); e == nil || e.Error() != "not_cached" {
 		t.Fatalf("private cache was served: %v", e)
 	}
@@ -301,10 +310,10 @@ func TestSatlineEmbeddedUIAssets(t *testing.T) {
 		if w.Code != http.StatusOK || w.Body.Len() == 0 {
 			t.Fatalf("Satline asset missing %s %d", path, w.Code)
 		}
-		if !releaseFeatureAvailable("satline") && (!strings.Contains(w.Body.String(), "Satline locked") || strings.Contains(w.Body.String(), "<script")) {
+		if !releaseFeatureAvailable("satline") && (!strings.Contains(w.Body.String(), "Satline deferred") || strings.Contains(w.Body.String(), "<script")) {
 			t.Fatalf("locked UI was exposed %s %d", path, w.Code)
 		}
-		if releaseFeatureAvailable("satline") && strings.Contains(w.Body.String(), "Satline locked") {
+		if releaseFeatureAvailable("satline") && strings.Contains(w.Body.String(), "Satline deferred") {
 			t.Fatalf("enabled Satline still served lock page %s", path)
 		}
 	}

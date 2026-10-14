@@ -69,10 +69,11 @@ async function run(){
     assert(pickerBounds.y>=0&&pickerBounds.y+pickerBounds.height<=1000,'Tall catalog popup stays inside the viewport');
     assert(pickerBounds.y+pickerBounds.height<=plusBounds.y-7||pickerBounds.y>=plusBounds.y+plusBounds.height+7,'Catalog popup preserves a clear gap around its plus trigger');
     assert.equal(await picker.evaluate(el=>el.scrollHeight>el.clientHeight),true,'Tall catalog has its own scroll area');
-    const trackScroll=await page.locator('#timeline-track-viewport').evaluate(el=>el.scrollTop);
+    const trackScroll=await page.locator('#timeline-track-viewport').evaluate(el=>el.scrollTop),pickerView=await view(),pickerPicks=await picks('blocks');
     await page.mouse.move(pickerBounds.x+pickerBounds.width/2,pickerBounds.y+pickerBounds.height/2);await page.mouse.wheel(0,300);await page.waitForTimeout(100);
     assert((await picker.evaluate(el=>el.scrollTop))>0,'Wheel scrolls the catalog rather than being intercepted by timeline navigation');
     assert.equal(await page.locator('#timeline-track-viewport').evaluate(el=>el.scrollTop),trackScroll);
+    assert.deepEqual(await view(),pickerView,'Catalog wheel cannot zoom or pan the timeline');assert.deepEqual(await picks('blocks'),pickerPicks,'Catalog wheel preserves indexing picks');
     await plus.click();assert.equal(await picker.isVisible(),false,'Plus remains clickable and closes a full catalog');
     await plus.click();await page.keyboard.press('Escape');assert.equal(await picker.isVisible(),false,'Escape closes even when all catalog entries are disabled');
     await plus.click();await page.locator('#timeline-inspector-tab').click();assert.equal(await picker.isVisible(),false,'An outside click closes the catalog');

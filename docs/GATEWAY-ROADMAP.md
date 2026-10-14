@@ -1,14 +1,26 @@
 # Gateway roadmap
 
-The [public 0.7.5 prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.5) adds UTXO state and optional TXIO values/scripts to the timeline, inscription and transaction stages. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for exact publication and validation evidence.
+The [public v0.7.6 Addresses prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.6) adds Current UTXOs and Historical outputs destination indexes, following the UTXO/TXIO stages. Sats is the next development preview. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for exact publication and validation evidence.
 
-## In development: v0.7.6 Addresses
+## In development: v0.7.7 Sats
+
+- Derive Sat identities from genesis, retaining live ordered output ranges, Sat-number lookup, terminal states and shared output facts at exact selected-chain checkpoints.
+- Add a Sat explorer, compatible address UTXO/range views, P2PK destination navigation and known inscription holdings with explicit identity coverage.
+- Make local Satline available automatically for explicit on-demand traces, with visited-path and fee-prefix caching; complete historical output ranges remain optional and off by default.
+- Retain the newest two savepoints at multiples of 12 and the newest two at multiples of 144, sharing matching heights. Restore an eligible selected-chain point and replay; preserve incompatible prior state for reviewed rebuild.
+- Use existing reviewed per-index Build/Pause/Resume/Live controls. Shared Play/Pause, arming, workflow redesign and general index-management controls are deferred until after Bitmap.
+- Keep full consensus validation, assumed snapshots and Gateway peer/state sharing outside this scope. Sats publication/updater promotion require the user's release instruction.
+
+See [the Sats feature breakdown](SATS-FEATURES-0.7.7.md), [brief](IMPLEMENTATION-BRIEF-0.7.7.md), [guide](SATS-INDEX.md) and [test guide](TESTING-0.7.7.md).
+
+## Available: v0.7.6 Addresses
 
 - Build Current UTXOs from saved complete UTXO state, with checkpoint-specific balances and a deeper paginated output view.
 - Offer independently retained Historical outputs over explicit sparse creation ranges, with coverage and range totals rather than inferred balances.
 - Share existing output values/scripts and retain address-to-output BPS membership; do not copy complete decoded blocks.
 - Add typed-address entry, clickable output addresses and independent Current/Historical timeline bands.
-- Defer inscription holdings, Sats, fees and full consensus validation. Main, release publication and updater changes require a later explicit instruction.
+- Include exact compressed/uncompressed P2PK public-key destinations, with explicit upgrade/backfill requirements for older conventional-only coverage.
+- The Addresses release defers inscription holdings and Sat tracking to Sats; full consensus validation remains future work. Its publication and verified update delivery are recorded in status.
 
 See [the Addresses brief](IMPLEMENTATION-BRIEF-0.7.6.md) and [guide](ADDRESSES-INDEX.md).
 
@@ -43,9 +55,17 @@ Exact packaging, public release and hosted delivery acceptance are recorded in [
 
 See [status](STATUS.md) for release acceptance and [the timeline tester guide](TESTING-0.7.1.md) for behavior to verify. The [setup and browser checklist](TESTING-0.7.0.md) covers the other enabled features.
 
-## Next: refine the workspace and expand features
+## After Bitmap: refine the workspace and index management
 
-The timeline is the first step in the design overhaul. Further interaction and index-specific features will be scoped individually as testing informs the next brief.
+The user has explicitly deferred the following work until after Bitmap. It is not a prerequisite for the Sats preview or release:
+
+- Shared Play/Pause transport controls and per-track arm-for-indexing controls. Arming selects participation; Play starts the reviewed work.
+- A coordinated scan for all armed compatible builders, sharing retrieval/decoding while respecting dependency order and each index's checkpoint/resume rules. Existing compatible Blocks outputs already have a shared scan path.
+- Consistent track-local configuration, range selection and build review without a Settings detour; review the top-level Build indexes / Inspector navigation and On/Live/build language together.
+- An Inspector focused on deeper selected-track/data evidence, complementing track controls rather than being the only place to finish a build.
+- Clear per-index deletion, replay/rescan and refresh/upgrade controls. Distinguish saved-job Resume from a newly selected range and expose destination-type coverage upgrades. Existing reviewed recovery rebuilds and P2PK upgrades remain available; removing a track does not delete its index, and status refresh does not replay data.
+
+Further interaction and index-specific features will be scoped individually as testing informs that later brief.
 
 The inscription and transaction stages are available; Gateway peers remain a locked stage with separate scope and validation before promotion:
 
@@ -53,7 +73,7 @@ The inscription and transaction stages are available; Gateway peers remain a loc
 2. **Transactions:** the Transaction Index, plus the optional inscription-related transaction locator choice and its retroactive action in the Inscription inspector, connect conventional transaction/inscription IDs to block positions. Both inscription enrichment controls were gated during the earlier inscription-only stage.
 3. **Gateway peers:** enable verified locator requests and explicitly public locator serving. The shared protocol foundation is implemented alongside the earlier stages but remains gated. Peers supply location hints; fetched evidence is checked locally.
 
-These stages describe order, not promised dates. They do not enable current ownership, complete parent-child enumeration, global sat history or unrelated index features.
+These stages describe order, not promised dates. They do not establish wallet ownership, complete parent-child enumeration, universal Sat history or unrelated index features.
 
 - Refine the timeline workspace from tester feedback; dependency visualization and deeper index-specific views remain future work.
 - Roll out additional features, with the individual capabilities selected as that brief takes shape.
@@ -64,6 +84,6 @@ These stages describe order, not promised dates. They do not enable current owne
 
 ## Future, currently locked
 
-Beyond the inscription/transaction/TXIO/UTXO and development Addresses work, Sat/Satline, fees, Bitmap and parcel capabilities remain unavailable. **Bitmap: Terrain Claim Chains** is the name of the locked Terrain Claim Chains feature; it introduces no active behavior in this release. UTXO amount/script facts do not identify individual sats: future sat state needs ordinal ranges and their provenance, with separate recovery/history coverage.
+Beyond the published inscription/transaction/TXIO/UTXO/Addresses stages and development Sats scope above, Bitmap and parcel capabilities remain locked. **Bitmap: Terrain Claim Chains** is the name of the locked Terrain Claim Chains feature; it introduces no active behavior in this Sats preview. Fee receipts support Satline traversal; a separate fee-market explorer is not added. UTXO values/scripts alone do not identify individual sats; the Sats index supplies ordinal ranges and provenance with separate recovery/history coverage.
 
 Gateway-to-Gateway peerhood and index sharing also remain locked. Their eventual scope and trust model require separate validation. Related schema and reference-project alignment can inform future work without implying conformance or a release commitment today.

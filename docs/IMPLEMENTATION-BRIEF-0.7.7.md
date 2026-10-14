@@ -1,12 +1,12 @@
 # v0.7.7: Sats
 
-Implement on `v0.7.7`, starting from the tested Addresses source. Main, release publication and the live updater remain unchanged until the user requests release. Incorporate any subsequent Addresses fixes before that review.
+Develop on `v0.7.7`, building on the now-published v0.7.6 Addresses release. Incorporate its applicable fixes while preserving the Sat-aware collector. This brief covers the working Sats preview; publication and updater promotion still require the user's release instruction. See [the feature breakdown](SATS-FEATURES-0.7.7.md) for the implemented behavior and its limits.
 
 ## Sat identity and output ranges
 
 Adapt the existing FIFO engine to the shared output-facts model. Calculate ordered sat ranges from genesis, processing transactions and outputs in Bitcoin order, including issuance, fees entering coinbase, unclaimed rewards, burned outputs and historical duplicate coinbases. A current UTXO snapshot supplies amounts and scripts, but does not establish sat identities. Use local blocks first and the existing on-demand providers for missing evidence; no new peer-state or snapshot protocol is added.
 
-Retain current output ranges and a sat-number-to-output lookup at one exact selected-chain checkpoint. Use BPS positions and shared amount/script references rather than duplicating full transactions. Keep range fragmentation bounded with pages. Mandatory state also represents lost, destroyed and unspendable sats, which are absent from ordinary live UTXO membership. Missing or corrupt dependencies cannot produce a known location or an empty result.
+Retain current output ranges and a sat-number-to-output lookup at one exact selected-chain checkpoint. Use BPS positions and shared amount/script references rather than duplicating full transactions. Store fragmented ranges in bounded pages; FIFO processing still materializes input ranges, so paging does not establish a peak-memory bound for arbitrary fragmentation. Mandatory state also represents lost, destroyed and unspendable sats, which are absent from ordinary live UTXO membership. Missing or corrupt dependencies cannot produce a known location or an empty result.
 
 Add a Sat ranges subtrack beneath TXIO, with independent coverage. Display retained live ranges and explicitly retained historical ranges without inferring complete block coverage from selected outputs. Full historical range retention is optional and off by default. A request for one Satline follows and caches the visited path; it does not automatically build or retain every historical output's range set.
 
@@ -20,11 +20,13 @@ After a reorg, select a retained savepoint on the replacement chain at or before
 
 ## Explorer and address integration
 
-Provide a Sat explorer with issuance, ordinal properties, saved location, output BPS position, output-relative offset and a clickable address derived from the shared locking script. Non-address scripts and lost sats show their actual script/location state.
+Provide a Sat explorer with issuance, ordinal properties, saved location, output BPS position, output-relative offset and a clickable destination derived from the shared locking script. Conventional addresses remain conventional addresses; P2PK uses the exact compressed or uncompressed public key and does not aggregate same-key P2PKH outputs or alternative key encodings. Other non-address scripts and lost sats show their actual script/location state.
 
 The address page's UTXOs expand into paginated ordered Sat ranges, with navigation to individual sats. Show ranges only at compatible exact checkpoints; missing or lagging state is unavailable or catching up. Include known indexed inscription holdings by joining inscription identity to its Sat location and output script. Expose identity coverage and distinguish unknown holdings from zero. This stage does not establish wallet ownership, spendability, mempool balances or universal inscription completeness.
 
 Enable Satline's existing local progress, cancellation, resume and anchored-cache behavior with compact TXIO/fact adapters. Forward and backward tracking include fee-to-coinbase transfers; avoid full-block decoding when sufficient authenticated local facts exist. Querying or opening an explorer view never silently starts a genesis build.
+
+The Satline journey follows a chosen sat or satpoint forward. Explicit local reverse queries and inscription sat discovery can walk a particular output-relative point back to its sat identity. These operations do not require retaining all historical output ranges, and do not imply a separate reverse-journey UI.
 
 Local Satline tracing is available whenever released, without a separate enable setting or an Add Index entry. Preserve old configuration fields for compatibility while removing their local tracing gate. Network exchange remains separately locked. Transaction inputs show their known BPS positions and verified original-output positions; native outpoints remain evidence or an unresolved-position fallback.
 
@@ -34,6 +36,12 @@ Use reviewed Build, Pause, Resume and Live controls for genesis-first Sat state.
 
 Full Bitcoin consensus validation remains deferred to v0.8. Bitmap and Gateway peer/state-sharing remain locked. Test bounded authentic blocks and synthetic fragmentation/reorg cases; measure and qualify fixture costs rather than claiming a full-mainnet storage or speed benchmark.
 
+## Deferred until after Bitmap
+
+The user has explicitly deferred shared timeline Play/Pause, per-track arming, the broader track-local configuration/review workflow and general per-index deletion, replay/rescan and refresh/upgrade controls until after Bitmap. They are not prerequisites for this Sats preview or proposed release. Keep the existing reviewed per-index controls. Existing compatible Blocks outputs can share a scan; that is not the deferred transport/arming redesign across all index types. The Inspector continues to host build controls and deeper evidence in this version.
+
 ## Acceptance checks
 
 Check FIFO ordering, fees/prefixes, same-block spends, genesis/lost/burned/BIP30 states, live range/value agreement, shared-fact pins after eviction, savepoint divisibility/rotation/deduplication, interrupted publication, common-ancestor eligibility, replay/resume and deeper recovery failure. Check sparse historical coverage, cursors, stale responses and unknown results. Exercise real explorer/address navigation, known inscription holdings and coverage, range pagination, reviewed genesis controls, paused queries, restart/reorg cache reuse, narrow light/dark layouts and no implicit indexing. Run focused regressions, full Go/static/race checks, packaging consistency and browser checks on the final branch source.
+
+The [development test guide](TESTING-0.7.7.md) records source-specific evidence and remaining checks. [Release notes](RELEASE-NOTES-v0.7.7.md) must not present development preview acceptance as public package or updater acceptance.

@@ -47,7 +47,9 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           path: verification-source
-          sparse-checkout: /.github/scripts/*
+          sparse-checkout: |
+            /.github/scripts/*
+            /scripts/test-index-cards-browser.js
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - name: Prepare disposable evidence paths
@@ -131,7 +133,7 @@ jobs:
           export NODE_PATH="$RUNNER_TEMP/published-linux/browser/node_modules"
           for kind in fresh update; do
             case "$kind" in fresh) package="$PUBLISHED_FRESH_DIR";; update) package="$PUBLISHED_UPDATE_DIR";; esac
-            node release-source/scripts/test-index-cards-browser.js --binary "$package/gateway-client" --out "$EVIDENCE/$kind-cards" | tee "$EVIDENCE/$kind-cards.txt"
+            node verification-source/scripts/test-index-cards-browser.js --source "$GITHUB_WORKSPACE/release-source" --binary "$package/gateway-client" --out "$EVIDENCE/$kind-cards" | tee "$EVIDENCE/$kind-cards.txt"
             node release-source/scripts/test-viewport-native-browser.js --binary "$package/gateway-client" --out "$EVIDENCE/$kind-viewport" | tee "$EVIDENCE/$kind-viewport.txt"
           done
       - name: Preserve exact package acceptance evidence

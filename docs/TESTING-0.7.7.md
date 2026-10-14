@@ -1,6 +1,8 @@
 # Sats development checks
 
-This source is for **v0.7.7: Sats** on its development branch. Main, release publication and updater promotion remain held. Use isolated profiles for recovery, corruption and raw-eviction checks; never reuse a running user profile.
+This source is for the **v0.7.7: Sats** development preview, following the published v0.7.6 Addresses release. Sats publication and updater promotion remain held for the user's release instruction. Use isolated profiles for recovery, corruption and raw-eviction checks; never reuse a running user profile. [The feature breakdown](SATS-FEATURES-0.7.7.md) describes the implemented scope; [release notes](RELEASE-NOTES-v0.7.7.md) summarize it.
+
+Shared timeline Play/Pause, per-track arming, the redesigned track-local review/build workflow and general per-index deletion/replay/refresh controls are deferred until after Bitmap. Exercise the existing reviewed per-index controls. Do not count those deferred controls as missing Sats-preview acceptance, or mistake removing a track/status refresh for deleting/replaying an index.
 
 ## Reproducible automated checks
 
@@ -49,6 +51,9 @@ This script starts its own disposable profile, uses genuine serialized genesis a
 6. Review the genesis-first Sat build before Start. History starts off and raw retention is pruned. One-off target changes invalidate review; Live resolves the selected tip when queued work starts. Missing evidence waits without replacing readable committed state. Pause/Resume uses the saved job, including an explicitly reviewed rebuild.
 7. Check the TXIO **Sat ranges** child has independent retained coverage. A few live outputs do not establish whole-block or full-history coverage. Enabling historical ranges later leaves earlier gaps; disabling the option preserves already retained history.
 8. Check actual savepoint heights: newest two at multiples of 12 and newest two at multiples of 144, with shared heights deduplicated. Display the saved recovery boundary. Reorg recovery needs an eligible selected-chain savepoint and replay evidence; deeper failure requires reviewed rebuild with previous evidence preserved. There is no unconditional 288-block Sat recovery guarantee.
+9. Exercise explicit output-relative identity discovery through the local reverse API and inscription discovery, independently of global historical ranges. Verify a cached interrupted path resumes only while its block anchors remain selected. Fee-prefix reuse must preserve transaction order; missing/corrupt input values or prefixes must not produce an assumed identity. This backend reverse path does not imply a reverse-journey UI.
+
+Check output/lost/destroyed counts where supplied. The current Sat status does not populate a storage-byte measurement or range-fragment count, so those fields may show **Unavailable**. Do not turn an absent measurement into zero or a whole-mainnet size/performance claim.
 
 Repeat relevant explorer/panel checks in light and dark themes at narrow widths. Missing or corrupt facts, range pages, fee pages or selected-chain evidence must remain unavailable/unresolved rather than become a known empty result.
 

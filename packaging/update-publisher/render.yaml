@@ -6,7 +6,7 @@ services:
     plan: free
     repo: https://github.com/Blockamoto/gateway
     branch: main
-    autoDeployTrigger: "off"
+    autoDeployTrigger: commit
     # Relative imports require this checkout to sit outside the active GOPATH/src.
     # Render's native Go checkout sits in its default GOPATH, so isolate this build.
     buildCommand: go version && GOPATH="$PWD/.gateway-build-gopath" GO111MODULE=off CGO_ENABLED=0 go build -trimpath -o gateway-update-publisher ./packaging/update-publisher

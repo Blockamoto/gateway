@@ -1,6 +1,6 @@
 # Indexing and positional inscriptions
 
-The 0.7.6 development source enables **Headers**, **Bitcoin Blocks**, **Inscriptions**, **Transaction Locator**, **Transaction Input/Output (TXIO)**, **UTXO set** and **Addresses**. Addresses offers Current UTXOs and independently retained Historical outputs; see [the Addresses guide](ADDRESSES-INDEX.md). TXIO retains optional Values and exact ScriptPubKeys history. Gateway peerhood and later index stages remain gated. The public release and updater remain tracked separately in [status](STATUS.md).
+The 0.7.7 development source enables **Headers**, **Bitcoin Blocks**, **Inscriptions**, **Transaction Locator**, **Transaction Input/Output (TXIO)**, **UTXO set**, **Addresses** and **Sats**. Addresses offers Current UTXOs and independently retained Historical outputs; see [the Addresses guide](ADDRESSES-INDEX.md). TXIO has optional Values and exact ScriptPubKeys history, plus a Sat ranges child with independent retained coverage. Gateway peerhood and later index stages remain gated. The published Addresses release and updater remain tracked separately in [status](STATUS.md).
 
 ## What coverage means
 
@@ -10,13 +10,21 @@ Blocks records processing and availability for requested ranges. A block can als
 
 The schema and explorer work with a known block's transactions, inputs, outputs and output-relative offsets. A transaction-ID lookup can use evidence already available from Blocks; an unknown ID may need a containing-block hint. An offset is not proof of global sat identity, ownership or movement history.
 
-Sat/Satline, Bitmap, parcel and Terrain Claim Chains features remain gated. Gateway peerhood and index sharing are gated too. Fetching or viewing a block or address does not start historical index jobs. Transaction and Inscription indexing as you browse remain independent opt-in choices.
+Sats adds genesis-first ordinal identity and local Satline is available automatically as an explicit on-demand tracing tool. Bitmap, parcel and Terrain Claim Chains features remain gated, as do Gateway peerhood and index sharing. Fetching or viewing a block, address or sat does not start a Sat build or history trace. Transaction and Inscription indexing as you browse remain independent opt-in choices.
 
 TXIO keeps one committed set of spend relationships with automatic lookup in both directions. A supplied BPS needs no transaction-hash locator. Construction still needs verified creation evidence; sparse missing predecessors remain unresolved. Relationships survive source-body eviction, while navigation may need to fetch the target's bytes. See [the canonical format and measured overhead](TXIO-INDEX.md).
 
 Values and ScriptPubKeys are optional output-history layers under TXIO, with independent coverage. Their shared output facts can also supply mandatory UTXO live/recovery records. Turning history off cannot erase required UTXO dependencies; it does not remove earlier committed history automatically. Complete facts are required for UTXO even when neither historical layer is selected.
 
-The timeline groups Blocks into Headers/raw bodies and TXIO into Positional links/Values/ScriptPubKeys. Collapsed groups show independent coverage bands. Grouping does not combine the underlying stores: Transaction Locator remains separate, and UTXO has its own state track.
+The timeline groups Blocks into Headers/raw bodies and TXIO into Positional links/Values/ScriptPubKeys/Sat ranges. Collapsed groups show independent coverage bands. Grouping does not combine the underlying stores: Transaction Locator remains separate, and UTXO has its own state track.
+
+## Sats and Satline
+
+Sats processes a continuous prefix from genesis, preferring local verified blocks and fetching missing evidence. Reviewed Build, Pause, Resume and Live keep a readable committed checkpoint; raw bodies may be pruned independently of mandatory live and recovery facts. Ordered ranges identify which sats an output holds. Full ranges for spent outputs are optional and start off; a Satline query can instead reconstruct and cache one visited route, including fee transfers, from available evidence.
+
+Recovery retains the newest two savepoints at heights divisible by 12 and the newest two divisible by 144, deduplicating matching heights and sharing unchanged pages. A reorg restores an eligible selected-chain state and replays forward. This is separate from UTXO's 288 reversible transitions and does not promise 288-block Sat recovery at every height. Incompatible experimental Sat profiles and deeper recovery require an explicitly reviewed rebuild with prior evidence preserved.
+
+Sat locations, output ranges and known address inscription holdings require compatible saved checkpoints and disclose missing coverage. See [the complete feature breakdown](SATS-FEATURES-0.7.7.md) and [Sat guide](SATS-INDEX.md). Timeline transport, track arming and broader index-management controls are deferred until after Bitmap.
 
 ## UTXO state
 
@@ -88,4 +96,4 @@ Committed batches bind the definition, rules, network, range, block hash, depend
 
 Restart checks saved commitments; interrupted work resumes from safe state rather than claiming unfinished coverage. An actual selected-chain disagreement rewinds to a common committed checkpoint. A temporarily unavailable source does not cause a destructive rewind. Old-branch batches do not count as selected coverage.
 
-See [the current QA guide](TESTING-0.7.5.md) for state, history, restart and reorganization checks, [the 0.7.4 guide](TESTING-0.7.4.md) for existing Blocks/navigation checks, and [current status](STATUS.md) for acceptance evidence.
+See [the Sats QA guide](TESTING-0.7.7.md) for current identity, range and recovery checks, [the UTXO guide](TESTING-0.7.5.md) for its independent state/recovery behavior, and [current status](STATUS.md) for exact acceptance evidence.

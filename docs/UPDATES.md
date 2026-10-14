@@ -1,11 +1,25 @@
 # Gateway updates
 
-## Gateway 0.7.5 prerelease delivery
+## Sats development preview
+
+The v0.7.7 Sats development branch adds live ordinal ranges, Sat lookup, on-demand Satline tracing and checkpoint-bound address integrations. Its preview is separate from the published channel. Sats has not been approved for public update delivery; the existing channel remains on Addresses. See [the feature guide](SATS-FEATURES-0.7.7.md) and [Sats acceptance](RELEASE-ACCEPTANCE-0.7.7.json).
+
+## Published prerelease: v0.7.6 Addresses
+
+[v0.7.6: Addresses](https://github.com/Blockamoto/gateway/releases/tag/v0.7.6) is public from source `b666c11c1f248769b3984a1168e9808930a8dc00`. Current UTXOs maps supported destinations to outputs and balances at the saved UTXO checkpoint; Historical outputs retains outputs over explicit creation ranges. Exact P2PK public-key destinations are supported separately from other locking scripts. Inscription holdings remain deferred to Sats.
+
+All eight original public assets match the audited packages. Exact Windows execution passed header import/restart, index cards, genuine-genesis/P2PK navigation and address builds using a preserved copy of genuine UTXO data through block 170. The expected 10 BTC recipient result remained available after raw-body eviction and offline restart. [Both exact published Linux archives](https://github.com/Blockamoto/gateway/actions/runs/38609838846) passed execution and browser acceptance. Two initial browser-test failures are retained: a hidden-child wait and a narrow-layout comparison without geometry diagnostics. The corrected verifier waits for frame readiness and settled geometry while keeping strict docking checks; it changed no released package or tag.
+
+The existing Render updater delivers the approved prerelease with the same trusted key and automatic deployment from main. Both app ZIPs and all 97 header chunks were downloaded and verified before and after [renewal](https://github.com/Blockamoto/gateway/actions/runs/38608004268). Current feed sequences are application 12 / headers 11, valid until 13 November 2026 at 17:36:30 UTC. A genuine published 0.7.5 client automatically installed the exact 0.7.6 components and restarted without Download or Restart actions, preserving settings, theme, saved index policy and headers. Fresh profiles retain check-only defaults. The exact new client accepted renewed feeds without a package download or unnecessary restart.
+
+See [release acceptance](RELEASE-ACCEPTANCE-0.7.6.json), [release notes](RELEASE-NOTES-v0.7.6.md) and [the address guide](ADDRESSES-INDEX.md). Full-mainnet performance, full consensus validation, system installation and antivirus/SmartScreen acceptance are outside these bounded checks; Windows binaries remain unsigned.
+
+## Previous Gateway 0.7.5 prerelease delivery
 
 The [v0.7.5: UTXO set prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.5) is public at source `cd9d6088653601f3a104e9ed3ba8405420f81428`. Exact packages, [execution of both published Linux archives](https://github.com/Blockamoto/gateway/actions/runs/38449695150), signed hosted downloads, a genuine 0.7.4 automatic upgrade and renewed-feed acceptance passed. See [the release notes](RELEASE-NOTES-v0.7.5.md) and [the current acceptance record](RELEASE-ACCEPTANCE-0.7.5.json).
 
 
-Gateway supports signed application updates and separately signed header delivery. The bundled Gateway channel provisions `https://gateway-updates.onrender.com` and its public verification key on first launch. Ordinary users need no publisher account, access token or private key. The configured address and mode are shown in **Settings → Updates**. The service delivers the approved [0.7.5 public prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.5); genuine previous-client automatic-upgrade and renewal acceptance passed, as recorded in [status](STATUS.md).
+Gateway supports signed application updates and separately signed header delivery. The bundled Gateway channel provisions `https://gateway-updates.onrender.com` and its public verification key on first launch. Ordinary users need no publisher account, access token or private key. The configured address and mode are shown in **Settings → Updates**. The service delivers the approved [0.7.6 Addresses prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.6); genuine previous-client automatic-upgrade and renewal acceptance passed, as recorded in [status](STATUS.md).
 
 ## Choose when updates happen
 
@@ -60,7 +74,7 @@ The public service obtains the exact approved release bundle directly from GitHu
 
 Render's `gateway-updates` service follows `main` with automatic deployment on commit enabled. This redeploys the publisher code; it does not approve a new application version by itself. Release promotion still requires the exact published artifacts, signed application/header bundle and approved runtime version. Check `/manifest.json`, `/headers/manifest.json`, `/artifacts/<file>` and `/headers/chunks/<file>` for live delivery evidence; a GitHub download link alone does not verify that path.
 
-### Current 0.7.5 delivery
+### Previous 0.7.5 delivery
 
 Operational approval `dee851234fabadef131fda01ad1bfd63a1b69338` selects the frozen `cd9d608` release and published packages. Render's automatic deployment became live at **19:03:08 UTC on 13 October 2026**. Initial independent verification authenticated application/header sequences **9 / 8**, both application ZIPs and all **97 header chunks**, totaling **99 objects / 87,879,424 payload bytes**. The existing public trust key is unchanged. The retained initial Python transport failure is recorded separately from the successful native curl verification.
 

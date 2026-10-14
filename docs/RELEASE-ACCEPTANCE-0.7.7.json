@@ -1,0 +1,109 @@
+{
+  "schema": 1,
+  "version": "0.7.7",
+  "title": "v0.7.7: Sats",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-14",
+  "status": "development-preview-reconciliation-pending-exact-build-acceptance",
+  "published": false,
+  "release_kind": "prerelease",
+  "development_base_revision": "7869709d512149bf303c56477c3953a385d1913c",
+  "verified_runtime_source": "2abda5d617e6d8bcc708da96a837e83b3bebbca6",
+  "source_identity_note": "This preview reconciles operational verification and packaging metadata after the tested Sats source. Prior source and preview evidence remains limited to its recorded revisions and hashes. Exact new source and binary identities must be recorded after a clean frozen build; no new package, publication or hosted-upgrade pass is claimed here.",
+  "enabled_indexes": [
+    "headers",
+    "blocks",
+    "inscriptions",
+    "tx-locator",
+    "txo-spender",
+    "utxo-state",
+    "address-state",
+    "address-history",
+    "sat-state"
+  ],
+  "gated_features": [
+    "bitmap",
+    "gateway-peerhood"
+  ],
+  "validation_mode": "header_anchored_processing",
+  "consensus_validated": false,
+  "storage": {
+    "live_ranges": "Ordered sat ranges for currently unspent outputs, with exact saved Sat checkpoints and shared output facts.",
+    "sat_savepoints": {
+      "near_interval_blocks": 12,
+      "near_count": 2,
+      "deep_interval_blocks": 144,
+      "deep_count": 2,
+      "shared_heights": "deduplicated",
+      "recovery": "Restore an eligible selected-chain savepoint and replay available evidence; no unconditional 288-block Sat recovery guarantee."
+    },
+    "utxo_recovery_transitions": 288,
+    "optional_history": "Historical output ranges start off, have independent coverage, and are distinct from on-demand visited Satline evidence.",
+    "shared_fact_ownership": "The Sat-aware collector enumerates live, savepoint and archived Sat owners; the older Addresses blanket sweep deferral is intentionally not applied.",
+    "legacy_experimental_sat_state": "Preserved; incompatible experimental profiles require an explicitly reviewed rebuild.",
+    "p2pk": "Strict SEC public-key destinations retain exact script identities separately from conventional P2PKH and alternative key encodings.",
+    "raw_retention": "Pruned raw bodies remain independent of required live and recovery facts."
+  },
+  "validation": {
+    "prior_sats_p2pk_development_workflow": {
+      "result": "passed",
+      "source_revision": "2abda5d617e6d8bcc708da96a837e83b3bebbca6",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38596598253",
+      "scope": "Full Linux source tests, vet, regression/updater race checks, companion/helpers, packaging and browser/native fixtures on that source; not acceptance of a newly packaged preview."
+    },
+    "prior_windows_p2pk_preview": {
+      "result": "passed",
+      "client_sha256": "3e9ae3113e5588339ae94a32bf3044a80e488f74ba97d26f891afed44a437f76",
+      "receipts": [
+        "work/qa-077/p2pk-native-sats/result.json",
+        "work/qa-077/p2pk-native-viewport/summary.json"
+      ],
+      "scope": "Previously tested Windows preview only: genuine genesis/block-one processing, eviction/restart and P2PK destination navigation. No claim of a final-source full Windows rerun."
+    },
+    "reconciled_preview_source_checks": {
+      "result": "passed-targeted",
+      "checks": [
+        "Nine isolated update-packaging regressions passed in 1.461 seconds.",
+        "Sat 0.7.7 model helpers and index-card model helpers passed.",
+        "Cards verifier Node syntax and package script Python syntax passed.",
+        "Versioned acceptance/notes paths, preserved final Addresses evidence, held 0.7.6 publisher approval and unchanged Sats CI contracts passed."
+      ],
+      "scope": "Targeted reconciliation checks only. The published verifier workflow and Render YAML match the released operational baseline; no YAML parser is available in this check. New preview execution, complete source CI and final packages require their own recorded identities and checks."
+    },
+    "new_windows_preview": {
+      "result": "pending",
+      "scope": "Build a clean frozen executable with 0.7.7 Windows resources; record source and client hash, verify bootstrap, native Sat flow and address/viewport behavior against those exact bytes."
+    },
+    "exact_release_packages_and_installer": {
+      "result": "pending",
+      "scope": "Final Windows/Linux components, public descriptor, headers, archive allowlists/CRC/all-file hashes, provenance and installer payload/version equality."
+    },
+    "published_linux_acceptance": {
+      "result": "pending",
+      "scope": "Execute actual final published fresh/update archives with frozen-source contracts and the reconciled operational verifier."
+    },
+    "published_076_automatic_upgrade": {
+      "result": "pending",
+      "scope": "When separately authorized, validate real published 0.7.6 to 0.7.7 Automatic upgrade with saved preferences preserved."
+    },
+    "signed_hosted_delivery_and_renewal": {
+      "result": "pending",
+      "scope": "Signed application/header feeds, all download digests, live deployment and renewal require separate authorization and exact receipts."
+    }
+  },
+  "publication_hold": {
+    "main_promotion": "held pending explicit user approval",
+    "release_publication": "held pending explicit user approval",
+    "updater_approval": "0.7.6 remains the approved baseline; 0.7.7 is not promoted",
+    "render_automatic_deployment": "Preserve the existing main-branch commit trigger; branch preview work does not deploy it."
+  },
+  "known_limits": [
+    "No whole-mainnet build, memory, storage or throughput benchmark.",
+    "Fragmented input ranges are still materialized while processing FIFO transactions.",
+    "Visited Satline and fee caches do not establish complete historical range coverage.",
+    "Known inscription holdings do not establish universal inscription completeness.",
+    "Full Bitcoin consensus validation and Gateway peer-state sharing remain deferred.",
+    "Windows binaries are not Authenticode signed; installer wizard execution, OS/browser registration and antivirus acceptance require separate evidence."
+  ],
+  "earlier_addresses_acceptance": "RELEASE-ACCEPTANCE-0.7.6.json"
+}

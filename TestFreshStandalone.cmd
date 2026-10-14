@@ -17,11 +17,12 @@ if errorlevel 1 (
 > "%QA%\ResumeTest.cmd" echo @echo off
 >> "%QA%\ResumeTest.cmd" echo "%~dp0GatewayClient.exe" -data "%QA%" -setup
 >> "%QA%\ResumeTest.cmd" echo if errorlevel 1 pause
-echo Fresh Gateway Headers, Blocks and Inscriptions test. Other test directories remain untouched.
+echo Fresh Gateway Sats development test. Other test directories remain untouched.
 echo Data and a ResumeTest.cmd launcher: %QA%
 echo The normal TestStandalone.cmd uses its own separate reusable QA directory.
 echo Inscriptions, Bitcoin serving and private caching are enabled.
-echo Related transaction locators, Transaction Index and Gateway peerhood stay locked.
+echo Transaction locators, TXIO, UTXO, Addresses and Sats are available through reviewed builds.
+echo Local Satline tracing is available automatically. Gateway peerhood stays locked.
 "%~dp0GatewayClient.exe" -data "%QA%" -setup
 if errorlevel 1 pause
 endlocal

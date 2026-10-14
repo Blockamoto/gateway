@@ -221,18 +221,52 @@ async function run() {
     }
     await waitForIndexesWorkspace();
     assert.equal(await page.locator('#address').inputValue(), 'indexes.gateway');
+    const layoutChecks = [];
+    async function workspaceGeometry(animationFrame = false) {
+      return page.locator('#indexes-module').evaluate(async (frame, animationFrame) => {
+        if(animationFrame)await new Promise(requestAnimationFrame);
+        const child=frame.contentWindow,doc=frame.contentDocument,root=doc.querySelector('#index-timeline');
+        const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom};};
+        return {parent:{width:innerWidth,height:innerHeight,pageHeight:document.documentElement.scrollHeight},
+          frame:rect(frame),child:{width:child.innerWidth,height:child.innerHeight,pageHeight:doc.documentElement.scrollHeight},
+          root:rect(root),editor:rect(doc.querySelector('.timeline-editor')),
+          gridRows:child.getComputedStyle(root).gridTemplateRows,panelHeight:root.style.getPropertyValue('--timeline-panel-height')};
+      }, animationFrame);
+    }
     async function assertDocked() {
-      const geometry = await page.locator('#indexes-module').evaluate(frame=>{
-        const r=frame.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,pageHeight:document.documentElement.scrollHeight,viewport:innerHeight};
-      });
-      assert(geometry.top>=0&&geometry.bottom<=geometry.viewport+1&&geometry.height>100,'Embedded workspace fits below app navigation');
-      assert(geometry.pageHeight<=geometry.viewport+1,'Timeline cannot require outer page scrolling');
-      const editor = await indexes.locator('.timeline-editor').boundingBox();
-      assert(editor.y>=geometry.top&&editor.y+editor.height<=geometry.viewport+1,'Timeline remains visible within the window');
-      const before=editor.y;
-      await indexes.locator('#timeline-details').evaluate(el=>el.open=!el.open);
-      const after=await indexes.locator('.timeline-editor').boundingBox();
-      assert(Math.abs(before-after.y)<=1,'Expanding inspector details cannot displace the timeline');
+      const check={requestedViewport:page.viewportSize(),before:[],after:[]};layoutChecks.push(check);
+      const save=()=>fs.writeFileSync(path.join(out,'layout-geometry.json'),JSON.stringify(layoutChecks,null,2));
+      try {
+        // setViewportSize can return before the iframe's ResizeObserver has
+        // recomputed its pixel panel height. Establish one settled viewport
+        // before comparing the separate effect of opening inspector details.
+        check.before.push(await workspaceGeometry());
+        let previous='',identical=0,geometry;
+        for(let i=0;i<60;i++){
+          geometry=await workspaceGeometry(true);check.before.push(geometry);
+          const viewportAgrees=geometry.parent.width===check.requestedViewport.width&&geometry.parent.height===check.requestedViewport.height&&
+            Math.abs(geometry.child.width-geometry.frame.width)<=1&&Math.abs(geometry.child.height-geometry.frame.height)<=1;
+          const key=JSON.stringify(geometry);identical=viewportAgrees&&key===previous?identical+1:viewportAgrees?1:0;previous=key;
+          if(identical>=3)break;
+        }
+        assert(identical>=3,'Parent and embedded workspace geometry must settle before the inspector comparison');
+        const assertFits=value=>{
+          assert(value.frame.y>=0&&value.frame.bottom<=value.parent.height+1&&value.frame.height>100,'Embedded workspace fits below app navigation');
+          assert(value.parent.pageHeight<=value.parent.height+1,'Timeline cannot require outer page scrolling');
+          const top=value.frame.y+value.editor.y;
+          assert(top>=value.frame.y&&top+value.editor.height<=value.parent.height+1,'Timeline remains visible within the window');
+        };
+        assertFits(geometry);
+        const before=geometry.frame.y+geometry.editor.y;
+        await indexes.locator('#timeline-details').evaluate(el=>el.open=!el.open);
+        for(let i=0;i<4;i++){
+          const after=await workspaceGeometry(i>0);check.after.push(after);assertFits(after);
+          assert(Math.abs(before-(after.frame.y+after.editor.y))<=1,'Expanding inspector details cannot displace the timeline');
+        }
+      } catch(error) {
+        await page.screenshot({path:path.join(out,'layout-failure.png'),fullPage:true}).catch(()=>{});
+        throw error;
+      } finally {save();}
     }
     await assertDocked();
     await page.screenshot({path:path.join(out,'shell-indexes-desktop.png'),fullPage:true});

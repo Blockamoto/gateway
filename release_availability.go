@@ -9,7 +9,7 @@ import (
 // state. Upgrading a profile cannot opt a testing build into unreleased work.
 // Experimental Sat state has an explicitly versioned profile for reviewed rebuild.
 func releaseFeatureAvailable(id string) bool {
-	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state" || id == "address-state" || id == "address-history" || id == "sat-state"
+	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state" || id == "address-state" || id == "address-history" || id == "sat-state" || bitmapConsumerID(id)
 }
 
 // Related inscription transaction locators ship with the transaction stage,

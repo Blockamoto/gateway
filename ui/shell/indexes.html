@@ -13,12 +13,15 @@
 main{max-width:1440px;margin:auto;padding:32px}.workspace-context{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 0 22px;color:var(--muted);font-size:13px}.workspace-context span:last-child{color:var(--accent,var(--mint))}.workspace-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:24px;overflow-x:auto}.workspace-tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--muted);padding:14px 18px;white-space:nowrap}.workspace-tabs button[aria-current="page"]{border-color:var(--accent,var(--mint));color:var(--text)}.index-layout .panel{margin:0}.page-heading h1{font-size:clamp(28px,4vw,40px);letter-spacing:-1px}.page-heading .lede{max-width:700px;font-size:15px;line-height:1.7}.index-entry h3{font-size:16px}.index-entry{background:var(--bg)}.index-meta{font-size:13px!important}.small{font-size:13px;line-height:1.65}.field label{font-size:13px}.field small{font-size:12px;line-height:1.55}.actions{flex-wrap:wrap}.embedded .index-top{display:none}.embedded main{padding:28px 24px;min-height:0}progress{accent-color:var(--accent,var(--mint))!important}@media(max-width:600px){main{padding:20px 14px}.workspace-tabs button{padding:12px}.query-controls>*{width:100%}.query-controls input{width:100%!important}}.index-top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:35px}.index-top a{font-size:14px}.index-layout{display:grid;grid-template-columns:1fr;gap:22px}.index-layout>*{min-width:0}.index-section{margin-top:22px}.index-list{display:grid;gap:12px}.index-entry{border:1px solid var(--line);border-radius:12px;padding:16px}.index-entry h3{margin-top:0}.index-entry p:last-child{margin-bottom:0}.index-meta{display:grid;grid-template-columns:150px minmax(0,1fr);gap:9px 15px;font-size:12px;line-height:1.6}.index-meta dt{color:var(--muted)}.index-meta dd{margin:0;overflow-wrap:anywhere}.index-note{border-left:3px solid var(--mint);padding:10px 15px;background:var(--panel2)}#message{padding:14px 18px;border:1px solid var(--line);border-radius:12px;margin:18px 0;white-space:pre-wrap}#message[data-error="true"]{color:var(--red)}#job-error{color:var(--amber);white-space:pre-wrap}progress{width:100%;height:12px;accent-color:var(--mint)}ol,ul{padding-left:22px;line-height:1.8;font-size:12px}summary{font-size:13px}button{white-space:normal}.query-controls{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.query-controls .field{margin:0}.query-controls input{width:110px}[hidden]{display:none!important}@media(max-width:800px){.index-layout{grid-template-columns:1fr}.index-meta{grid-template-columns:1fr;gap:3px}.index-meta dd{margin-bottom:10px}.index-top{align-items:flex-start}}
 main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width:0}.index-entry .mono{overflow-wrap:anywhere}@media(max-width:600px){.embedded main{padding:20px 14px}}
 .query-controls .records-follow input{width:auto!important}
+.timeline-inspector:is([data-index="utxo-state"],[data-index="address-state"],[data-index="txio-sat-ranges"]) #timeline-details{display:none!important}
+#current-job-panel>.actions,#job-queue,#combined-outputs,#build-range-picker,.build-range-notes,#plan-form>label.check,#plan-form>.actions,#plan,#advanced-retention>.field,#sat-history-field,#inscription-enrichment>button,#index-details-nav [data-view="build"]{display:none!important}
+
 </style>
 <link rel="stylesheet" href="/shell/theme.css"><script nonce="__INDEX_NONCE__" src="/shell/theme.js"></script></head>
 <body class="indexes-workspace">
 <main>
 <nav class="index-top" aria-label="Index navigation"><a href="/">← Gateway home</a><a href="/?resolve=storage.gateway">Storage settings</a></nav>
-<div id="workspace-state" class="timeline-status-strip" role="status" hidden>Reading your local workspace…</div><div id="message" role="status" aria-live="polite" hidden></div><section id="index-timeline" aria-label="Index timeline"></section><div id="index-workspace" hidden><h2 id="selected-index-label" class="selected-index-label" hidden></h2><nav id="index-details-nav" class="workspace-tabs" aria-label="Selected index details" hidden><button type="button" data-view="build">Build a range</button><button type="button" data-view="results">Records & sharing</button><button type="button" data-view="providers">Data sources</button><button type="button" data-view="peers">Peer claims</button></nav>
+<div id="workspace-state" class="timeline-status-strip" role="status" hidden>Reading your local workspace…</div><div id="message" role="status" aria-live="polite" hidden></div><section id="index-timeline" aria-label="Index timeline"></section><div id="index-workspace" hidden><h2 id="selected-index-label" class="selected-index-label" hidden></h2><section id="index-requirements" class="panel" aria-label="Index requirements"></section><nav id="index-details-nav" class="workspace-tabs" aria-label="Selected index details" hidden><button type="button" data-view="build">Build a range</button><button type="button" data-view="results">Records & sharing</button><button type="button" data-view="providers">Data sources</button><button type="button" data-view="peers">Peer claims</button></nav>
 <section class="panel" id="current-job-panel" aria-labelledby="job-heading"><h2 id="job-heading">Current job</h2><p id="job-summary" class="muted small">Loading local status…</p><progress id="job-progress" hidden></progress><dl id="job-meta" class="index-meta"></dl><p id="job-error" class="small"></p><p id="job-limitations" class="hint small" hidden></p><div class="actions"><button id="job-records" type="button">Progress & records</button><button id="pause" disabled>Pause build</button><button id="resume" disabled>Load previous request</button></div><p class="small muted">Pause takes effect after an in-flight source request returns. Resume retries the same range from its saved checkpoint. Completed checkpoints are reused.</p><details><summary>Exact job JSON</summary><pre id="job-json"></pre></details><div id="job-queue" class="index-section"></div></section><div class="index-layout" data-pane="build">
 <section id="utxo-build-panel" aria-label="UTXO build and committed state" hidden></section>
 <section id="sat-build-panel" aria-label="Sat build and saved recovery state" hidden></section>
@@ -56,6 +59,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <details class="index-section"><summary>Terminal equivalents</summary><p class="small muted"> <code>index rules</code>, <code>index plan blocks --to HEIGHT</code>, <code>index build blocks --to HEIGHT --retention ephemeral</code>, <code>index pause</code>, <code>index status</code>, <code>index query blocks --limit 50</code>.</p></details>
 </div></main>
 <script src="/shell/index-cards.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-transport.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-timeline.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/utxo-panel.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/address-panel.js" nonce="__INDEX_NONCE__"></script>
@@ -64,6 +68,9 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <script src="/shell/transaction-flow-layout.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/block-viewport.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/address-view.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/sat-view.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/bitmap-view.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/workspace-resources.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/timeline-explorer.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/inscription-viewport.js" nonce="__INDEX_NONCE__"></script>
 <script id="index-bootstrap" type="application/json" nonce="__INDEX_NONCE__">__INDEX_BOOTSTRAP__</script>
@@ -140,6 +147,7 @@ function syncRetainedStart() {
   }
 }
 function selectIndex(id, view, initialLive = false) {
+ if(view==='advanced')view='build';
   if(selectedIndex && !selectedDefinition()?.locked){const draft={};for(const key of ['from','to','retention','mode'])draft[key]=$(key).value;draft.live=$('initial-live').checked;draft.history=$('retain-sat-history').checked;draft.conventional_ids=$('conventional-ids').checked;draft.output_values=$('retain-output-values').checked;draft.output_scripts=$('retain-output-scripts').checked;draft.outputs=[...$('output-choices').querySelectorAll('input')].filter(x=>x.checked&&!x.disabled).map(x=>x.value);planDrafts.set(selectedIndex,draft)}
   if(!id){selectedIndex='';timeline.select('');selectView('catalog');return;}
   message('');selectedIndex = id; receivedRecordKeys=new Set();lastRecordReceipt=''; recordSerial++; recordKey = ''; recordLoading = false;
@@ -165,8 +173,22 @@ function selectIndex(id, view, initialLive = false) {
   rangePicker.update(d,status);
   syncOutputEnrichment();
 }
+function showRequirements(){
+ const holder=$('index-requirements'),d=selectedDefinition();holder.replaceChildren(element('h3','Requirements'));if(!d)return;
+ const names={'blocks':'Source blocks','headers':'Headers','utxo-state':'UTXO set','sat-state':'Sat ranges','address-state':'Current UTXOs','address-history':'Historical outputs','tx-locator':'Transaction locators','bitmap-districts':'Bitmap Districts','bitmap-parcels':'Bitmap Parcels','bitmap-chain':'BitmapChain'};
+ const row=(name,state,reason,id)=>{const p=element('p',undefined,'small');p.append(element('strong',name+' · '+state+' '),element('span',reason+' '));if(id){const button=element('button','Inspect '+(names[id]||id),'text-button');button.type='button';button.onclick=()=>inspectIndex(id);p.append(button);}holder.append(p);};
+ const actual=(status?.run?.run?.consumers||[]).find(c=>c.index===d.id);if(actual?.dependencies?.length){for(const dependency of actual.dependencies)row(names[dependency.index]||dependency.index,human(dependency.state),dependency.reason,dependency.action?dependency.index:null);return;}
+ if(d.id==='headers'){row('Provider synchronization',status?.timeline?.syncing?'Syncing':'Inspect source status','Headers identify the selected chain; this is not a block derivation job.');return;}
+ if(d.id==='address-state'){const u=status?.utxo||{},ready=Number.isSafeInteger(u.processed_height)&&!!u.processed_hash;row('Saved UTXO state',ready?'Available at block '+u.processed_height:'Not established','Current Addresses projects one complete saved checkpoint; it does not scan creation ranges.','utxo-state');row('Optional Sat joins','Checkpoint-dependent','Ranges and known holdings require matching Sat and address checkpoints.','sat-state');return;}
+ const blocks=(status?.providers||[]).filter(p=>p.id==='blocks'),ready=blocks.some(p=>p.queryable);row('Source blocks',ready?'A provider reports available':'Checked when requested','Local data is preferred; missing evidence can be fetched. Raw blocks need not be armed to read source blocks.','blocks');
+ if(d.id==='sat-state')row('Saved Sat input identities','Managed internally','A new state processes from genesis. The historical TXIO and UTXO indexes are not prerequisites.');
+ else if(d.id==='utxo-state')row('Unspent state','Genesis or authenticated resume','A sparse range cannot establish a complete UTXO set. Mandatory facts and undo remain local.');
+ else if(d.id==='txo-spender')row('Input translation','Retained or on demand','Transaction locators can help resolve native references; missing evidence remains unresolved.','tx-locator');
+ else if(d.id==='bitmap-parcels'||d.id==='bitmap-chain'){row('District evaluation','Required','This consumer requires completed same-block District evaluation.','bitmap-districts');if(d.id==='bitmap-parcels')row('Parent provenance','Conditional','Missing saved identity evidence waits; inspecting this requirement does not start Satline.','sat-state');}
+ else if(d.id==='address-history')row('Historical outputs','Independent creation ranges','Current-address membership is not required; historical receipts are not a current balance.');
+}
 function showRules() {
-  const d = selectedDefinition(); if (!d || d.locked) return;
+  const d = selectedDefinition(); if (!d || d.locked) return;showRequirements();
   const isUTXO=d.id==='utxo-state',isAddress=d.id==='address-state',isSat=d.id==='sat-state',isState=isUTXO||isAddress||isSat;$('utxo-build-panel').hidden=!isUTXO;$('address-state-build-panel').hidden=!isAddress;$('sat-build-panel').hidden=!isSat;$('plan-form').closest('section').hidden=isState;$('index-details-nav').hidden=isState;$('selected-index-label').hidden=isState;
   $('txio-enrichment').hidden=!['txo-spender','blocks'].includes(d.id);
   $('current-job-panel').hidden=!d.buildable;const peerSupported=false;$('peer-unavailable').hidden=peerSupported;$('peer-claims').hidden=!peerSupported;$('peer-form').hidden=!peerSupported;
@@ -285,14 +307,14 @@ async function refresh() {
       timeline.render(status); timeline.health(healthy);
       // Position can change while requests are paused. Resume the latest
       // playhead rather than the block that was focused before status loss.
-      if(recovering && healthy && selectedIndex && !selectedDefinition()?.locked && timeline.getPlayhead()!==null) explorer?.focus({index:selectedIndex,height:timeline.getPlayhead(),immediate:false});
+      if(recovering && healthy && explorer?.state().resource==='block' && selectedIndex && !selectedDefinition()?.locked && timeline.getPlayhead()!==null) explorer?.focus({index:selectedIndex,height:timeline.getPlayhead(),immediate:false});
       explorer?.health(healthy);
       viewport?.available(healthy&&definitions.some(x=>x.id==='inscriptions'&&!x.locked));
       if (!selectedIndex && definitions.length) {
         const first=definitions.find(d=>d.id==='headers'&&!d.locked)||definitions.find(d=>!d.locked);
         if(first) selectIndex(first.id,first.buildable?'build':'providers');
       }
-      showSelectedStatus();
+      showSelectedStatus();showRequirements();
       syncRetainedStart();
       rangePicker.update(selectedDefinition(),status);
       const workspaceStatus={type:'gateway:index-status',localIndexes:status.instances?.length||0,following:(status.live||[]).filter(x=>x.enabled&&x.on).length,sharingLocked:true};
@@ -313,6 +335,7 @@ function syncLiveForm(){ $('end-field').hidden = $('initial-live').checked; $('t
 $('initial-live').addEventListener('change',()=>{syncLiveForm();invalidatePlan();});
 for (const id of ['from', 'to', 'retention', 'mode', 'retain-sat-history', 'conventional-ids','retain-output-values','retain-output-scripts']) $(id).addEventListener('input', invalidatePlan);
 $('enrich-inscription-ids').addEventListener('click',()=>{const saved=status?.instances?.find(x=>x.definition==='inscriptions')?.checkpoint;if(!saved||selectedIndex!=='inscriptions'||!inscriptionLocatorsAvailable())return;$('conventional-ids').checked=true;$('initial-live').checked=false;$('from').value=String(saved.from);$('to').value=String(saved.height);syncLiveForm();invalidatePlan();message('Conventional ID enrichment selected for the retained inscription range. Review the plan before fetching any missing reveal blocks.');$('plan-button').focus();});
+$('plan-form').addEventListener('submit',event=>{event.preventDefault();event.stopImmediatePropagation();message('Use the shared timeline review to start indexing.');},true);
 $('plan-form').addEventListener('submit', async event => {
   event.preventDefault(); invalidatePlan(); const serial=planSerial; $('plan-button').disabled = true;
   try {
@@ -449,37 +472,47 @@ function openTimelineEntity(id,height) {
   if(!definition || definition.locked || !Number.isSafeInteger(height) || height<0) return;
   explorer?.focus({index:id,height,immediate:true});
 }
-let movingEntity=false;
+let movingEntity=false,workspaceReady=false,pendingAddress=null,pendingIndex=null,workspaceVisible=true,resources;
+let navigationContext={id:null,historyMode:'replace',focus:false,published:false};
 function focusedAddress(value){return value.address||value.query||(value.kind==='transaction'&&Number.isSafeInteger(value.txIndex)?value.txIndex+'.'+value.height+'.bitcoin':value.height+'.bitcoin');}
-function publishFocus(value){if(parent!==window&&Number.isSafeInteger(value.height)&&value.height>=0)parent.postMessage({type:'gateway:workspace-focused',address:focusedAddress(value),resolved:value.resolved===true},location.origin);}
-function syncFocusedEntity(value){if(!value||!Number.isSafeInteger(value.height)||value.height<0)return;movingEntity=true;try{timeline.syncResource(value,value.metadata);}finally{movingEntity=false;}publishFocus(value);}
-function focusEntity(value,options={}){if(!value?.address)return;if(value.kind==='satpoint'){explorer.entity(value);return;}explorer.navigate(value.address).catch(error=>message(error.message,true));}
-let workspaceReady=false,pendingAddress=null,pendingIndex=null;
+function publishAddress(address,resolved=true){if(parent!==window){parent.postMessage({type:'gateway:workspace-focused',address,resolved,historyMode:navigationContext.published?'replace':navigationContext.historyMode,...(Number.isSafeInteger(navigationContext.id)?{navigationId:navigationContext.id}:{})},location.origin);}navigationContext.published=true;if(navigationContext.focus){navigationContext.focus=false;requestAnimationFrame(()=>{const panel=document.querySelector('#timeline-inspector [role="tabpanel"]:not([hidden])'),heading=panel?.querySelector('h1,h2');if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}});}}
+function publishFocus(value){if(Number.isSafeInteger(value.height)&&value.height>=0)publishAddress(focusedAddress(value),value.resolved===true);}
+function syncFocusedEntity(value){if(!value||!Number.isSafeInteger(value.height)||value.height<0)return;movingEntity=true;try{timeline.syncResource(value,value.metadata);timeline.acceptGlobalResource?.(value);}finally{movingEntity=false;}publishFocus(value);}
+function focusEntity(value,options={}){if(!value?.address)return;navigationContext={id:null,historyMode:'replace',focus:false,published:false};if(value.kind==='satpoint'){explorer.entity(value);return;}explorer.navigate(value.address).catch(error=>message(error.message,true));}
 function isInscriptionAddress(value){return /^(?:[0-9]+|[0-9a-f]{64})(?:\.)?i[0-9]+(?:\.[0-9]+(?:\.bitcoin)?)?$/i.test(value)||value.endsWith('.ord');}
+function inspectIndex(id,options={}){selectIndex(id,'advanced');if(options.rebuild_snapshot&&addressPanel?.reviewRebuild(options.rebuild_snapshot)===false)return;if(Object.keys(options).length)timeline.setConsumerOptions?.(id,options);}
+function resourceIntent(){timeline?.cancelPendingNavigation();navigationContext={id:null,historyMode:'push',focus:false,published:false};}
 async function navigateWorkspace(value,options={}){
- const address=String(typeof value==='string'?value:value?.address||value?.query||'').trim();if(!address||address.length>1024||/[\x00-\x1f]/.test(address))return;timeline?.cancelPendingNavigation();
- if(!workspaceReady){pendingAddress={address,options};return;}
- if(address==='sats.gateway'||/^(0|[1-9][0-9]*)\.sat$/.test(address)||/^(?:[13][1-9A-HJ-NP-Za-km-z]{25,34}|bc1[0-9a-z]{6,87})$/i.test(address)){if(parent!==window)parent.postMessage({type:'gateway:navigate',address},location.origin);else location.href='/?resolve='+encodeURIComponent(address);return;}
- if(address==='ord.gateway'){if(definitions.some(d=>d.id==='inscriptions'&&!d.locked)){selectIndex('inscriptions','build');explorer.setTab('inscriptions');}return;}
- if(isInscriptionAddress(address)){if(!definitions.some(d=>d.id==='inscriptions'&&!d.locked)){message('Inscriptions are unavailable in this build.',true);return;}selectIndex('inscriptions','build');const result=await viewport.open(address,{block:options.blockHint});if(result?.resolution_state==='location_unknown'&&parent!==window)parent.postMessage({type:'gateway:workspace-location-needed',address},location.origin);return result;}
- if(['utxo-state','address-state','sat-state'].includes(selectedIndex))selectIndex('blocks','providers');
+ const address=String(typeof value==='string'?value:value?.address||value?.query||'').trim();if(!address||address.length>1024||/[\x00-\x1f]/.test(address))return;if(!workspaceReady){pendingAddress={address,options};return;}
+ timeline.cancelPendingNavigation();timeline.acceptGlobalResource?.({resource:'pending',address});navigationContext={id:options.navigationId??null,historyMode:options.historyMode||'push',focus:options.focus===true,published:false};
+ if(['settings.gateway','peers.gateway'].includes(address)){if(parent!==window)parent.postMessage({type:'gateway:navigate',address},location.origin);else location.href='/?resolve='+encodeURIComponent(address);return;}
+ const saved=resources.classify(address);if(saved){resources.open(saved.name,saved.address,saved.target);return;}
+ if(['.gateway','home.gateway','gateway.gateway','bitcoin.gateway','ord.gateway','indexes.gateway','activity.gateway','storage.gateway','sync.gateway','satline.gateway'].includes(address)){resources.overview(address);return;}
+ if(isInscriptionAddress(address)){if(!definitions.some(d=>d.id==='inscriptions'&&!d.locked)){message('Inscriptions are unavailable in this build.',true);return;}const result=await viewport.open(address,{block:options.blockHint});if(result?.resolution_state==='location_unknown'&&parent!==window)parent.postMessage({type:'gateway:workspace-location-needed',address},location.origin);return result;}
  return explorer.navigate(address,{blockHint:options.blockHint});
 }
-window.addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin||event.data?.type!=='gateway:workspace-address')return;navigateWorkspace(event.data.address,{blockHint:event.data.blockHint}).catch(error=>message(error.message,true));});
-function openIndexBuild(value){selectIndex(value.index,'build');if(value.index==='address-state'&&value.rebuild_snapshot)addressPanel?.reviewRebuild(value.rebuild_snapshot);}
-window.addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin||event.data?.type!=='gateway:workspace-select-index'||!['utxo-state','address-state','address-history','sat-state'].includes(event.data.index))return;const value={index:event.data.index,rebuild_snapshot:event.data.rebuild_snapshot};if(!workspaceReady){pendingIndex=value;return;}openIndexBuild(value);});
+window.addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin)return;
+ if(event.data?.type==='gateway:workspace-address')navigateWorkspace(event.data.address,{blockHint:event.data.blockHint,navigationId:event.data.navigationId,historyMode:event.data.historyMode||'replace',focus:event.data.focus}).catch(error=>message(error.message,true));
+ if(event.data?.type==='gateway:workspace-visibility'){workspaceVisible=event.data.visible===true;if(!workspaceVisible){timeline.cancelPendingNavigation();explorer.cancelResource?.();resources?.suspend();}else refresh().catch(error=>message(error.message,true));}
+ if(event.data?.type==='gateway:workspace-select-index'){const id=event.data.index;if(typeof id!=='string')return;const value={index:id,rebuild_snapshot:event.data.rebuild_snapshot};if(!workspaceReady){pendingIndex=value;return;}if(definitions.some(d=>d.id===id&&!d.locked))openIndexBuild(value);}
+});
+function openIndexBuild(value){inspectIndex(value.index,value.rebuild_snapshot?{rebuild:true,rebuild_snapshot:value.rebuild_snapshot}:{});}
+document.addEventListener('gateway:timeline-inspect-index',event=>{const detail=event.detail||{};if(typeof detail.id==='string'&&definitions.some(d=>d.id===detail.id&&!d.locked))inspectIndex(detail.id,detail.options||{});});
 function showSemantic(){timeline.zoomIntoFocus();}
 utxoPanel=window.GatewayUTXOPanel.mount({root:$('utxo-build-panel'),api,refresh,notify:message});
 satPanel=window.GatewaySatPanel?.mount({root:$('sat-build-panel'),api,refresh,notify:message});
 addressPanel=window.GatewayAddressPanel?.mount({root:$('address-state-build-panel'),api,refresh,notify:message,select:selectIndex});
-timeline = window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:prepareTimelineRange,openEntity:openTimelineEntity,onFocus:value=>{if(movingEntity)return;explorer?.focus(value);if(value.immediate!==false)publishFocus({...value,kind:'block'});},onDetail:showSemantic,onEntity:focusEntity,loadHierarchy:(entity,options)=>explorer.loadHierarchy(entity,options),loadRevealMarkers:async(value,{signal})=>{const result=await api('query?index=inscriptions&height='+value.height+'&limit=1000',undefined,{signal});return {markers:inscriptionRows(result.rows).map(inscriptionMarker).filter(Boolean),known:result.known===true,truncated:result.truncated};},onInscription:marker=>viewport.open(marker.address)});
+timeline=window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:()=>message('Use the global In and Out controls in the timeline.'),openEntity:openTimelineEntity,onFocus:value=>{if(movingEntity)return;navigationContext={id:null,historyMode:'replace',focus:false,published:false};explorer?.focus(value);if(value.immediate!==false)publishFocus({...value,kind:'block'});},onDetail:showSemantic,onEntity:focusEntity,loadHierarchy:(entity,options)=>explorer.loadHierarchy(entity,options),loadRevealMarkers:async(value,{signal})=>{const result=await api('query?index=inscriptions&height='+value.height+'&limit=1000',undefined,{signal});return {markers:inscriptionRows(result.rows).map(inscriptionMarker).filter(Boolean),known:result.known===true,truncated:result.truncated};},onInscription:marker=>{resourceIntent();return viewport.open(marker.address);}});
+for(const id of ['index-requirements','utxo-build-panel','sat-build-panel','address-state-build-panel'])$('timeline-details').before($(id));
 window.GatewayIndexWorkspace.mountLayout($('index-timeline'),$('message'));
-explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message,viewport:$('workspace-viewport-body'),onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:()=>timeline.cancelPendingNavigation()});
-viewport=window.GatewayInscriptionViewport.mount({document,explorer,viewport:$('workspace-viewport-body'),contentOrigin:workspaceBoot.content_origin,notify:message,onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:()=>timeline.cancelPendingNavigation()});
+explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message,viewport:$('workspace-viewport-body'),onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:resourceIntent});
+viewport=window.GatewayInscriptionViewport.mount({document,explorer,viewport:$('workspace-viewport-body'),contentOrigin:workspaceBoot.content_origin,notify:message,onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:resourceIntent});
+resources=window.GatewayWorkspaceResources.mount({document,explorer,timeline,status:()=>status,inspect:inspectIndex,onNavigate:navigateWorkspace,onResolved:(address)=>publishAddress(address,true)});
+for(const id of ['mode','retain-output-values','retain-output-scripts','conventional-ids'])$(id).addEventListener('change',()=>{if(!selectedIndex)return;const owner=id.startsWith('retain-output-')?'txo-spender':selectedIndex,patch=id==='mode'?{mode:$('mode').value}:id==='conventional-ids'?{conventional_ids:inscriptionLocatorsAvailable()&&$('conventional-ids').checked}:{[id==='retain-output-values'?'retain_output_values':'retain_output_scripts']:$(id).checked};timeline.setConsumerOptions?.(owner,patch);});
 selectView('catalog');
-refresh().then(()=>{workspaceReady=true;if(pendingIndex){openIndexBuild(pendingIndex);pendingIndex=null;}const focus=new URLSearchParams(location.search).get('focus'),request=pendingAddress||{address:focus|| (new URLSearchParams(location.search).get('viewer')==='1'?'ord.gateway':''),options:{}};pendingAddress=null;if(request.address)return navigateWorkspace(request.address,request.options);}).catch(error=>message(error.message,true));
-window.addEventListener('pagehide',()=>{viewport?.teardown();explorer?.teardown();});
-setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+refresh().then(()=>{workspaceReady=true;if(pendingIndex){openIndexBuild(pendingIndex);pendingIndex=null;}const params=new URLSearchParams(location.search),request=pendingAddress||{address:params.get('focus')||(params.get('viewer')==='1'?'ord.gateway':'.gateway'),options:{navigationId:params.has('navigationId')?Number(params.get('navigationId')):null,historyMode:'replace',focus:params.get('focusPanel')==='1'}};pendingAddress=null;return navigateWorkspace(request.address,request.options);}).catch(error=>message(error.message,true));
+window.addEventListener('pagehide',()=>{resources?.teardown();viewport?.teardown();explorer?.teardown();});
+setInterval(()=>{if(workspaceVisible&&!document.hidden)refresh();},5000);
 </script>
 </body>
 </html>

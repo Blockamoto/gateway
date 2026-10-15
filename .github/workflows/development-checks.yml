@@ -2,7 +2,7 @@ name: Gateway development checks
 
 on:
   push:
-    branches: [main, v0.7.6, v0.7.7]
+    branches: [main, v0.7.6, v0.7.7, timeline-bitmap-development]
     paths-ignore:
       - 'docs/**'
       - '*.md'
@@ -53,14 +53,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CGO_ENABLED=1 go test -race -count=1 -json -run '^Test(063|064|065|066|068|069|072|073|074|075|076|077|UTXO|TXIO|RawBlocks|BlocksRaw|BlocksBody|Release|Header|Bitcoin|Integration|IndexLocator|SatIndex|SatReverse|Ord|Inscription|Positional|Sparse)' -timeout=900s . | tee "$RUNNER_TEMP/gateway-checks/race-tests.jsonl"
+          CGO_ENABLED=1 go test -race -count=1 -json -run '^Test(TimelineRun|BitmapDevelopment|063|064|065|066|068|069|072|073|074|075|076|077|UTXO|TXIO|RawBlocks|BlocksRaw|BlocksBody|Release|Header|Bitcoin|Integration|IndexLocator|SatIndex|SatReverse|Ord|Inscription|Positional|Sparse)' -timeout=900s . | tee "$RUNNER_TEMP/gateway-checks/race-tests.jsonl"
           CGO_ENABLED=1 go test -race -count=1 -json -timeout=240s ./internal/updates ./internal/updatepublisher ./internal/updateapply | tee "$RUNNER_TEMP/gateway-checks/update-race-tests.jsonl"
       - name: Browser companion and UI helper tests
         if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail
-          { node browser-companion/test.js; node scripts/test-ui-helpers.js; node scripts/test-block-viewport.js; node scripts/test-bitfeed-reference.js; node scripts/test-transaction-flow-layout.js; node scripts/test-index-workspace.js; node scripts/test-index-cards.js; node scripts/test-index-timeline.js; node scripts/test-utxo-panel.js; node scripts/test-address-panel.js; node scripts/test-sats-077.js; node scripts/test-shell-063.js; node scripts/test-home-state-063.js; } 2>&1 | tee "$RUNNER_TEMP/gateway-checks/javascript.txt"
+          { node browser-companion/test.js; node scripts/test-ui-helpers.js; node scripts/test-block-viewport.js; node scripts/test-bitfeed-reference.js; node scripts/test-transaction-flow-layout.js; node scripts/test-index-workspace.js; node scripts/test-index-cards.js; node scripts/test-index-timeline.js; node scripts/test-index-transport.js; node scripts/test-utxo-panel.js; node scripts/test-address-panel.js; node scripts/test-sats-077.js; node scripts/test-shell-063.js; node scripts/test-home-state-063.js; } 2>&1 | tee "$RUNNER_TEMP/gateway-checks/javascript.txt"
       - name: Packaging regression tests
         if: ${{ !cancelled() }}
         run: |
@@ -77,6 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           export NODE_PATH="$RUNNER_TEMP/gateway-browser/node_modules"
+          node scripts/test-workspace-resources-browser.js
           node scripts/test-addresses-browser.js
           node scripts/test-sats-077-browser.js
           node scripts/test-sat-point-browser-077.js

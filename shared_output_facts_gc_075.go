@@ -68,6 +68,9 @@ func collectSharedOutputFactsContext(ctx context.Context, root string) error {
 	if e = visitSatFactPagesContext077(ctx, root, func(hash string) error { pins[hash] = true; return nil }); e != nil {
 		return e
 	}
+	if e = visitCurrentAddressFactPagesContext(ctx, root, func(hash string) error { pins[hash] = true; return nil }); e != nil {
+		return e
+	}
 	base := outputFactDirectory(root)
 	if e = updateapply.CheckPath(base); e != nil {
 		return e

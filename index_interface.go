@@ -20,6 +20,7 @@ import (
 
 // Both local interfaces delegate state and work to the same index runtime.
 func (a *app) registerIndexRoutes(mux *http.ServeMux) {
+	a.registerBitmapDevelopmentRoutes(mux)
 	mux.HandleFunc("/indexes", a.handleIndexPage)
 	mux.HandleFunc("/api/v1/index/", a.handleIndexAPI)
 }
@@ -122,6 +123,10 @@ func indexQueryLimit(raw string) (int, error) {
 }
 
 func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/api/v1/index/run" || strings.HasPrefix(r.URL.Path, "/api/v1/index/run/") {
+		a.handleIndexRun(w, r)
+		return
+	}
 	var result any
 	var err error
 	switch strings.TrimPrefix(r.URL.Path, "/api/v1/index/") {

@@ -92,7 +92,7 @@ window.GatewayIndexCards = (() => {
         if (m.retained && m.policy?.lag_known && m.policy.tip_fresh) e.meta.textContent += ' · ' + format(m.policy.lag) + ' blocks behind';
         else if (m.live && m.retained) e.meta.textContent += ' · lag unknown';
         const retention = m.policy?.retention || m.instance?.retention || m.job?.retention || 'ephemeral';
-        const retentionText = {ephemeral:'Discard new source blocks',cache:'Bounded source cache',retain:'Retain source blocks'}[retention] || 'Retention unknown';
+        const retentionText = {pruned:'Pruned raw blocks; mandatory state retained',ephemeral:'Discard new source blocks',cache:'Bounded source cache',retain:'Retain source blocks'}[retention] || 'Retention unknown';
         e.detail.textContent = definition.buildable ? retentionText + ' · private local data; sharing locked' : (m.providers.some(x => x.queryable) ? 'Use existing providers; no whole-history build is implied.' : 'No usable local provider. Inspect details rather than starting unsupported work.');
         e.on.checked = m.on; e.onText.textContent=m.on?'On':'Off'; e.live.checked = m.live;
         const j=m.job, known=j && Number.isSafeInteger(j.to) && j.to>=j.from;

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 // form in fixtures without setting private controller state or changing ranges
 // through global Explorer navigation.
 async function selectHeight(page, height, index = null) {
-  if (await page.locator('#timeline-expand').isVisible()) await page.locator('#timeline-expand').click();
+  if (await page.locator('#timeline-collapse:not([aria-expanded=true])').isVisible()) await page.locator('#timeline-collapse:not([aria-expanded=true])').click();
   if (index) await page.locator('.timeline-track[data-index="'+index+'"] .timeline-track-select').click();
   const root = page.locator('#index-timeline');
   const view = () => root.evaluate(el => ({from:Number(el.dataset.from),to:Number(el.dataset.to)}));
@@ -29,11 +29,7 @@ async function selectHeight(page, height, index = null) {
   const current=await view(), box=await lane.boundingBox();
   assert(current.to-current.from<64,'Pointer zoom reaches individual block granularity');
   const x=box.x+(height-current.from+.5)/(current.to-current.from+1)*box.width,y=box.y+Math.min(25,box.height/2);
-  // Indexing selection is explicit. Ctrl establishes this height as the anchor,
-  // then Shift selects the singleton even if prior discontiguous picks exist.
-  // The final ordinary click explores it without altering that selection.
-  await page.keyboard.down('Control');await page.mouse.click(x,y);await page.keyboard.up('Control');
-  await page.keyboard.down('Shift');await page.mouse.click(x,y);await page.keyboard.up('Shift');
+  // A navigation helper never edits the shared indexing range.
   await page.mouse.click(x,y);
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 }

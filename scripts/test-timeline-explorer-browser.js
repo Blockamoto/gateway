@@ -47,7 +47,7 @@ const block=height=>({height,hash:String(height).padStart(64,'a'),transaction_co
     await page.evaluate(()=>helper.focus({height:60,immediate:true}));await page.waitForTimeout(80);
     await page.evaluate(()=>helper.focus({height:61,immediate:true}));await page.waitForFunction(()=>helper.state().loadedHeight===61);
     await page.waitForTimeout(550);assert.equal(await page.evaluate(()=>helper.state().loadedHeight),61,'Delayed stale block cannot replace newer focus');
-    assert.equal(await page.evaluate(()=>helper.state().active),'inspector','Explicit tab choice stays through focus changes');
+    assert.equal(await page.evaluate(()=>helper.state().active),'explorer','Explicit resource navigation activates Resource even after inspecting index settings');await page.locator('#timeline-inspector-tab').click();await page.evaluate(()=>helper.focus({height:61,immediate:false}));assert.equal(await page.evaluate(()=>helper.state().active),'inspector','Passive focus keeps the selected index settings context');
     const before=calls.length;await page.evaluate(()=>helper.focus({index:'headers',height:61,immediate:true}));assert.equal(calls.length,before,'Changing track preserves loaded block without fetching');
     await page.locator('#timeline-explorer-tab').click();
     await page.locator('#timeline-explorer-tx-next').click();await page.waitForFunction(()=>document.querySelector('#timeline-explorer-tx-page').textContent.startsWith('41'));

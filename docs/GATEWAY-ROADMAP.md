@@ -1,17 +1,18 @@
 # Gateway roadmap
 
-The [public v0.7.7 Sats prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.7) builds on Addresses and the UTXO/TXIO stages. The next preparation work covers timeline controls, coordinated indexing and dependency handling before Bitmap implementation. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for exact publication and validation evidence.
+The [public v0.7.7 Sats prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.7) builds on Addresses and the UTXO/TXIO stages. The next development work combines timeline controls, coordinated indexing, dependency handling and experimental Bitmap consumers. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for exact publication and validation evidence.
 
-## In preparation before Bitmap
+## In development: timeline workspace and Bitmap
 
-The user has brought timeline controls forward from the earlier after-Bitmap plan. The [timeline brief](TIMELINE-CONTROLS-BRIEF.md) and [index dependency review](INDEX-DEPENDENCIES.md) define the preparation on a separate development branch. They do not change the published app or enable Bitmap.
+The user has brought timeline controls forward from the earlier after-Bitmap plan. The [timeline brief](TIMELINE-CONTROLS-BRIEF.md) and [index dependency review](INDEX-DEPENDENCIES.md) define the preparation on a separate development branch. The authorized development pass implements the reviewed controls and workspace together with distinct experimental Bitmap consumers. It does not change the published app, main or updater.
 
 - Arm available tracks, choose Live where supported, and use shared Start/Pause/Resume controls. Configuration alone must not start work.
 - Coordinate one fetch/decode of a required block for ready armed consumers in the same pass, sharing parser/output facts while preserving per-index checkpoints and dependency order.
 - Put everyday controls in the tracks and keep deeper settings/evidence in the Inspector. Review all write paths, including Live, browsing, legacy cache enrichment and automatic address projection.
 - Correct Sat ranges ordering under TXIO, use one stable timeline disclosure, and show all available built-ins by default. Preserve Plus as disabled for future custom indexes.
-- Consider Previous/Next navigation at the current block/transaction/output/local-Sat level without starting indexing.
-- Prepare distinct extension points for Districts, Parcels and Bitmap Chain, with shared ingestion and explicit state/outcome dependencies. First-pass development does not implement or unlock them.
+- Add one global precise In/Out pair and Previous/Next/Skip navigation at the current block/transaction/output/local-Sat level without starting indexing. Per-track ranges remain deferred.
+- Keep resource details, requirements and advanced settings inside the persistent timeline workspace; preserve Settings and Peers as separate destinations.
+- Implement Districts, Parcels and Bitmap Chain as separate development consumers, sharing ingestion while preserving explicit provenance/outcome dependencies, coverage gaps and experimental profile labels.
 
 ## Available: v0.7.7 Sats
 

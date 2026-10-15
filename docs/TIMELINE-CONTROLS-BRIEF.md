@@ -1,10 +1,10 @@
 # Timeline controls and coordinated indexing brief
 
-Prepare the timeline controls and shared indexing workflow before implementing Bitmap features. Users should select indexes as they would arm tracks in a DAW, choose whether each follows new blocks, and start or pause the selection from one toolbar. A coordinated scan should fetch and decode a needed block once for all ready consumers, instead of starting a separate blockchain scan for each track.
+Implement the timeline controls and shared indexing workflow together with District, Parcel and Bitmap Chain consumers in a development build. Users select indexes as they would arm tracks in a DAW, choose whether each follows new blocks, and start or pause the selection from one toolbar. A coordinated scan fetches and decodes a needed block once for all ready consumers, instead of starting a separate blockchain scan for each track.
 
-This is an implementation brief based on the published Sats application and a code review on 15 October 2026. The controls and corrections below are planned work. Preparation is on a separate development branch; it does not change main, released applications, the updater, user profiles or active jobs. This scheduling decision brings the named timeline work forward from the earlier after-Bitmap roadmap.
+This brief is based on the published Sats application and a code review on 15 October 2026. The user subsequently authorized implementation after review, including Bitmap consumers and a locally served portable preview. Development stays on a separate branch; main, released applications, the updater and existing user profiles remain untouched. This direction supersedes the earlier after-Bitmap scheduling and the initial preparation-only scope.
 
-The companion [index dependency review](INDEX-DEPENDENCIES.md) distinguishes block evidence, mandatory state, optional lookup indexes and explorer joins.
+The companion [index dependency review](INDEX-DEPENDENCIES.md) distinguishes block evidence, mandatory state, optional lookup indexes and explorer joins. The [workspace design review](WORKSPACE-DESIGN-REVIEW.md) places all resource details and contextual advanced settings inside the timeline workspace, with Settings and Peers as the retained exceptions.
 
 ## Track controls
 
@@ -22,9 +22,9 @@ Keep these states separate:
 
 Arming and Live changes before Start prepare the run; they do not fetch blocks or start workers. New work selections, Live on and retention edits during a run are marked Pending and require the next Start/review. Explicit Pause, Off and Live off constrain the active run: Live off ends that consumer's following after its admitted target, while Off stops further dispatch at a safe boundary. Show applied and pending settings distinctly. These actions do not erase coverage. Saved state remains inspectable when its source and branch dependencies remain valid.
 
-Place Arm, Live, progress and an immediate waiting/error reason on the relevant track. Keep Start/Pause/Resume in a stable shared toolbar. Group actions operate on eligible children and display mixed state; a presentation group does not create its own executor. Selecting a row opens details without arming, starting or changing a range. Routine range and mode preparation should be possible within the timeline, with a compact shared review of the selection before execution. The Inspector holds deeper source, retention, recovery and evidence settings rather than being a mandatory detour through Settings.
+Place Arm, Live, progress and an immediate waiting/error reason on the relevant track. Keep Start/Pause/Resume and one global In/Out pair in a stable shared toolbar. Group actions operate on eligible children and display mixed state; a presentation group does not create its own executor. Selecting a row opens details without arming, starting or changing the global range. The Inspector holds contextual mode/history drafts, source, recovery and evidence settings; it has no duplicate execution controls or per-track range overrides.
 
-Only expose controls supported by the capability. Headers use provider synchronization controls, not a fictitious block-derivation job. Values and ScriptPubKeys configure one TXIO consumer rather than submitting duplicate TXIO jobs. Their retention selections are independent, but their Live indication follows the shared TXIO policy; do not display three independently divergent Live policies for Links/Values/Scripts. Sat ranges is visually within TXIO but belongs to the independent Sats consumer. Required UTXO/Sat facts remain retained even when optional historical Values/Scripts tracks are off. Keep existing release gates, including disabled Satline tracing and unimplemented Bitmap controls.
+Only expose controls supported by the capability. Headers use provider synchronization controls, not a fictitious block-derivation job. Values and ScriptPubKeys configure one TXIO consumer rather than submitting duplicate TXIO jobs. Their history selections are independent, but their Live indication follows the shared TXIO policy; do not display three independently divergent Live policies for Links/Values/Scripts. Sat ranges is visually within TXIO but belongs to the independent Sats consumer. Required UTXO/Sat facts remain retained even when optional historical Values/Scripts tracks are off. Satline remains disabled; new Bitmap development consumers retain separate identities from the legacy locked recipe.
 
 ## Default tracks and hierarchy
 
@@ -45,6 +45,10 @@ Addresses
   Current UTXOs
   Historical outputs
 Inscriptions
+Bitmap
+  Districts
+  Parcels
+  Bitmap Chain
 Disabled Plus reserved for future custom indexes
 ```
 
@@ -99,19 +103,44 @@ A shared missing block puts affected consumers into Waiting. A damaged consumer 
 
 Keep the existing recovery mechanisms: UTXO's 288 reversible transitions, Sats' two savepoints at multiples of 12 and two at multiples of 144, normal index anchor reconciliation, and historical-address withdrawal of disconnected anchors. Discard prepared data tied to a disconnected branch. Explorer joins continue to require their exact compatible checkpoints. Missing recovery evidence does not authorize resetting an index.
 
-Combine explicit raw-block retention demands without overriding another consumer's existing retained bytes. Mandatory live state, undo, savepoints, frozen heads and archives own their facts independently of historical coverage switches. Run garbage collection at safe boundaries only after enumerating all owners; damaged ownership evidence must stop cleanup.
+Raw Blocks participation determines new raw-body retention for the shared run. If armed, retain/index the fetched serialized blocks. If off, consumers use newly fetched bodies temporarily and release them after all pending consumers finish. There is no competing normal raw-retention dropdown per consumer. Preserve preexisting retained/cached bytes and external/mounted data; Off never deletes them. Mandatory live state, undo, savepoints, frozen heads and archives own their facts independently. Run garbage collection at safe boundaries only after enumerating all owners; damaged ownership evidence must stop cleanup.
 
 Raw Blocks Off stops that consumer's new acquisition/retention work. It does not forbid another armed consumer from reading existing local or mounted/provider bytes. Such a read must not falsely advance optional Blocks coverage or turn its retention policy on.
 
-## Contextual navigation
+## Global In and Out
 
-Consider Previous and Next controls alongside the transport after the shared-run contract is stable. They move the playhead by one item at the current semantic level: block, transaction, output, or sat offset within the selected output. Labels should state the actual level. Pan remains a separate action.
+Use one global mark pair for all armed consumers. Per-track ranges and disjoint selection editing are deferred. The user can enter a resource in the main address bar, move the playhead there, press I for In, navigate to another resource and press O for Out. A toolbar control exposes draggable mark handles. Right-click can clear a mark, with equivalent accessible Clear In, Clear Out and Clear range actions. Editing or clearing marks never starts work or rewrites an accepted job.
+
+Marks preserve typed, anchored resource positions, including transaction/output positions and output-local Sat offsets when known. A numbered Sat needs a saved containing-output location before it can become a timeline point; properties or issuance origin alone cannot stand in for that location. Preserve the original mark's snapshot and exact position rather than following a moving Sat silently. Unknown/lost placement cannot create a fabricated endpoint.
+
+Existing consumers process whole blocks. Show both precise marks and their inclusive containing-block interval before Start. Complete boundary blocks are processed; a fine mark does not authorize partial-transaction or partial-Sat state construction. Reject reversed or incomparable marks with an explanation rather than silently exchanging coordinate spaces. Dragging a handle clamps it at the other valid boundary. Clearing In means normal resume/required start; clearing Out means the selected tip for initial catch-up and continued following only for Live consumers. Display these defaults explicitly.
+
+Fixed Out is a hard cap, even when a consumer's Live preference is saved. Following beyond it requires clearing Out and explicitly starting/resuming the prepared selection. A saved UTXO/Sat head beyond Out is already beyond the requested window, not a historical state at Out, and is never rewound implicitly. In above zero needs a compatible complete prefix for stateful consumers; if missing, show the required lead-in and offer an explicit reviewed initialization or a global In change. Do not silently scan genesis. Current Addresses projects its eligible saved UTXO checkpoint; In/Out does not filter address membership.
+
+Replace active per-owner range maps and per-row range editors with the global marks. Preserve old accepted jobs and their ranges as existing work; changing the global draft does not mutate those requests. Track selection, resource navigation, Back/Forward and passive status refresh leave the marks unchanged.
+
+## Contextual navigation and shortcuts
+
+Use Previous/Next for one item and Skip for ten items at the current semantic level: block, transaction, output, or Sat offset within the selected output. Clamp to verified bounds and label the exact unit/distance. Pan remains a separate action; arrow buttons must not change meaning with zoom.
+
+| Shortcut in timeline navigation context | Action |
+| --- | --- |
+| Left / Right | Previous / next item. |
+| Shift + Left / Right | Skip ten items at the same level. |
+| Up / Down | Parent / descend into the focused item when child metadata is established. Track labels and native controls retain their own directional navigation. |
+| Home / End | First / last verified item in the current parent. |
+| Enter / Escape | Open or descend / return to parent; an open menu/dialog handles Escape first. |
+| I / O | Set global In / Out from the established typed playhead. |
+| + / minus | Zoom. |
+| Space + drag | Existing hand-pan; Space never starts indexing. |
+
+After explicit address submission, focus the resolved contextual heading or timeline navigation surface so I/O is available. Do not intercept ordinary typing, text selection, contenteditable/composing input, selects, menus, dialogs, isolated content frames or Ctrl/Alt/Meta shortcuts. Keep existing local tab/separator/scrollbar/marker interactions. Route shell and iframe shortcuts through one action owner to prevent double execution.
 
 Reuse `positionKey()`, `focusPosition()` and `childEntity()` rather than introducing another navigation interpretation. At output level, adjacent offsets can hold nonconsecutive sat numbers because FIFO ranges can be fragmented. Resolve numbered Sat identity only from authenticated saved ranges, preserving current unavailable behavior. Unknown child counts disable stepping; navigation never starts indexing, Satline or a chain-wide search. Keep range selection separate from browsing focus.
 
-## Future Bitmap integration
+## Bitmap development integration
 
-Prepare extension points for three distinct consumers: Districts, Parcels and Bitmap Chain. The first development pass implements generic controls/orchestration, not Bitmap rules or release availability. The creator's current reference repository was reviewed at a fixed revision; its commitment reference is not a complete witness-based Gateway evaluator, and unfinished profile/provenance semantics must not be treated as frozen implementation rules.
+Implement three distinct development consumers: Districts, Parcels and Bitmap Chain. The creator's reference repository was reviewed at a fixed revision; its commitment reference is not a complete witness-based Gateway evaluator. Use explicit experimental development profiles for implementable semantics, preserving unresolved evidence and distinguishing their self-described fingerprints from an unfinished canonical-standard profile format.
 
 District and Parcel consumers should share verified block decoding and a single authenticated reveal-extraction result. Preserve original body/witness evidence, physical positions, parser identity and parent metadata separately from interpreted claims. Avoid making a full retained Inscriptions index mandatory merely to use the same extractor. Required source evidence can be shared without claiming that every related user-facing index has coverage.
 
@@ -130,7 +159,7 @@ Bitmap Chain consumes completed evaluated outcomes; it must not independently re
 
 Use canonical consumer identities and storage interfaces so visual aliases, parent tracks and optional outputs cannot create duplicate writers or parallel copies in unrelated directories. Preserve existing source/fact paths; choose any new Bitmap store names and schemas during its implementation brief. Shared ingestion is an optimization, not a merger of District, Parcel and audit semantics. Adding Parcel rules must not silently change a District-only semantic identity.
 
-The current locked Gateway District recipe is not established as equivalent to the new reference. Its eventual rule/parser changes require deliberate profile identity and migration work. Do not reuse a legacy recipe hash after changing its semantics. Exact profile serialization, Parcel edge behavior and production evaluation/reorg acceptance remain prerequisites for that later implementation, rather than workarounds to unblock the controls phase.
+The current locked Gateway District recipe is not established as equivalent to the new reference. Preserve it and use new District/Parcel/Chain consumer identities and separate development stores. Do not reuse its recipe hash after changing semantics. Declare experimental Parcel tie/provenance choices and supported text-decoding behavior; unknown dependencies remain unresolved. Exact canonical profile serialization and broader production acceptance are not established merely by producing a working development preview.
 
 ## Implementation sequence
 
@@ -138,9 +167,9 @@ The current locked Gateway District recipe is not established as equivalent to t
 2. Introduce consumer adapters and the bounded prepared-block context around the existing shared coordinator. Bring UTXO, Sats and historical addresses into the same dispatch architecture; Current Addresses remains a dependent projection.
 3. Add durable shared Start/Pause/Resume and independent Off, fair Live/catch-up scheduling, failure isolation and recovery. Resolve frozen-address retention before releasing that control.
 4. Render the canonical track tree, default built-ins, stable disclosure and row controls. Connect normal controls to the planner; keep deeper recovery/settings in the Inspector.
-5. Add contextual stepping if it remains within the agreed preparation scope, then verify the composed application and migration paths.
+5. Add contextual stepping and exact global marks; integrate the persistent resource workspace and Bitmap views, then verify the composed application and migration paths.
 
-Keep legacy single-index entry points as adapters to the same scheduling contract, preserving their documented intent. General deletion/reset tooling, a Satline re-enable, new Bitmap semantics and release/updater promotion are outside this preparation brief.
+Keep legacy single-index entry points as adapters to the same scheduling contract, preserving their documented intent. General deletion/reset tooling, a Satline re-enable and release/updater promotion are outside this development scope. Deliver a tested portable local preview with its own profile and a browser-openable local URL.
 
 ## Acceptance checks
 
@@ -155,7 +184,7 @@ Keep legacy single-index entry points as adapters to the same scheduling contrac
 - Check fresh profiles and old hidden-track preferences: all available built-ins appear, Plus stays disabled, and displaying/selecting/arming/configuring alone causes no build or source fetch.
 - Verify stable disclosure identity, focus, accessible relationships, distinct colors and mixed group state. Test narrow layouts, mouse/keyboard, vertical wheel, modifier zoom and pinch.
 - Test Previous/Next at verified boundaries and with missing counts, fragmented ranges, reorgs and canceled navigation. Navigation must not alter indexing selections or start work.
-- Use mock District/Parcel/outcome consumers to verify shared extraction, dependency waiting, separate storage/commit identities and evaluated-empty versus missing outcomes. These tests must leave all real Bitmap features gated.
+- Exercise the development District/Parcel/outcome adapters with bounded authenticated fixtures to verify shared extraction, dependency waiting, separate store/commit identities and evaluated-empty versus missing outcomes. Preserve the legacy locked recipe; do not represent experimental profiles as canonical standard rules.
 - Extend the existing queue, live, shared-build, UTXO/address/Sats and actual workspace browser tests. After implementation, run relevant regression/race checks and compiled-app acceptance against the final candidate.
 
 ## Implementation references

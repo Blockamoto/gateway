@@ -356,6 +356,10 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 	}
 	processed := int64(0)
 	for {
+		if !indexRunOptionalWorkAllowed(a.dataDir, j.Index) {
+			finish("paused", nil)
+			return
+		}
 		if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
 			finish("paused", nil)
 			return

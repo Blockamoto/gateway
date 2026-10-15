@@ -1,10 +1,12 @@
 # Gateway status
 
-## In preparation before Bitmap
+## Development: timeline workspace and Bitmap
 
-The [timeline controls brief](TIMELINE-CONTROLS-BRIEF.md) and [index dependency review](INDEX-DEPENDENCIES.md) prepare per-track Arm/Live controls, a coordinated shared indexing run, default available tracks and hierarchy corrections before Bitmap. The review confirms the Sat ranges row-order bug, separate expand/collapse controls, and execution/dependency gaps that require real scheduling and policy changes. It also covers future District, Parcel and Bitmap Chain consumers without implementing or unlocking them.
+The user authorized implementing the [timeline controls brief](TIMELINE-CONTROLS-BRIEF.md), [dependency review](INDEX-DEPENDENCIES.md) and [workspace design review](WORKSPACE-DESIGN-REVIEW.md), together with experimental District, Parcel and Bitmap Chain indexing. Work is on a separate local development branch. A locally served portable preview is the acceptance target; main, released packages, live updater delivery and existing user profiles remain unchanged.
 
-This is a documentation and code-analysis change on a separate local preparation branch. Application code, active jobs, user profiles, main, released packages and updater delivery are unchanged. This current direction supersedes the earlier after-Bitmap scheduling of the named timeline work; general index deletion/replay tooling remains separate.
+The implementation consolidates arming, Live, Start/Pause/Resume and one global In/Out range on the timeline. Ready consumers share block reads, decoding and inscription extraction while retaining separate authenticated checkpoints. Resource details and advanced settings stay within the persistent workspace; Settings and Peers are separate exceptions. Required state, obtainable block sources, lookup alternatives and optional joins must be visible in Requirements and the shared run review. General index deletion/replay and per-track ranges remain deferred.
+
+Backend and browser verification is in progress. Bounded fixtures cover shared block delivery, genesis prerequisites without implicit work, frozen current-address facts beyond 288 blocks, durable pause/cancel intent, final publication guards and persistent resource routing. These are development results, not whole-chain performance or release acceptance. Bitmap uses separately labelled development profiles and stores; the old locked recipe remains unchanged. Final tests, preview location and limitations will be recorded when the app is ready.
 
 ## Published prerelease: v0.7.7 Sats
 

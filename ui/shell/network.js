@@ -16,7 +16,7 @@
   $('network-summary').textContent=`${n.enabled===false?'Outbound offline':'Bitcoin: '+num(n.connected||0)+' connections'} · Gateway peerhood: locked · Headers: ${h.header_state||'starting'}${indexStatus?' · '+num(indexStatus.localIndexes)+' local indexes · '+num(indexStatus.following)+' following new blocks · Gateway sharing locked':''}`;
   const warning=$('header-warning'),behind=Number.isFinite(h.header_target_height)&&Number.isFinite(h.header_height)&&h.header_target_height>h.header_height;
   if(warning)warning.hidden=!behind;
-  const paused=n.headers_user_paused||(h.header_state==='paused'&&n.enabled!==false);$('headers-pause').textContent=paused?'Resume headers':'Pause headers';$('headers-pause').dataset.action=paused?'resume':'pause';
+  const paused=n.headers_user_paused||(h.header_state==='paused'&&n.enabled!==false);$('headers-pause').textContent=$('headers-pause').dataset.workspaceHeaders==='true'?'Inspect Headers track':paused?'Resume headers':'Pause headers';$('headers-pause').dataset.action=paused?'resume':'pause';
   const technical=devMode()?n:{enabled:n.enabled,bitcoin_connected:n.connected,gateway_connected:n.gateway_connected,headers:h};
   $('network-technical').textContent=JSON.stringify(technical,null,2);
   $('network-journey').innerHTML=`<p class="small muted">Bitcoin peers supply headers and requested blocks. Inspect individual peers and capabilities in Peers.</p>`;

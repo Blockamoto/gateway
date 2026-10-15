@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -57,6 +58,7 @@ func cloneIndexJob(j indexJob) indexJob {
 }
 
 type indexStatusView struct {
+	Run                indexRunDocument        `json:"run"`
 	Sats               *indexSatStatusView077  `json:"sats,omitempty"`
 	Addresses          *indexAddressStatusView `json:"addresses,omitempty"`
 	UTXO               *indexUTXOStatusView    `json:"utxo,omitempty"`
@@ -126,6 +128,7 @@ func (a *app) saveIndexJob(j indexJob) error {
 }
 func (a *app) indexStatus() indexStatusView {
 	out := indexStatusView{Definitions: indexDefinitions(), Providers: a.indexProviderViews(), Instances: []indexInstance{}, Live: []indexLiveView{}, Job: a.indexJobSnapshot()}
+	out.Run = a.indexRunSnapshot()
 	if state, err := readBlocksBodyMigration(a.dataDir); err != nil {
 		out.Errors = append(out.Errors, "Blocks migration: "+err.Error())
 	} else {
@@ -180,6 +183,9 @@ func (a *app) indexStatus() indexStatusView {
 	out.UTXO = a.indexUTXOStatus(out.Jobs)
 	out.Addresses, out.Instances = a.indexAddressStatus(out.Instances)
 	out.Sats = a.indexSatStatus077()
+	if instances, err := a.bitmapDevelopmentInstancesContext(context.Background()); err == nil {
+		out.Instances = append(out.Instances, instances...)
+	}
 	for i := range out.Instances {
 		instance := &out.Instances[i]
 		if instance.Definition != "sat-state" {
@@ -197,6 +203,12 @@ func (a *app) indexStatus() indexStatusView {
 	return out
 }
 func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {
+	if strings.HasPrefix(req.Index, "bitmap-") {
+		return indexJob{}, fmt.Errorf("Bitmap development consumers require a reviewed coordinated timeline run")
+	}
+	if !indexRunOptionalWorkAllowed(a.dataDir, req.Index) {
+		return indexJob{}, fmt.Errorf("%s is Off in the timeline; arm it before requesting new work", req.Index)
+	}
 	if err := requireReleaseIndexRequest(req); err != nil {
 		return indexJob{}, err
 	}
@@ -221,6 +233,9 @@ func (a *app) startIndexBuildInternal(req indexBuildRequest, live bool) (indexJo
 	return a.startIndexBuildID(req, live, "")
 }
 func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (indexJob, error) {
+	if strings.HasPrefix(req.Index, "bitmap-") {
+		return indexJob{}, fmt.Errorf("Bitmap development consumers require a coordinated timeline run")
+	}
 	if err := requireReleaseIndexRequest(req); err != nil {
 		return indexJob{}, err
 	}
@@ -508,6 +523,10 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		}
 	}
 	for {
+		if !indexRunOptionalWorkAllowed(a.dataDir, j.Index) {
+			finish("paused", nil)
+			return
+		}
 		if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
 			finish("paused", nil)
 			return

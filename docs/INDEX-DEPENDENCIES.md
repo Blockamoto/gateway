@@ -1,6 +1,6 @@
 # Index dependencies and on demand evidence
 
-Use this review to plan the [timeline controls and coordinated indexing work](TIMELINE-CONTROLS-BRIEF.md) before Bitmap implementation. It describes the released Sats execution paths reviewed on 15 October 2026, including behavior that a catalog dependency list alone does not explain. Proposed control changes remain in the brief; this review does not enable indexes or change saved profiles.
+Use this review to plan the [timeline controls and coordinated indexing work](TIMELINE-CONTROLS-BRIEF.md) together with the authorized Bitmap development implementation. It describes the released Sats execution paths reviewed on 15 October 2026, including behavior that a catalog dependency list alone does not explain. The released behavior below is the audit baseline; implementation changes are described in the brief and must be verified separately. New Bitmap consumers use distinct experimental identities, and existing user profiles remain untouched.
 
 ## Dependency types
 

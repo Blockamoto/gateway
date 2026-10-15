@@ -394,6 +394,10 @@ func (a *app) drainIndexQueueLocked() bool {
 		policies, err := a.indexLivePolicies()
 		if err == nil {
 			for _, id := range append([]string{next.Request.Index}, next.Request.Outputs...) {
+				if !indexRunOptionalWorkAllowed(a.dataDir, id) {
+					err = fmt.Errorf("%s is Off in the timeline; arm it before resuming the saved request", id)
+					break
+				}
 				if policies[id].Stopped {
 					err = fmt.Errorf("%s indexing is off; enable it and resume this queued plan", id)
 					break

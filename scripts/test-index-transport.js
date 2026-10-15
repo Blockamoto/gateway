@@ -1,0 +1,21 @@
+'use strict';
+// Exact resource marks must never invent placement from a previous view.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const context={window:{}};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../ui/shell/index-transport.js'),'utf8'),context);
+const {point,compare,project,owner}=context.window.GatewayIndexTransport,plain=value=>JSON.parse(JSON.stringify(value)),anchor='a'.repeat(64),other='b'.repeat(64);
+assert.equal(point({resource:'address',address:'fixture'}),null);
+assert.equal(point({kind:'sat',sat_number:5000000000,origin:{height:1}}),null,'Issuance origin is not current location');
+assert.equal(point({kind:'output',height:170,txIndex:1}),null,'Incomplete deep coordinates do not become block marks');
+assert.equal(point({kind:'satpoint',height:170,txIndex:1,outputIndex:0,satOffset:-1}),null);
+const location={state:'unspent',output_coordinate:'0.1.170',offset:3},snapshot={height:226,block_hash:anchor,commitment:other};
+const sat=point({resource:'sat',sat_number:5000000000,location,snapshot});
+assert.equal(sat.height,170);assert.equal(sat.satOffset,3);assert.equal(sat.block_hash,null,'State-tip hash is not a creation-block hash');
+assert.equal(point({resource:'sat',sat_number:5000000000,location:{...location,state:'lost'},snapshot}),null);
+const a=point({kind:'output',height:170,txIndex:1,outputIndex:0,block_hash:anchor}),b=point({kind:'output',height:170,txIndex:1,outputIndex:2,block_hash:anchor});
+assert.equal(compare(a,b),-1);assert.equal(project({in:b,out:a}).valid,false,'Reversed fine endpoints reject even within one block');
+assert.equal(project({in:a,out:{...b,block_hash:other}}).valid,false,'Same-height branch mismatch rejects');
+assert.equal(compare(point({kind:'input',height:170,txIndex:1,inputIndex:0}),a),null,'Input and output offsets have no invented relative order');
+assert.deepEqual(plain(project({in:a,out:b})),{valid:true,in:170,out:170,in_hash:anchor,out_hash:anchor});
+assert.deepEqual(plain(project({in:sat,out:null})),{valid:true,in:170,out:null});
+assert.equal(owner('txio-values'),'txo-spender');assert.equal(owner('txio-scripts'),'txo-spender');assert.equal(owner('txio-sat-ranges'),'sat-state','Presentation parent does not imply execution dependency');
+console.log('Index transport coordinate checks PASS: exact placement, unknown/lost rejection, branch binding, fine ordering, whole-block projection and independent Sat owner.');

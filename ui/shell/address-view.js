@@ -15,7 +15,7 @@ window.GatewayAddressView=(()=>{
     const exact=ready&&known(snapshot.height)&&!!snapshot.block_hash&&!!snapshot.commitment;
     return {...value,exact,balance:value.mode==='current'&&exact&&known(value.current_balance_sats)?value.current_balance_sats:null,count:value.mode==='current'&&exact&&known(value.current_output_count)?value.current_output_count:null};
   }
-  function mount({root,address,api,onNavigate,onBuild}){
+  function mount({root,address,api,onNavigate,onBuild,onResolved}){
     const doc=root.ownerDocument,el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
     let dead=false,generation=0,current=null;const rangeViews=new Set();
     root.classList.remove('embed-host');root.replaceChildren();
@@ -25,7 +25,7 @@ window.GatewayAddressView=(()=>{
     function buildButton(id,label,rebuildSnapshot=null){const b=el('button',label);b.type='button';b.onclick=()=>onBuild?.(id,rebuildSnapshot);return b;}
     function section(mode,label){
       const details=el('details',undefined,'panel address-outputs'),summary=el('summary',label),note=el('p','','muted small'),list=el('div',undefined,'address-output-list'),message=el('p','','small'),controls=el('div',undefined,'actions'),more=el('button','Load more'),restart=el('button','Refresh from first page');
-      details.id='address-'+mode;summary.id='address-'+mode+'-summary';message.setAttribute('role','status');more.type=restart.type='button';more.hidden=true;restart.hidden=true;controls.append(more,restart);if(mode==='historical')controls.append(buildButton('address-history','Review historical range'));details.append(summary,note,list,message,controls);
+      details.id='address-'+mode;summary.id='address-'+mode+'-summary';message.setAttribute('role','status');more.type=restart.type='button';more.hidden=true;restart.hidden=true;controls.append(more,restart);if(mode==='historical')controls.append(buildButton('address-history','Inspect historical address index'));details.append(summary,note,list,message,controls);
       const s={mode,details,summary,note,list,message,more,restart,value:null,cursor:'',loading:false,serial:0,rangeViews:new Set()};
       details.addEventListener('toggle',()=>{if(details.open&&!s.value&&!s.loading)load(s);});more.onclick=()=>load(s,true);restart.onclick=()=>load(s);return s;
     }
@@ -37,8 +37,8 @@ window.GatewayAddressView=(()=>{
     function renderBalance(value){const previous=current;current=model(value);if(window.GatewaySatView&&(!current.exact||window.GatewaySatView.identity(previous?.snapshot)!==window.GatewaySatView.identity(current.snapshot)))clearHoldings();amount.textContent=current.balance===null?'Unavailable':number(current.balance)+' sats';balance.dataset.state=current.state||'not_built';
       position.textContent=current.exact?'Saved UTXO tip · block '+number(current.snapshot.height)+' · '+current.snapshot.block_hash:'No verified current-address snapshot is available.';
       status.textContent=(current.note||'')+(current.exact?' '+String(current.snapshot.validation||'Local validation').replaceAll('_',' ')+'. '+(current.snapshot.consensus_validated?'Consensus validated.':'Full consensus validation has not been performed.'):'');
-      actions.replaceChildren();if(!current.exact)actions.append(buildButton(['dependency_missing','unavailable'].includes(current.state)?'utxo-state':'address-state',['dependency_missing','unavailable'].includes(current.state)?'Open UTXO set':['rebuild_required','corrupt'].includes(current.state)?'Review Current UTXOs rebuild':'Build Current UTXOs',['rebuild_required','corrupt'].includes(current.state)?current.snapshot:null));
-      utxos.summary.textContent='Current UTXOs'+(current.count===null?'':' · '+number(current.count));
+      actions.replaceChildren();if(!current.exact)actions.append(buildButton(['dependency_missing','unavailable'].includes(current.state)?'utxo-state':'address-state',['dependency_missing','unavailable'].includes(current.state)?'Inspect UTXO set':['rebuild_required','corrupt'].includes(current.state)?'Review Current UTXOs recovery':'Inspect Current UTXOs',['rebuild_required','corrupt'].includes(current.state)?current.snapshot:null));
+      utxos.summary.textContent='Current UTXOs'+(current.count===null?'':' · '+number(current.count));onResolved?.(current);
     }
     function outputRow(output,mode){const row=el('article',undefined,'address-output-row'),main=el('div'),link=el('button',output.output,'text-button mono');link.type='button';link.onclick=()=>onNavigate?.(output.output);main.append(link,el('p',output.script_type||'Unknown script type','small muted'));const facts=el('div',undefined,'address-output-facts');facts.append(el('strong',number(output.value_sats)+' sats'));
       const label=output.spent_status==='unspent'?(mode==='current'?'Unspent at snapshot':'Unspent'):output.spent_status==='spent'?'Spent':'Spend status unknown';facts.append(el('span',label,'small muted'));if(output.spent_status==='spent'&&output.spender){const spend=el('button','Spending input '+output.spender,'text-button mono');spend.type='button';spend.onclick=()=>onNavigate?.(output.spender);facts.append(spend);}row.append(main,facts);if(mode==='current'&&current?.exact&&window.GatewaySatView){const anchor=current.snapshot,key=window.GatewaySatView.identity(anchor),view=window.GatewaySatView.mountOutputRanges({root:row,output:output.output,snapshot:anchor,valueSats:output.value_sats,api,onNavigate,isCurrent:()=>!dead&&current?.exact&&window.GatewaySatView.identity(current.snapshot)===key});utxos.rangeViews.add(view);rangeViews.add(view);}return row;

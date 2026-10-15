@@ -311,6 +311,9 @@ func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (
 	if int64(len(data)) > indexBrowseBudget {
 		return false, fmt.Errorf("browsed index coverage exceeds budget")
 	}
+	if err = checkIndexConsumerPublication(ctx, a.dataDir, id); err != nil {
+		return false, err
+	}
 	if err = atomicWriteBytes(filepath.Join(s.dir, "head.json"), data); err != nil {
 		return false, err
 	}
@@ -330,7 +333,7 @@ func (a *app) indexBrowsedBlock(ctx context.Context, block blockView, extracted 
 	}
 	out := []indexBrowseResult{}
 	for _, id := range []string{"tx-locator", "inscriptions"} {
-		if !s.Policies[id] || !indexBrowseAvailable(id) {
+		if !s.Policies[id] || !indexBrowseAvailable(id) || !indexRunOptionalWorkAllowed(a.dataDir, id) {
 			continue
 		}
 		b, e := singletonBrowseBatch(id, block, extracted)

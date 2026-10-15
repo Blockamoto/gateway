@@ -562,6 +562,9 @@ func (s *utxoStore) publishContext(ctx context.Context, c utxoCheckpoint, bounda
 	if e := s.hook("before_head"); e != nil {
 		return e
 	}
+	if err := checkIndexConsumerPublication(ctx, s.root, "utxo-state"); err != nil {
+		return err
+	}
 	if e := atomicWriteJSON(filepath.Join(s.dir, "head.json"), h); e != nil {
 		return e
 	}
@@ -642,6 +645,7 @@ func (s *utxoStore) ApplyBlock(ctx context.Context, block blockView) error {
 					return fmt.Errorf("UTXO transaction inputs exceed money range")
 				}
 				inputValue += coin.ValueSats
+				runRememberPrevout(ctx, ti, vi, coin)
 				if e = s.changeCoin(ctx, edit, &c, member, in.PrevTxID, false); e != nil {
 					return e
 				}

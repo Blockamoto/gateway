@@ -293,6 +293,10 @@ func (a *app) writeGraphBlockHash(height int64, hash string) error {
 		return err
 	}
 	a.graphStoreMu.Lock()
+	if !indexRunOptionalWorkAllowed(a.dataDir, "tx-locator") || !indexRunOptionalWorkAllowed(a.dataDir, "txo-spender") {
+		a.graphStoreMu.Unlock()
+		return errIndexRunConsumerStopped
+	}
 	defer a.graphStoreMu.Unlock()
 	f, err := os.OpenFile(a.graphBlocksPath(), os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
@@ -421,6 +425,9 @@ func blockKnowledgeIsPublic(v blockView) bool {
 }
 
 func (a *app) graphIndexBlock(v blockView, force bool) error {
+	if !indexRunOptionalWorkAllowed(a.dataDir, "tx-locator") || !indexRunOptionalWorkAllowed(a.dataDir, "txo-spender") {
+		return fmt.Errorf("legacy graph derivation is Off in the timeline")
+	}
 	if !integrityVerified(v) {
 		return fmt.Errorf("block integrity receipt missing or outdated; recheck required")
 	}
@@ -483,6 +490,10 @@ func (a *app) graphIndexBlock(v blockView, force bool) error {
 	}
 	a.graphStoreMu.Lock()
 	for path, recs := range txGroups {
+		if !indexRunOptionalWorkAllowed(a.dataDir, "tx-locator") || !indexRunOptionalWorkAllowed(a.dataDir, "txo-spender") {
+			a.graphStoreMu.Unlock()
+			return errIndexRunConsumerStopped
+		}
 		if err := a.appendGraphRecords(path, "txloc", recs); err != nil {
 			a.graphStoreMu.Unlock()
 			return err
@@ -498,6 +509,9 @@ func (a *app) graphIndexBlock(v blockView, force bool) error {
 	// The block marker is written last and acts as the commit marker for the
 	// records above. Duplicate records after a crash are harmless because
 	// lookups are keyed and canonical-chain filtered.
+	if !indexRunOptionalWorkAllowed(a.dataDir, "tx-locator") || !indexRunOptionalWorkAllowed(a.dataDir, "txo-spender") {
+		return errIndexRunConsumerStopped
+	}
 	if err := a.writeGraphBlockHash(v.Height, v.Hash); err != nil {
 		return err
 	}

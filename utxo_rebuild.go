@@ -37,6 +37,9 @@ func resetUTXOForRebuild(ctx context.Context, root, jobID string) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
+	if e := checkIndexConsumerPublication(ctx, root, "utxo-state"); e != nil {
+		return e
+	}
 	if strings.TrimSpace(jobID) == "" || len(jobID) > 4096 {
 		return fmt.Errorf("UTXO rebuild requires a persistent job ID")
 	}
@@ -88,6 +91,9 @@ func resetUTXOForRebuild(ctx context.Context, root, jobID string) error {
 	if _, e = os.Stat(archive); os.IsNotExist(e) {
 		if _, e = os.Stat(dir); e == nil {
 			if e = os.MkdirAll(archives, 0755); e != nil {
+				return e
+			}
+			if e = checkIndexConsumerPublication(ctx, root, "utxo-state"); e != nil {
 				return e
 			}
 			if e = os.Rename(dir, archive); e != nil {

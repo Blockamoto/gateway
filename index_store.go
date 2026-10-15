@@ -637,6 +637,9 @@ func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash s
 	}
 	// The atomic head is the only visibility boundary. An interrupted orphan
 	// commit is harmless and cannot advance advertised coverage.
+	if err := checkIndexConsumerPublication(s.locatorContext, s.profileRoot, s.definition.ID); err != nil {
+		return err
+	}
 	head := cloneTXIOLayerCoverage(s.head)
 	head.Mode, head.Commitment, head.Retention = s.head.Mode, c.Commitment, retention
 	if b.Spenders != nil {
@@ -742,6 +745,9 @@ func (s *indexStore) reconcile(hashAt func(int64) (string, error)) error {
 			head.TXIOLayers[id] = kept
 		}
 		head.TXIOLayersHash = txioLayerCoverageHash(head)
+	}
+	if e = checkIndexConsumerPublication(s.locatorContext, s.profileRoot, s.definition.ID); e != nil {
+		return e
 	}
 	if e = s.writeActiveLocatorHead(active); e != nil {
 		return e

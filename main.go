@@ -24,6 +24,12 @@ type app struct {
 	updateAPIWork         sync.WaitGroup
 	updateBackgroundWork  sync.WaitGroup
 	indexMu               sync.Mutex
+	indexRunMu            sync.Mutex
+	indexRunLoaded        bool
+	indexRunState         indexRunDocument
+	indexRunError         error
+	indexRunActiveID      string             // guarded by indexMu
+	indexRunSourceBlock   indexRunSourceFunc // optional injected source; fixed before a run starts
 	indexLiveMu           sync.Mutex
 	indexLiveControlMu    sync.Mutex // policy changes, pause and supervisor decisions
 	indexLiveLast         string

@@ -46,11 +46,11 @@ func Test077SatHTTPGenuineBlocksSearchPrivacyAndNoImplicitJobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	genesis, err := a.satViewContext077(ctx, 0)
-	if err != nil || genesis.State != "ready" || genesis.Location == nil || genesis.Location.State != "genesis_unspendable" || genesis.Location.Address != "" || genesis.Location.Output != "0.0.0" || genesis.Snapshot.Height != 1 || genesis.Snapshot.BlockHash != b1.Hash || genesis.Snapshot.Commitment != s.checkpoint.Commitment || genesis.Snapshot.ConsensusValidated {
+	if err != nil || genesis.State != "ready" || genesis.Location == nil || genesis.Location.State != "genesis_unspendable" || genesis.Location.Address != "" || genesis.Location.Output != "0.0.0" || genesis.Location.BlockHash != b0.Hash || genesis.Snapshot.Height != 1 || genesis.Snapshot.BlockHash != b1.Hash || genesis.Snapshot.Commitment != s.checkpoint.Commitment || genesis.Snapshot.ConsensusValidated {
 		t.Fatal(genesis, err)
 	}
 	live, err := a.satViewContext077(ctx, firstSatAtHeight(1))
-	if err != nil || live.State != "ready" || live.Location.State != "unspent" || live.Location.Output != "0.0.1" || live.Location.Offset != 0 {
+	if err != nil || live.State != "ready" || live.Location.State != "unspent" || live.Location.Output != "0.0.1" || live.Location.BlockHash != b1.Hash || live.Location.Offset != 0 {
 		t.Fatal(live, err)
 	}
 	ranges, err := a.satOutputContext077(ctx, "0.0.1", 50, "")

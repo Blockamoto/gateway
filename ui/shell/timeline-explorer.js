@@ -17,8 +17,8 @@ window.GatewayTimelineExplorer = (() => {
     const inspector = element('div',undefined,'timeline-inspector-panel'); inspector.id='timeline-inspector-panel'; inspector.setAttribute('role','tabpanel'); inspector.setAttribute('aria-labelledby','timeline-inspector-tab'); inspector.tabIndex=0;
     while(root.firstChild)inspector.append(root.firstChild);
     const explorer = element('div',undefined,'timeline-explorer-panel'); explorer.id='timeline-explorer-panel'; explorer.setAttribute('role','tabpanel'); explorer.setAttribute('aria-labelledby','timeline-explorer-tab'); explorer.tabIndex=0; explorer.hidden=true;
-    const inspectorTab = element('button','Inspector'); inspectorTab.id='timeline-inspector-tab'; inspectorTab.type='button'; inspectorTab.setAttribute('role','tab'); inspectorTab.setAttribute('aria-controls',inspector.id);
-    const explorerTab = element('button','Details'); explorerTab.id='timeline-explorer-tab'; explorerTab.type='button'; explorerTab.setAttribute('role','tab'); explorerTab.setAttribute('aria-controls',explorer.id);
+    const inspectorTab = element('button','Index settings'); inspectorTab.id='timeline-inspector-tab'; inspectorTab.type='button'; inspectorTab.setAttribute('role','tab'); inspectorTab.setAttribute('aria-controls',inspector.id);
+    const explorerTab = element('button','Resource'); explorerTab.id='timeline-explorer-tab'; explorerTab.type='button'; explorerTab.setAttribute('role','tab'); explorerTab.setAttribute('aria-controls',explorer.id);
     tabs.append(explorerTab,inspectorTab); root.append(tabs,inspector,explorer); root.classList.add('timeline-tabbed-inspector');
     const panes=new Map([['explorer',{panel:explorer,tab:explorerTab}],['inspector',{panel:inspector,tab:inspectorTab}]]), resourcePanels=new Map(), viewHandlers=new Map();
     let resource='block', viewKind='block';
@@ -44,7 +44,7 @@ window.GatewayTimelineExplorer = (() => {
       explorer.hidden=active!=='explorer'||resource!=='block';
       for(const [key,panel]of resourcePanels)panel.hidden=active!=='explorer'||resource!==key;
       explorerTab.setAttribute('aria-controls',resourcePanels.get(resource)?.id||explorer.id);
-      root.dataset.activePane=active;root.dataset.resource=resource;
+      root.dataset.activePane=active;root.dataset.resource=resource;const workspaceRoot=root.closest('.index-timeline');if(workspaceRoot)workspaceRoot.dataset.activePane=active;
     };
     inspectorTab.addEventListener('click',()=>setTab('inspector'));
     explorerTab.addEventListener('click',()=>setTab('explorer'));
@@ -171,7 +171,7 @@ window.GatewayTimelineExplorer = (() => {
         return;
       }
       cancel();focused=next;loaded=null;pending=next;
-      if(!explicitTab)setTab('explorer',false);
+      if(!explicitTab||value.immediate!==false)setTab('explorer',false);
       blank(value.immediate===false?'Move along the timeline; this block will load once the playhead settles.':'Loading from local sources first. Missing block data may be fetched from a connected Bitcoin provider.',value.immediate===false?'settling':'loading');
       if(value.immediate===false) {
         const ticket=generation;
@@ -262,7 +262,7 @@ window.GatewayTimelineExplorer = (() => {
       detail.querySelector('#timeline-explorer-close-tx').onclick=()=>{onNavigateIntent?.({kind:'block',height:block.height});txGeneration++;for(const request of txRequests)request.abort();txRequests.clear();if(!Number.isSafeInteger(block.transaction_count))return focus({...focused,immediate:true,refresh:true});detail.hidden=true;detail.replaceChildren();viewKind='block';explorer.dataset.resource='block';if(loaded?.map)painter?.block(loaded.map);else if(loaded?.block)loadMap(loaded.block,generation);onEntity?.({kind:'block',height:block.height,address:block.height+'.bitcoin',resolved:true,metadata:metadata({kind:'block',height:block.height},block)});};
       if(pendingEntity?.height===block.height&&pendingEntity.txIndex===tx.index){const value=pendingEntity;detail.dataset.focusKind=value.kind||'transaction';if(validHeight(value.inputIndex)){const articles=[...detail.querySelectorAll('.io-grid>section:first-child .io')];articles.find((item,index)=>tx.inputs[index]?.n===value.inputIndex)?.classList.add('focused');}if(validHeight(value.outputIndex)){const articles=[...detail.querySelectorAll('.io-grid>section:last-child .io')],output=articles.find((item,index)=>tx.outputs[index]?.n===value.outputIndex);output?.classList.add('focused');if(validHeight(value.satOffset))output?.append(element('p','Output-local sat offset: '+number(value.satOffset),'sat-focus'));}pendingEntity=null;}
       detail.querySelectorAll('[data-explorer-copy]').forEach(button=>button.onclick=async()=>{try{await win.navigator.clipboard.writeText(button.dataset.explorerCopy);notify?.('Copied to clipboard.');}catch{notify?.('Clipboard access is unavailable. Select the displayed text to copy it.',true);}});
-      detail.querySelectorAll('[data-explorer-address]').forEach(button=>button.onclick=()=>{const address=button.dataset.explorerAddress;if(win.parent!==win)win.parent.postMessage({type:'gateway:navigate',address},win.location.origin);else win.location.href='/?resolve='+encodeURIComponent(address);});
+      detail.querySelectorAll('[data-explorer-address]').forEach(button=>button.onclick=()=>{const address=button.dataset.explorerAddress;if(onNavigate)onNavigate(address);else if(win.parent!==win)win.parent.postMessage({type:'gateway:navigate',address},win.location.origin);else win.location.href='/?resolve='+encodeURIComponent(address);});
       const flowButton=detail.querySelector('#timeline-explorer-flow'),flow=detail.querySelector('#timeline-explorer-flow-result'),flowNote=detail.querySelector('#timeline-explorer-flow-note');
       flowButton.onclick=async()=>{
         flowButton.disabled=true;flowButton.textContent='Resolving input values…';
@@ -299,7 +299,7 @@ window.GatewayTimelineExplorer = (() => {
     }
     function addPane(name,label,panel) {
       if(dead||resourcePanels.has(name))throw Error('Duplicate resource details.');
-      panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby',explorerTab.id);panel.hidden=true;resourcePanels.set(name,panel);root.append(panel);return explorerTab;
+      panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby',explorerTab.id);panel.classList.add('timeline-explorer-panel');panel.hidden=true;resourcePanels.set(name,panel);root.append(panel);return explorerTab;
     }
     function activateResource(name) {
       if(resource!==name){if(resource==='block')cancel();viewHandlers.get(resource)?.deactivate?.();resource=name;}
@@ -377,7 +377,7 @@ window.GatewayTimelineExplorer = (() => {
       }catch(error){if(current(ticket)&&error.name!=='AbortError')blank(error.message,'error');}
     }
     function entity(value){if(!validHeight(value?.height))return;onNavigateIntent?.(value);if(value.kind==='satpoint'&&validHeight(value.txIndex)&&validHeight(value.outputIndex)&&validHeight(value.satOffset)){openSatPoint(value);return;}const saved=value;focus({...value,immediate:true,preserveEntity:true});pendingEntity=saved;setTab('explorer');if(loaded?.block.height===saved.height&&validHeight(saved.txIndex))loadTransaction(saved.txIndex,loaded.block,generation);}
-    return {focus,entity,navigate,loadHierarchy,health,teardown,addPane,activateResource,registerView:(name,handler)=>viewHandlers.set(name,handler),viewport:painter,setTab:name=>setTab(name),state:()=>({active,height:focused?.height,index:focused?.index,healthy:available,loading:explorer.dataset.state,loadedHeight:loaded?.block.height})};
+    return {focus,entity,navigate,loadHierarchy,health,teardown,addPane,activateResource,showResource:name=>{activateResource(name);setTab('explorer');},cancelResource:()=>{cancel();viewHandlers.get(resource)?.deactivate?.();},registerView:(name,handler)=>viewHandlers.set(name,handler),viewport:painter,setTab:name=>setTab(name),state:()=>({active,resource,height:focused?.height,index:focused?.index,healthy:available,loading:explorer.dataset.state,loadedHeight:loaded?.block.height})};
   }
   return {mount};
 })();

@@ -402,6 +402,10 @@ func (a *app) runAddressIndexBuild(ctx context.Context, j indexJob) {
 		}
 	}
 	if j.Index == "address-state" {
+		if !indexRunOptionalWorkAllowed(a.dataDir, j.Index) {
+			finish("paused", nil)
+			return
+		}
 		authority := a.currentChainAuthority()
 		u, err := utxoStoreHead(a.dataDir)
 		if err != nil {
@@ -477,6 +481,10 @@ func (a *app) runAddressIndexBuild(ctx context.Context, j indexJob) {
 	processed := int64(0)
 	for _, gap := range missing {
 		for height := gap.From; height <= gap.To; height++ {
+			if !indexRunOptionalWorkAllowed(a.dataDir, j.Index) {
+				finish("paused", nil)
+				return
+			}
 			if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
 				finish("paused", nil)
 				return

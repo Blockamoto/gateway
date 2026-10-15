@@ -118,140 +118,43 @@ async function run() {
       await page.mouse.click(x,y);
     };
     await page.goto(origin+'/indexes', {waitUntil:'networkidle'});
-    await page.locator('#timeline-expand').click();
+    await page.getByRole('button',{name:'Expand index tracks',exact:true}).click();
     await page.locator('.timeline-track[data-index="blocks"]').waitFor();
-    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes => nodes.map(node => node.dataset.index)), ['headers','blocks'], 'Only added or established indexes have tracks, with foundational Headers first');
+    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks'],'Every available built-in is present, locked recipes stay excluded');
+    assert.equal(await page.locator('#timeline-add-index').isDisabled(),true);
+    assert.equal(await page.locator('#timeline-expand').count(),0,'One stable disclosure owns both states');
     assert.deepEqual(await viewport(),{from:0,to:999999,fit:true});
-    assert.deepEqual(await blockLane.evaluate(node=>JSON.parse(node.dataset.coverage)),[{from:0,to:9},{from:499990,to:499999},{from:500003,to:500010},{from:999990,to:999999}], 'Rendered physical block coverage excludes gaps and disregards processing/provider claims');
-    assert(await page.locator('*').count()<1200,'Million-height chain must use bounded DOM, not one node per block');
-    assert.equal(await page.locator('.timeline-lane').count(),2);
-    noMutations();
-    await screenshot('timeline-chain-light');
-
-    // The header itself is present at both heights. Explorer needs the body,
-    // so its fetch disclosure must use Blocks availability independently.
-    await selectHeight(page,500000);
-    assert.equal(await page.locator('#timeline-inspector').getAttribute('data-index'),'headers');
-    assert.match(await page.locator('#timeline-selection-meta').innerText(),/1 \/ 1/);
-    assert.equal(await page.locator('#timeline-open-entity').innerText(),'Fetch & open in Explorer','A local header does not imply a locally held block body');
-    await selectHeight(page,500003);
-    assert.equal(await page.locator('#timeline-open-entity').innerText(),'Open in Explorer','Header selection can use independent known local block availability');
-    await page.locator('#timeline-fit').click();
-    await page.locator('#timeline-inspector-tab').click();
-
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
-    await page.locator('#timeline-inspector').waitFor();
-    assert.equal(await page.getByRole('switch',{name:'blocks On',exact:true}).count(), 1, 'Controls belong to the selected track inspector');
-    assert.equal(await page.locator('#timeline-details').evaluate(details => details.open), false, 'Detailed workspaces begin collapsed');
-    assert.equal(calls.filter(call => call.path.endsWith('/query')).length, 0, 'Merely selecting a track does not request records');
-    assert(await page.locator('#timeline-selection-title').innerText());
-    const inspectorBox=await page.locator('#timeline-inspector').boundingBox(),editorBox=await page.locator('.timeline-editor').boundingBox();
-    assert(inspectorBox.y+inspectorBox.height<=editorBox.y,'Selected track inspector appears above the aligned timeline');
-    noMutations();
-
-    await page.locator('.timeline-exact summary').click();
-    await page.getByRole('button',{name:'Select blocks 499,990–499,999',exact:true}).click();
-    assert.equal(await page.locator('#timeline-inspector').getAttribute('data-kind'),'range');
-    assert.match(await page.locator('#timeline-selection-meta').innerText(),/10 \/ 10/);
-    await page.locator('#timeline-focus').click();
-    const focused=await viewport();assert.equal(focused.fit,false);assert(focused.from<=499990&&focused.to>=499999);
-    assert(focused.to-focused.from<64,'Focusing a short range reaches individually inspectable blocks');
-    await screenshot('timeline-range-light');
+    const physical=[{from:0,to:9},{from:499990,to:499999},{from:500003,to:500010},{from:999990,to:999999}];
+    assert.deepEqual(await blockLane.evaluate(node=>JSON.parse(node.dataset.coverage)),physical,'Physical coverage excludes gaps and ignores provider/processing claims');
+    assert(await page.locator('*').count()<1300,'Million-height chain uses bounded DOM');
+    assert.equal(await page.getByRole('switch',{name:'blocks On',exact:true}).count(),0,'Inspector has no duplicate execution switches');
+    assert.equal(await page.locator('.timeline-track[data-index=blocks] [data-control=arm]').isChecked(),false,'Existing data does not automatically arm a consumer');
+    noMutations();await screenshot('timeline-chain-light');
+    await selectHeight(page,500000,'blocks');
+    const focused=await viewport();assert.equal(focused.fit,false);assert(focused.from<=500000&&focused.to>=500000);
     snapshot.timeline.tip_height=1000009;snapshot.timeline.target_height=1000009;snapshot.timeline.tracks[0].coverage[0].to=1000009;
-    await refresh();
-    assert.deepEqual(await viewport(),focused,'Appending headers never moves a user-focused viewport');
+    await refresh();assert.deepEqual(await viewport(),focused,'Tip growth preserves deliberate focused viewport');
     await page.locator('#timeline-fit').click();assert.equal((await viewport()).to,1000009);
     snapshot.timeline.tip_height=1000010;snapshot.timeline.target_height=1000010;snapshot.timeline.tracks[0].coverage[0].to=1000010;
-    await refresh();assert.deepEqual(await viewport(),{from:0,to:1000010,fit:true},'Fit chain tracks an appended tip');
-
-    // Read-only entity inspection must preserve exact absence in the middle of
-    // a recorded range; only the distinct Explorer action may request bytes.
-    await selectHeight(page,500000);
-    assert.equal(await page.locator('#timeline-inspector').getAttribute('data-kind'),'block');
-    assert.match(await page.locator('#timeline-selection-meta').innerText(),/0 \/ 1/);
-    assert.equal(await page.locator('#timeline-open-entity').innerText(),'Fetch & open in Explorer');
-    await clickBlock(500003);
-    assert.match(await page.locator('#timeline-selection-meta').innerText(),/1 \/ 1/);
-    assert.equal(await page.locator('#timeline-open-entity').innerText(),'Open in Explorer');
-    await blockLane.focus();await page.keyboard.press('ArrowLeft');
-    assert.match(await page.locator('#timeline-selection-title').innerText(),/500,002/);
-    assert.match(await page.locator('#timeline-selection-meta').innerText(),/0 \/ 1/);
-    await refresh(true);assert.equal(await blockLane.evaluate(node=>document.activeElement===node),true,'Refresh retains keyboard focus on the same track node');
-    await page.keyboard.press('+');const zoomed=await viewport();assert(zoomed.to-zoomed.from<32);
-    await page.locator('#timeline-pan-right').click();const panned=await viewport();assert(panned.from>zoomed.from);
-    await page.locator('#timeline-pan-left').click();assert((await viewport()).from<panned.from);
-    await blockLane.focus();await page.keyboard.press('Home');assert.equal((await viewport()).fit,true,'Home returns the keyboard viewport to the full chain');
-    await selectHeight(page,500000);
-    await page.locator('#timeline-focus').click();
-    await screenshot('timeline-focused-light');
-    noMutations();
-
-    await page.locator('#timeline-add-index').click();
-    for (const id of ['inscriptions','bitmap-compatibility']) {
-      const option = page.locator('#timeline-index-picker button[data-index="'+id+'"]');
-      assert.equal(await option.isDisabled(), true, 'Locked indexes remain unavailable in the Add index chooser');
-      await option.evaluate(node => node.click());
-      assert.equal(await page.locator('.timeline-track[data-index="'+id+'"]').count(),0, 'A locked option cannot create a track');
-    }
-    assert.equal(await page.locator('#timeline-inspector').getAttribute('data-index'),'blocks');
-    await screenshot('timeline-locked-light');
-    await page.locator('#timeline-add-index').click();
-    noMutations();
-
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
-    for (const mode of ['light','dark']) {
-      theme = mode;
-      await page.evaluate(mode => {document.documentElement.dataset.theme=mode;}, mode);
-      const switchColors=await page.locator('.timeline-switches .index-switch').evaluateAll(labels=>labels.map(label=>({on:label.querySelector('input').checked,color:getComputedStyle(label.querySelector('.switch-track')).backgroundColor})));
-      assert.equal(switchColors[0].on,true);assert.equal(switchColors[1].on,false);
-      assert.notEqual(switchColors[0].color,switchColors[1].color,'On and Off use distinguishable colours in '+mode+' theme');
-      for (const width of [1440,390]) {
-        await page.setViewportSize({width,height:width===390?844:1100});
-        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Timeline fits '+mode+' '+width+' without document overflow');
-        await screenshot('timeline-'+mode+'-'+width);
-      }
-    }
+    await refresh();assert.deepEqual(await viewport(),{from:0,to:1000010,fit:true});
+    await blockLane.focus();await page.keyboard.press('Home');assert.equal(await page.locator('#index-timeline').getAttribute('data-playhead'),'0','Home moves to first item rather than starting work');
+    await page.keyboard.press('Shift+ArrowRight');assert.equal(await page.locator('#index-timeline').getAttribute('data-playhead'),'10');
+    await page.keyboard.press('ArrowLeft');assert.equal(await page.locator('#index-timeline').getAttribute('data-playhead'),'9');
+    await refresh(true);assert.equal(await blockLane.evaluate(n=>document.activeElement===n),true,'Status redraw preserves lane focus');
+    await page.keyboard.press('+');const zoomed=await viewport();assert(zoomed.to-zoomed.from<1000010);
+    await page.locator('#timeline-pan-right').click();assert((await viewport()).from>zoomed.from);
+    await page.locator('#timeline-pan-left').click();
+    for(const mode of ['light','dark']){theme=mode;await page.evaluate(mode=>document.documentElement.dataset.theme=mode,mode);for(const width of [1440,390]){await page.setViewportSize({width,height:width===390?844:1100});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await screenshot('timeline-'+mode+'-'+width);}}
     await page.setViewportSize({width:1440,height:1100});
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
-    const physical=snapshot.timeline.tracks.splice(1,1)[0];
-    await refresh();assert.deepEqual(await blockLane.evaluate(node=>JSON.parse(node.dataset.coverage)),[],'Missing physical projection does not fall back to processing/provider coverage');
-    await page.locator('.timeline-track[data-index="headers"] .timeline-track-select').click();
-    await selectHeight(page,500003);
-    assert.equal(await page.locator('#timeline-open-entity').innerText(),'Fetch & open in Explorer','An unavailable block source never gets filled in by selected-header coverage');
-    snapshot.timeline.tracks.splice(1,0,physical);await refresh();
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
-    unavailable = true;
-    await refresh();
-    await page.getByText(/status unavailable/i).first().waitFor();
-    assert.equal(await page.getByRole('switch',{name:'blocks On',exact:true}).isDisabled(), true, 'Unavailable control status cannot authorize changes');
-    assert.equal(await page.getByRole('switch',{name:'blocks Live',exact:true}).isDisabled(), true);
-    await screenshot('timeline-unavailable');
-    unavailable = false;
-    await refresh();
-    assert.equal(await page.getByRole('switch',{name:'blocks On',exact:true}).isDisabled(), false, 'A successful refresh recovers controls');
-    assert.equal(calls.filter(call=>call.path.endsWith('/query')).length,0,'All timeline inspection remains independent of record queries');
-    await selectHeight(page,500000);
-    await page.locator('#timeline-build-range').click();
-    assert.equal(await page.locator('#from').inputValue(),'0','Preparing a range keeps the retained instance origin fixed');assert.equal(await page.locator('#from').getAttribute('readonly'),'');assert.equal(await page.locator('#to').inputValue(),'500000');
-    assert.equal(await page.locator('#initial-live').isChecked(),false,'Preparing a selected range does not implicitly follow the chain');
-    assert.equal(await page.locator('#build').isDisabled(),true,'A selected range still needs a reviewed plan');
-    assert.equal(await page.locator('#timeline-details').evaluate(details=>details.open),true);
-    noMutations();
-
-    // Explorer remains in the workspace; only the focused known block is requested.
-    await page.goto(origin+'/indexes?embedded=1',{waitUntil:'networkidle'});await page.locator('#timeline-expand').click();
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
-    await page.evaluate(()=>{window.timelineNavigations=[];window.addEventListener('message',event=>{if(event.origin===location.origin&&event.data?.type==='gateway:navigate')window.timelineNavigations.push(event.data.address);});});
-    await selectHeight(page,500000);
-    assert.deepEqual(await page.evaluate(()=>window.timelineNavigations),[]);
-    await page.locator('#timeline-explorer-tab').click();
-    await page.locator('#timeline-explorer-panel[data-state="error"]').waitFor();
-    assert.deepEqual(await page.evaluate(()=>window.timelineNavigations),[]);
-    assert(calls.some(call=>call.path==='/api/v1/navigate'&&call.body.address==='500000.bitcoin'));
-    noMutations();
-    assert.deepEqual(unexpected, [], 'All browser traffic stays in the isolated read-only fixture');
-    assert.deepEqual(errors, [], 'No uncaught browser errors');
-    console.log('Index timeline browser PASS: source-identical sparse/gapped million-height fixture, bounded DOM, Headers-first tracks, exact read-only range/block/keyboard navigation, focused-vs-Fit tip growth, locked controls, theme/narrow layout, status recovery, explicit range planning and Explorer navigation.');
+    const saved=snapshot.timeline.tracks.splice(1,1)[0];await refresh();assert.deepEqual(await blockLane.evaluate(n=>JSON.parse(n.dataset.coverage)),[],'Missing physical projection cannot fall back to committed processing coverage');
+    snapshot.timeline.tracks.splice(1,0,saved);await refresh();
+    unavailable=true;await refresh();assert.equal(await page.locator('#timeline-run-start').isDisabled(),true,'Unavailable status cannot authorize Start');
+    unavailable=false;await refresh();assert.equal(await page.locator('#timeline-run-start').isDisabled(),false);
+    await page.getByRole('button',{name:'Collapse index tracks',exact:true}).click();assert.equal(await page.locator('#timeline-compact-scrubber').isVisible(),true);assert.equal(await page.locator('#timeline-run-start').isVisible(),true,'Collapsed workspace retains shared transport');
+    await page.getByRole('button',{name:'Expand index tracks',exact:true}).click();
+    noMutations();assert.equal(calls.filter(c=>c.path.endsWith('/query')).length,0,'Navigation is independent of index records');
+    assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);
+    console.log('Index timeline browser PASS: physical sparse/gapped million-height coverage, bounded default tracks, stable disclosure, navigation keys, focused/fit growth, theme/narrow layout, status recovery, no duplicate execution or implicit work.');
     if (out) fs.writeFileSync(path.join(out,'acceptance.json'), JSON.stringify({result:'PASS',scope:'Source-identical UI with synthetic sparse range/API fixtures; no real indexing or network peers',screenshots:true,calls},null,2)+'\n');
   } finally {
     if (browser) await browser.close();

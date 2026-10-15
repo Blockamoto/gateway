@@ -526,6 +526,11 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 		pending := []int{}
 		for i := range j.Progress {
 			p := &j.Progress[i]
+			if !indexRunOptionalWorkAllowed(a.dataDir, p.Index) {
+				p.State = "paused"
+				p.Error = "Off in the timeline; committed coverage is retained."
+				continue
+			}
 			if p.State == "failed" {
 				continue
 			}

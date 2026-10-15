@@ -2,7 +2,7 @@
 
 // Real browser DOM regression for the shell router. All HTTP traffic is fulfilled
 // in memory: this never opens or changes a running Gateway node. All referenced
-// shell scripts are real; embedded module pages and APIs are test doubles.
+// shell and embedded workspace scripts are real; API responses are isolated test doubles.
 // Run: node scripts/test-shell-navigation.js
 // Reproduce a checked-in regression: node scripts/test-shell-navigation.js --revision HEAD
 // Requires Playwright and an installed Chromium browser (bundled Chromium, Edge or
@@ -25,8 +25,10 @@ const read = name => revision
   : fs.readFileSync(path.join(root, name), 'utf8');
 // Read once so concurrent source edits cannot mix versions within a test run.
 const html = read('ui/shell/index.html');
+const workspaceHTML=read('ui/shell/indexes.html');
 const scripts = new Map([...html.matchAll(/<script\b[^>]*\bsrc="(\/shell\/[^"?]+\.js)"/g)]
   .map(match => [match[1], read('ui' + match[1])]));
+for(const match of workspaceHTML.matchAll(/<script\b[^>]*\bsrc="(\/shell\/[^"?]+\.js)"/g))scripts.set(match[1],read('ui'+match[1]));
 assert.ok(scripts.has('/shell/app.js'), 'real shell app.js must be referenced by the HTML');
 
 function playwright() {
@@ -55,6 +57,8 @@ const bitcoinAddress='1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
 const numericPublicKey='02'+'0'.repeat(63)+'1';
 assert.equal(ECDH.convertKey(Buffer.from(numericPublicKey,'hex'),'secp256k1',undefined,undefined,'compressed').toString('hex'),numericPublicKey,'Numeric destination fixture is a valid secp256k1 public key');
 const addressCheckpoint={height:170,block_hash:'b'.repeat(64),commitment:'address-head'};
+const definitions=['headers','blocks','tx-locator','txo-spender','utxo-state','sat-state','address-state','address-history','inscriptions'].map(id=>({id,name:id,locked:false,buildable:id!=='headers',dependencies:[],rules:[],version:1,network:'bitcoin-mainnet'}));
+const runState={schema:1,configured:false,prepared:{in:null,out:null,consumers:[]}};
 const fixtures = {
   '/api/v1/settings': {settings:{bitcoin_peers:[], satline_enabled:false, ord_enabled:true}, core:{connected:false}, core_store:{}},
   '/api/v1/browser/status': {browser:{native_active:false}},
@@ -64,7 +68,8 @@ const fixtures = {
   '/api/v1/migration': {job:{}, archive_root:'local fixture archive'},
   '/api/v1/graph/status': {},
   '/api/v1/jobs': {jobs:[]},
-  '/api/v1/index/status': {job:{}, instances:[], live:[]},
+  '/api/v1/index/status': {definitions,job:{},jobs:[],instances:[],live:[],providers:[],browse:[],run:runState,timeline:{tip_height:170,tip_hash:'b'.repeat(64),tracks:[]},utxo:{state:'current',processed_height:170,processed_hash:'b'.repeat(64),target_height:170},addresses:{current:{state:'ready',p2pk_supported:true,snapshot:addressCheckpoint,utxo_snapshot:addressCheckpoint}}},
+  '/api/v1/index/run':runState,
   '/api/v1/network': {enabled:true, connected:0, gateway_connected:0, headers:{header_height:0, header_state:'waiting'}},
   '/api/v1/setup': {show_automatically:false, settings:{}, progress:{stage:0}},
   '/api/v1/data-coverage': {headers:{header_height:0}, cache:{}, transaction_locations:{}, spender_knowledge:{}, mounted:{}, mounted_preparation:{}, core:{connected:false}, serving:{}},
@@ -97,7 +102,11 @@ async function harness(browser, address = '.gateway', failStatus = false, addres
     if (url.pathname.endsWith('.css')) return fulfill('', 'text/css');
     if (url.pathname === '/shell/gateway.ico') return fulfill('', 'image/x-icon');
     if (url.pathname === '/shell/gateway-mark.svg') return fulfill('<svg xmlns="http://www.w3.org/2000/svg"/>', 'image/svg+xml');
-    if (['/satline', '/indexes'].includes(url.pathname)) return fulfill('<!doctype html><title>Module fixture</title><h1>Embedded module fixture</h1><script>window.addEventListener("message",e=>{if(e.source===parent&&e.origin===location.origin&&e.data.type==="gateway:workspace-select-index"){document.body.dataset.index=e.data.index;document.body.dataset.rebuildSnapshot=JSON.stringify(e.data.rebuild_snapshot||null);}});</script>', 'text/html');
+    if(url.pathname==='/indexes')return fulfill(workspaceHTML.replaceAll('__INDEX_NONCE__','fixture').replace('__INDEX_BOOTSTRAP__','{}'),'text/html');
+    if(url.pathname==='/api/v1/index/run/prepare')return fulfill(JSON.stringify({...runState,prepared:request.postDataJSON()}),'application/json');
+    if(url.pathname==='/api/v1/index/block-map')return fulfill(JSON.stringify({height:Number(url.searchParams.get('height')||0),hash:'b'.repeat(64),transactions:[],indexing:[],total:0}),'application/json');
+    if(url.pathname==='/api/v1/flow')return fulfill(JSON.stringify({state:'unavailable',nodes:[],edges:[]}), 'application/json');
+    if(url.pathname==='/satline') return fulfill('<!doctype html><title>Module fixture</title><h1>Embedded module fixture</h1><script>window.addEventListener("message",e=>{if(e.source===parent&&e.origin===location.origin&&e.data.type==="gateway:workspace-select-index"){document.body.dataset.index=e.data.index;document.body.dataset.rebuildSnapshot=JSON.stringify(e.data.rebuild_snapshot||null);}});</script>', 'text/html');
     if(url.pathname==='/api/v1/appearance'){if(request.method()==='POST')appearance={...appearance,...request.postDataJSON()};return fulfill(JSON.stringify(appearance),'application/json')}
     if(url.pathname==='/api/v1/navigate/number'){
       assert.equal(request.method(),'GET');const raw=url.searchParams.get('number'),number=Number(raw),held=numbers.holds.get(raw);
@@ -112,6 +121,7 @@ async function harness(browser, address = '.gateway', failStatus = false, addres
       if([bitcoinAddress,numericPublicKey].includes(address))return fulfill(JSON.stringify({resource:{kind:'address',query:address,address:{address},address_index:{address,state:'ready'}}}),'application/json');
       if(address===txid||address===txid+'.840000.bitcoin'){const located=address===txid;return fulfill(JSON.stringify({resource:{query:address,transaction:{txid,height:840000,block_hash:block,tx_index:7,locator_verified:true,transaction_verified:!located,source_network:located?'local_index_locator':'local_index',locator_peer:'committed transaction locator',verification_state:located?'header_anchored_locator':'header_anchored',resolution_state:located?'located_bytes_unavailable':'',note:'<img src="https://untrusted.invalid/pixel"> A provider must supply the containing block.',transaction:located?{index:0,inputs:null,outputs:null}:{txid,index:7,inputs:[],outputs:[{n:0,value_sats:123,type:'script'}]}}}}),'application/json')}
     }
+    if(url.pathname==='/api/v1/navigate'&&request.method()==='POST'){const address=request.postDataJSON().address,height=Number(address.replace(/\.bitcoin$/,'').split('.').at(-1));return fulfill(JSON.stringify({resource:{kind:'block',query:address,block:{height:Number.isFinite(height)?height:0,hash:'b'.repeat(64),transaction_count:0,transactions:[]}}}),'application/json');}
     if(url.pathname==='/api/v1/address/view'){
       const destination=url.searchParams.get('address');assert.equal(request.method(),'GET');assert([bitcoinAddress,numericPublicKey].includes(destination));assert.equal(url.searchParams.get('mode'),'current');
       return fulfill(JSON.stringify({address:destination,destination_type:destination===numericPublicKey?'p2pk':'p2pkh',mode:'current',state:addressLookupState,snapshot:addressLookupState==='rebuild_required'?addressCheckpoint:{},current_balance_sats:null,current_output_count:null,outputs:[],complete:false,note:'Current UTXOs require inspection or a reviewed build.'}),'application/json');
@@ -141,20 +151,16 @@ async function healthy(page, label) {
   assert.equal(state.notice, '', `${label}: unexpected shell error`);
 }
 
-async function checkRoute(page, address, selector) {
-  await page.locator(selector).first().waitFor();
-  await healthy(page, address);
-  assert.equal(await page.locator('#address').inputValue(), address);
-  const selected = page.locator('.nav-item.active');
-  const positionalInput=address!==numericPublicKey&&/^(?:i[0-9]+\.[0-9]+\.[0-9]+|[0-9]+(?:\.[0-9]+)*)(?:\.bitcoin)?$/.test(address),primary = ['.gateway','indexes.gateway','peers.gateway','settings.gateway'].includes(address)||positionalInput;
-  assert.equal(await selected.count(), primary ? 1 : 0, `${address}: primary workspace selection`);
-  if (primary) {
-    assert.equal(await selected.getAttribute('data-route'), positionalInput?'indexes.gateway':address);
-    assert.equal(await selected.getAttribute('aria-current'), 'page');
-  }
-  if (!['satline.gateway', 'indexes.gateway'].includes(address)&&!positionalInput) {
-    assert.equal(await page.locator('#content').evaluate(node => node.classList.contains('embed-host')), false, `${address}: stale embedded layout`);
-  }
+const workspace=page=>page.frameLocator('#indexes-module');
+async function checkRoute(page,address,selector){
+ const exception=['peers.gateway','settings.gateway'].includes(address);
+ if(selector&&selector!=='iframe.indexes-frame')await (exception?page:workspace(page)).locator(selector+':visible').first().waitFor();
+ else await page.locator('#indexes-module').waitFor({state:'visible'});
+ await healthy(page,address);assert.equal(await page.locator('#address').inputValue(),address);
+ const active=page.locator('.nav-item.active');assert.equal(await active.count(),1);
+ assert.equal(await active.getAttribute('data-route'),exception?address:'indexes.gateway');
+ assert.equal(await active.getAttribute('aria-current'),'page');
+ assert.equal(await page.locator('#indexes-module').isVisible(),!exception,'Only Settings and Peers leave the workspace surface');
 }
 
 async function run() {
@@ -169,8 +175,8 @@ async function run() {
     const h = await harness(browser);
     try {
       await healthy(h.page, 'initial Home');
-      await h.page.locator('#home-state').getByText('Nothing is being maintained yet.', {exact:true}).waitFor();
-      await checkRoute(h.page, '.gateway', '#home-state');
+      await workspace(h.page).getByRole('heading',{name:'Gateway workspace',exact:true}).waitFor();
+      await checkRoute(h.page, '.gateway', '#workspace-resource-overview');
       assert.deepEqual(await h.page.locator('.topbar .top-nav').evaluateAll(nodes => nodes.map(n => n.dataset.route)), ['indexes.gateway','peers.gateway'], 'only Indexes and Peers are primary navigation');
       assert.equal(await h.page.locator('.brand[data-route=".gateway"]').count(), 1, 'Home stays reachable through the Gateway mark');
       for (const [address, selector] of [['indexes.gateway','iframe.indexes-frame'],['peers.gateway','#peer-data .panel']]) {
@@ -185,15 +191,15 @@ async function run() {
       assert.equal((await h.page.locator('#network-technical').textContent()).includes('bitcoin_gateway_discovery'),false,'ordinary technical state excludes the experiment');
       await h.page.locator('#address').fill('satline.gateway');
       await h.page.locator('#address-form').evaluate(form=>form.requestSubmit());
-      await checkRoute(h.page,'satline.gateway','#content h1');
-      await h.page.getByRole('heading',{name:/Satline/}).waitFor();
+      await checkRoute(h.page,'satline.gateway','h1');
+      await workspace(h.page).getByRole('heading',{name:/Satline/}).waitFor();
       assert.equal(await h.page.evaluate(()=>sessionStorage.getItem('gateway.dev_mode')),null,'Locked Satline explanation needs no development mode');
       assert.equal(h.requests.filter(request=>request.path.startsWith('/api/v1/satline')&&request.method!=='GET').length,0,'Opening Satline does not start a trace');
       const routes = [
-        ['bitcoin.gateway', '#content h1'], ['ord.gateway', '#content h1'],
-        ['sync.gateway', '#content h1'],
-        ['storage.gateway', '#storage-body .panel'], ['activity.gateway', '#index-job-summary'],
-        ['settings.gateway', '#settings-form'], ['.gateway', '#home-state'],
+        ['bitcoin.gateway', 'h1'], ['ord.gateway', 'h1'],
+        ['sync.gateway', 'h1'],
+        ['storage.gateway', '#workspace-resource-overview'], ['activity.gateway', '#workspace-resource-overview'],
+        ['settings.gateway', '#settings-form'], ['.gateway', '#workspace-resource-overview'],
       ];
       for (const [address, selector] of routes) {
         await h.page.locator('#address').fill(address);
@@ -204,13 +210,13 @@ async function run() {
       await h.page.locator('#settings-button').click();
       await checkRoute(h.page, 'settings.gateway', '#settings-form');
       await h.page.locator('.brand span').last().click();
-      await checkRoute(h.page, '.gateway', '#home-state');
+      await checkRoute(h.page, '.gateway', '#workspace-resource-overview');
       // Address-bar entry and browser back/forward are separate router entry points.
       await h.page.locator('#address').fill('indexes.gateway');
       await h.page.locator('#address-form').evaluate(form => form.requestSubmit());
       await checkRoute(h.page, 'indexes.gateway', 'iframe.indexes-frame');
       await h.page.goBack();
-      await checkRoute(h.page, '.gateway', '#home-state');
+      await checkRoute(h.page, '.gateway', '#workspace-resource-overview');
       await h.page.goForward();
       await checkRoute(h.page, 'indexes.gateway', 'iframe.indexes-frame');
       // A plain external/legacy nav anchor must not crash active-state traversal.
@@ -220,13 +226,13 @@ async function run() {
         document.querySelector('nav').append(anchor);
       });
       await h.page.locator('.brand span').last().click();
-      await checkRoute(h.page, '.gateway', '#home-state');
+      await checkRoute(h.page, '.gateway', '#workspace-resource-overview');
       // An untrusted origin must not drive the management shell through postMessage.
       await h.page.evaluate(() => window.dispatchEvent(new MessageEvent('message', {origin:'https://untrusted.invalid', data:{type:'gateway:navigate', address:'indexes.gateway'}})));
       assert.equal(await h.page.locator('#address').inputValue(), '.gateway');
       assert.deepEqual(h.errors, [], 'uncaught browser exceptions');
       assert.deepEqual(h.unexpected, [], 'unexpected network/API requests');
-      assert.ok(h.requests.every(request => request.method === 'GET'), 'navigation unexpectedly mutated state');
+      assert.ok(h.requests.every(request => request.method === 'GET'||request.path==='/api/v1/navigate'), 'navigation unexpectedly mutated state');
     } finally { await h.context.close(); }
 
     const deep = await harness(browser, 'indexes.gateway');
@@ -305,38 +311,38 @@ async function run() {
     const located=await harness(browser,'a'.repeat(64));
     try{
       await located.page.locator('iframe.indexes-frame').waitFor();await healthy(located.page,'Transaction address in the shared workspace');
-      assert.equal(await located.page.locator('#address').inputValue(),'a'.repeat(64));assert.equal(located.requests.some(request=>request.path==='/api/v1/navigate'),false,'Shell forwards resource entry to the workspace instead of resolving twice');assert.equal(await located.page.locator('#transaction-location').count(),0,'Shell does not duplicate transaction Details outside the workspace');assert.deepEqual(located.errors,[]);assert.deepEqual(located.unexpected,[]);
+      assert.equal(await located.page.locator('#address').inputValue(),'a'.repeat(64));await workspace(located.page).locator('#timeline-explorer-panel[data-state="located_bytes_unavailable"]').waitFor();assert.equal(located.requests.filter(request=>request.path==='/api/v1/navigate').length,1,'The workspace resolves a transaction once');assert.equal(await workspace(located.page).locator('img[src*=untrusted]').count(),0,'Provider notes remain escaped');assert.equal(await located.page.locator('#transaction-location').count(),0,'Shell does not duplicate transaction Details outside the workspace');assert.deepEqual(located.errors,[]);assert.deepEqual(located.unexpected,[]);
     }finally{await located.context.close()}
     if(scripts.has('/shell/address-view.js')){
       const addressView=await harness(browser,bitcoinAddress);
       try{
-        await addressView.page.locator('#address-balance').waitFor();await checkRoute(addressView.page,bitcoinAddress,'#address-balance');assert.equal(await addressView.page.locator('#address-balance').innerText(),'Unavailable');assert.equal(await addressView.page.locator('#content').getByText('[object Object]').count(),0,'Legacy typed address envelope is not passed as the address string');
-        await addressView.page.getByRole('button',{name:'Build Current UTXOs',exact:true}).click();await checkRoute(addressView.page,'indexes.gateway','iframe.indexes-frame');const frame=addressView.page.frameLocator('#indexes-module');await frame.locator('body[data-index="address-state"]').waitFor();
-        await addressView.page.goBack();await addressView.page.locator('#address-balance').waitFor();await checkRoute(addressView.page,bitcoinAddress,'#address-balance');const resolutions=addressView.requests.filter(r=>r.path==='/api/v1/navigate').length;await addressView.page.locator('#address').fill('i0.3.150');await addressView.page.locator('#address-form').evaluate(form=>form.requestSubmit());await checkRoute(addressView.page,'i0.3.150','iframe.indexes-frame');assert.equal(addressView.requests.filter(r=>r.path==='/api/v1/navigate').length,resolutions,'Spending-input BPS navigation uses the shared workspace');assert.equal(addressView.requests.some(r=>r.path==='/api/v1/index/build'),false,'Address navigation never starts a build');assert.deepEqual(addressView.errors,[]);assert.deepEqual(addressView.unexpected,[]);
+        await workspace(addressView.page).locator('#address-balance').waitFor();await checkRoute(addressView.page,bitcoinAddress,'#address-balance');assert.equal(await workspace(addressView.page).locator('#address-balance').innerText(),'Unavailable');assert.equal(await addressView.page.locator('#content').getByText('[object Object]').count(),0,'Legacy typed address envelope is not passed as the address string');
+        await workspace(addressView.page).getByRole('button',{name:'Inspect Current UTXOs',exact:true}).first().click();const frame=workspace(addressView.page);await frame.locator('#address-state-build-panel').waitFor({state:'visible'});assert.equal(await frame.locator('.timeline-track[data-index="address-state"] [data-control="arm"]').isChecked(),false,'Inspecting does not arm');
+        await addressView.page.locator('#address').fill(bitcoinAddress);await addressView.page.locator('#address-form').evaluate(form=>form.requestSubmit());await workspace(addressView.page).locator('#address-balance').waitFor();await checkRoute(addressView.page,bitcoinAddress,'#address-balance');const resolutions=addressView.requests.filter(r=>r.path==='/api/v1/navigate').length;await addressView.page.locator('#address').fill('i0.3.150');await addressView.page.locator('#address-form').evaluate(form=>form.requestSubmit());await checkRoute(addressView.page,'i0.3.150','iframe.indexes-frame');assert.equal(addressView.requests.filter(r=>r.path==='/api/v1/navigate').length,resolutions+1,'Spending-input BPS navigation resolves once in the shared workspace');assert.equal(addressView.requests.some(r=>r.path==='/api/v1/index/build'),false,'Address navigation never starts a build');assert.deepEqual(addressView.errors,[]);assert.deepEqual(addressView.unexpected,[]);
       }finally{await addressView.context.close()}
       const damagedAddress=await harness(browser,bitcoinAddress,false,'rebuild_required');
       try{
-        await damagedAddress.page.getByRole('button',{name:'Review Current UTXOs rebuild'}).click();await checkRoute(damagedAddress.page,'indexes.gateway','iframe.indexes-frame');const frame=damagedAddress.page.frameLocator('#indexes-module');await frame.locator('body[data-index="address-state"]').waitFor();assert.deepEqual(JSON.parse(await frame.locator('body').getAttribute('data-rebuild-snapshot')),addressCheckpoint,'Outer shell passes the damaged lookup checkpoint to the existing same-origin workspace');assert.equal(damagedAddress.requests.some(r=>r.path==='/api/v1/index/build'||r.path==='/api/v1/index/plan'),false,'Rebuild navigation requires a later explicit review');assert.deepEqual(damagedAddress.errors,[]);assert.deepEqual(damagedAddress.unexpected,[]);
+        await workspace(damagedAddress.page).getByRole('button',{name:'Review Current UTXOs recovery',exact:true}).click();const frame=workspace(damagedAddress.page);await frame.locator('#address-state-build-panel').waitFor({state:'visible'});assert.deepEqual(await frame.locator('#index-timeline').evaluate(()=>timeline.getRunDraft().consumers.find(c=>c.index==='address-state').rebuild_snapshot),addressCheckpoint,'Recovery stages the exact damaged lookup checkpoint');assert.equal(damagedAddress.requests.some(r=>r.path==='/api/v1/index/build'||r.path==='/api/v1/index/plan'),false,'Rebuild navigation requires a later explicit review');assert.deepEqual(damagedAddress.errors,[]);assert.deepEqual(damagedAddress.unexpected,[]);
       }finally{await damagedAddress.context.close()}
     }
     if(scripts.has('/shell/sat-view.js')){
       const sat=await harness(browser,'51.sat',false,'not_built',true);
       try{
-        await sat.page.getByRole('heading',{name:'Sat 51',exact:true}).waitFor();await checkRoute(sat.page,'51.sat','.sat-evidence');assert.equal(await sat.page.getByRole('button',{name:'Trace Satline',exact:true}).count(),0,'Sat views retain read-only navigation without deferred trace actions');assert.match(await sat.page.locator('.sat-evidence').innerText(),/Satline history tracing is deferred/);assert.equal(sat.requests.some(r=>r.path.startsWith('/api/v1/satline')&&r.method==='POST'),false,'Opening a Sat view does not start a trace itself');await sat.page.locator('#address').fill('51.sat');await sat.page.locator('#address-form').evaluate(form=>form.requestSubmit());await sat.page.getByRole('heading',{name:'Sat 51',exact:true}).waitFor();assert.equal(sat.requests.filter(r=>r.path==='/api/v1/navigate').length,0,'Internal Sat entry uses the read-only Sat view route');await sat.page.getByRole('button',{name:bitcoinAddress,exact:true}).click();await sat.page.locator('#address-balance').waitFor();await checkRoute(sat.page,bitcoinAddress,'#address-balance');await sat.page.goBack();await sat.page.getByRole('heading',{name:'Sat 51',exact:true}).waitFor();assert.equal(await sat.page.locator('#sat-number').count(),0,'Individual Sat pages omit the duplicate address form');const numericClassifications=sat.requests.filter(r=>r.path==='/api/v1/navigate/number').length;await sat.page.locator('#address').fill('nvtdijuwxlp');await sat.page.locator('#address-form').evaluate(form=>form.requestSubmit());await sat.page.getByRole('heading',{name:'Sat 0',exact:true}).waitFor();assert.equal(new URL(sat.page.url()).searchParams.get('resolve'),'nvtdijuwxlp.sat','Bare ordinal names preserve canonical name history');assert.equal(sat.requests.filter(r=>r.path==='/api/v1/navigate/number').length,numericClassifications,'Names need no selected-tip classification');await sat.page.locator('#address').fill('nvtdijuwxlp.sat');await sat.page.locator('#address-form').evaluate(form=>form.requestSubmit());await sat.page.getByRole('heading',{name:'Sat 0',exact:true}).waitFor();assert.equal(await sat.page.locator('#address').inputValue(),'nvtdijuwxlp.sat','Explicit name.sat opens the same read-only Sat view');await sat.page.getByRole('button',{name:'0.1.144',exact:true}).click();await checkRoute(sat.page,'0.1.144','iframe.indexes-frame');assert.equal(sat.requests.some(r=>r.path==='/api/v1/index/build'),false,'Sat/address/output navigation does not start indexing');assert.deepEqual(sat.errors,[]);assert.deepEqual(sat.unexpected,[]);
+        await workspace(sat.page).getByRole('heading',{name:'Sat 51',exact:true}).waitFor();await checkRoute(sat.page,'51.sat','.sat-evidence');assert.equal(await workspace(sat.page).getByRole('button',{name:'Trace Satline',exact:true}).count(),0,'Sat views retain read-only navigation without deferred trace actions');assert.match(await workspace(sat.page).locator('.sat-evidence').innerText(),/Satline.*deferred|history.*deferred/i);assert.equal(sat.requests.some(r=>r.path.startsWith('/api/v1/satline')&&r.method==='POST'),false,'Opening a Sat view does not start a trace itself');await sat.page.locator('#address').fill('51.sat');await sat.page.locator('#address-form').evaluate(form=>form.requestSubmit());await workspace(sat.page).getByRole('heading',{name:'Sat 51',exact:true}).waitFor();assert.equal(sat.requests.filter(r=>r.path==='/api/v1/navigate').length,0,'Internal Sat entry uses the read-only Sat view route');await workspace(sat.page).getByRole('button',{name:bitcoinAddress,exact:true}).click();await workspace(sat.page).locator('#address-balance').waitFor();await checkRoute(sat.page,bitcoinAddress,'#address-balance');await sat.page.goBack();await workspace(sat.page).getByRole('heading',{name:'Sat 51',exact:true}).waitFor();assert.equal(await workspace(sat.page).locator('#sat-number').count(),0,'Individual Sat pages omit the duplicate address form');const numericClassifications=sat.requests.filter(r=>r.path==='/api/v1/navigate/number').length;await sat.page.locator('#address').fill('nvtdijuwxlp');await sat.page.locator('#address-form').evaluate(form=>form.requestSubmit());await workspace(sat.page).getByRole('heading',{name:'Sat 0',exact:true}).waitFor();assert.equal(new URL(sat.page.url()).searchParams.get('resolve'),'nvtdijuwxlp.sat','Bare ordinal names preserve canonical name history');assert.equal(sat.requests.filter(r=>r.path==='/api/v1/navigate/number').length,numericClassifications,'Names need no selected-tip classification');await sat.page.locator('#address').fill('nvtdijuwxlp.sat');await sat.page.locator('#address-form').evaluate(form=>form.requestSubmit());await workspace(sat.page).getByRole('heading',{name:'Sat 0',exact:true}).waitFor();assert.equal(await sat.page.locator('#address').inputValue(),'nvtdijuwxlp.sat','Explicit name.sat opens the same read-only Sat view');await workspace(sat.page).getByRole('button',{name:'0.1.144',exact:true}).click();await checkRoute(sat.page,'0.1.144','iframe.indexes-frame');assert.equal(sat.requests.some(r=>r.path==='/api/v1/index/build'),false,'Sat/address/output navigation does not start indexing');assert.deepEqual(sat.errors,[]);assert.deepEqual(sat.unexpected,[]);
       }finally{await sat.context.close()}
     }
-    if(scripts.has('/shell/sat-view.js')){const unindexed=await harness(browser,'5.sat',false,'not_built',true,'not_built');try{await unindexed.page.getByRole('heading',{name:'Sat 5',exact:true}).waitFor();assert.equal(await unindexed.page.getByRole('button',{name:'Trace Satline',exact:true}).count(),0,'Deferred tracing stays absent even with stale available metadata');await unindexed.page.locator('#settings-button').click();await unindexed.page.locator('#settings-form').waitFor();assert.equal(await unindexed.page.locator('#satline-enabled').count(),0,'Settings offers no Satline disable switch');await unindexed.page.getByRole('button',{name:'Save settings',exact:true}).click();await unindexed.page.waitForFunction(()=>document.querySelector('#toast').textContent==='Settings saved.');assert.equal(Object.hasOwn(unindexed.requests.filter(r=>r.path==='/api/v1/settings'&&r.method==='POST').at(-1).body,'satline_enabled'),false);assert.equal(unindexed.requests.some(r=>r.path==='/api/v1/index/build'),false);await unindexed.page.locator('#address').fill('satline.gateway');await unindexed.page.locator('#address-form').evaluate(form=>form.requestSubmit());await unindexed.page.locator('#content h1').waitFor();assert.equal(await unindexed.page.locator('#satline-module').count(),0,'A stale availability flag cannot mount the tracing module');assert.match(await unindexed.page.locator('#content').innerText(),/Satline is deferred in v0\.7\.7 while trace progress and cancellation are improved/);assert.equal(unindexed.requests.some(r=>r.path.startsWith('/api/v1/satline')||r.path==='/satline'),false,'Deferred direct navigation requests no module or trace');assert.deepEqual(unindexed.errors,[]);assert.deepEqual(unindexed.unexpected,[]);}finally{await unindexed.context.close()}}
+    if(scripts.has('/shell/sat-view.js')){const unindexed=await harness(browser,'5.sat',false,'not_built',true,'not_built');try{await workspace(unindexed.page).getByRole('heading',{name:'Sat 5',exact:true}).waitFor();assert.equal(await workspace(unindexed.page).getByRole('button',{name:'Trace Satline',exact:true}).count(),0,'Deferred tracing stays absent even with stale available metadata');await unindexed.page.locator('#settings-button').click();await unindexed.page.locator('#settings-form').waitFor();assert.equal(await unindexed.page.locator('#satline-enabled').count(),0,'Settings offers no Satline disable switch');await unindexed.page.getByRole('button',{name:'Save settings',exact:true}).click();await unindexed.page.waitForFunction(()=>document.querySelector('#toast').textContent==='Settings saved.');assert.equal(Object.hasOwn(unindexed.requests.filter(r=>r.path==='/api/v1/settings'&&r.method==='POST').at(-1).body,'satline_enabled'),false);assert.equal(unindexed.requests.some(r=>r.path==='/api/v1/index/build'),false);await unindexed.page.locator('#address').fill('satline.gateway');await unindexed.page.locator('#address-form').evaluate(form=>form.requestSubmit());await workspace(unindexed.page).getByRole('heading',{name:'Satline is deferred',exact:true}).waitFor();assert.equal(await unindexed.page.locator('#satline-module').count(),0,'A stale availability flag cannot mount the tracing module');assert.match(await workspace(unindexed.page).locator('#workspace-resource-overview').innerText(),/History tracing remains disabled/);assert.equal(unindexed.requests.some(r=>r.path.startsWith('/api/v1/satline')||r.path==='/satline'),false,'Deferred direct navigation requests no module or trace');assert.deepEqual(unindexed.errors,[]);assert.deepEqual(unindexed.unexpected,[]);}finally{await unindexed.context.close()}}
     const degraded = await harness(browser, '.gateway', true);
     try {
-      await degraded.page.locator('#home-state').getByText('Status unavailable', {exact:true}).waitFor();
+      await workspace(degraded.page).getByRole('heading',{name:'Gateway workspace',exact:true}).waitFor();
       await healthy(degraded.page, 'Home with unavailable services');
       await degraded.page.locator('#address').fill('bitcoin.gateway');
       await degraded.page.locator('#address-form').evaluate(form => form.requestSubmit());
-      await checkRoute(degraded.page, 'bitcoin.gateway', '#content h1');
+      await checkRoute(degraded.page, 'bitcoin.gateway', 'h1');
       assert.deepEqual(degraded.errors, []);
       assert.deepEqual(degraded.unexpected, []);
     } finally { await degraded.context.close(); }
-    console.log(`Shell navigation: PASS (${revision || 'working tree'}; real DOM/all ${scripts.size} shell scripts, dynamic bare-number selected-tip boundaries and canonical history, explicit forms and numeric-only typed identities, unavailable/failed authority and stale-result guards, initial/degraded Home, primary workspaces, resolver-only legacy views, deep links, nested clicks, origin guard; mocked embedded pages/API boundaries).`);
+    console.log(`Shell navigation: PASS (${revision || 'working tree'}; real DOM/all ${scripts.size} shell scripts, dynamic bare-number selected-tip boundaries and canonical history, explicit forms and numeric-only typed identities, unavailable/failed authority and stale-result guards, initial/degraded Home, primary workspaces, resolver-only legacy views, deep links, nested clicks, origin guard; real persistent workspace and isolated API boundaries).`);
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 }
 

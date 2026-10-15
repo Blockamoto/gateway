@@ -1,6 +1,6 @@
-# Sats development checks
+# Sats checks and release acceptance
 
-This source is for the **v0.7.7: Sats** development preview, following the published v0.7.6 Addresses release. Sats publication and updater promotion remain held for the user's release instruction. Use isolated profiles for recovery, corruption and raw-eviction checks; never reuse a running user profile. [The feature breakdown](SATS-FEATURES-0.7.7.md) describes the implemented scope; [release notes](RELEASE-NOTES-v0.7.7.md) summarize it.
+This source describes **v0.7.7: Sats**, following Addresses. The prerelease is published and approved for the signed updater. Use isolated profiles for recovery, corruption and raw-eviction checks; never reuse a running user profile. [The feature breakdown](SATS-FEATURES-0.7.7.md) describes implemented scope; [release notes](RELEASE-NOTES-v0.7.7.md) summarize it. The acceptance record preserves source-specific tests separately from actual public-package execution, real Addresses-to-Sats automatic upgrading, and initial/renewed live-feed verification.
 
 Shared timeline Play/Pause, per-track arming, the redesigned track-local review/build workflow and general per-index deletion/replay/refresh controls are deferred until after Bitmap. Exercise the existing reviewed per-index controls. Do not count those deferred controls as missing Sats-preview acceptance, or mistake removing a track/status refresh for deleting/replaying an index.
 

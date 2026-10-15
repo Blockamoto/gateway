@@ -1,0 +1,54 @@
+name: Prepare approved 0.7.7 signed candidate only
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-approved-update-renewal
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'Blockamoto/gateway' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: gateway-update-renewal
+    permissions:
+      contents: read
+    env:
+      GO111MODULE: 'off'
+      CGO_ENABLED: '0'
+    steps:
+      - name: Check out trusted main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Test and build operator before loading secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/updatepublisher ./packaging/update-publisher
+          python3 scripts/test-renew-update-feed.py
+          python3 -c "import ast,pathlib; ast.parse(pathlib.Path('scripts/prepare-initial-update-feed-077.py').read_text())"
+          go build -trimpath -o "$RUNNER_TEMP/gateway-update-publisher" ./packaging/update-publisher
+      - name: Prepare fixed approved candidate without promotion
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATEWAY_UPDATE_SIGNING_KEY_JSON: ${{ secrets.GATEWAY_UPDATE_SIGNING_KEY_JSON }}
+        run: |
+          set -euo pipefail
+          python3 scripts/prepare-initial-update-feed-077.py --publisher "$RUNNER_TEMP/gateway-update-publisher" --out "$RUNNER_TEMP/gateway-initial-feed-077"
+      - name: Preserve candidate and sanitized receipt only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gateway-initial-feed-077-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/gateway-initial-feed-077/gateway-update-feed-v0.7.7.zip
+            ${{ runner.temp }}/gateway-initial-feed-077/receipt.json
+          if-no-files-found: warn
+          retention-days: 30

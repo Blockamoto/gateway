@@ -134,8 +134,9 @@ Recovery uses an eligible selected-chain savepoint and replay; this is not an
 unconditional 288-block Sat recovery guarantee. Historical output ranges are
 optional. The Sat ranges child under TXIO, Sat explorer, address UTXO ranges and
 known inscription holdings report their own coverage and saved checkpoints.
-Satline traces one sat on demand, caches visited evidence and fee totals, and
-needs no enable switch or separate index build. Opening a view starts no scan.
+Satline history tracing is disabled in this version. New and resumed traces are
+blocked; existing evidence is retained. Saved Sat locations, ordered output ranges
+and known inscription holdings remain available. Opening a view starts no scan.
 The Sat-aware collector preserves live, savepoint and archived shared-fact owners
 while reclaiming otherwise unowned data. Older experimental Sat state requires
 a reviewed rebuild and is preserved. Known inscription holdings are partial;

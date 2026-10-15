@@ -1,6 +1,6 @@
 # v0.7.7: Sats
 
-Development preview for testing. Publication, promotion to main and automatic-update promotion remain held for later approval. The acceptance record identifies the current preview, its exact executable and package checks, and the separately preserved earlier results.
+Prerelease of Sats, following v0.7.6 Addresses. The release uses the exact tested application components. Portable archive README text has been corrected to state that Satline is disabled; the application, installer and header data are unchanged from the accepted build. The acceptance record distinguishes source, package, public-download and updater verification.
 
 - Genesis-first Sat identity and live placement, with shared output facts and paginated ordered ranges.
 - A Sat ranges subtrack under TXIO, plus optional historical output ranges.

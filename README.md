@@ -2,7 +2,7 @@
 
 Gateway is a Bitcoin block explorer that retrieves the blocks you ask for. Explore blocks, transactions, inputs, outputs and positions within outputs without downloading the whole blockchain. Bitcoin Core is optional.
 
-**[0.7.6: Addresses is the public prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.6).** This development branch prepares **v0.7.7: Sats**, adding ordinal identities, live ordered Sat ranges and saved-location navigation to the existing indexes. Satline history tracing is deferred for this version. See [the feature breakdown](docs/SATS-FEATURES-0.7.7.md) and [current status](docs/STATUS.md) for scope, validation and publication status.
+**[v0.7.7: Sats is the public prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.7).** It adds ordinal identities, live ordered Sat ranges and saved-location navigation to the existing indexes. Satline history tracing is deferred for this version. See [the feature breakdown](docs/SATS-FEATURES-0.7.7.md) and [current status](docs/STATUS.md) for scope, validation and updater delivery status.
 
 TXIO connects inputs to their original outputs and outputs to their spending inputs. Blocks retain compact transaction order metadata and verified durable serialized bodies; compatible legacy conversion keeps the old copies and does not immediately reclaim their disk space. Addresses provides balances at the saved UTXO checkpoint and optional sparse output history, using shared output facts. Sats adds individual locations, address UTXO ranges and known inscription holdings at compatible checkpoints, with explicit coverage limits. See [Sats](docs/SATS-INDEX.md), [Addresses](docs/ADDRESSES-INDEX.md), [UTXO state](docs/UTXO-INDEX.md) and [indexing](docs/INDEXING.md).
 

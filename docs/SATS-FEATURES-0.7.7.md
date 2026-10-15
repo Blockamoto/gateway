@@ -1,6 +1,6 @@
 # v0.7.7 Sats: feature breakdown
 
-This document describes the implemented Sats development preview, following the published v0.7.6 Addresses release. It explains saved index answers, optional history and deferred tracing. It does not claim that v0.7.7 has been published or passed final public-package/updater acceptance.
+This document describes the v0.7.7 Sats prerelease, following v0.7.6 Addresses. It explains saved index answers, optional history and deferred tracing. Source tests, package execution and signed updater delivery have separate evidence in the release acceptance record.
 
 ## Saved Sat tracking
 

@@ -1,6 +1,6 @@
 # v0.7.7: Sats
 
-Develop on `v0.7.7`, building on the now-published v0.7.6 Addresses release. Incorporate its applicable fixes while preserving the Sat-aware collector. This brief covers the working Sats preview; publication and updater promotion still require the user's release instruction. See [the feature breakdown](SATS-FEATURES-0.7.7.md) for the implemented behavior and its limits.
+Build on v0.7.6 Addresses while preserving the Sat-aware collector. This brief covers the Sats release scope, now authorized for main, prerelease publication and signed updater promotion. The release keeps the tested application components. See [the feature breakdown](SATS-FEATURES-0.7.7.md) for implemented behavior and limits, and the acceptance record for delivery verification.
 
 ## Sat identity and output ranges
 
@@ -42,7 +42,7 @@ The user has explicitly deferred shared timeline Play/Pause, per-track arming, t
 
 The user reports that vertical wheel scrolling over the left track-name/index-label column scrolls normally in some areas but zooms the timeline in others. They subsequently expanded the rule to the actual track lanes: ordinary vertical wheel input should scroll vertically across labels and tracks, with no unmodified wheel zoom anywhere in the timeline workspace. Timeline wheel zoom must require **Ctrl** (or **Command** where Meta is supported), confined to the timeline time/data area and its deliberate navigation controls. **Shift + wheel** is the existing horizontal-pan gesture, not the zoom key.
 
-Status: the authorized wheel correction is implemented and passes source-browser and exact Windows preview checks, including trackpad and touch pinch zoom. The corrected preview also verifies the actual composed timeline-to-Sat navigation path. Work stays on the Sats development branch; publication and main promotion remain held. Earlier previews and their receipts remain preserved under their original identities; see the acceptance record for the current candidate.
+Status: the authorized wheel correction passes source-browser and exact Windows checks, including trackpad and touch pinch zoom. The corrected build also verifies the actual composed timeline-to-Sat navigation path. Main promotion and publication are authorized. Earlier previews and their receipts remain preserved under their original identities; see the acceptance record for the released components and delivery checks.
 
 The correction routes wheel input by the area under the pointer: the whole left label column scrolls consistently, while plain vertical wheel input over the tracks also scrolls instead of zooming. Explicit Ctrl/Command zoom preserves the existing pointer anchor inside the timeline; preserve intentional horizontal navigation and native editing/picker behavior. Regression checks cover label text, badges, disclosure controls, padding and empty column space; expanded/collapsed groups, the collapsed timeline and narrow layouts; vertical scrolling without zoom over both labels and lanes; diagonal trackpad input; and deliberate modifier zoom over the time/data region. This narrow Sats follow-up does not bring forward the broader post-Bitmap transport/arming/workflow redesign.
 

@@ -2,7 +2,7 @@
 
 The Sats index assigns ordinal identities from genesis in Bitcoin transaction order. Values describe how many sats an output holds; ordered ranges describe which sats it holds. A saved UTXO set cannot bootstrap these identities by itself.
 
-This is the v0.7.7 development preview, following the published Addresses release. Read [the complete feature breakdown](SATS-FEATURES-0.7.7.md) for the distinction between saved Sat state, on-demand traces, optional history and unavailable evidence. Preview readiness does not authorize publication or updater promotion.
+This is the v0.7.7 Sats prerelease, following Addresses. Read [the complete feature breakdown](SATS-FEATURES-0.7.7.md) for saved Sat state, deferred tracing, optional history and unavailable evidence. See the release acceptance record for separate source, package and updater verification.
 
 ## Storage and retention
 

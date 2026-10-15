@@ -1,6 +1,8 @@
 # Gateway status
 
-## Development: v0.7.7 Sats
+## Published prerelease: v0.7.7 Sats
+
+[v0.7.7: Sats](https://github.com/Blockamoto/gateway/releases/tag/v0.7.7) is published from the frozen tested source. All eight uploaded asset digests match. A packaging-only README correction states that Satline is disabled; executable, installer and header bytes are unchanged. [Both published Linux packages](https://github.com/Blockamoto/gateway/actions/runs/38742132924) pass exact payload, startup, helper, offline header-import/restart and browser checks. Signed updater delivery is being verified separately.
 
 The corrected Windows preview is frozen at source `0f60051a2560c43b5e78f1b3dc80e14fda64f6a4`, client SHA-256 `4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228`. Clean Windows/Linux builds and local archive, component-version and installer-payload checks pass. The [acceptance record](RELEASE-ACCEPTANCE-0.7.7.json) identifies all six artifacts and keeps earlier preview records separate. Documentation updates do not change the frozen bytes.
 
@@ -20,7 +22,7 @@ The earlier Windows run on `bc981dd` remains **failed: 1,160 passing, two obsole
 
 Whole-mainnet build time, storage and fragmented-input peak memory remain unmeasured. Full Bitcoin consensus validation and Gateway peer-state sharing are deferred. Windows binaries remain unsigned; installer wizard, OS registration and antivirus/SmartScreen acceptance are separate checks. Shared timeline Play/Pause, track arming and general index-management changes remain deferred until after Bitmap.
 
-Publication, main promotion and updater promotion remain held for the user's release instruction. Main and the live updater continue to deliver approved v0.7.6 Addresses. See [the feature breakdown](SATS-FEATURES-0.7.7.md), [implementation brief](IMPLEMENTATION-BRIEF-0.7.7.md) and [testing guide](TESTING-0.7.7.md).
+Main now includes Sats and the public prerelease is available. Signed updater promotion and real automatic-upgrade acceptance are in progress; the prior Addresses feed remains selected until the new signed candidate passes verification. See [the feature breakdown](SATS-FEATURES-0.7.7.md), [implementation brief](IMPLEMENTATION-BRIEF-0.7.7.md) and [testing guide](TESTING-0.7.7.md).
 
 ## Published prerelease: v0.7.6 Addresses
 

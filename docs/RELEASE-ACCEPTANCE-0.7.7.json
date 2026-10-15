@@ -3,13 +3,13 @@
   "version": "0.7.7",
   "title": "v0.7.7: Sats",
   "repository": "Blockamoto/gateway",
-  "recorded_date_utc": "2026-10-14",
-  "status": "corrected-local-preview-acceptance-complete-public-release-held",
-  "published": false,
+  "recorded_date_utc": "2026-10-15",
+  "status": "published-prerelease-updater-promotion-in-progress",
+  "published": true,
   "release_kind": "prerelease",
   "development_base_revision": "7869709d512149bf303c56477c3953a385d1913c",
   "verified_runtime_source": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
-  "source_identity_note": "The corrected preview is frozen at 0f60051a2560c43b5e78f1b3dc80e14fda64f6a4 with client 4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228. Later documentation records acceptance without changing application/package bytes. Original d06 and superseded 4f6 records remain historical. The prior 4f6 actual workspace callback gap was reproduced independently; corrected 0f6 composed and compiled tests exercise the real path. Exact final-source hosted CI and full Windows suite pass, with clean source and unchanged executable. Public package/delivery acceptance remains held and separate.",
+  "source_identity_note": "The corrected preview is frozen at 0f60051a2560c43b5e78f1b3dc80e14fda64f6a4 with client 4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228. Later documentation records acceptance without changing application/package bytes. Original d06 and superseded 4f6 records remain historical. The prior 4f6 actual workspace callback gap was reproduced independently; corrected 0f6 composed and compiled tests exercise the real path. Exact final-source hosted CI and full Windows suite pass, with clean source and unchanged executable. Public package/delivery acceptance remains held and separate. Release authorization was provided on 15 October 2026. Main includes the tested Sats tree, with operational signing scripts and publication documentation added separately. Tag v0.7.7 remains frozen at 0f60051. Public portable archives have a separately audited README-only correction; binaries, installer and header data are unchanged. GitHub publication is complete; signed updater promotion is in progress.",
   "enabled_indexes": [
     "headers",
     "blocks",
@@ -157,13 +157,23 @@
       "scope": "171 authenticated genuine mainnet blocks replayed from genesis through170 offline, with independently parsed block9 to block170 first-transfer FIFO reference. Recipient10BTC ranges and individual Sat offset/P2PK destination matched. Matching existing address checkpoint joined ranges; raw eviction plus restart preserved exact saved Sat state. No nonzero-fee or forward Satline acceptance is inferred from this zero-fee transfer.",
       "build_seconds": 21.515,
       "benchmark_limit": "Small local early-chain fixtures with existing shared facts, not a mainnet throughput/memory/storage benchmark."
+    },
+    "published_linux_packages": {
+      "status": "PASS",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38742132924",
+      "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\published-linux\\inspection.json",
+        "sha256": "98eb7b220a57404b2bcbac1feea20d686416d1fdd19b3574aebdb43062f49ffc"
+      },
+      "scope": "Both exact published Linux archives: payload identities, bootstrap, helper refusal, header import/restart, cards and viewport checks. Separate from Windows upgrade and live signed delivery."
     }
   },
   "publication_hold": {
-    "main_promotion": "held pending explicit user approval",
-    "release_publication": "held pending explicit user approval",
-    "updater_approval": "0.7.6 remains the approved baseline; 0.7.7 is not promoted",
-    "render_automatic_deployment": "Preserve the existing main-branch commit trigger; branch preview work does not deploy it."
+    "main_promotion": "authorized and completed",
+    "release_publication": "published GitHub prerelease v0.7.7: Sats",
+    "updater_approval": "authorized; candidate verification in progress, previous feed remains selected until promotion",
+    "render_automatic_deployment": "Existing main-branch commit trigger retained."
   },
   "known_limits": [
     "No whole-mainnet build, memory, storage or throughput benchmark.",
@@ -516,8 +526,14 @@
         "scope": "Authenticated exact final-source hosted development workflow: Go1141 pass/50 skip/0 fail, regression race622 pass/17 skip/0 fail, updater race159 pass/1 skip/0 fail; vet, companion/helpers, packaging and actual browser/native stages all pass. Archived revision and source blobs match. This source execution is distinct from published-package delivery acceptance."
       },
       "published_linux_packages": {
-        "status": "pending-release-authorization",
-        "scope": "No published077 packages or hosted Linux public-download acceptance is claimed."
+        "status": "PASS",
+        "run": "https://github.com/Blockamoto/gateway/actions/runs/38742132924",
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\published-linux\\inspection.json",
+          "sha256": "98eb7b220a57404b2bcbac1feea20d686416d1fdd19b3574aebdb43062f49ffc"
+        },
+        "scope": "Both exact published Linux archives: payload identities, bootstrap, helper refusal, header import/restart, cards and viewport checks. Separate from Windows upgrade and live signed delivery."
       },
       "public_upgrade_signed_feeds_and_renewal": {
         "status": "pending-release-authorization",
@@ -655,5 +671,72 @@
       }
     ],
     "note": "Original d06 preview identities and all source-stamped validation entries remain historical; they do not certify the corrected callback candidate."
+  },
+  "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+  "release_url": "https://github.com/Blockamoto/gateway/releases/tag/v0.7.7",
+  "published_at": "2026-10-15T13:21:14Z",
+  "public_release_assets": [
+    {
+      "name": "gateway-client-v0.7.7-windows-amd64.zip",
+      "bytes": 14026977,
+      "sha256": "989ac8dbdf18fee3e95a8e35ecaa3fdf9f0e0eed1b8f78d2f503f0e24b4e677e",
+      "asset_id": 643931160,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.7-windows-amd64-fresh.zip",
+      "bytes": 79933787,
+      "sha256": "dd105b2c9af6f90187dc2b38a6616d0cb09021644b457861e04208edca87eb51",
+      "asset_id": 643931162,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.7-linux-amd64.zip",
+      "bytes": 8288422,
+      "sha256": "b090b303eb726760fd74a851b51633c77db114acb93d17f2bfa717c01f122504",
+      "asset_id": 643931158,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.7-linux-amd64-fresh.zip",
+      "bytes": 74195223,
+      "sha256": "bb91fd0d607f235714c9b1a9ea8d9338f06a33573b6ee8c65b81d719fff0fd2e",
+      "asset_id": 643931159,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.7-installer.exe",
+      "bytes": 118609408,
+      "sha256": "38addea23e6382dc7cb87993719c771958de9d0b65e4f4f0e09682f795330eb5",
+      "asset_id": 643931161,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-headers-v0.7.7.zip",
+      "bytes": 65906545,
+      "sha256": "e9464cad710d0b8cf5cfa94660b8238bc4728c04d16baecb8a56b48d03d48d2f",
+      "asset_id": 643931278,
+      "github_digest_matches": true
+    },
+    {
+      "name": "artifact-manifest.json",
+      "bytes": 1261,
+      "sha256": "9d8cb37e8608a04c51e7162ba59e0f1333844ce7b51ade6ae62030dd42b4c16f",
+      "asset_id": 643931340,
+      "github_digest_matches": true
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 633,
+      "sha256": "cdb1603f68d35214cd40ea45af1a8604460aeaabd14da9cd0e47d54b25581e0f",
+      "asset_id": 643931370,
+      "github_digest_matches": true
+    }
+  ],
+  "public_delivery": {
+    "status": "candidate-signing-in-progress",
+    "release_url": "https://github.com/Blockamoto/gateway/releases/tag/v0.7.7",
+    "packaging_readme_correction_receipt": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\artifacts\\packaging-readme-correction.json",
+    "source_and_components": "Frozen tested 0f60051 source and accepted binaries; README-only portable archive correction."
   }
 }

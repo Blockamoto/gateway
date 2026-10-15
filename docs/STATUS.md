@@ -1,5 +1,11 @@
 # Gateway status
 
+## In preparation before Bitmap
+
+The [timeline controls brief](TIMELINE-CONTROLS-BRIEF.md) and [index dependency review](INDEX-DEPENDENCIES.md) prepare per-track Arm/Live controls, a coordinated shared indexing run, default available tracks and hierarchy corrections before Bitmap. The review confirms the Sat ranges row-order bug, separate expand/collapse controls, and execution/dependency gaps that require real scheduling and policy changes. It also covers future District, Parcel and Bitmap Chain consumers without implementing or unlocking them.
+
+This is a documentation and code-analysis change on a separate local preparation branch. Application code, active jobs, user profiles, main, released packages and updater delivery are unchanged. This current direction supersedes the earlier after-Bitmap scheduling of the named timeline work; general index deletion/replay tooling remains separate.
+
 ## Published prerelease: v0.7.7 Sats
 
 [v0.7.7: Sats](https://github.com/Blockamoto/gateway/releases/tag/v0.7.7) is published from the frozen tested source. All eight original uploaded asset digests match. A packaging-only README correction states that Satline is disabled; executable, installer and header bytes are unchanged. [Both published Linux packages](https://github.com/Blockamoto/gateway/actions/runs/38742132924) pass exact payload, startup, helper, offline header-import/restart and browser checks.
@@ -26,7 +32,7 @@ The original `d06cdd4` preview and its [complete source CI](https://github.com/B
 
 The earlier Windows run on `bc981dd` remains **failed: 1,160 passing, two obsolete Satline-provider expectation failures and 46 skipped test/subtest events**. Test-only revision `0b0d55e` corrected those expectations and passed their focused tests; its hosted run was canceled before all stages finished. Neither result is relabeled as final acceptance. Earlier source-specific full runs are retained in [the testing guide](TESTING-0.7.7.md).
 
-Whole-mainnet build time, storage and fragmented-input peak memory remain unmeasured. Full Bitcoin consensus validation and Gateway peer-state sharing are deferred. Windows binaries remain unsigned; installer wizard, OS registration and antivirus/SmartScreen acceptance are separate checks. Shared timeline Play/Pause, track arming and general index-management changes remain deferred until after Bitmap.
+Whole-mainnet build time, storage and fragmented-input peak memory remain unmeasured. Full Bitcoin consensus validation and Gateway peer-state sharing are deferred. Windows binaries remain unsigned; installer wizard, OS registration and antivirus/SmartScreen acceptance are separate checks. The published app retains its existing per-index controls; shared timeline transport and track arming are now in the before-Bitmap preparation above, while general index-management changes remain separate later work.
 
 Main includes Sats, the prerelease is public, and signed updater promotion, real automatic upgrading and renewed-feed acceptance pass. Weekly renewal is pinned to the explicitly approved Sats release. See [the feature breakdown](SATS-FEATURES-0.7.7.md), [implementation brief](IMPLEMENTATION-BRIEF-0.7.7.md) and [testing guide](TESTING-0.7.7.md).
 

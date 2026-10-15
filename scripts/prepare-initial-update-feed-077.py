@@ -57,7 +57,16 @@ def run_tool(publisher, *args, origin_token=""):
     result = subprocess.run([str(publisher), *map(str, args)], capture_output=True, env=environment)
     # Never print subprocess output: diagnostics can include private paths.
     require(result.returncode == 0, "Publisher operation failed: " + str(args[0]))
-    return json.loads(result.stdout) if result.stdout.strip() else None
+    if not result.stdout.strip():
+        return None
+    if args[0] == "publish":
+        output = result.stdout.decode("utf-8").lstrip()
+        value, end = json.JSONDecoder().raw_decode(output)
+        require(output[end:].strip() ==
+                "Prepared signed local distribution snapshot. No GitHub release or public service was created.",
+                "Unexpected publisher status output")
+        return value
+    return json.loads(result.stdout)
 
 
 def live_matches(helper, expected):

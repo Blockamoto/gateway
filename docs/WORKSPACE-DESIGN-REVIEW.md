@@ -185,6 +185,10 @@ Play starts a reviewed finite indexing pass for the armed consumers, ending at t
 
 This follows the user's requested editing-workspace model: Play traverses a bounded selection, while Record remains open to incoming blocks. Both produce index data in this application; neither starts a second scheduler or implies animation playback. Navigation controls only move the playhead.
 
+## Deferred follow-up
+
+Review an eraser/delete tool after this preview is shipped, including whole-track versus global-range scope and a clear account of which retained/shared data can be removed. This pass adds no destructive data operation.
+
 ## Code references
 
 | Area | Current implementation |

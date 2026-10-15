@@ -156,6 +156,35 @@ The route/panel changes can be reviewed independently of the shared index coordi
 - Exercise I/O and step/skip keyboard actions with text inputs, dialogs, narrow layouts, long keys and missing child counts. Navigation cannot start indexing or rewrite the global range accidentally.
 - Run real composed-shell browser checks and compiled-app acceptance, including actual Sat-selection callbacks, pane resizing, vertical wheel, modifier zoom and pinch.
 
+## User preview review — 15 October 2026
+
+Feedback collection is complete and the user authorized implementation on the development branch. Keep the running preview unchanged until the revised build passes checks; preserve its profile when replacing the app.
+
+- **Keep:** the startup presentation, clearly separated Resource and Index tabs, and guidance explaining how to use the workspace.
+- **Layout issue, reported:** the minimized timeline leaves unexplained space underneath it. Record for investigation after feedback collection; cause and correction are not yet verified.
+- **Transport presentation:** replace text-labelled transport, navigation and range actions with clear, consistent symbols. Explain actions on hover; retain accessible names and keyboard descriptions. Remove the always-visible explanatory text beneath the controls to recover space.
+- **Transport model:** use familiar DAW/video-editor conventions for Play, Record/indexing, Pause, Stop, stepping and markers. Review the user's proposed distinction between historical indexing and Live following at the tip when assigning Play and Record; the final assignment and rationale are recorded below.
+- **Handles feedback:** the user initially could not see a response when toggling Handles, then confirmed it worked. Record as a discoverability/visual-feedback concern, not a confirmed nonfunctional button.
+- **Review status:** the user likes the apparent functionality but has not yet tested all controls. Implementation is now authorized; this remains distinct from functional acceptance.
+- **Play versus Index decision:** the user delegates the final assignment of behavior to these controls. Explain the chosen meanings and justification at the end of the design review; do not assume the earlier historical/Live suggestion is final.
+- **Step and skip:** distinguish ordinary left/right stepping from larger skips. Replace the fixed minus/plus ten-block jumps with previous/next major ruler-notch navigation at the current zoom level. Use a single directional arrow with a vertical bar for skip actions. Reuse the ruler's actual displayed major-notch spacing and alignment, rather than a separate hardcoded step or always adding a fixed amount. Direction selects the adjacent notch, including when already on a notch.
+- **Create handles:** place both In and Out handles within the visible timeline, using its current scale/depth and enough screen separation for each to be grabbed. Avoid coincident or visually indistinguishable initial handles. Keep the existing Clear In, Clear Out and Clear Range actions.
+- **Compact layout:** keep controls in the current timeline area, consolidating them into the existing toolbar region occupied by Refresh, pan and fit controls. Expand available width if needed rather than adding vertical rows. The user considered bottom-left placement, then withdrew it.
+- **Remove duplicated controls:** remove the separate pan-earlier/pan-later buttons once equivalent navigation is available in the unified transport. Remove manual Refresh index status because status updates automatically. Preserve the single expand/collapse control.
+- **Fit icon:** if Fit whole chain remains, use horizontal outward arrows rather than a diagonal expand symbol. Its retention/location can be resolved with the consolidated toolbar design; the user's later request prioritizes clearing that toolbar area for transport.
+- **Reduce explanatory rows:** the separate chain-button/context line and the Zoom into block to explore its contents guidance take too much height. Consolidate useful context into an existing status/control line or contextual help; do not dedicate another vertical row to it.
+
+- **Disclosure:** replace the plain up/down character with a deliberate pull-tab centered on the top edge of the timeline. Use a single stable accessible expand/collapse control.
+- **Navigation help:** keep the question-mark help available. Constrain its instructions to the visible viewport with vertical scrolling, close on outside click and Escape, and keep wheel input inside the help from moving the timeline.
+- **Expanded group labels:** hide child-name summaries on expanded groups, because their rows are visible. Retain summaries on collapsed groups.
+- **Track controls:** style Arm and Live as real on/off switches with a clear pressed/embossed state. Arm uses a recording-circle symbol, including group arming. Retain accessible names, disabled/focus/partial states and hover explanations.
+
+### Transport decision
+
+Play starts a reviewed finite indexing pass for the armed consumers, ending at the marked Out or the selected tip. Entering Record stages Live on for eligible armed consumers, catching up before following the tip. Subsequent Record reviews preserve per-track Live edits, so a coordinated run can mix finite and following consumers. A marked Out still caps Record. These are explicit staged Live choices, visible on the track switches before confirmation; they are not temporary overrides of hidden preferences. Both require review and confirmation through the same coordinator. Pause and Resume retain the admitted request rather than silently changing its mode.
+
+This follows the user's requested editing-workspace model: Play traverses a bounded selection, while Record remains open to incoming blocks. Both produce index data in this application; neither starts a second scheduler or implies animation playback. Navigation controls only move the playhead.
+
 ## Code references
 
 | Area | Current implementation |

@@ -90,9 +90,24 @@ window.GatewayIndexTimeline = (() => {
     if(definition.locked)return false;
     return trackModel(definition,snapshot).total>0 || (snapshot.instances||[]).some(i=>i.definition===id&&(i.checkpoint||i.coverage?.length)) || [...(snapshot.jobs||[]),snapshot.job].some(j=>j?.id&&(j.index===id||j.outputs?.includes(id))) || (snapshot.live||[]).some(p=>p.index===id&&(p.enabled||p.updated||p.on||p.stopped||p.paused));
   }
-  function rulerMarks(view,width) {
+  function rulerStep(view,width) {
     const span=view.to-view.from+1,target=Math.max(1,span/Math.max(2,width/115)),power=10**Math.floor(Math.log10(target));
-    const step=([1,2,5,10].find(n=>n*power>=target)||10)*power,marks=[];
+    return ([1,2,5,10].find(n=>n*power>=target)||10)*power;
+  }
+  function rulerNotch(view,width,position,direction,maximum,children=false) {
+    const span=view.to-view.from+1,periods=[{period:rulerStep(view,width),kind:'regular'}];
+    if(!children)for(const [period,kind,minPixels] of [[210000,'halving',95],[2016,'difficulty',105]])if(period/span*width>=minPixels)periods.push({period,kind});
+    const suppressed=n=>{const halving=Math.round(n/210000)*210000;return periods.some(p=>p.kind==='halving')&&halving>=210000&&halving>=view.from&&halving<=view.to&&Math.abs(n-halving)/span*width<100;};
+    const candidates=periods.map(({period,kind})=>{
+      let n=(direction<0?Math.ceil(position/period)-1:Math.floor(position/period)+1)*period;
+      // Skip every hidden label, rather than abandoning that ruler interval.
+      while(kind==='difficulty'&&height(n)&&n<=maximum&&suppressed(n))n+=direction*period;
+      return kind!=='regular'&&n<period?null:n;
+    }).filter(n=>height(n)&&n<=maximum);
+    return direction<0?Math.max(0,...candidates):Math.min(maximum,...candidates);
+  }
+  function rulerMarks(view,width) {
+    const span=view.to-view.from+1,step=rulerStep(view,width),marks=[];
     for(let h=Math.ceil(view.from/step)*step;h<=view.to&&marks.length<100;h+=step)marks.push({height:h,kind:'regular',label:format(h)});
     for(const [period,kind,prefix,minPixels] of [[210000,'halving','Halving',95],[2016,'difficulty','Difficulty',105]]) {
       if(period/span*width<minPixels)continue;
@@ -142,10 +157,11 @@ window.GatewayIndexTimeline = (() => {
     const advanced=el('details',undefined,'timeline-details');advanced.id='timeline-details';const summary=el('summary','Settings, jobs & records');advanced.append(summary);if(workspace)advanced.append(workspace);
     inspector.append(inspectorTop,meta,controls,selectionList,notice,advanced);
     const editor=el('section',undefined,'timeline-editor');editor.setAttribute('aria-label','Index timeline');
+    const icon=(paths)=>{const svg=doc.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');for(const d of paths){const path=doc.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',d);svg.append(path);}return svg;};
+    const controlBar=el('div',undefined,'timeline-control-bar'),transportSlot=el('div',undefined,'timeline-transport-slot');transportSlot.id='timeline-transport-slot';
     const navigation=el('div',undefined,'timeline-navigation');
-    const left=button('←','timeline-pan-left','Pan to earlier blocks',()=>pan(-.6)),right=button('→','timeline-pan-right','Pan to later blocks',()=>pan(.6));
-    const fitButton=button('⤢','timeline-fit','Fit the whole chain',()=>{returnParent(-1);fit=true;redraw();});
-    navigation.append(left,right,fitButton);
+    const fitButton=button('','timeline-fit','Fit the whole chain',()=>{returnParent(-1);fit=true;redraw();});
+    fitButton.append(icon(['M4 12h16','m8 8-4 4 4 4','m16 8 4 4-4 4']));navigation.append(fitButton);controlBar.append(transportSlot,navigation);
     // The shell address is the only resource address input. Timeline controls
     // live beside the ruler rather than in a separate lower controls panel.
     const rulerRow=el('div',undefined,'timeline-ruler-row'),rulerLabel=el('div',undefined,'timeline-ruler-label'),ruler=el('div',undefined,'timeline-ruler');ruler.id='timeline-ruler';
@@ -155,7 +171,7 @@ window.GatewayIndexTimeline = (() => {
     addButton.disabled=true;addButton.title='Custom indexes are reserved for a future update';addButton.setAttribute('aria-label','Custom indexes — available in a future update');
     addButton.setAttribute('aria-expanded','false');addButton.setAttribute('aria-controls','timeline-index-picker');
     const picker=el('div',undefined,'timeline-index-picker');picker.id='timeline-index-picker';picker.hidden=true;picker.setAttribute('role','group');picker.setAttribute('aria-label','Available index tracks');
-    const refreshButton=button('↻','timeline-refresh','Refresh index status',()=>refresh?.());refreshButton.className='timeline-refresh-icon';rulerLabel.append(refreshButton,navigation);rulerRow.append(rulerLabel,ruler);
+    rulerRow.append(rulerLabel,ruler);
     const trackArea=el('div',undefined,'timeline-track-area'),trackViewport=el('div',undefined,'timeline-track-viewport'),tracks=el('div',undefined,'timeline-tracks'),empty=el('p','Reading local coverage…','timeline-empty');trackViewport.id='timeline-track-viewport';trackViewport.append(tracks,empty);
     const addRow=el('div',undefined,'timeline-add-track-row');addRow.append(addButton,picker);tracks.append(addRow);
     function makeScrollbar(axis) {
@@ -170,11 +186,18 @@ window.GatewayIndexTimeline = (() => {
     for(const [cls,text] of [['saved','Available locally'],['potential','Potential · not stored'],['partial','Mixed coverage · zoom in'],['requested','Requested work']]){const item=el('span',undefined,'timeline-legend-item'),swatch=el('i',undefined,'timeline-swatch '+cls);swatch.setAttribute('aria-hidden','true');item.append(swatch,el('span',text));legend.append(item);}
     const viewportLabel=el('span','','timeline-viewport-label');viewportLabel.id='timeline-viewport-label';footer.append(legend,viewportLabel);
     const help=el('details',undefined,'timeline-help');help.append(el('summary','Navigation help'));
-    const instructions=el('p','Arm the indexes you want, set a shared In and Out, then review Start indexing. Click a lane or enter a resource in the address bar to move the playhead; I sets In and O sets Out. Shift + click selects one shared block interval. Drag either range handle to move it; right-click or Delete clears it. Left / Right steps one item, Shift + Left / Right steps ten, Home / End moves to the current parent bounds, and Up / Down returns to the parent or explores the focused item. Enter also explores; Escape returns to the parent. Navigation never starts indexing. Vertical wheel scrolling moves through tracks; when collapsed, it scrolls the visible details. Ctrl / Command + wheel or trackpad/touch pinch over the time area zooms at the pointer. Horizontal trackpad scrolling or Shift + wheel pans. Alt + wheel over expanded lanes resizes tracks. The label column always scrolls vertically. Hold Space and drag to pan in both directions. + / − zooms; Fit restores the chain view.','timeline-instructions');instructions.id='timeline-instructions';help.append(instructions);
+    const instructions=el('p','Arm the indexes you want, set a shared In and Out, then use Play for a finite pass or Record for Live following. Both review the request before indexing starts. A marked Out caps either mode. Click a lane or enter a resource in the address bar to move the playhead; I sets In and O sets Out. Shift + click selects one shared block interval. Drag either range handle to move it; right-click or Delete clears it. Left / Right steps one item, Shift + Left / Right jumps to the previous / next ruler notch at the current zoom, Home / End moves to the current parent bounds, and Up / Down returns to the parent or explores the focused item. Enter also explores; Escape returns to the parent. Navigation never starts indexing. Vertical wheel scrolling moves through tracks; when collapsed, it scrolls the visible details. Ctrl / Command + wheel or trackpad/touch pinch over the time area zooms at the pointer. Horizontal trackpad scrolling or Shift + wheel pans. Alt + wheel over expanded lanes resizes tracks. The label column always scrolls vertically. Hold Space and drag to pan in both directions. + / − zooms; Fit restores the chain view.','timeline-instructions');instructions.id='timeline-instructions';help.append(instructions);
     const coverageDetails=el('details',undefined,'timeline-exact'),coverageSummary=el('summary','Exact coverage'),coverageList=el('div',undefined,'timeline-exact-list');coverageDetails.append(coverageSummary,coverageList);
     const tooltip=el('div',undefined,'timeline-tooltip');tooltip.hidden=true;tooltip.setAttribute('role','status');
-    help.firstChild.textContent='?';help.firstChild.setAttribute('aria-label','Timeline navigation help');help.firstChild.title='Timeline navigation help';rulerLabel.append(help);inspector.append(coverageDetails);
-    const collapse=button('⌄','timeline-collapse','Collapse index tracks',()=>setCollapsed(root.dataset.timelineCollapsed!=='true'));collapse.setAttribute('aria-expanded','true');collapse.setAttribute('aria-controls','timeline-track-viewport');rulerLabel.append(collapse);
+    help.firstChild.textContent='?';help.firstChild.setAttribute('aria-label','Timeline navigation help');help.firstChild.title='Timeline navigation help';controlBar.append(help);inspector.append(coverageDetails);
+    instructions.tabIndex=0;instructions.setAttribute('role','region');instructions.setAttribute('aria-label','Timeline navigation instructions');
+    function positionHelp(){if(!help.open)return;const rect=help.firstChild.getBoundingClientRect(),margin=12,width=Math.min(380,winWidth()-margin*2),above=rect.top-margin-6,below=doc.defaultView.innerHeight-rect.bottom-margin-6,up=above>=below;instructions.style.width=width+'px';instructions.style.maxHeight=Math.max(40,Math.min(360,up?above:below))+'px';instructions.style.left=Math.max(margin,Math.min(rect.right-width,winWidth()-width-margin))+'px';instructions.style.top=(up?Math.max(margin,rect.top-instructions.getBoundingClientRect().height-6):rect.bottom+6)+'px';}
+    function winWidth(){return doc.documentElement.clientWidth||doc.defaultView.innerWidth;}
+    help.addEventListener('toggle',positionHelp);doc.defaultView.addEventListener('resize',positionHelp);
+    doc.addEventListener('pointerdown',event=>{if(help.open&&!help.contains(event.target))help.open=false;},{capture:true});
+    doc.addEventListener('keydown',event=>{if(help.open&&event.key==='Escape'){event.preventDefault();event.stopPropagation();help.open=false;help.firstChild.focus({preventScroll:true});}},{capture:true});
+    doc.defaultView.addEventListener('blur',()=>{help.open=false;});
+    const collapse=button('','timeline-collapse','Collapse index tracks',()=>setCollapsed(root.dataset.timelineCollapsed!=='true'));collapse.append(icon(['M8 8h8','m8 15 4-4 4 4']));collapse.setAttribute('aria-expanded','true');collapse.setAttribute('aria-controls','timeline-track-viewport');collapse.className='timeline-pull-tab';editor.append(collapse);
     const compact=el('div',undefined,'timeline-compact');compact.hidden=true;
     const compactPosition=el('output','Choose a block','timeline-current-height');compactPosition.id='timeline-current-height';
     const compactLabel=el('div',undefined,'timeline-compact-label');compactLabel.append(compactPosition);
@@ -182,13 +205,13 @@ window.GatewayIndexTimeline = (() => {
     compactScrubber.addEventListener('click',event=>{if(suppressClick||spaceHeld)return;focusPosition(heightAt(event.clientX),true);});
     compactScrubber.addEventListener('dblclick',()=>zoomIntoFocus());
     compact.append(compactLabel,compactScrubber);
-    const hierarchyBar=el('div',undefined,'timeline-hierarchy-bar'),breadcrumbs=el('nav',undefined,'timeline-breadcrumbs'),hierarchyNote=el('span','','timeline-hierarchy-note');breadcrumbs.id='timeline-breadcrumbs';breadcrumbs.setAttribute('aria-label','Timeline hierarchy');hierarchyNote.id='timeline-hierarchy-note';hierarchyNote.setAttribute('role','status');hierarchyBar.append(breadcrumbs,hierarchyNote);
+    const hierarchyBar=el('div',undefined,'timeline-hierarchy-bar'),breadcrumbs=el('nav',undefined,'timeline-breadcrumbs'),hierarchyNote=el('span','','timeline-hierarchy-note');breadcrumbs.id='timeline-breadcrumbs';breadcrumbs.setAttribute('aria-label','Timeline hierarchy');hierarchyNote.id='timeline-hierarchy-note';hierarchyNote.setAttribute('role','status');hierarchyBar.append(breadcrumbs,hierarchyNote);rulerLabel.append(hierarchyBar);
     const upper=el('div',undefined,'timeline-upper-workspace'),viewport=el('section',undefined,'workspace-viewport');viewport.id='workspace-viewport';viewport.setAttribute('aria-label','Resource visualization');
     const fullscreen=button('⛶','workspace-viewport-fullscreen','Fullscreen resource visualization',()=>{});fullscreen.setAttribute('aria-pressed','false');
     const viewportBody=el('div',undefined,'workspace-viewport-body');viewportBody.id='workspace-viewport-body';viewportBody.append(el('p','Select a block or inscription to view it.','workspace-viewport-empty'));
     viewport.append(fullscreen,viewportBody);upper.append(inspector,viewport);
-    editor.append(hierarchyBar,rulerRow,compact,trackArea,scrollbarRow,footer,tooltip);root.append(upper,editor);
-    function setCollapsed(value,focusControl=true){closeRevealPicker();value=Boolean(value);preferences.collapsed=value;save();root.dataset.timelineCollapsed=String(value);compact.hidden=!value;trackArea.hidden=footer.hidden=value;collapse.textContent=value?'⌃':'⌄';collapse.title=value?'Expand index tracks':'Collapse index tracks';collapse.setAttribute('aria-label',collapse.title);collapse.setAttribute('aria-expanded',String(!value));doc.defaultView.dispatchEvent(new doc.defaultView.Event('gateway:timeline-layout'));draw();if(focusControl)collapse.focus({preventScroll:true});}
+    editor.append(controlBar,rulerRow,compact,trackArea,scrollbarRow,footer,tooltip);root.append(upper,editor);
+    function setCollapsed(value,focusControl=true){closeRevealPicker();value=Boolean(value);preferences.collapsed=value;save();root.dataset.timelineCollapsed=String(value);compact.hidden=!value;trackArea.hidden=footer.hidden=value;collapse.title=value?'Expand index tracks':'Collapse index tracks';collapse.setAttribute('aria-label',collapse.title);collapse.setAttribute('aria-expanded',String(!value));doc.defaultView.dispatchEvent(new doc.defaultView.Event('gateway:timeline-layout'));draw();if(focusControl)collapse.focus({preventScroll:true});}
     function allDefinitions(){return [...(snapshot.definitions||[])].sort((a,b)=>a.id==='headers'?-1:b.id==='headers'?1:0);}
     function ordered(){const defs=allDefinitions().filter(d=>d.id!=='satline'&&!d.locked).flatMap(d=>['txo-spender','sat-state'].includes(d.id)?childDefinitions(snapshot).filter(child=>child.owner===d.id):[d]);const order=['headers','blocks','tx-locator',...layers.map(([id])=>id),'utxo-state','address-state','address-history','inscriptions','bitmap-districts','bitmap-parcels','bitmap-chain'],position=id=>{const n=order.indexOf(id);return n<0?order.length:n;};return defs.sort((a,b)=>position(a.id)-position(b.id));}
     function renderPicker(){picker.hidden=true;}
@@ -216,7 +239,7 @@ window.GatewayIndexTimeline = (() => {
     // at intent time; passive echoes still update/recheck the block anchor.
     function syncResource(value,metadata){if(!height(value?.height))return;const preserveFocus=hierarchyBusy&&value.height===playhead;if(!preserveFocus)focusHeight(value.height,true);acceptResource(value,metadata,{preserveFocus});}
     function focusPosition(index,immediate=true){if(!height(index)||index>navExtent())return;if(hierarchyBusy)cancelHierarchy();const visible=navView();if(index<visible.from||index>visible.to){const span=visible.to-visible.from+1,from=Math.max(0,index-Math.floor(span/2));setNavView({from,to:from+span-1});}if(!frame()){focusBlock(index,immediate);return;}const p=frame();p.focused=index;playhead=p.height;root.dataset.playhead=String(playhead);const entity=childEntity(index);transport?.acceptGlobalResource({...entity,block_hash:p.block_hash||resourceAnchors.get(p.height)});doc.defaultView.clearTimeout(entityTimer);entityTimer=null;if(immediate)onEntity?.(entity,{immediate:true});else entityTimer=doc.defaultView.setTimeout(()=>{entityTimer=null;onEntity?.(entity,{immediate:false});},1000);draw();}
-    function positionKey(event){if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey)return;if(['+','='].includes(event.key)){event.preventDefault();zoom(.25);return;}if(event.key==='-'){event.preventDefault();zoom(2);return;}if(event.key==='Enter'||event.key==='ArrowDown'){event.preventDefault();zoomIntoFocus();return;}if(['Escape','ArrowUp'].includes(event.key)&&frame()){event.preventDefault();returnParent(hierarchy.length-2,true);return;}if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const v=navView(),focused=frame()?(frame().focused??v.from):(playhead??v.from);focusPosition(event.key==='Home'?0:event.key==='End'?navExtent():clamp(focused+(event.key==='ArrowLeft'?-1:1)*(event.shiftKey?10:1),0,navExtent()),true);}
+    function positionKey(event){if(event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey)return;if(['+','='].includes(event.key)){event.preventDefault();zoom(.25);return;}if(event.key==='-'){event.preventDefault();zoom(2);return;}if(event.key==='Enter'||event.key==='ArrowDown'){event.preventDefault();zoomIntoFocus();return;}if(['Escape','ArrowUp'].includes(event.key)&&frame()){event.preventDefault();returnParent(hierarchy.length-2,true);return;}if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const v=navView(),focused=frame()?(frame().focused??v.from):(playhead??v.from);if(event.shiftKey&&['ArrowLeft','ArrowRight'].includes(event.key)){skipNotch(event.key==='ArrowLeft'?-1:1);return;}focusPosition(event.key==='Home'?0:event.key==='End'?navExtent():clamp(focused+(event.key==='ArrowLeft'?-1:1),0,navExtent()),true);}
     function paintHierarchy(){const p=frame();breadcrumbs.replaceChildren();const chain=button('Chain',null,'Return to the Bitcoin chain',()=>returnParent(-1,true));chain.setAttribute('aria-current',p?'false':'page');breadcrumbs.append(chain);for(const [i,parent] of hierarchy.entries()){const label=parent.kind==='block'?'Block '+format(parent.height):parent.kind==='transaction'?'TX '+format(parent.txIndex):'Output '+format(parent.outputIndex),crumb=button(label,null,'Return to '+label,()=>returnParent(i,true));crumb.setAttribute('aria-current',i===hierarchy.length-1?'page':'false');breadcrumbs.append(crumb);}root.dataset.hierarchy=p?.kind||'chain';root.dataset.hierarchyDepth=String(hierarchy.length);hierarchyNote.textContent=hierarchyBusy?'Loading selected parent…':hierarchyError||(p?(p.kind==='output'?'Output-local sat offsets':height(p.count)?format(p.count)+' '+(p.kind==='block'?'ordered transactions':'ordered outputs'):'Child count unavailable'):'Zoom into a block to explore its contents');}
     async function descend(){
       if(hierarchyBusy||frame()?.kind==='output')return;const v=navView();if(v.from!==v.to)return;const parent=childEntity(v.from);if(!['block','transaction','output'].includes(parent.kind))return;
@@ -291,6 +314,8 @@ window.GatewayIndexTimeline = (() => {
     function showTooltip(e,event){if(frame()){tooltip.hidden=true;return;}const s=projectHit(e,event),m=trackModel(e.d,snapshot),present=count(intersect(m.coverage,s));tooltip.textContent=m.locked?'Locked · '+(e.d.lock_reason||'Available in a later release'):s.kind==='block'?'Block '+format(s.from)+' · '+(present?'available locally':m.complete?'not stored locally':'not established locally'):'Blocks '+labelRange(s)+' · '+format(present)+' available';const rect=editor.getBoundingClientRect();tooltip.style.left=Math.max(8,Math.min(rect.width-280,event.clientX-rect.left+12))+'px';tooltip.style.top=Math.max(8,event.clientY-rect.top-42)+'px';tooltip.hidden=false;}
     const intersect=(ranges,r)=>ranges.filter(x=>x.from<=r.to&&x.to>=r.from).map(x=>({from:Math.max(r.from,x.from),to:Math.min(r.to,x.to)}));
     function zoom(factor,anchor=.5){dimensions();const v=navView(),span=v.to-v.from+1,total=navExtent()+1;if(span===1&&factor<1){descend();return;}if(frame()&&factor>1&&span===total){returnParent(hierarchy.length-2);redraw();return;}const target=Math.max(1,Math.min(total,Math.round(span*factor))),center=v.from+span*anchor;setNavView({from:Math.max(0,Math.round(center-target*anchor)),to:Math.max(0,Math.round(center-target*anchor))+target-1});redraw();}
+    function skipNotch(direction){if(!healthy||frame()&&!height(frame().count))return;const v=navView(),focused=frame()?(frame().focused??v.from):(playhead??v.from);focusPosition(rulerNotch(v,ruler.clientWidth||800,focused,direction,navExtent(),!!frame()),true);}
+    function createHandleRange(){if(!healthy||frame()&&!height(frame().count))return null;const v=navView(),span=v.to-v.from;if(span<1)return null;const first=v.from+Math.floor(span*.2),last=v.from+Math.ceil(span*.8);return {in:{...childEntity(first),block_hash:frame()?.block_hash||resourceAnchors.get(first)},out:{...childEntity(last),block_hash:frame()?.block_hash||resourceAnchors.get(last)}};}
     function pan(fraction){const v=navView(),span=v.to-v.from+1,from=Math.max(0,v.from+Math.round(span*fraction));setNavView({from,to:from+span-1});redraw();}
     const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
     function pointerAnchor(x){const rect=ruler.getBoundingClientRect();return clamp((x-rect.left)/Math.max(1,rect.width),0,1);}
@@ -381,7 +406,7 @@ window.GatewayIndexTimeline = (() => {
     function scrollWheel(dy){const scroller=wheelScroller();scroller.scrollTop+=dy;if(scroller===trackViewport)updateScrollbars();}
     function wheel(event){
       const target=event.target;
-      if(picker.contains(target)){if(event.ctrlKey||event.metaKey)event.preventDefault();return;}
+      if(picker.contains(target)||help.contains(target)||target.closest?.('.timeline-run-review')){if(event.ctrlKey||event.metaKey)event.preventDefault();return;}
       if(target.closest?.('input,textarea,select,[contenteditable="true"]'))return;
       event.preventDefault();tooltip.hidden=true;
       const unit=event.deltaMode===1?16:event.deltaMode===2?Math.max(1,wheelScroller().clientHeight):1,dx=event.deltaX*unit,dy=event.deltaY*unit;
@@ -446,7 +471,7 @@ window.GatewayIndexTimeline = (() => {
       compactPosition.textContent=position===null?'Choose a position':positionLabel(position);drawPositionLane(compactScrubber);
       if(position!==null&&position>=v.from&&position<=v.to){const marker=el('span',undefined,'timeline-playhead-marker');marker.dataset.height=String(position);marker.title='Playhead · '+positionLabel(position);marker.style.left=((position-v.from+.5)/span*100)+'%';marker.setAttribute('aria-hidden','true');ruler.append(marker);}
       const tip=snapshot.timeline?.tip_height;viewportLabel.textContent=format(v.from)+'–'+format(v.to)+' · '+(p?format(span)+' positions':blockCount(span))+(fit&&!p?' · Fit chain':' · Focused view');
-      fitButton.setAttribute('aria-pressed',String(fit&&!p));left.disabled=v.from===0;right.disabled=v.to===navExtent();
+      fitButton.setAttribute('aria-pressed',String(fit&&!p));
       root.dataset.from=String(v.from);root.dataset.to=String(v.to);root.dataset.fit=String(fit&&!p);
       for(const e of entries.values()) {
         if(p){
@@ -503,7 +528,7 @@ window.GatewayIndexTimeline = (() => {
     const Mutation=doc.defaultView?.MutationObserver;if(Mutation)new Mutation(()=>draw()).observe(doc.documentElement,{attributes:true,attributeFilter:['data-theme']});
     setCollapsed(preferences.collapsed!==false,false);
     const result={cancelPendingNavigation,acceptResource,syncResource,zoomIntoFocus,returnParent,setCollapsed,redraw,
-      getHierarchy:()=>hierarchy.map(p=>({kind:p.kind,height:p.height,txIndex:p.txIndex,outputIndex:p.outputIndex,count:p.count,view:{...p.view},focused:p.focused})),render,health:ok=>{healthy=ok;render();},
+      skipNotch,createHandleRange,getHierarchy:()=>hierarchy.map(p=>({kind:p.kind,height:p.height,txIndex:p.txIndex,outputIndex:p.outputIndex,count:p.count,view:{...p.view},focused:p.focused})),render,health:ok=>{healthy=ok;render();},
       select:id=>{id=id==='txo-spender'?'txio-links':id==='sat-state'?'txio-sat-ranges':id;const changed=selected!==id;selected=id;selection=id?{id,kind:'track'}:null;if(changed)advanced.open=false;render();},
       model:id=>trackModel(definitionFor(id)||{id},snapshot),getView:()=>({...navView(),fit:fit&&!frame()}),getSelection:id=>selectedRanges(id).map(r=>({...r})),getPlayhead:()=>playhead,focus:focusHeight,removeTrack,
       getNavigationPoint:()=>{const index=frame()?(frame().focused??navView().from):(playhead??navView().from);return {...childEntity(index),block_hash:frame()?.block_hash||resourceAnchors.get(frame()?.height??index)};},
@@ -514,5 +539,5 @@ window.GatewayIndexTimeline = (() => {
     if(window.GatewayIndexTransport){transport=window.GatewayIndexTransport.mount({document:doc,root,timeline:result,api,refresh,notify,getSnapshot:()=>snapshot,inspect:(id,options)=>{selectIndex(id,'advanced');if(options)doc.dispatchEvent(new doc.defaultView.CustomEvent('gateway:timeline-inspect-index',{detail:{id,options}}));}});Object.assign(result,transport);}
     return result;
   }
-  return {normalizeRanges,subtractRanges,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,established,rulerMarks,mount};
+  return {normalizeRanges,subtractRanges,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,established,rulerStep,rulerNotch,rulerMarks,mount};
 })();

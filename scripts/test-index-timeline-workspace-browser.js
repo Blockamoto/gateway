@@ -57,9 +57,9 @@ async function run() {
     const settle=() => page.evaluate(() => new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const view=() => page.locator('#index-timeline').evaluate(el=>({from:Number(el.dataset.from),to:Number(el.dataset.to),fit:el.dataset.fit==='true'}));
     const span=value=>value.to-value.from+1;
-    const refresh=async()=>{const response=page.waitForResponse(r=>r.url()===origin+'/api/v1/index/status');await page.locator('#timeline-refresh').click();await response;await settle();};
+    const refresh=async()=>{const response=page.waitForResponse(r=>r.url()===origin+'/api/v1/index/status');await page.evaluate(()=>refresh());await response;await settle();};
     const shot=async name=>{if(out)await page.screenshot({path:path.join(out,name+'.png'),fullPage:true});};
-    const drag=async(locator,dx,dy=0)=>{const box=await locator.boundingBox();assert(box,'Drag target is visible');const x=box.x+box.width/2,y=box.y+box.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y+dy,{steps:8});await page.mouse.up();await settle();};
+    const drag=async(locator,dx,dy=0)=>{const box=await locator.boundingBox();assert(box,'Drag target is visible');const x=box.x+box.width*(await locator.getAttribute('id')==='timeline-divider'?.25:.5),y=box.y+box.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y+dy,{steps:8});await page.mouse.up();await settle();};
     const onlyPlans=()=>assert.deepEqual(calls.filter(c=>c.method==='POST'&&!c.path.endsWith('/plan')),[],'UI navigation, adding tracks and preparing ranges never start indexing');
     const rootBox=()=>page.locator('#index-timeline').boundingBox();
     const editorBox=()=>page.locator('.timeline-editor').boundingBox();
@@ -94,7 +94,7 @@ async function run() {
     await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-collapse:not([aria-expanded=true])').isVisible())await page.locator('#timeline-collapse:not([aria-expanded=true])').click();assert(Math.abs((await editorBox()).height-resized.height)<2,'Divider ratio persists across reload');
     await divider.focus();await page.keyboard.press('Home');assert.equal(Number(await divider.getAttribute('aria-valuenow')),Number(await divider.getAttribute('aria-valuemin')));
     await page.keyboard.press('End');assert.equal(Number(await divider.getAttribute('aria-valuenow')),Number(await divider.getAttribute('aria-valuemax')));
-    await divider.dblclick();await settle();
+    await divider.dblclick({position:{x:(await divider.boundingBox()).width*.25,y:5}});await settle();
 
     // The two horizontal edges independently anchor the opposite boundary.
     await page.locator('#timeline-fit').click();
@@ -224,7 +224,7 @@ async function run() {
       for(const [name,target] of cases)await verticalWheelCase(width+' '+name,target);
       for(const modifier of ['Control','Meta','Alt','Shift']){
         await verticalWheelCase(width+' label '+modifier+' with diagonal drift',heading.locator('strong'),{dx:3,dy:120,modifiers:[modifier]});
-        await verticalWheelCase(width+' left navigation button '+modifier,page.locator('#timeline-pan-right'),{dx:3,dy:120,modifiers:[modifier]});
+        await verticalWheelCase(width+' toolbar Fit button '+modifier,page.locator('#timeline-fit'),{dx:3,dy:120,modifiers:[modifier]});
       }
       const dividerPoint=async offset=>page.locator('.timeline-ruler-label').evaluate((label,offset)=>{const r=label.getBoundingClientRect(),row=document.querySelector('.timeline-track[data-index="headers"]').getBoundingClientRect();return{x:offset<0?Math.floor(r.right+offset):Math.ceil(r.right+offset),y:row.y+row.height/2};},offset);
       await verticalWheelCase(width+' one pixel left of column divider',()=>dividerPoint(-1),{dx:3,modifiers:['Control']});

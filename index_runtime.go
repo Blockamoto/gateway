@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -203,7 +202,7 @@ func (a *app) indexStatus() indexStatusView {
 	return out
 }
 func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {
-	if strings.HasPrefix(req.Index, "bitmap-") {
+	if bitmapConsumerID(req.Index) {
 		return indexJob{}, fmt.Errorf("Bitmap development consumers require a reviewed coordinated timeline run")
 	}
 	if !indexRunOptionalWorkAllowed(a.dataDir, req.Index) {
@@ -233,7 +232,7 @@ func (a *app) startIndexBuildInternal(req indexBuildRequest, live bool) (indexJo
 	return a.startIndexBuildID(req, live, "")
 }
 func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (indexJob, error) {
-	if strings.HasPrefix(req.Index, "bitmap-") {
+	if bitmapConsumerID(req.Index) {
 		return indexJob{}, fmt.Errorf("Bitmap development consumers require a coordinated timeline run")
 	}
 	if err := requireReleaseIndexRequest(req); err != nil {

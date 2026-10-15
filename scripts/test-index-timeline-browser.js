@@ -99,8 +99,7 @@ async function run() {
     const screenshot = async name => {if (out) await page.screenshot({path:path.join(out,name+'.png'),fullPage:true});};
     const refresh = async (preserveFocus=false) => {
       const response = page.waitForResponse(response => response.url() === origin + '/api/v1/index/status');
-      if(preserveFocus)await page.locator('#timeline-refresh').evaluate(button=>button.click());
-      else await page.locator('#timeline-refresh').click();
+      await page.evaluate(()=>refresh());
       await response;
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     };
@@ -138,12 +137,12 @@ async function run() {
     snapshot.timeline.tip_height=1000010;snapshot.timeline.target_height=1000010;snapshot.timeline.tracks[0].coverage[0].to=1000010;
     await refresh();assert.deepEqual(await viewport(),{from:0,to:1000010,fit:true});
     await blockLane.focus();await page.keyboard.press('Home');assert.equal(await page.locator('#index-timeline').getAttribute('data-playhead'),'0','Home moves to first item rather than starting work');
-    await page.keyboard.press('Shift+ArrowRight');assert.equal(await page.locator('#index-timeline').getAttribute('data-playhead'),'10');
-    await page.keyboard.press('ArrowLeft');assert.equal(await page.locator('#index-timeline').getAttribute('data-playhead'),'9');
+    const nextNotch=await page.locator('.timeline-ruler-tick').evaluateAll(nodes=>Math.min(...nodes.map(n=>Number(n.dataset.height)).filter(n=>n>0)));await page.keyboard.press('Shift+ArrowRight');assert.equal(Number(await page.locator('#index-timeline').getAttribute('data-playhead')),nextNotch);
+    await page.keyboard.press('ArrowLeft');assert.equal(Number(await page.locator('#index-timeline').getAttribute('data-playhead')),nextNotch-1);
     await refresh(true);assert.equal(await blockLane.evaluate(n=>document.activeElement===n),true,'Status redraw preserves lane focus');
     await page.keyboard.press('+');const zoomed=await viewport();assert(zoomed.to-zoomed.from<1000010);
-    await page.locator('#timeline-pan-right').click();assert((await viewport()).from>zoomed.from);
-    await page.locator('#timeline-pan-left').click();
+    await page.locator('#timeline-ruler').hover();await page.keyboard.down('Shift');await page.mouse.wheel(0,120);await page.keyboard.up('Shift');await page.waitForFunction(from=>Number(document.querySelector('#index-timeline').dataset.from)>from,zoomed.from);assert((await viewport()).from>zoomed.from);
+    await page.keyboard.down('Shift');await page.mouse.wheel(0,-120);await page.keyboard.up('Shift');
     for(const mode of ['light','dark']){theme=mode;await page.evaluate(mode=>document.documentElement.dataset.theme=mode,mode);for(const width of [1440,390]){await page.setViewportSize({width,height:width===390?844:1100});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await screenshot('timeline-'+mode+'-'+width);}}
     await page.setViewportSize({width:1440,height:1100});
     const saved=snapshot.timeline.tracks.splice(1,1)[0];await refresh();assert.deepEqual(await blockLane.evaluate(n=>JSON.parse(n.dataset.coverage)),[],'Missing physical projection cannot fall back to committed processing coverage');

@@ -269,6 +269,7 @@ func TestIndexInterfaceManagementIsolationAndPageCSP(t *testing.T) {
 func TestIndexInterfaceCLIBuildWaitsForCommittedResult(t *testing.T) {
 	a, _ := initGraphTestApp(t)
 	a.settings.CoreDisabled = true
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	result, err := a.runIndexCLI([]string{"build", "blocks", "--from", "0", "--to", "0"})
 	if err != nil {
 		t.Fatal(err)
@@ -290,6 +291,7 @@ func TestIndexInterfaceCLIBuildWaitsForCommittedResult(t *testing.T) {
 func TestIndexInterfaceRuntimeForwardingUsesExistingEngine(t *testing.T) {
 	a, _ := initGraphTestApp(t)
 	a.settings.CoreDisabled = true
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	server := httptest.NewServer(indexInterfaceHandler(a))
 	defer server.Close()
 	if err := writeRuntimeInfo(a.dataDir, server.URL); err != nil {

@@ -461,16 +461,14 @@ func TestIntegrationBlockIndexOfflineTransactionsAndLocator(t *testing.T) {
 			if err = s.appendBlock(b, 0, "ephemeral"); err != nil {
 				t.Fatal(err)
 			}
-			if id == "blocks" {
-				for _, file := range []struct{ dir, ext string }{{"raw", ".block"}, {"json", ".json"}, {"hex", ".hex"}} {
-					if err = os.Remove(filepath.Join(a.dataDir, "blocks", file.dir, "0-"+genesisHashDisplay+file.ext)); err != nil && !os.IsNotExist(err) {
-						t.Fatal(err)
-					}
+			for _, file := range []struct{ dir, ext string }{{"raw", ".block"}, {"json", ".json"}, {"hex", ".hex"}} {
+				if err = os.Remove(filepath.Join(a.dataDir, "blocks", file.dir, "0-"+genesisHashDisplay+file.ext)); err != nil && !os.IsNotExist(err) {
+					t.Fatal(err)
 				}
-				// A fresh app also drops the already-coalesced decoded response, so
-				// known-position resolution must actually open the durable body.
-				a = restartExplorerFixture064(t, a)
 			}
+			// Drop coalesced responses and legacy cache bytes. Only the explicitly
+			// built index can now supply a location or a durable block body.
+			a = restartExplorerFixture064(t, a)
 			a.cacheIndex = newCacheIndex()
 			result, found, err := a.indexedTransaction(b.Transactions[0].TxID)
 			if id == "blocks" {
@@ -492,8 +490,22 @@ func TestIntegrationBlockIndexOfflineTransactionsAndLocator(t *testing.T) {
 				if _, err := os.Stat(path); !os.IsNotExist(err) {
 					t.Fatal("position lookup created a Raw transaction shard", err)
 				}
-			} else if err != nil || !found || result.Transaction.TxID != b.Transactions[0].TxID {
-				t.Fatalf("explicit Locator lookup %+v %v %v", result, found, err)
+			} else {
+				if err != nil || !found || !result.LocatorVerified || result.TransactionVerified || result.Transaction.TxID != "" || result.ResolutionState != "located_bytes_unavailable" {
+					t.Fatalf("explicit Locator must distinguish a location from unavailable bytes: %+v %v %v", result, found, err)
+				}
+				rawStore, err := openIndexStore(a.dataDir, "blocks")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = rawStore.appendBlock(b, 0, "ephemeral"); err != nil {
+					t.Fatal(err)
+				}
+				a = restartExplorerFixture064(t, a)
+				result, found, err = a.indexedTransaction(b.Transactions[0].TxID)
+				if err != nil || !found || !result.LocatorVerified || !result.TransactionVerified || result.Transaction.TxID != b.Transactions[0].TxID || result.SourceNetwork != "index_retained" {
+					t.Fatalf("explicit Locator plus retained Raw lost offline transaction bytes: %+v %v %v", result, found, err)
+				}
 			}
 			if _, found, err = a.indexedTransaction(strings.Repeat("a", 64)); found || err != nil {
 				t.Fatal("invented transaction", found, err)

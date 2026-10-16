@@ -81,18 +81,29 @@ func Test066BitcoinHandshakeNeverAdvertisesGateway(t *testing.T) {
 func Test066BitcoinPoolRetainsRoomForHistoricalBlocks(t *testing.T) {
 	n := &bitcoinNetwork{sessions: map[string]*bitcoinSession{}}
 	limited := nodeNetworkLimitedService | nodeWitnessService
+	if bitcoinGeneralConnections != 8 || bitcoinBlockConnections != 2 || bitcoinConnectionLimit != 10 {
+		t.Fatal("Core-aligned outbound pool must have eight general and two block-focused transports")
+	}
 	if !n.canKeepBitcoinPeerLocked(limited) {
 		t.Fatal("a recent-block node should remain useful for headers")
 	}
-	for _, address := range []string{"one", "two"} {
-		n.sessions[address] = &bitcoinSession{peer: &peerConn{services: limited}}
+	for i := 0; i < bitcoinConnectionLimit-1; i++ {
+		address := fmt.Sprintf("limited-%d", i)
+		n.sessions[address] = &bitcoinSession{n: n, peer: &peerConn{addr: address, services: limited}, view: networkPeerView{State: "connected", Direction: "outbound", TargetHeight: 900000}}
 	}
-	if n.canKeepBitcoinPeerLocked(limited) || !n.canKeepBitcoinPeerLocked(nodeNetworkService) {
+	if n.canKeepBitcoinPeerLocked(limited) || !n.canKeepBitcoinPeerLocked(nodeNetworkService|nodeWitnessService) {
 		t.Fatal("recent-block nodes must leave the last slot for historical retrieval")
 	}
-	n.sessions["one"].peer.services = nodeNetworkService
+	recent := n.sessions["limited-0"]
+	if !blockTargetEligible(recent, blockTarget{Height: 899900}) || blockTargetEligible(recent, blockTarget{Height: 170}) || blockTargetEligible(recent, blockTarget{Height: -1}) {
+		t.Fatal("limited peers must not be used outside their recent-height promise")
+	}
+	recent.peer.services = nodeNetworkService | nodeWitnessService
 	if !n.canKeepBitcoinPeerLocked(limited) || n.needsArchivalPeerLocked() {
 		t.Fatal("one archival peer satisfies historical-block capacity")
+	}
+	if !blockTargetEligible(recent, blockTarget{Height: 170}) || !blockTargetEligible(recent, blockTarget{Height: 900000}) {
+		t.Fatal("archival witness transport must remain eligible for old and recent blocks")
 	}
 }
 

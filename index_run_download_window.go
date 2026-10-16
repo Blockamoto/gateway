@@ -8,11 +8,12 @@ type indexRunWindowTarget struct {
 	local  bool
 }
 type indexRunDownloadWindow struct {
-	a         *app
-	ctx       context.Context
-	window    *bitcoinBlockWindow
-	authority chainAuthorityView
-	known     map[int64]indexRunWindowTarget
+	a           *app
+	ctx         context.Context
+	window      *bitcoinBlockWindow
+	authority   chainAuthorityView
+	known       map[int64]indexRunWindowTarget
+	localSource func(blockTarget) bool // optional deterministic storage-read test seam
 }
 
 func (w *indexRunDownloadWindow) Reset() {
@@ -51,6 +52,10 @@ func (w *indexRunDownloadWindow) Update(authority chainAuthorityView, ranges []i
 		}
 	}
 	targets := make([]blockTarget, 0, len(wanted))
+	localAvailable := w.a.hasLocalBlockSource
+	if w.localSource != nil {
+		localAvailable = w.localSource
+	}
 	for h := range wanted {
 		if w.ctx.Err() != nil {
 			w.Reset()
@@ -63,7 +68,14 @@ func (w *indexRunDownloadWindow) Update(authority chainAuthorityView, ranges []i
 				w.Reset()
 				return
 			}
-			entry = indexRunWindowTarget{target: t, local: w.a.hasLocalBlockSource(t)}
+			entry = indexRunWindowTarget{target: t, local: localAvailable(t)}
+			w.known[h] = entry
+		} else if !entry.local && (w.window == nil || !w.window.d.hasTargetEntry(entry.target)) {
+			// A completed speculative response can be released under byte
+			// pressure after another acquisition retained its verified Raw body.
+			// Refresh only missing/retired jobs, outside the downloader lock;
+			// active jobs keep their memoized hint without per-block disk reads.
+			entry.local = localAvailable(entry.target)
 			w.known[h] = entry
 		}
 		if !entry.local {

@@ -106,6 +106,16 @@ func (d *bitcoinBlockDownloads) releaseLocked(j *bitcoinBlockDownload) {
 	}
 }
 
+func (d *bitcoinBlockDownloads) hasTargetEntry(t blockTarget) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	j := d.jobs[t.HashRaw]
+	// Update retains existing entries, including failures, without scheduling
+	// another request. Only an absent entry can restart speculative acquisition.
+	return j != nil &&
+		(len(j.target.ExpectedHeader) != 80 || len(t.ExpectedHeader) != 80 || bytes.Equal(j.target.ExpectedHeader, t.ExpectedHeader))
+}
+
 func (n *bitcoinNetwork) fetchTargetBlockContext(ctx context.Context, t blockTarget) ([]byte, string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, "", err

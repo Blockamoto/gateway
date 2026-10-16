@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func TestIndexRetainedCorruptSourceFallsBackAndRepairs(t *testing.T) {
+func TestIndexRetainedCorruptSourceFallsBackAndRetainsWithRawArm(t *testing.T) {
 	for _, damage := range []string{"truncated", "body_corruption", "oversize"} {
 		t.Run(damage, func(t *testing.T) {
 			a, raw := testAppWithGenesis(t)
@@ -36,16 +36,29 @@ func TestIndexRetainedCorruptSourceFallsBackAndRepairs(t *testing.T) {
 			if err := atomicWriteBytes(path, bad); err != nil {
 				t.Fatal(err)
 			}
+			armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 			view, err := a.fetchBlockWithPolicy(target, "retain")
 			if err != nil || !integrityVerified(view) || view.SourceNetwork != "cache" {
 				t.Fatalf("damaged retained bytes blocked healthy local provider: source=%q err=%v", view.SourceNetwork, err)
 			}
-			repaired, err := os.ReadFile(path)
-			if err != nil || !bytes.Equal(repaired, raw) {
-				t.Fatalf("retain did not replace damaged source: %v", err)
+			unchanged, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(unchanged, bad) {
+				t.Fatalf("legacy policy rewrote historical damaged evidence: %v", err)
+			}
+			retained, _, err := readIndexedRawBody(a.dataDir, target, nil)
+			if err != nil || !bytes.Equal(retained, raw) {
+				t.Fatalf("Raw Arm did not retain the healthy fallback as exact body-only storage: %v", err)
 			}
 			if temporary, _ := filepath.Glob(filepath.Join(filepath.Dir(path), ".gateway-*.tmp")); len(temporary) != 0 {
-				t.Fatalf("source replacement left temporary files: %v", temporary)
+				t.Fatalf("fallback left temporary files: %v", temporary)
+			}
+			if err = os.Remove(filepath.Join(a.dataDir, "blocks", "raw", "0-"+genesisHashDisplay+".block")); err != nil {
+				t.Fatal(err)
+			}
+			restarted := restartExplorerFixture064(t, a)
+			recovered, err := restarted.fetchBlockWithPolicy(target, "ephemeral")
+			if err != nil || !integrityVerified(recovered) || recovered.SourceNetwork != "index_retained" || recovered.CacheVisibility != "private" {
+				t.Fatalf("healthy retained fallback unavailable offline after restart: source=%q err=%v", recovered.SourceNetwork, err)
 			}
 		})
 	}
@@ -124,47 +137,63 @@ func TestIndexRetainedReadRejectsNonFile(t *testing.T) {
 	}
 }
 
-func TestIndexExplicitCacheRespectsCapWhenDefaultDisabled(t *testing.T) {
-	a, raw := testAppWithGenesis(t)
-	a.settings.CacheBlocks = false
-	a.settings.StorageCapMB = 1
-	a.settings.CoreDisabled = true
-	a.settings.CoreMountDisabled = true
-	retained := filepath.Join(a.dataDir, "indexes", "sources", genesisHashDisplay+".block")
-	if err := atomicWriteBytes(retained, raw); err != nil {
-		t.Fatal(err)
-	}
-	old := filepath.Join(a.dataDir, "blocks", "raw", "old-fixture.block")
-	if err := os.WriteFile(old, make([]byte, 2*1024*1024), 0600); err != nil {
-		t.Fatal(err)
-	}
-	stamp := time.Unix(1600000000, 0)
-	if err := os.Chtimes(old, stamp, stamp); err != nil {
-		t.Fatal(err)
-	}
-	a.enforceCacheLimit()
-	if _, err := os.Stat(old); err != nil {
-		t.Fatal("legacy disabled-cache policy unexpectedly evicted the fixture")
-	}
-	target, err := a.localBlockTarget(0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := a.fetchBlockWithPolicy(target, "cache"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(old); !os.IsNotExist(err) {
-		t.Fatalf("explicit cache policy skipped eviction: %v", err)
-	}
-	if usage, _ := a.cacheStats(); usage > 1024*1024 {
-		t.Fatalf("explicit cache exceeded its cap: %d", usage)
-	}
-	if a.settings.CacheBlocks {
-		t.Fatal("explicit retention changed the global cache setting")
+func TestIndexExplicitCacheCannotOverrideRawArmOrLegacyCapPolicy(t *testing.T) {
+	for _, armed := range []bool{false, true} {
+		name := "raw_off"
+		if armed {
+			name = "raw_on"
+		}
+		t.Run(name, func(t *testing.T) {
+			a, raw := testAppWithGenesis(t)
+			a.settings.CacheBlocks = false
+			a.settings.StorageCapMB = 1
+			a.settings.CoreDisabled = true
+			a.settings.CoreMountDisabled = true
+			retained := filepath.Join(a.dataDir, "indexes", "sources", genesisHashDisplay+".block")
+			if err := atomicWriteBytes(retained, raw); err != nil {
+				t.Fatal(err)
+			}
+			old := filepath.Join(a.dataDir, "blocks", "raw", "old-fixture.block")
+			if err := os.WriteFile(old, make([]byte, 2*1024*1024), 0600); err != nil {
+				t.Fatal(err)
+			}
+			stamp := time.Unix(1600000000, 0)
+			if err := os.Chtimes(old, stamp, stamp); err != nil {
+				t.Fatal(err)
+			}
+			a.enforceCacheLimit()
+			if _, err := os.Stat(old); err != nil {
+				t.Fatal("legacy disabled-cache policy unexpectedly evicted the fixture")
+			}
+			if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "blocks", Armed: armed}}}); err != nil {
+				t.Fatal(err)
+			}
+			target, err := a.localBlockTarget(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.fetchBlockWithPolicy(target, "cache"); err != nil {
+				t.Fatal(err)
+			}
+			if info, err := os.Stat(old); err != nil || info.Size() != 2*1024*1024 || !info.ModTime().Equal(stamp) {
+				t.Fatalf("legacy cache argument overrode disabled-cache preservation: %v", err)
+			}
+			body, _, err := readIndexedRawBody(a.dataDir, target, nil)
+			if armed {
+				if err != nil || !bytes.Equal(body, raw) {
+					t.Fatal("Raw Arm did not retain exact bytes independently of legacy cache settings", err)
+				}
+			} else if err == nil {
+				t.Fatal("legacy cache argument overrode Raw Off")
+			}
+			if a.settings.CacheBlocks || a.settings.StorageCapMB != 1 {
+				t.Fatal("source fetch changed legacy cache settings")
+			}
+		})
 	}
 }
 
-func TestIndexExplicitCacheRecordsOnlySourcePossessionAcrossRestart(t *testing.T) {
+func TestIndexRawArmRetainsOnlyBodyPossessionAcrossRestart(t *testing.T) {
 	a, raw := testAppWithGenesis(t)
 	a.settings.CoreDisabled = true
 	a.settings.CoreMountDisabled = true
@@ -175,13 +204,14 @@ func TestIndexExplicitCacheRecordsOnlySourcePossessionAcrossRestart(t *testing.T
 	if err := atomicWriteBytes(path, raw); err != nil {
 		t.Fatal(err)
 	}
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	target, err := a.localBlockTarget(0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	view, err := a.fetchBlockWithPolicy(target, "cache")
 	if err != nil || !integrityVerified(view) {
-		t.Fatalf("explicit cache fetch: %v", err)
+		t.Fatalf("Raw-armed source fetch: %v", err)
 	}
 	if err := a.saveCacheIndex(); err != nil {
 		t.Fatal(err)
@@ -189,13 +219,28 @@ func TestIndexExplicitCacheRecordsOnlySourcePossessionAcrossRestart(t *testing.T
 	restarted := &app{dataDir: a.dataDir}
 	restarted.loadCacheIndex()
 	idx := restarted.cacheIndex
-	if len(idx.Blocks) != 1 || !idx.Blocks[genesisHashDisplay].Private || idx.Heights["0"] != genesisHashDisplay {
-		t.Fatalf("source possession not retained privately: %+v", idx.Blocks)
+	if len(idx.Blocks) != 0 || len(idx.Heights) != 0 {
+		t.Fatalf("Raw storage implicitly duplicated legacy cache possession: %+v", idx.Blocks)
 	}
 	if len(idx.Tx) != 0 || len(idx.Spends) != 0 || len(idx.PrivateTx) != 0 || len(idx.PrivateSpends) != 0 {
-		t.Fatal("explicit source caching built unrelated tx/spender indexes")
+		t.Fatal("Raw storage built unrelated tx/spender indexes")
 	}
-	// The normal lookup path keeps its existing derived-index behavior.
+	body, _, err := readIndexedRawBody(a.dataDir, target, nil)
+	if err != nil || !bytes.Equal(body, raw) {
+		t.Fatal("Raw body possession did not survive store reopen", err)
+	}
+	if legacyBody, err := os.ReadFile(path); err != nil || !bytes.Equal(legacyBody, raw) {
+		t.Fatal("read-only legacy source changed", err)
+	}
+	offline := restartExplorerFixture064(t, a)
+	recovered, err := offline.fetchBlockWithPolicy(target, "ephemeral")
+	if err != nil || recovered.SourceNetwork != "index_retained" || recovered.CacheVisibility != "private" {
+		t.Fatal("Raw body not privately available after app restart", recovered, err)
+	}
+	if _, found, err := offline.indexedTransaction(view.Transactions[0].TxID); err != nil || found {
+		t.Fatal("Raw retention implicitly built transaction reverse knowledge", found, err)
+	}
+	// Explicit old-format cache construction remains a readable compatibility seam.
 	legacy := newCacheIndex()
 	indexBlockInto(&legacy, view, "0-"+genesisHashDisplay)
 	if len(legacy.Tx) != len(view.Transactions) || len(legacy.Tx) == 0 {

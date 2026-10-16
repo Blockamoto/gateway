@@ -140,10 +140,27 @@ func Test073BlocksPublicationAndNoRemoteLocatorRepair(t *testing.T) {
 		t.Fatal("block receipt page not valid", err)
 	}
 	id := block.Transactions[0].TxID
-	if _, found, err := a.publishedInscriptionTransactionContext(context.Background(), id, ""); err != nil || !found {
-		t.Fatal("published block TX locator not available", found, err)
+	if _, found, err := a.publishedInscriptionTransactionContext(context.Background(), id, ""); err != nil || found {
+		t.Fatal("Raw publication exposed an unrequested transaction locator", found, err)
 	}
-	path, err := graphShardPath(s.dir, s.locatorKind(), id)
+	locators, err := openIndexStore(a.dataDir, "tx-locator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	locators.head.Mode = "lean"
+	if err = locators.appendBlock(block, 0, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := a.publishedInscriptionTransactionContext(context.Background(), id, ""); err != nil || found {
+		t.Fatal("private explicit Locator was shared without publication", found, err)
+	}
+	if _, err = a.storeIndexPublication("tx-locator", true, locators.checkpoint.Commitment); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := a.publishedInscriptionTransactionContext(context.Background(), id, ""); err != nil || !found {
+		t.Fatal("published explicit Locator unavailable", found, err)
+	}
+	path, err := graphShardPath(locators.dir, locators.locatorKind(), id)
 	if err != nil {
 		t.Fatal(err)
 	}

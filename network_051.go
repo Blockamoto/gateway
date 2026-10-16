@@ -137,6 +137,9 @@ func (n *bitcoinNetwork) learn(rows []advertisedPeer, supplier string) {
 func (n *bitcoinNetwork) start() { go n.run() }
 func (n *bitcoinNetwork) stop() {
 	n.cancel()
+	if n.app != nil {
+		waitRawCoverageStopped(n.app.dataDir)
+	}
 	for _, s := range n.listSessions() {
 		n.mu.Lock()
 		s.retired = true

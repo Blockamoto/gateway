@@ -1,71 +1,11 @@
 package main
 
-import (
-	"context"
-	"encoding/json"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
-)
-
 func (a *app) timelineIndexedBodiesSource(headers *timelineLocalReader, problems *[]string) indexTimelineSource {
-	source := timelineSource("gateway_indexed_raw_bodies", "Present private durable serialized Blocks bodies; full integrity is rechecked on use. Missing bytes remain distinct from saved transaction-location knowledge.")
-	root := filepath.Join(a.dataDir, "indexes", "blocks", "bodies-v2")
-	shards, complete, err := timelineDirectory(root, 256)
-	source.Complete = complete
-	rows, segmentComplete, segmentErr := rawSegmentInventory(context.Background(), a.dataDir)
-	source.Complete = source.Complete && segmentComplete && segmentErr == nil
-	if segmentErr != nil {
-		*problems = append(*problems, "gateway_indexed_raw_bodies: segment inventory unavailable")
-	}
-	for _, row := range rows {
-		if headers.matches(row.Height, row.Hash) && rawSegmentFramePresent(a.dataDir, row) {
-			source.Ranges = append(source.Ranges, heightInterval{row.Height, row.Height})
-		}
-	}
-	if err != nil {
-		*problems = append(*problems, "gateway_indexed_raw_bodies: inventory unavailable")
-		return source
-	}
-	remaining := timelineSourceLimit
-	for _, shard := range shards {
-		if !shard.IsDir() || len(shard.Name()) != 2 {
-			continue
-		}
-		if remaining <= 0 {
-			source.Complete = false
-			break
-		}
-		entries, complete, err := timelineDirectory(filepath.Join(root, shard.Name()), remaining)
-		remaining -= len(entries)
-		if err != nil || !complete {
-			source.Complete = false
-		}
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".block.receipt.json") {
-				continue
-			}
-			hash := strings.TrimSuffix(entry.Name(), ".block.receipt.json")
-			if !validHash(hash) || !strings.HasPrefix(hash, shard.Name()) {
-				continue
-			}
-			f, err := os.Open(filepath.Join(root, shard.Name(), entry.Name()))
-			if err != nil {
-				source.Complete = false
-				continue
-			}
-			var inventory indexedRawInventory
-			err = json.NewDecoder(io.LimitReader(f, 16<<10)).Decode(&inventory)
-			f.Close()
-			if err != nil || inventory.Schema != 2 || inventory.Hash != hash || inventory.Body == nil || inventory.Body.Bytes < 81 || inventory.Body.Bytes > maxMessageSize {
-				source.Complete = false
-				continue
-			}
-			if headers.matches(inventory.Height, hash) && timelineRawPresent(filepath.Join(root, shard.Name(), hash+".block"), hash, 0, int64(inventory.Body.Bytes), [8]byte{}) {
-				source.Ranges = append(source.Ranges, heightInterval{inventory.Height, inventory.Height})
-			}
-		}
+	view := a.rawCoverageSnapshot(headers, nil, nil)
+	source := timelineSource("gateway_indexed_raw_bodies", "Private durable Raw producer bodies. Compact metadata coverage is reconstructed in the background; full block integrity is rechecked on use.")
+	source.Ranges, source.Complete = view.Ranges, view.Complete
+	if view.Reason != "" {
+		source.Note += " " + view.Reason
 	}
 	return source
 }

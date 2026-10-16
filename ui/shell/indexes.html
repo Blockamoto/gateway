@@ -88,7 +88,7 @@ function selectView(view) {
   for (const tab of document.querySelectorAll('[data-view]')) { if (tab.dataset.view === view) tab.setAttribute('aria-current','page'); else tab.removeAttribute('aria-current'); }
 }
 for (const tab of document.querySelectorAll('[data-view]')) tab.addEventListener('click', () => { selectView(tab.dataset.view); showSelectedStatus(); if (tab.dataset.view === 'results' && selectedDefinition()?.buildable) loadRecords(); });
-let definitions = [], reviewedRequest = '', planSerial = 0, status = null, fetching = false, instancesKey = '', providersKey = '', statusRevision = 0, refreshPromise = null;
+let definitions = [], reviewedRequest = '', planSerial = 0, status = null, fetching = false, refreshAgain = false, instancesKey = '', providersKey = '', statusRevision = 0, refreshPromise = null;
 const rangePicker = window.GatewayIndexWorkspace.mountRange({root:$('build-range-picker'),from:$('from'),to:$('to'),live:$('initial-live')});
 const pretty = value => JSON.stringify(value, null, 2);
 const human = value => ({first_valid_claim:'First valid claim in the indexed history',not_evaluated:'Not evaluated',recorded_contiguous_range:'Recorded continuous range',ephemeral:'Discard source blocks after processing',unknown:'Unknown'})[value] || String(value ?? 'unknown').replaceAll('_', ' ');
@@ -299,13 +299,14 @@ $('inspect-inscription-storage').addEventListener('click',async()=>{
 });
 
 async function refresh() {
-  if (fetching) { await refreshPromise; return refresh(); }
+  if (fetching) { refreshAgain=true; return refreshPromise; }
   fetching = true;
-  const revision = statusRevision;
   refreshPromise = (async () => {
+    try { do {
+      refreshAgain=false;const revision=statusRevision;
     try {
       const result = await api('status');
-      if (revision !== statusRevision) return; // A pending control superseded this status read.
+      if (revision !== statusRevision) { refreshAgain=true; continue; } // A pending control superseded this status read.
       status = result; definitions = status.definitions || [];
       $('status-json').textContent = pretty(status);
       const healthy=!(status.errors || []).some(x => String(x).startsWith('live:'));
@@ -333,7 +334,7 @@ async function refresh() {
         if (key !== recordKey && !recordLoading) { if (await loadRecords()) recordKey = key; }
       }
     } catch (error) { timeline.health(false);utxoPanel?.health(false);addressPanel?.health(false);satPanel?.health(false); explorer?.health(false); message('Status unavailable: ' + error.message, true); }
-    finally { fetching = false; }
+    } while(refreshAgain); } finally { fetching = false; }
   })();
   return refreshPromise;
 }

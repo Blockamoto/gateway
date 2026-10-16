@@ -239,7 +239,7 @@ func bitmapRuntimeDefinitions(ctx context.Context, root string) ([]indexDefiniti
 			d.Rules = append(append([]string{}, base.Rules...), d.Rules...)
 			d.Rules = append(d.Rules, "Use only completed outcomes from District instance "+instance.DistrictInstance+" with semantic profile "+instance.DistrictProfileHash+".")
 		}
-		for _, rule := range bitmapRuleRegistry(instance.Profile.Kind) {
+		for _, rule := range bitmapRuleRegistryFor(instance.Profile.FingerprintSchema, instance.Profile.Kind) {
 			d.Rules = append(d.Rules, fmt.Sprintf("%s=%d: %s", rule.ID, instance.Profile.Answers[rule.ID], rule.Question))
 		}
 		d.Rules = append(d.Rules, "Body decoder: "+instance.Profile.DecoderPolicy, "Activation: "+instance.Profile.ActivationPolicy, "Prior context: "+instance.Profile.ContextPolicy)

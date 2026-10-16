@@ -173,6 +173,12 @@ func indexDefinitions() []indexDefinition {
 		if d.ID == "tx-locator" {
 			d.Name = "Transaction Index"
 		}
+		if d.ID == "bitmap-districts" {
+			d.Name = "Bitmap Districts Standard"
+		}
+		if d.ID == "bitmap-parcels" {
+			d.Name = "Bitmap Parcels Standard"
+		}
 		if d.ID == "txo-spender" {
 			// Preserve the legacy recipe identity and readable immutable batches.
 			// TXIO payloads carry their own additive version and private layout.

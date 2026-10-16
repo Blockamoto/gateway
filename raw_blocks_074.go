@@ -331,9 +331,12 @@ func storeIndexedRawBody(root string, height int64, hash string, header, raw []b
 	}
 	// A small rebuildable inventory receipt lets the timeline observe actual
 	// durable body possession without decoding or traversing every index batch.
+	rawSegmentMu.Lock()
+	defer rawSegmentMu.Unlock()
 	if err := atomicWriteJSON(path+".receipt.json", indexedRawInventory{Schema: 2, Height: height, Hash: hash, Body: record.RawBody}); err != nil {
 		return nil, err
 	}
+	rawCoverageMembershipPublished(root, height, hash, nil)
 	return record, nil
 }
 func readIndexedRawBody(root string, target blockTarget, receipt *indexedRawBody) ([]byte, blockView, error) {

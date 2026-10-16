@@ -111,6 +111,22 @@ def main():
         root = profile / 'indexes/blocks/segments-v3'
         return {str(p.relative_to(root)): digest(p) for p in root.rglob('*') if p.is_file()}
 
+    def coverage(expected, row=None):
+        route = '/api/v1/index/raw-coverage'
+        if row is not None:
+            route += '?from=' + str(row['height']) + '&to=' + str(row['height'])
+        for _ in range(600):
+            value = call(route)
+            if value.get('complete'):
+                assert value['scope'] == 'gateway_retained_raw' and value['state'] == 'complete'
+                assert value['total_blocks'] == value['observed_blocks'] == expected, value
+                if row is not None:
+                    assert value['ranges'] == [{'from': row['height'], 'to': row['height']}]
+                    assert value['visible']['complete'] and value['visible']['total_blocks'] == expected
+                return value
+            time.sleep(0.1)
+        raise AssertionError('Retained Raw coverage did not complete metadata recovery')
+
     def assert_no_prefix():
         for id in ('blocks', 'tx-locator', 'inscriptions'):
             assert not (profile / 'indexes' / id / 'head.json').exists(), id
@@ -127,6 +143,8 @@ def main():
         start()
         first, second, third, fourth = manifest['blocks'][:4]
         opened(first)
+        coverage(0)
+        assert not (profile / 'indexes/blocks').exists(), 'Empty coverage inspection created an optional Raw store'
         assert not segment_files()
         assert not (profile / 'indexes/browse').exists()
         assert_no_prefix()
@@ -134,6 +152,7 @@ def main():
         checks.append('Unconfigured timeline ignores legacy cache/graph preferences: viewed real block creates no optional body or singleton index')
         prepare('blocks')
         opened(first)
+        coverage(1, first)
         files = segment_files()
         assert any(name.startswith('blk') for name in files) and any(name.startswith('catalog') for name in files)
         assert not (profile / 'indexes/tx-locator').exists() and not (profile / 'indexes/browse').exists()
@@ -158,6 +177,7 @@ def main():
         (profile / 'settings.json').write_text(json.dumps(saved))
         start()
         opened(first)
+        coverage(1, first)
         assert segment_files() == files
         assert_no_prefix()
         checks.append('Real process restart reuses exact retained body with peers, Core and external archive disabled; repeat read adds no files')
@@ -166,6 +186,7 @@ def main():
         settings['archive_dir'] = str(archive)
         call('/api/v1/settings', settings)
         opened(second)
+        coverage(1, first)
         assert segment_files() == files
         assert_no_prefix()
         checks.append('Raw Off permits temporary real block reads and preserves existing bodies without retaining the next block')
@@ -191,7 +212,7 @@ def main():
         assert archive_before == {str(p.relative_to(archive)): digest(p) for p in archive.rglob('*') if p.is_file()}
         receipt = dict(result='PASS', binary_sha256=digest(binary), fixture_manifest_sha256=digest(fixture / 'manifest.json'),
             checks=checks, process_restart_performed=True, retained_body_exact=True,
-            external_archive_unchanged=True, profile=str(profile),
+            external_archive_unchanged=True, retained_coverage_exact=True, empty_coverage_inspection_no_store=True, profile=str(profile),
             limitations=['Deterministic local real-block sources; peer scheduler behavior is tested separately.'])
         (output / 'result.json').write_text(json.dumps(receipt, indent=2) + '\n')
         print('Compiled unified block policy PASS; exact retained bytes and real process restart verified.')

@@ -32,7 +32,13 @@ func (a *app) handleBitmapProfiles(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		instances = a.bitmapProfileLifecycleViews(r.Context(), instances)
-		writeJSON(w, map[string]any{"reference_revision": bitmapNamedReferenceRevision, "registry": map[string]any{"district": bitmapRuleRegistry("district"), "parcel": bitmapRuleRegistry("parcel")}, "reference": map[string]any{"district": bitmapReferenceAnswers("district"), "parcel": bitmapReferenceAnswers("parcel")}, "instances": instances, "drafts": d.Drafts, "revision": d.Revision, "note": "Named Gateway development interpretations; canonical upstream profile bytes remain unfinished. Saving starts no indexing."})
+		registries := map[string]any{}
+		references := map[string]any{}
+		for _, schema := range []string{bitmapNamedProfileSchema, bitmapExtendedProfileSchema} {
+			registries[schema] = map[string]any{"district": bitmapRuleRegistryFor(schema, "district"), "parcel": bitmapRuleRegistryFor(schema, "parcel")}
+			references[schema] = map[string]any{"district": bitmapReferenceAnswersFor(schema, "district"), "parcel": bitmapReferenceAnswersFor(schema, "parcel")}
+		}
+		writeJSON(w, map[string]any{"profile_schema": bitmapExtendedProfileSchema, "reference_revision": bitmapExtendedReferenceRevision, "registries": registries, "references": references, "registry": registries[bitmapExtendedProfileSchema], "reference": references[bitmapExtendedProfileSchema], "instances": instances, "drafts": d.Drafts, "revision": d.Revision, "note": "Named Gateway development interpretations; existing v1/v2 identities are preserved. New options require a v3 profile and reviewed replay; old candidate rows do not prove delegate absence. Saving starts no indexing."})
 		return
 	}
 	if r.Method != "POST" {

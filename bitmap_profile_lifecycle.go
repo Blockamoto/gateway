@@ -19,6 +19,13 @@ import (
 var bitmapProfileFileMu sync.RWMutex
 
 func bitmapAutomaticLabel(kind, label string, rules map[string]int) (string, error) {
+	customPrefix := strings.TrimSuffix(bitmapAutomaticCustomLabel(kind, 1), "1")
+	if strings.HasPrefix(label, customPrefix) {
+		number := strings.TrimPrefix(label, customPrefix)
+		if n, err := strconv.ParseUint(number, 10, 64); err == nil && n >= 1 && strconv.FormatUint(n, 10) == number && (kind == "district" || kind == "parcel") {
+			return label, nil
+		}
+	}
 	base := map[string]string{"district": "Bitmap District ", "parcel": "Bitmap Parcel "}[kind]
 	if base == "" {
 		return "", fmt.Errorf("only District or Parcel labels are generated")
@@ -43,11 +50,10 @@ func bitmapAutomaticLabel(kind, label string, rules map[string]int) (string, err
 	if !matched {
 		return "", fmt.Errorf("automatic labels require the generated Bitmap kind/classification name")
 	}
-	state := "Non-standard"
-	if indexDigest(rules) == indexDigest(bitmapReferenceAnswers(kind)) {
-		state = "Standard"
+	if suffix == "" {
+		suffix = " 1"
 	}
-	return base + state + suffix, nil
+	return strings.TrimSuffix(bitmapAutomaticCustomLabel(kind, 1), "1") + strings.TrimSpace(suffix), nil
 }
 
 func bitmapQueryConfigurationRevision(r *http.Request, key string) (uint64, error) {
@@ -77,7 +83,7 @@ func bitmapProfileClassification(i bitmapProfileInstance) string {
 	if kind == "chain" {
 		kind = "district"
 	}
-	if indexDigest(i.Rules) == indexDigest(bitmapReferenceAnswers(kind)) {
+	if indexDigest(i.Rules) == indexDigest(bitmapReferenceAnswersFor(i.Profile.FingerprintSchema, kind)) {
 		return "standard"
 	}
 	return "non_standard"
@@ -93,6 +99,7 @@ func bitmapWriteProfileDocument(ctx context.Context, root string, d *bitmapProfi
 	if d.Revision == ^uint64(0) {
 		return fmt.Errorf("Bitmap registry revision exhausted")
 	}
+	bitmapProjectAutomaticLabels(d.Instances)
 	d.Revision++
 	d.Checksum = bitmapProfileDocumentDigest(*d)
 	path := bitmapProfilePath(root)
@@ -334,6 +341,9 @@ func (a *app) updateBitmapProfile(ctx context.Context, q bitmapProfileRequest) (
 	if q.DistrictInstance != current.DistrictInstance {
 		return nil, fmt.Errorf("a track keeps its exact District parent; create a new Parcel track for a different parent")
 	}
+	if q.AutoLabel && q.Label == "" {
+		q.Label = current.Label
+	}
 	ids = bitmapAffectedProfileIDs(d.Instances, current.ID)
 	if reason := bitmapProfileEditEvidence(ctx, a.dataDir, d.Instances, ids); reason != "" {
 		return nil, fmt.Errorf("%s", reason)
@@ -380,7 +390,7 @@ func (a *app) updateBitmapProfile(ctx context.Context, q bitmapProfileRequest) (
 					i.Label = bitmapDerivedLabel(current.Label, " Chain")
 				}
 			} else {
-				i.Profile = bitmapNamedSemanticProfile("parcel", i.Rules, current.ProfileHash)
+				i.Profile = bitmapNamedSemanticProfileFor(i.Profile.FingerprintSchema, "parcel", i.Rules, current.ProfileHash)
 				i.ProfileHash = bitmapProfileHash(i.Profile)
 			}
 		}

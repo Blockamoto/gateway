@@ -74,7 +74,7 @@ async function run() {
     const page = await browser.newPage({viewport:{width:1440,height:1100}, reducedMotion:'reduce'});
     const errors = [], calls = [], unexpected = [];
     page.on('pageerror', error => errors.push(error.message));
-    let snapshot = fixture(), unavailable = false, theme = 'light';
+    let snapshot = fixture(), unavailable = false, theme = 'light',holdNextStatus=false,releaseStatus=null;
     await page.route('**/*', async route => {
       const request = route.request(), url = new URL(request.url());
       const reply = (body, type = 'application/json', status = 200) => route.fulfill({status, contentType:type, body:type === 'application/json' ? JSON.stringify(body) : body});
@@ -90,7 +90,7 @@ async function run() {
       const call = {method:request.method(), path:url.pathname, body:request.method() === 'POST' ? request.postDataJSON() : null};
       calls.push(call);
       if(url.pathname==='/api/v1/navigate')return reply({error:'Offline block fixture'},'application/json',503);
-      if (url.pathname === '/api/v1/index/status') return unavailable ? reply({error:'Fixture unavailable'}, 'application/json', 503) : reply(snapshot);
+      if(url.pathname==='/api/v1/index/status'){if(holdNextStatus){holdNextStatus=false;await new Promise(resolve=>releaseStatus=resolve);}return unavailable?reply({error:'Fixture unavailable'},'application/json',503):reply(snapshot);}
       if (url.pathname === '/api/v1/index/query') return reply({rows:[], total:0, total_known:true, inspected_blocks:0, chain_state:'selected_chain'});
       unexpected.push(call.method + ' ' + call.path);
       return reply({error:'Unexpected fixture action'}, 'application/json', 500);
@@ -126,6 +126,8 @@ async function run() {
     assert.deepEqual(await viewport(),{from:0,to:999999,fit:true});
     const physical=[{from:0,to:9},{from:499990,to:499999},{from:500003,to:500010},{from:999990,to:999999}];
     assert.deepEqual(await blockLane.evaluate(node=>JSON.parse(node.dataset.coverage)),physical,'Physical coverage excludes gaps and ignores provider/processing claims');
+    const rawProjection=snapshot.timeline.tracks.find(t=>t.id==='blocks'),oldProjection=JSON.parse(JSON.stringify(rawProjection));snapshot.timeline.observed_at='2026-10-16T12:00:00Z';rawProjection.coverage=[{from:0,to:2499},{from:792435,to:794934}];rawProjection.gaps=[];rawProjection.retained_coverage={scope:'gateway_retained_raw',state:'complete',complete:true,revision:'exact-5000',ranges:rawProjection.coverage,total_blocks:5000,observed_blocks:5000,from:0,to:794934};rawProjection.backfill={from:0,height:2398,next:2399,target:999999,state:'running'};await refresh();await page.locator('.timeline-track[data-index=blocks] .timeline-track-select').click();assert.match(await page.locator('.timeline-track[data-index=blocks] .timeline-track-count').innerText(),/5,000 blocks saved/,'Saved total above4096 is not the backfill cursor');assert.match(await page.locator('#timeline-selection-meta').innerText(),/Through block 2,398|2,399/);assert.equal(await page.evaluate(()=>GatewayIndexTimeline.indexBounds(status.definitions.find(d=>d.id==='blocks'),status).to),794934,'Saved-body end is independent of backfill progress');rawProjection.coverage=[{from:0,to:1693}];rawProjection.coverage_complete=false;rawProjection.retained_coverage={scope:'gateway_retained_raw',state:'rebuilding',complete:false,revision:'partial',ranges:rawProjection.coverage,observed_blocks:1694,reason:'Metadata reconstruction is incomplete.'};await refresh();assert.match(await page.locator('.timeline-track[data-index=blocks] .timeline-track-count').innerText(),/At least 1,694 blocks saved.*rebuilding map/);assert.equal(await page.evaluate(()=>GatewayIndexTimeline.indexBounds(status.definitions.find(d=>d.id==='blocks'),status).to),null,'A partial map or committed worker head cannot establish the physical end');Object.keys(rawProjection).forEach(k=>delete rawProjection[k]);Object.assign(rawProjection,oldProjection);await refresh();
+    const beforeCoalesce=calls.filter(c=>c.path==='/api/v1/index/status').length;holdNextStatus=true;await page.evaluate(()=>{window.pendingRefresh=Promise.all(Array.from({length:5},()=>refresh()));});for(let i=0;i<100&&!releaseStatus;i++)await new Promise(resolve=>setTimeout(resolve,10));assert(releaseStatus,'A real pending status response is held');assert.equal(calls.filter(c=>c.path==='/api/v1/index/status').length-beforeCoalesce,1);releaseStatus();await page.evaluate(()=>window.pendingRefresh);assert.equal(calls.filter(c=>c.path==='/api/v1/index/status').length-beforeCoalesce,2,'Concurrent refresh callers coalesce into one latest follow-up, not an accumulating poll queue');
     assert(await page.locator('*').count()<1300,'Million-height chain uses bounded DOM');
     assert.equal(await page.getByRole('switch',{name:'blocks On',exact:true}).count(),0,'Inspector has no duplicate execution switches');
     assert.equal((await page.locator('.timeline-track[data-index=blocks] [data-control=arm]').getAttribute('aria-pressed')==='true'),false,'Existing data does not automatically arm a consumer');

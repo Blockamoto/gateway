@@ -14,9 +14,17 @@ Timeline **Arm** is also the consent for new optional Transaction Locator and In
 
 Verified local bytes are reused before requesting missing bodies. Core-style block download coordination does not make Core mandatory, change index consent or authorize copying every transaction into another lookup store. Previous published release notes describe their original behavior; this development policy supersedes their Raw-derived transaction-location behavior for new writes.
 
+## Bitmap comparison tracks
+
+The built-in reference tracks are **Bitmap Districts Standard** and **Bitmap Parcels Standard**. Timeline plus rows add **Bitmap Districts Custom N** or **Bitmap Parcels Custom N**, even when their initial answers match Standard. The name remains editable and separate from the Standard/Nonstandard rule classification.
+
+The latest version adds optional `delegate_exclusion` and `raw_utf8_body`, both off by default. Delegate exclusion rejects an inscription containing a delegate field; it never follows that delegate. Raw UTF-8 strictly decodes the own body while ignoring media/charset metadata and requires `text=0`. Conflicting choices cannot be saved. Preserved v2 profiles retain their original twelve/thirteen answers, strict ASCII `text=0` interpretation and fingerprints. An unindexed custom track can explicitly choose the latest version; indexed tracks remain locked and require a separate new comparison track. See [the optional comparison rules](BITMAP-OPTIONAL-COMPARISONS.md).
+
 ## What coverage means
 
 Headers identify blocks and their place in the selected proof-of-work chain. They do not contain transaction bodies or establish that any block is stored locally. A packaged snapshot accelerates first startup; ordinary Bitcoin synchronization validates and extends it.
+
+Raw saved-body coverage counts durable bodies retained by the Raw control, including bodies fetched by other armed consumers. It is distinct from the Raw backfill cursor. A complete saved-body map provides an exact count and extent; a partial or rebuilding map shows only an observed lower bound and does not establish an end. External Core/archive/cache availability remains a separate source layer. The row never substitutes the worker checkpoint for physical body possession.
 
 Blocks records processing and availability for requested ranges. A block can also be fetched on demand without downloading every earlier body. Header height, committed index coverage, the current job's batch and retained block bytes are separate facts. Completing a batch does not imply whole-chain coverage.
 
@@ -32,7 +40,7 @@ The timeline groups Blocks into Headers/raw bodies and TXIO into Positional link
 
 ## Sats and Satline
 
-Sats processes a continuous prefix from genesis, preferring local verified blocks and fetching missing evidence. Reviewed Build, Pause, Resume and Live keep a readable committed checkpoint; raw bodies may be pruned independently of mandatory live and recovery facts. Ordered ranges identify which sats an output holds. Full ranges for spent outputs are optional and start off. Satline history tracing remains deferred and cannot start a background scan from the explorer.
+Sats processes a continuous prefix from genesis, preferring local verified blocks and fetching missing evidence. Start, Pause, Resume and Live keep a readable committed checkpoint; raw bodies may be pruned independently of mandatory live and recovery facts. Ordered ranges identify which sats an output holds. Full ranges for spent outputs are optional and start off. Satline history tracing remains deferred and cannot start a background scan from the explorer.
 
 Recovery retains the newest two savepoints at heights divisible by 12 and the newest two divisible by 144, deduplicating matching heights and sharing unchanged pages. A reorg restores an eligible selected-chain state and replays forward. This is separate from UTXO's 288 reversible transitions and does not promise 288-block Sat recovery at every height. Incompatible experimental Sat profiles and deeper recovery require an explicitly reviewed rebuild with prior evidence preserved.
 
@@ -84,7 +92,7 @@ An unknown location, temporarily unavailable block bytes and unverified relation
 
 ## Plans, jobs and Live
 
-Selecting a track or range does not start a scan. Historical builds use the global In/Out range and staged track choices; Raw Blocks controls newly fetched source bodies. UTXO uses its genesis-only state workflow and fixed recovery policy. Current addresses build from saved UTXO state without starting that dependency. Historical addresses allow sparse creation ranges and reuse complete retained output facts before fetching raw fallback blocks. Requests containing locked outputs fail before fetching or writing data. One index writer runs at a time; accepted additional requests enter a durable queue. Pause and cancellation preserve committed work.
+Selecting a track or range does not start a scan. Historical builds use the global In/Out range and staged track choices; Raw Blocks controls newly fetched source bodies. UTXO uses its genesis-only state workflow and fixed recovery policy. Current addresses build from saved UTXO state without starting that dependency. Historical addresses allow sparse creation ranges and reuse complete retained output facts before fetching raw fallback blocks. Requests containing locked outputs fail before fetching or writing data. One coordinated run admits compatible consumers at safe block boundaries. Arming during an active run does not silently backfill earlier history; missing prior state remains blocked until an explicit Stop and a valid new Start. Pause and cancellation preserve committed work.
 
 **Arm** selects an available track; **Live** chooses continued following after catch-up. Start begins the selected work. Arming during an active run requests admission at its current safe boundary; consumers needing an earlier prefix show that requirement instead of silently backfilling. A stopped run can start from the validated saved/default origin, including genesis where required. Header pause and outbound-network disable remain effective controls.
 

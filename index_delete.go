@@ -435,6 +435,9 @@ func (a *app) deleteIndexData(ctx context.Context, id, reviewID string) (map[str
 	if err != nil {
 		return nil, err
 	}
+	if id == "blocks" {
+		rawCoverageInvalidated(a.dataDir)
+	}
 	if quarantine != "" {
 		if e := indexDeleteRemoveTree(a.dataDir, quarantine); e != nil {
 			result["cleanup_pending"] = true

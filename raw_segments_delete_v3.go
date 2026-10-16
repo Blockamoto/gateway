@@ -57,7 +57,7 @@ func rawSegmentWholeDeletePaths(root string) ([]string, int64, int64, error) {
 		catalog := parseErr == nil && name == fmt.Sprintf("catalog%08d.dat", shard)
 		_, hexErr := hex.DecodeString(strings.TrimSuffix(strings.TrimPrefix(name, "hash"), ".dat"))
 		hash := len(name) == 10 && strings.HasPrefix(name, "hash") && strings.HasSuffix(name, ".dat") && hexErr == nil
-		if catalog || hash || name == "writer.json" || name == "pruned.json" {
+		if catalog || hash || name == "writer.json" || name == "pruned.json" || name == "coverage-v1.json" {
 			paths = append(paths, p)
 			continue
 		}

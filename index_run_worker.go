@@ -107,11 +107,30 @@ func (a *app) indexRunConsumerContext(ctx context.Context, index string, admitte
 }
 
 type indexRunPrepared struct {
-	cacheBytes int
-	block      blockView
-	extraction *inscriptionBlockResult
-	refs       map[string]map[string]outputFactRef
-	prevouts   map[string]utxoCoin
+	cacheBytes  int
+	rawProduced bool
+	block       blockView
+	extraction  *inscriptionBlockResult
+	refs        map[string]map[string]outputFactRef
+	prevouts    map[string]utxoCoin
+}
+
+func (a *app) ensurePreparedRawProducer(ctx context.Context, p *indexRunPrepared) error {
+	if p.rawProduced {
+		return ctx.Err()
+	}
+	produced, err := a.rawProducerReceiptContext(ctx, p.block)
+	p.rawProduced = produced
+	return err
+}
+func (a *app) checkPreparedRawProducer(ctx context.Context, p *indexRunPrepared) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !p.rawProduced && timelineRawBlocksOn(a.dataDir) {
+		return blockUnavailableError{fmt.Errorf("Raw was turned On during this cohort; waiting for its durable body receipt before derived publication")}
+	}
+	return nil
 }
 
 func runPrepared(ctx context.Context) *indexRunPrepared {
@@ -512,6 +531,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			return nil, err
 		}
 		if p := cache[t.HashDisplay]; p != nil {
+			if err := a.ensurePreparedRawProducer(callCtx, p); err != nil {
+				return nil, err
+			}
 			counts.CacheHits++
 			return p, nil
 		}
@@ -529,7 +551,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			elapsed = time.Since(started)
 		}
 		counts.SourceMilliseconds += elapsed.Milliseconds()
-		if err != nil {
+		if err != nil && !integrityVerified(b) {
 			return nil, err
 		}
 		counts.SourceReads++
@@ -553,6 +575,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			cache[b.Hash] = p
 			order = append(order, b.Hash)
 			cacheBytes += size
+		}
+		if err != nil {
+			return nil, err
 		}
 		return p, nil
 	}
@@ -1071,8 +1096,16 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				continue
 			}
 			consumerCtx := a.indexRunBoundConsumerContext(blockCtx, c.progress)
+			if e := a.ensurePreparedRawProducer(consumerCtx, p); e != nil {
+				c.progress.State, c.progress.Reason = "waiting", e.Error()
+				c.retryAfter = time.Now().Add(time.Second)
+				continue
+			}
 			publishCtx := context.WithValue(consumerCtx, indexRunPublicationKey{}, func() error {
 				if err := checkIndexRunPublication(consumerCtx); err != nil {
+					return err
+				}
+				if err := a.checkPreparedRawProducer(consumerCtx, p); err != nil {
 					return err
 				}
 				current, e := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), h)
@@ -1102,6 +1135,11 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				}
 				if errors.Is(err, errIndexRunAdmissionChanged) {
 					c.progress.State = "waiting"
+				}
+				var unavailable blockUnavailableError
+				if errors.As(err, &unavailable) {
+					c.progress.State = "waiting"
+					c.retryAfter = time.Now().Add(time.Second)
 				}
 				var changed satPublicationAnchorError077
 				if errors.As(err, &changed) {

@@ -64,17 +64,63 @@ def main():
             return json.loads(raw) if 'application/json' in kind else raw
 
         initial = call('/api/v1/bitmap/profiles')
-        assert len(initial['registry']['district']) == 12 and len(initial['registry']['parcel']) == 13
+        old_schema = 'gateway-bitmap-named-semantics-v2'
+        new_schema = 'gateway-bitmap-named-semantics-v3'
+        assert initial['profile_schema'] == new_schema
+        assert initial['reference_revision'] == 'ccf7271a61a2cead4781d4a2bb9c86da761f1cd6'
+        assert len(initial['registry']['district']) == 14 and len(initial['registry']['parcel']) == 15
+        assert len(initial['registries'][old_schema]['district']) == 12
+        assert len(initial['registries'][old_schema]['parcel']) == 13
         assert len(initial['instances']) == 3
+        builtins = {item['id']: item for item in initial['instances']}
+        assert builtins['bitmap-districts']['label'] == 'Bitmap Districts Standard'
+        assert builtins['bitmap-parcels']['label'] == 'Bitmap Parcels Standard'
+        assert builtins['bitmap-districts']['profile_hash'] == '3e957003ceefbeebd84a6cff74e483956d51b456229d556c6cbdcc7d414c99da'
+        assert builtins['bitmap-parcels']['profile_hash'] == '19422536eee0541785a3bb8f15aad6f16ec4c09145b7f622aeb891f179df5af6'
+        old_builtin_hashes = {identity: item['profile_hash'] for identity, item in builtins.items()}
+        for identity, kind in (('bitmap-districts', 'district'), ('bitmap-parcels', 'parcel')):
+            projection = builtins[identity]['legacy_rule_answers']
+            order = [rule['id'] for rule in initial['registries'][old_schema][kind]]
+            assert projection['schema'] == 'gateway-legacy-policy-projection-v1'
+            assert projection['rule_schema'] == old_schema and projection['rule_ids'] == order
+            assert projection['answers'] == initial['references'][old_schema][kind]
+            assert projection['bits'] == ''.join(str(projection['answers'][rule]) for rule in order)
+            assert 'delegate_exclusion' not in projection['answers'] and 'raw_utf8_body' not in projection['answers']
+        for kind in ('district', 'parcel'):
+            registry = {item['id']: item for item in initial['registry'][kind]}
+            reference = initial['reference'][kind]
+            for rule in ('delegate_exclusion', 'raw_utf8_body'):
+                assert reference[rule] == registry[rule]['reference_value'] == 0
+                assert registry[rule]['supported_values'] == [0, 1] and not registry[rule]['core']
+            context = dict(kind=kind, label='Optional rule validation', profile_schema=new_schema)
+            if kind == 'parcel':
+                context['district_instance'] = 'bitmap-districts'
+            delegate = call('/api/v1/bitmap/profiles/validate', dict(context, rules=dict(reference, delegate_exclusion=1)))
+            assert delegate['state'] == 'ready' and delegate['profile']['answers']['delegate_exclusion'] == 1
+            utf8 = call('/api/v1/bitmap/profiles/validate', dict(context, rules=dict(reference, text=0, raw_utf8_body=1)))
+            assert utf8['state'] == 'ready' and utf8['profile']['decoder_policy'] == 'own-body-utf8-ignore-media-v1'
+            for invalid in (dict(reference, raw_utf8_body=1), dict(reference, text=0, raw_utf8_body=1, brotli=1)):
+                conflict = call('/api/v1/bitmap/profiles/validate', dict(context, rules=invalid))
+                assert conflict['state'] == 'invalid' and conflict['issues']
+            malformed = dict(reference)
+            malformed.pop('delegate_exclusion')
+            assert call('/api/v1/bitmap/profiles/validate', dict(context, rules=malformed))['state'] == 'invalid'
+        checks.append('versioned District and Parcel registries preserve old questions; new options default Off and reject contradictory or incomplete profiles')
         for asset in ('bitmap-workspace.js', 'bitmap-workspace.css'):
             assert len(call('/shell/' + asset)) > 500
         checks.append('compiled profile routes and both embedded workspace assets')
+        definitions = {item['id']: item for item in call('/api/v1/index/rules')}
+        assert definitions['bitmap-districts']['name'] == 'Bitmap Districts Standard'
+        assert definitions['bitmap-parcels']['name'] == 'Bitmap Parcels Standard'
         before = call('/api/v1/index/status')
         assert not before['jobs'] and before['run'].get('run') is None
 
         made = call('/api/v1/bitmap/profiles', dict(action='create', kind='district',
                     label='Native reference', rules=initial['reference']['district'], linked_parcel=True))
         track, parcel, chain = made['instance'], made['linked_parcel'], made['chain']
+        assert track['profile']['fingerprint_schema'] == new_schema
+        assert parcel['profile']['fingerprint_schema'] == new_schema
+        assert parcel['label'] == 'Bitmap Parcels Custom 1' and parcel['auto_label']
         assert parcel['district_instance'] == track['id'] == chain['district_instance']
         assert parcel['district_profile_hash'] == track['profile_hash']
         assert len(call('/api/v1/bitmap/profiles')['instances']) == 6
@@ -133,9 +179,10 @@ def main():
         checks.append('Standard classification follows rule values independently of the custom display name')
         rules = dict(initial['reference']['district'], text=0)
         variant = call('/api/v1/bitmap/profiles', dict(action='create', kind='district',
-                    label='Bitmap District Standard 2', auto_label=True, rules=rules))['instance']
+                    label='', auto_label=True, rules=rules))['instance']
         assert variant['profile_hash'] != track['profile_hash']
-        assert variant['auto_label'] and variant['label'] == 'Bitmap District Non-standard 2'
+        assert variant['auto_label'] and variant['label'] == 'Bitmap Districts Custom 1'
+        assert variant['classification'] == 'non_standard'
         result = call('/api/v1/bitmap/compare?baseline=' + track['id'] + '&variant=' + variant['id'])
         assert result['state'] == 'unavailable' and result['compared_blocks'] == 0
         checks.append('distinct alternative profile and honest unavailable comparison with Chain Off')
@@ -143,7 +190,7 @@ def main():
                     kind='district', label=variant['label'], auto_label=True,
                     rules=initial['reference']['district'], expected_profile=variant['profile_hash'],
                     expected_configuration_revision=variant['configuration_revision']))['instance']
-        assert variant['classification'] == 'standard' and variant['label'] == 'Bitmap District Standard 2'
+        assert variant['classification'] == 'standard' and variant['label'] == 'Bitmap Districts Custom 1'
         variant = call('/api/v1/bitmap/profiles', dict(action='rename', id=variant['id'],
                     label=variant['label']))['instance']
         assert not variant.get('auto_label')
@@ -151,8 +198,40 @@ def main():
                     kind='district', label=variant['label'], rules=rules,
                     expected_profile=variant['profile_hash'],
                     expected_configuration_revision=variant['configuration_revision']))['instance']
-        assert variant['classification'] == 'non_standard' and variant['label'] == 'Bitmap District Standard 2'
-        checks.append('automatic names follow rule classification until explicit rename, including a deliberately chosen matching name')
+        assert variant['classification'] == 'non_standard' and variant['label'] == 'Bitmap Districts Custom 1'
+        checks.append('numbered Custom labels stay stable across Standard/Non-standard rule changes and remain explicitly renameable')
+
+        optional_rules = dict(rules, delegate_exclusion=1, raw_utf8_body=1)
+        previous_hash, previous_revision = variant['profile_hash'], variant['configuration_revision']
+        variant = call('/api/v1/bitmap/profiles', dict(action='update', id=variant['id'],
+                    kind='district', label=variant['label'], rules=optional_rules,
+                    expected_profile=previous_hash, expected_configuration_revision=previous_revision))['instance']
+        assert variant['profile_hash'] != previous_hash and variant['configuration_revision'] > previous_revision
+        assert variant['rules']['delegate_exclusion'] == variant['rules']['raw_utf8_body'] == 1
+        assert variant['profile']['decoder_policy'] == 'own-body-utf8-ignore-media-v1'
+        assert variant['label'] == 'Bitmap Districts Custom 1'
+        call('/api/v1/bitmap/view?kind=district&instance=' + variant['id'] + '&expected_profile=' + previous_hash, expected=400)
+        second = call('/api/v1/bitmap/profiles', dict(action='create', kind='district',
+                    label='', auto_label=True, rules=initial['reference']['district']))['instance']
+        assert second['label'] == 'Bitmap Districts Custom 2' and second['classification'] == 'standard'
+        assert second['id'] != variant['id']
+        extra_parcel = call('/api/v1/bitmap/profiles', dict(action='create', kind='parcel',
+                    district_instance=second['id'], label='', auto_label=True,
+                    rules=initial['reference']['parcel']))['instance']
+        assert extra_parcel['label'] == 'Bitmap Parcels Custom 2'
+        assert extra_parcel['district_profile_hash'] == second['profile_hash']
+        checks.append('compiled rule edits select the UTF-8/delegate interpretation and invalidate stale bindings; numbered District and Parcel allocation is independent')
+
+        legacy = call('/api/v1/bitmap/profiles', dict(action='create', kind='district',
+                    label='Preserved version 2', profile_schema=old_schema,
+                    rules=initial['references'][old_schema]['district']))['instance']
+        assert legacy['profile']['fingerprint_schema'] == old_schema
+        assert legacy['profile']['reference_revision'] == '1751e0d37073ab920cbd8b5548c61b74c37716d1'
+        assert legacy['profile_hash'] == '3468ea11488f21eece241bd7d31af1d94026f9cfb5be8a4fc85e25e29b0c7e83'
+        assert len(legacy['rules']) == 12 and 'delegate_exclusion' not in legacy['rules']
+        assert legacy['classification'] == 'standard' and legacy['rules_editable']
+        assert legacy['profile_hash'] != original_hash
+        checks.append('legacy named profiles retain their original reference, exact answer map and separate identity beside new profiles')
 
         owned = profile / 'indexes' / 'bitmap-development-v1' / track['id']
         owned.mkdir(parents=True)
@@ -183,6 +262,8 @@ def main():
                   'district:bitmap-districts': ['bitmap-parcels']}
         saved = call('/api/v1/index/layout', dict(order=layout))
         assert saved['order'] == layout and saved['revision'] > 0
+        expected_instances = {item['id']: (item['label'], item['profile_hash'], item['configuration_revision'])
+                              for item in call('/api/v1/bitmap/profiles')['instances']}
         process.terminate()
         process.wait(timeout=10)
         previous_endpoint = endpoint
@@ -207,7 +288,11 @@ def main():
         assert endpoint and endpoint != previous_endpoint, 'Restart must exercise a new browser origin'
         restored = call('/api/v1/index/layout')
         assert restored == saved
-        assert len(call('/api/v1/bitmap/profiles')['instances']) == 5
+        restarted_profiles = call('/api/v1/bitmap/profiles')['instances']
+        assert {item['id']: (item['label'], item['profile_hash'], item['configuration_revision'])
+                for item in restarted_profiles} == expected_instances
+        restored_builtins = {item['id']: item['profile_hash'] for item in restarted_profiles if item['id'] in old_builtin_hashes}
+        assert restored_builtins == old_builtin_hashes
         assert call('/api/v1/index/status')['run'].get('run') is None
         checks.append('compiled restart preserves profiles and parent-bound layout across local ports without work')
         receipt = dict(result='PASS', binary=str(binary), binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),

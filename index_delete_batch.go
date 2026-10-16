@@ -757,6 +757,9 @@ func (a *app) deleteIndexDataBatch(ctx context.Context, q indexDeleteRequest) (m
 	if err != nil {
 		return nil, err
 	}
+	if containsIndexDeleteID(q.Indices, "blocks") || q.Index == "blocks" {
+		rawCoverageInvalidated(a.dataDir)
+	}
 	if quarantine != "" {
 		if e := indexDeleteRemoveTree(a.dataDir, quarantine); e != nil {
 			result["cleanup_pending"] = true

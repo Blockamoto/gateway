@@ -215,7 +215,7 @@ func TestBitmapLifecycleMutationAPIAndStaleComparisonBindings(t *testing.T) {
 	}
 }
 
-func TestBitmapLifecycleGeneratedLabelTracksClassificationWithoutChangingIdentity(t *testing.T) {
+func TestBitmapLifecycleGeneratedLabelIndependentOfClassification(t *testing.T) {
 	ctx := context.Background()
 	a, _, _ := timelineFixture(t, 1)
 	out, err := bitmapSaveProfile(ctx, a.dataDir, bitmapProfileRequest{Action: "create", AutoLabel: true, Kind: "district", Label: "Bitmap District Standard 12", Rules: bitmapReferenceAnswers("district")})
@@ -228,8 +228,8 @@ func TestBitmapLifecycleGeneratedLabelTracksClassificationWithoutChangingIdentit
 		t.Fatal(err)
 	}
 	changed := out["instance"].(bitmapProfileInstance)
-	if !changed.AutoLabel || changed.Label != "Bitmap District Non-standard 12" || changed.ID != i.ID || changed.ConfigurationRevision != 2 {
-		t.Fatal("generated label misrepresented changed rules", changed)
+	if !changed.AutoLabel || changed.Label != "Bitmap Districts Custom 12" || changed.Classification != "non_standard" || changed.ID != i.ID || changed.ConfigurationRevision != 2 {
+		t.Fatal("classification changed custom identity/name", changed)
 	}
 	if _, err := bitmapSaveProfile(ctx, a.dataDir, bitmapProfileRequest{Action: "rename", ID: i.ID, Label: "My Standard study"}); err != nil {
 		t.Fatal(err)

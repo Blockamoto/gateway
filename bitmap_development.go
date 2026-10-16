@@ -30,15 +30,25 @@ type bitmapDevelopmentProfile struct {
 	Kind                string         `json:"kind,omitempty"`
 	Answers             map[string]int `json:"answers,omitempty"`
 	DecoderPolicy       string         `json:"decoder_policy,omitempty"`
+	DelegatePolicy      string         `json:"delegate_policy,omitempty"`
 	ParentPolicy        string         `json:"parent_policy,omitempty"`
 	ActivationPolicy    string         `json:"activation_policy,omitempty"`
 	ContextPolicy       string         `json:"context_policy,omitempty"`
 	ActivationHeight    int64          `json:"activation_height,omitempty"`
 }
 
-// Display names and research/build provenance do not define semantic identity.
-// This is a declared development encoding, not the unfinished standard format.
+// Display names never define semantic identity. The v1/v2 hash projections are
+// frozen; v3 additionally binds its exact reference and delegate policy. These
+// are declared development encodings, not the unfinished standard format.
 func bitmapProfileHash(p bitmapDevelopmentProfile) string {
+	if p.FingerprintSchema == bitmapExtendedProfileSchema {
+		return indexDigest(struct {
+			Encoding, Reference, Kind, Parser, ParserReference, Decoder, Delegate, Parent, Activation, Context string
+			ActivationHeight                                                                                   int64
+			Answers                                                                                            map[string]int
+			DistrictProfile                                                                                    string
+		}{p.FingerprintSchema, p.ReferenceRevision, p.Kind, p.ParserProfile, p.ParserReference, p.DecoderPolicy, p.DelegatePolicy, p.ParentPolicy, p.ActivationPolicy, p.ContextPolicy, p.ActivationHeight, p.Answers, p.DistrictProfileHash})
+	}
 	if p.FingerprintSchema == bitmapNamedProfileSchema {
 		return indexDigest(struct {
 			Encoding, Kind, Parser, ParserReference, Decoder, Parent, Activation, Context string

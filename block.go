@@ -335,16 +335,45 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 	}
 	// Legacy call signatures remain source-compatible. Their retention string
 	// cannot override the timeline's sole Raw on/off choice.
-	if timelineRawBlocksOn(a.dataDir) {
-		_, err = retainVerifiedRawBlock(ctx, a.dataDir, view, func() error { return checkTimelineRawBlocksOn(ctx, a.dataDir) })
-		if err != nil && !errors.Is(err, errIndexRunConsumerStopped) {
-			return blockView{}, err
-		}
+	if err = a.ensureRawProducerContext(ctx, view); err != nil {
+		// The coordinator may retain this already authenticated temporary body
+		// within its bounded prepared cache while Raw storage is repaired.
+		return view, err
 	}
 	if err = ctx.Err(); err != nil {
 		return blockView{}, err
 	}
 	return view, nil
+}
+
+// Raw is the sole durable body producer. Every body fanout, including a run's
+// prepared-body reuse, passes this barrier; its sparse receipt is independent
+// of the Raw consumer's earlier contiguous backfill checkpoint.
+func (a *app) ensureRawProducerContext(ctx context.Context, view blockView) error {
+	_, err := a.rawProducerReceiptContext(ctx, view)
+	return err
+}
+func (a *app) rawProducerReceiptContext(ctx context.Context, view blockView) (bool, error) {
+	// Bind the selected-header lock before the root-only durable writer emits
+	// a coverage update. Source publication never takes the coverage lock first.
+	a.rawCoverageState()
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if !timelineRawBlocksOn(a.dataDir) {
+		return false, nil
+	}
+	_, err := retainVerifiedRawBlock(ctx, a.dataDir, view, func() error { return checkTimelineRawBlocksOn(ctx, a.dataDir) })
+	if err == nil {
+		return true, nil
+	}
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	if errors.Is(err, errIndexRunConsumerStopped) && !timelineRawBlocksOn(a.dataDir) {
+		return false, nil
+	}
+	return false, blockUnavailableError{fmt.Errorf("Raw producer could not retain this verified body; derived publication is waiting: %w", err)}
 }
 
 // Acquisition has no retention or optional index side effects. Concurrent

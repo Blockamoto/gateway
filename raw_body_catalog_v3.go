@@ -206,7 +206,11 @@ func writeRawBodyCatalogLocked(ctx context.Context, root string, v blockView, re
 	if v.Height < 0 {
 		return nil
 	}
-	return writeRawBodyHeightLocked(ctx, root, v.Height, row, guard)
+	if e = writeRawBodyHeightLocked(ctx, root, v.Height, row, guard); e != nil {
+		return e
+	}
+	rawCoveragePublished(root, v.Height, v.Hash, record.RawBody.Segment.File)
+	return nil
 }
 func writeRawBodyHeightLocked(ctx context.Context, root string, height int64, row []byte, guard func() error) error {
 	path := rawBodyCatalogHeightPath(root, height)
@@ -278,6 +282,7 @@ func retainVerifiedRawBlock(ctx context.Context, root string, v blockView, guard
 						if er = writeRawBodyHeightLocked(ctx, root, v.Height, row, guard); er != nil {
 							return nil, er
 						}
+						rawCoveragePublished(root, v.Height, v.Hash, receipt.Segment.File)
 					}
 					return record, nil
 				}

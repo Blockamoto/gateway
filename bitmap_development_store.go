@@ -43,6 +43,8 @@ type bitmapDevelopmentCandidate struct {
 	Ownership              string             `json:"ownership"`
 	RuleResults            []bitmapRuleAudit  `json:"rule_results,omitempty"`
 	DecodeState            string             `json:"decode_state,omitempty"`
+	DelegateFieldState     string             `json:"delegate_field_state,omitempty"`
+	DelegateFieldEvidence  string             `json:"delegate_field_evidence,omitempty"`
 }
 type bitmapParentProof struct {
 	ParentID     string          `json:"parent_id"`
@@ -589,7 +591,10 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 			continue
 		}
 		c := bitmapDevelopmentCandidate{ID: o.ID, Kind: bitmapConsumerKind(s.id), RevealCoordinate: inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height), RevealHeight: block.Height, RevealHash: block.Hash, TxIndex: o.TxIndex, InscriptionIndex: o.Index, ContentHash: o.ContentSHA256, Eligibility: "ineligible", Selection: "not-selected", Reason: reason, Parents: append([]string(nil), o.Envelope.Parents...), Ownership: "unknown"}
-		if s.instance.Profile.FingerprintSchema == bitmapNamedProfileSchema {
+		if len(text) <= 128 {
+			c.Content = text
+		}
+		if bitmapNamedSchema(s.instance.Profile.FingerprintSchema) {
 			c.DecodeState = "pass"
 			if reason == "unresolved_charset" {
 				c.DecodeState = "unknown"
@@ -597,8 +602,23 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 				c.DecodeState = "fail"
 			}
 		}
-		if len(text) <= 128 {
-			c.Content = text
+		if s.instance.Profile.FingerprintSchema == bitmapExtendedProfileSchema {
+			c.DelegateFieldState, c.DelegateFieldEvidence, err = bitmapDelegateDeclaration(o)
+			if err != nil {
+				return err
+			}
+			if c.DelegateFieldState == "" && s.instance.Profile.Answers["delegate_exclusion"] == 1 {
+				c.Eligibility, c.Reason = "unresolved", "delegate_field_evidence_required"
+				c.UnresolvedDependencies = []string{"authenticated own-envelope field declarations; reviewed occurrence replay required"}
+				unresolved = true
+				staged = append(staged, c)
+				continue
+			}
+			if s.instance.Profile.Answers["delegate_exclusion"] == 1 && (c.DelegateFieldState == "present" || c.DelegateFieldState == "dangling") {
+				c.Reason = "delegate_declaration_excluded"
+				staged = append(staged, c)
+				continue
+			}
 		}
 		if reason == "unresolved_charset" {
 			c.Eligibility = "unresolved"

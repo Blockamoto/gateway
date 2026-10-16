@@ -127,6 +127,11 @@ func (a *app) saveIndexJob(j indexJob) error {
 }
 func (a *app) indexStatus() indexStatusView {
 	out := indexStatusView{Definitions: indexDefinitions(), Providers: a.indexProviderViews(), Instances: []indexInstance{}, Live: []indexLiveView{}, Job: a.indexJobSnapshot()}
+	if custom, err := bitmapRuntimeDefinitions(context.Background(), a.dataDir); err != nil {
+		out.Errors = append(out.Errors, "Bitmap profiles: "+err.Error())
+	} else {
+		out.Definitions = append(out.Definitions, custom...)
+	}
 	out.Run = a.indexRunSnapshot()
 	if state, err := readBlocksBodyMigration(a.dataDir); err != nil {
 		out.Errors = append(out.Errors, "Blocks migration: "+err.Error())
@@ -200,6 +205,49 @@ func (a *app) indexStatus() indexStatusView {
 	}
 	out.Timeline = a.indexTimeline(out.Definitions, out.Providers, out.Instances, out.Errors...)
 	return out
+}
+
+// Custom recipes exist before their first checkpoint. Project the authenticated
+// executable registry into status rather than inferring available tracks from
+// built instances. This read never creates a job or a derived store.
+func bitmapRuntimeDefinitions(ctx context.Context, root string) ([]indexDefinition, error) {
+	registry, err := bitmapReadProfileDocument(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]indexDefinition, 0, len(registry.Instances))
+	for _, instance := range registry.Instances {
+		d, err := findIndexDefinition(instance.ID)
+		if err != nil {
+			return nil, err
+		}
+		d.Name, d.Kind = instance.Label, instance.Kind
+		d.ProfileHash, d.RecipeHash, d.RuleHash = instance.ProfileHash, d.RuleHash, instance.ProfileHash
+		d.DistrictInstance, d.DistrictProfileHash, d.ChainInstance = instance.DistrictInstance, instance.DistrictProfileHash, instance.ChainInstance
+		d.StartHeight = instance.StartHeight
+		d.Dependencies = append([]string{}, d.Dependencies...)
+		for n, dependency := range d.Dependencies {
+			if dependency == "bitmap-districts" {
+				d.Dependencies[n] = instance.DistrictInstance
+			}
+		}
+		d.Theory = "Immutable Gateway development interpretation for this " + instance.Kind + " track. The semantic profile hash is distinct from the generic recipe hash; no canonical Bitmap standard or completed local coverage is claimed."
+		d.Rules = append([]string{}, instance.Profile.Rules...)
+		if instance.Kind == "chain" {
+			base, _ := findIndexDefinition("bitmap-chain")
+			d.Rules = append(append([]string{}, base.Rules...), d.Rules...)
+			d.Rules = append(d.Rules, "Use only completed outcomes from District instance "+instance.DistrictInstance+" with semantic profile "+instance.DistrictProfileHash+".")
+		}
+		for _, rule := range bitmapRuleRegistry(instance.Profile.Kind) {
+			d.Rules = append(d.Rules, fmt.Sprintf("%s=%d: %s", rule.ID, instance.Profile.Answers[rule.ID], rule.Question))
+		}
+		d.Rules = append(d.Rules, "Body decoder: "+instance.Profile.DecoderPolicy, "Activation: "+instance.Profile.ActivationPolicy, "Prior context: "+instance.Profile.ContextPolicy)
+		if instance.Profile.ParentPolicy != "" {
+			d.Rules = append(d.Rules, "Parent evidence: "+instance.Profile.ParentPolicy)
+		}
+		out = append(out, d)
+	}
+	return out, nil
 }
 func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {
 	if bitmapConsumerID(req.Index) {

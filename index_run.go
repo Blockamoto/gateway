@@ -16,6 +16,7 @@ import (
 )
 
 type indexRunOptions struct {
+	Retention           string            `json:"retention,omitempty"`
 	Mode                string            `json:"mode,omitempty"`
 	RetainOutputValues  *bool             `json:"retain_output_values,omitempty"`
 	RetainOutputScripts *bool             `json:"retain_output_scripts,omitempty"`
@@ -66,6 +67,8 @@ type indexRunDependency struct {
 	Action string `json:"action,omitempty"`
 }
 type indexRunCounts struct {
+	OutcomeReads           int64 `json:"outcome_reads,omitempty"`
+	ChainSteps             int64 `json:"chain_steps,omitempty"`
 	SourceReads            int64 `json:"source_reads"`
 	DecodedBlocks          int64 `json:"decoded_blocks"`
 	InscriptionExtractions int64 `json:"inscription_extractions"`
@@ -172,7 +175,7 @@ func (a *app) indexRunSnapshot() indexRunDocument {
 }
 func normalizeIndexRunRequest(req indexRunRequest) (indexRunRequest, error) {
 	req.Consumers = append([]indexRunSelection(nil), req.Consumers...)
-	if len(req.Consumers) > 32 {
+	if len(req.Consumers) > 256 {
 		return req, fmt.Errorf("too many run consumers")
 	}
 	if req.In != nil && *req.In < 0 || req.Out != nil && *req.Out < 0 || req.In != nil && req.Out != nil && *req.Out < *req.In {
@@ -198,6 +201,9 @@ func normalizeIndexRunRequest(req indexRunRequest) (indexRunRequest, error) {
 		}
 		if c.Mode != "lean" && c.Mode != "full" {
 			return req, fmt.Errorf("unsupported consumer mode")
+		}
+		if c.Retention != "" && (!bitmapConsumerID(c.Index) || bitmapConsumerKind(c.Index) != "chain" || c.Retention != "full" && c.Retention != "pruned") {
+			return req, fmt.Errorf("retention must be full or pruned and belongs to an attached Bitmap Chain")
 		}
 		d, err := findIndexDefinition(c.Index)
 		if err != nil || !d.Buildable || d.Locked {
@@ -250,7 +256,8 @@ func indexRunOptionalWorkAllowed(root, id string) bool {
 		return false
 	}
 	if !d.Configured {
-		return true
+		live, e := readIndexLiveState(root)
+		return e == nil && !live.Policies[id].Stopped
 	}
 	c, ok := runSelection(d.Prepared, id)
 	return ok && c.Armed
@@ -358,7 +365,18 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			q.From = d.StartHeight
 		}
 		var head *indexCheckpoint
-		if strings.HasPrefix(c.Index, "bitmap-") { // The development adapter owns its distinct rules/store.
+		if bitmapConsumerID(c.Index) { // The instance adapter owns its distinct immutable rules/store.
+			instance, e := bitmapResolvedInstance(ctx, a.dataDir, c.Index)
+			if e != nil {
+				q.State = "blocked"
+				q.Reason = e.Error()
+				p.Ready = false
+				p.Consumers = append(p.Consumers, q)
+				continue
+			}
+			if q.From < instance.StartHeight {
+				q.From = instance.StartHeight
+			}
 			head, err = indexRunBitmapHead(ctx, a, c.Index)
 		} else if c.Index == "utxo-state" {
 			var u *utxoStore
@@ -449,6 +467,18 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			}
 			q.From = 0
 		}
+		if bitmapConsumerID(c.Index) {
+			instance, _ := bitmapResolvedInstance(ctx, a.dataDir, c.Index)
+			next := instance.StartHeight
+			if head != nil {
+				next = head.Height + 1
+			}
+			if next < q.From {
+				q.State = "needs_prerequisite"
+				q.RequiresLeadIn = true
+				q.Reason = "This Bitmap instance needs its preceding declared segment. Move global In to its next height and review; no hidden lead-in or genesis scan will start."
+			}
+		}
 		if c.Index != "address-state" && c.Index != "address-history" && head != nil && !c.Rebuild && req.In != nil && head.Height+1 < *req.In {
 			q.State = "needs_prerequisite"
 			q.RequiresLeadIn = true
@@ -489,21 +519,41 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 		if c.Index == "sat-state" {
 			q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "sat-state", Kind: "state", State: "internal", Reason: "Sats maintains its own genesis-first input identity lookup; TXIO and UTXO indexes are not required."})
 		}
-		if c.Index == "bitmap-parcels" || c.Index == "bitmap-chain" {
+		if bitmapConsumerID(c.Index) && bitmapConsumerKind(c.Index) != "district" {
+			instance, _ := bitmapResolvedInstance(ctx, a.dataDir, c.Index)
 			depState := "missing"
-			if source, ok := runSelection(req, "bitmap-districts"); ok && source.Armed {
+			if source, ok := runSelection(req, instance.DistrictInstance); ok && source.Armed {
 				depState = "selected"
-			} else if h, e := indexRunBitmapHead(ctx, a, "bitmap-districts"); e == nil && h != nil && h.Height >= p.TargetHeight {
+			} else if ready, e := bitmapCompletedOutcomeInterval(ctx, a.dataDir, instance.DistrictInstance, max(q.From, q.Height+1), p.TargetHeight, instance.DistrictProfileHash); e == nil && ready {
 				depState = "ready"
+			} else if c.Live && bitmapConsumerKind(c.Index) == "chain" {
+				if source, e := readBitmapDevelopmentHead(ctx, a.dataDir, instance.DistrictInstance); e == nil && source != nil && source.ProfileHash == instance.DistrictProfileHash && source.Height >= max(q.From, q.Height+1) {
+					depState = "partial"
+					if q.Reason == "" {
+						q.Reason = "Catch up through retained completed District outcomes, then wait for this exact producer. Its Off state is preserved."
+					}
+				}
 			}
-			q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "bitmap-districts", Kind: "state", State: depState, Reason: "This consumer requires completed same-block District evaluation.", Action: "include"})
+			if bitmapConsumerKind(c.Index) == "chain" {
+				q.Dependencies = []indexRunDependency{}
+			}
+			q.Dependencies = append(q.Dependencies, indexRunDependency{Index: instance.DistrictInstance, Kind: "state", State: depState, Reason: "Requires retained completed outcomes from this exact District instance and interpretation; saved outcomes need no raw block reads.", Action: "include"})
 			if depState == "missing" {
 				q.State = "needs_prerequisite"
-				q.Reason = "Arm Districts or provide its completed evaluation through the selected target."
+				q.Reason = "Arm the exact District producer or explicitly review replay/backfill of its missing completed outcomes. No source scan starts implicitly."
 			}
 		}
-		if c.Index == "bitmap-parcels" {
+		if bitmapConsumerID(c.Index) && bitmapConsumerKind(c.Index) == "parcel" {
 			q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "sat-state", Kind: "lookup", State: "conditional", Reason: "Parcel candidates need checked parent provenance; missing saved evidence waits without starting Satline.", Action: "inspect"})
+		}
+		if bitmapConsumerID(c.Index) && bitmapConsumerKind(c.Index) == "chain" && c.Retention != "" {
+			view, e := bitmapChainRetentionStatus(ctx, a.dataDir, c.Index)
+			if e != nil {
+				q.State = "blocked"
+				q.Reason = e.Error()
+			} else if view.Mode != c.Retention {
+				p.Notes = append(p.Notes, c.Index+": reviewed retention change to "+c.Retention+"; missing earlier history is not backfilled. Pruned keeps current and actual 12/144 restore points.")
+			}
 		}
 		if q.Reason == "" {
 			q.Reason = "Ready to reuse saved coverage and process missing blocks within the global window."
@@ -551,6 +601,12 @@ func (a *app) handleIndexRun(w http.ResponseWriter, r *http.Request) {
 		if !indexRequestBody(w, r, &req) {
 			return
 		}
+		normalized, e := normalizeIndexRunRequest(req)
+		if e != nil {
+			jsonError(w, http.StatusBadRequest, e)
+			return
+		}
+		req = normalized
 		if action == "/prepare" {
 			result, err = a.prepareIndexRun(req)
 		} else {

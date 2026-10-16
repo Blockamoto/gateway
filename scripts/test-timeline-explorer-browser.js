@@ -36,7 +36,8 @@ const block=height=>({height,hash:String(height).padStart(64,'a'),transaction_co
       if(url.pathname==='/api/v1/flow')return reply({inputs:[{index:0,outpoint:'fixture',value:60}],outputs:[{n:0,value_sats:50}],fee:10,note:'Fixture value flow'});
       throw Error('Unexpected request '+url.pathname);
     });
-    await page.goto(origin+'/test');
+    await page.route('**/api/v1/index/layout',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({schema:1,order:{},revision:0})}));
+  await page.goto(origin+'/test');
     assert.equal(await page.locator('#retained-input').inputValue(),'kept');
     await page.locator('#timeline-explorer-tab').click();assert.equal(calls.length,0,'Opening empty Explorer tab does not fetch');
     await page.evaluate(()=>helper.focus({index:'blocks'}));assert.equal(calls.length,0,'Track-only focus does not fetch');

@@ -26,6 +26,7 @@ const anchor='a'.repeat(64),snapshot={height:1,block_hash:anchor,commitment:'b'.
    }
    unexpected.push(u.pathname);return route.abort();
   });
+  await page.route('**/api/v1/index/layout',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({schema:1,order:{},revision:0})}));
   await page.goto(origin);await page.evaluate(()=>helper.loadHierarchy({kind:'block',height:1}));
   const choose=offset=>page.evaluate(offset=>helper.entity({kind:'satpoint',height:1,txIndex:0,outputIndex:0,satOffset:offset}),offset);
   await choose(9);await page.waitForFunction(()=>opened.at(-1)==='109.sat');assert.deepEqual(await page.evaluate(()=>opened),['109.sat'],'Output-local9 resolves to numbered109; never treat offset as identity');

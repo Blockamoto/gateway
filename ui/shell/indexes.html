@@ -7,6 +7,7 @@
 <title>Indexes · Gateway</title>
 <link rel="stylesheet" href="/shell/style.css">
 <link rel="stylesheet" href="/shell/index-timeline.css">
+<link rel="stylesheet" href="/shell/bitmap-workspace.css">
 <link rel="stylesheet" href="/shell/transaction-flow-layout.css">
 <link rel="stylesheet" href="/shell/block-viewport.css">
 <style nonce="__INDEX_NONCE__">
@@ -70,6 +71,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <script src="/shell/address-view.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/sat-view.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/bitmap-view.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/bitmap-workspace.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/workspace-resources.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/timeline-explorer.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/inscription-viewport.js" nonce="__INDEX_NONCE__"></script>
@@ -147,6 +149,7 @@ function syncRetainedStart() {
   }
 }
 function selectIndex(id, view, initialLive = false) {
+ resources?.closeBitmapSettings?.();
  if(view==='advanced')view='build';
   if(selectedIndex && !selectedDefinition()?.locked){const draft={};for(const key of ['from','to','retention','mode'])draft[key]=$(key).value;draft.live=$('initial-live').checked;draft.history=$('retain-sat-history').checked;draft.conventional_ids=$('conventional-ids').checked;draft.output_values=$('retain-output-values').checked;draft.output_scripts=$('retain-output-scripts').checked;draft.outputs=[...$('output-choices').querySelectorAll('input')].filter(x=>x.checked&&!x.disabled).map(x=>x.value);planDrafts.set(selectedIndex,draft)}
   if(!id){selectedIndex='';timeline.select('');selectView('catalog');return;}
@@ -172,6 +175,8 @@ function selectIndex(id, view, initialLive = false) {
   showSelectedStatus();
   rangePicker.update(d,status);
   syncOutputEnrichment();
+  resources?.showIndexDelete?.(id,d.name);
+  if(/^bitmap-(?:districts|parcels|chain)(?:-|$)/.test(id))resources?.openBitmapSettings?.(id);
 }
 function showRequirements(){
  const holder=$('index-requirements'),d=selectedDefinition();holder.replaceChildren(element('h3','Requirements'));if(!d)return;
@@ -184,7 +189,7 @@ function showRequirements(){
  if(d.id==='sat-state')row('Saved Sat input identities','Managed internally','A new state processes from genesis. The historical TXIO and UTXO indexes are not prerequisites.');
  else if(d.id==='utxo-state')row('Unspent state','Genesis or authenticated resume','A sparse range cannot establish a complete UTXO set. Mandatory facts and undo remain local.');
  else if(d.id==='txo-spender')row('Input translation','Retained or on demand','Transaction locators can help resolve native references; missing evidence remains unresolved.','tx-locator');
- else if(d.id==='bitmap-parcels'||d.id==='bitmap-chain'){row('District evaluation','Required','This consumer requires completed same-block District evaluation.','bitmap-districts');if(d.id==='bitmap-parcels')row('Parent provenance','Conditional','Missing saved identity evidence waits; inspecting this requirement does not start Satline.','sat-state');}
+ else if(/^bitmap-(?:parcels|chain)(?:-|$)/.test(d.id)){const district=d.dependencies?.find(id=>/^bitmap-districts(?:-|$)/.test(id))||d.district_instance||(d.id==='bitmap-chain'?'bitmap-districts':d.id.startsWith('bitmap-chain-')?d.id.replace('bitmap-chain-','bitmap-districts-'):'bitmap-districts');row('Pinned District outcomes','Required','Completed source-aligned outcomes must come from this exact District instance. Saved outcomes can be read while its producer is Off.',district);if(/^bitmap-parcels(?:-|$)/.test(d.id))row('Parent provenance','Conditional','Missing saved identity evidence waits; inspecting this requirement does not start Satline.','sat-state');}
  else if(d.id==='address-history')row('Historical outputs','Independent creation ranges','Current-address membership is not required; historical receipts are not a current balance.');
 }
 function showRules() {
@@ -507,7 +512,9 @@ for(const id of ['index-requirements','utxo-build-panel','sat-build-panel','addr
 window.GatewayIndexWorkspace.mountLayout($('index-timeline'),$('message'));
 explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message,viewport:$('workspace-viewport-body'),onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:resourceIntent});
 viewport=window.GatewayInscriptionViewport.mount({document,explorer,viewport:$('workspace-viewport-body'),contentOrigin:workspaceBoot.content_origin,notify:message,onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:resourceIntent});
-resources=window.GatewayWorkspaceResources.mount({document,explorer,timeline,status:()=>status,inspect:inspectIndex,onNavigate:navigateWorkspace,onResolved:(address)=>publishAddress(address,true)});
+resources=window.GatewayWorkspaceResources.mount({document,explorer,timeline,status:()=>status,inspect:inspectIndex,onNavigate:navigateWorkspace,onResolved:(address)=>publishAddress(address,true),refresh,notify:message});
+document.addEventListener('gateway:bitmap-add-profile',event=>resources.openBitmapSettings(null,event.detail||{}));
+document.addEventListener('gateway:bitmap-overview',()=>navigateWorkspace('bitmap.gateway'));
 for(const id of ['mode','retain-output-values','retain-output-scripts','conventional-ids'])$(id).addEventListener('change',()=>{if(!selectedIndex)return;const owner=id.startsWith('retain-output-')?'txo-spender':selectedIndex,patch=id==='mode'?{mode:$('mode').value}:id==='conventional-ids'?{conventional_ids:inscriptionLocatorsAvailable()&&$('conventional-ids').checked}:{[id==='retain-output-values'?'retain_output_values':'retain_output_scripts']:$(id).checked};timeline.setConsumerOptions?.(owner,patch);});
 selectView('catalog');
 refresh().then(()=>{workspaceReady=true;if(pendingIndex){openIndexBuild(pendingIndex);pendingIndex=null;}const params=new URLSearchParams(location.search),request=pendingAddress||{address:params.get('focus')||(params.get('viewer')==='1'?'ord.gateway':'.gateway'),options:{navigationId:params.has('navigationId')?Number(params.get('navigationId')):null,historyMode:'replace',focus:params.get('focusPanel')==='1'}};pendingAddress=null;return navigateWorkspace(request.address,request.options);}).catch(error=>message(error.message,true));

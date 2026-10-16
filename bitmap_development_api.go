@@ -23,34 +23,42 @@ type bitmapDevelopmentSnapshot struct {
 	ConsensusValidated bool   `json:"consensus_validated"`
 }
 type bitmapDevelopmentView struct {
-	State             string                       `json:"state"`
-	Kind              string                       `json:"kind"`
-	Snapshot          *bitmapDevelopmentSnapshot   `json:"snapshot"`
-	Profile           bitmapDevelopmentProfile     `json:"profile"`
-	ProfileHash       string                       `json:"profile_hash"`
-	Coverage          []heightInterval             `json:"coverage"`
-	Gaps              []heightInterval             `json:"gaps"`
-	Result            any                          `json:"result"`
-	Candidates        []bitmapDevelopmentCandidate `json:"candidates"`
-	Rows              []any                        `json:"rows"`
-	PendingCandidates []bitmapDevelopmentCandidate `json:"pending_candidates,omitempty"`
-	NextCursor        string                       `json:"next_cursor"`
-	HasMore           bool                         `json:"has_more"`
-	BlockEvaluated    bool                         `json:"block_evaluated"`
-	OrderedWinnerIDs  []string                     `json:"ordered_winner_ids"`
-	IsolatedHash      string                       `json:"isolated_outcome_hash,omitempty"`
-	ChainHash         string                       `json:"outcome_chain_hash,omitempty"`
-	ScopedCommitment  *string                      `json:"bitmap_chain_commitment"`
-	CompleteScope     bool                         `json:"complete_scope"`
-	Ownership         string                       `json:"ownership"`
-	Note              string                       `json:"note"`
+	InstanceID          string                       `json:"instance"`
+	Label               string                       `json:"label"`
+	DistrictInstance    string                       `json:"district_instance,omitempty"`
+	DistrictProfileHash string                       `json:"district_profile_hash,omitempty"`
+	EvaluatedCoverage   []heightInterval             `json:"evaluated_coverage"`
+	Retention           *bitmapChainRetentionView    `json:"retention,omitempty"`
+	State               string                       `json:"state"`
+	Kind                string                       `json:"kind"`
+	Snapshot            *bitmapDevelopmentSnapshot   `json:"snapshot"`
+	Profile             bitmapDevelopmentProfile     `json:"profile"`
+	ProfileHash         string                       `json:"profile_hash"`
+	Coverage            []heightInterval             `json:"coverage"`
+	Gaps                []heightInterval             `json:"gaps"`
+	Result              any                          `json:"result"`
+	Candidates          []bitmapDevelopmentCandidate `json:"candidates"`
+	Rows                []any                        `json:"rows"`
+	PendingCandidates   []bitmapDevelopmentCandidate `json:"pending_candidates,omitempty"`
+	NextCursor          string                       `json:"next_cursor"`
+	HasMore             bool                         `json:"has_more"`
+	BlockEvaluated      bool                         `json:"block_evaluated"`
+	OrderedWinnerIDs    []string                     `json:"ordered_winner_ids"`
+	IsolatedHash        string                       `json:"isolated_outcome_hash,omitempty"`
+	ChainHash           string                       `json:"outcome_chain_hash,omitempty"`
+	ScopedCommitment    *string                      `json:"bitmap_chain_commitment"`
+	CompleteScope       bool                         `json:"complete_scope"`
+	Ownership           string                       `json:"ownership"`
+	Note                string                       `json:"note"`
 }
 type bitmapDevelopmentCursor struct {
-	Index      string `json:"index"`
-	Commitment string `json:"commitment"`
-	Target     string `json:"target"`
-	Before     string `json:"before"`
-	Digest     string `json:"digest"`
+	Index       string `json:"index"`
+	Commitment  string `json:"commitment"`
+	Target      string `json:"target"`
+	Before      string `json:"before"`
+	Digest      string `json:"digest"`
+	ProfileHash string `json:"profile_hash,omitempty"`
+	Generation  uint64 `json:"generation,omitempty"`
 }
 
 func bitmapCursorDigest(c bitmapDevelopmentCursor) string { c.Digest = ""; return indexDigest(c) }
@@ -75,7 +83,11 @@ func readBitmapPending(ctx context.Context, root, id string, h *bitmapDevelopmen
 		previous = h.Commitment
 		height = h.Height + 1
 	}
-	if p.Schema != 1 || p.Index != id || p.Digest != bitmapPendingDigest(p) || p.ProfileHash != bitmapProfileHash(bitmapProfile(bitmapConsumerKind(id))) {
+	instance, resolveErr := bitmapResolvedInstance(ctx, root, id)
+	if resolveErr != nil {
+		return nil, resolveErr
+	}
+	if p.Schema != 1 || p.Index != id || p.Digest != bitmapPendingDigest(p) || p.ProfileHash != instance.ProfileHash {
 		return nil, fmt.Errorf("Bitmap pending evidence authentication mismatch")
 	}
 	if p.Previous != previous || p.Height != height {
@@ -89,22 +101,45 @@ func bitmapNewView(kind string) bitmapDevelopmentView {
 	return bitmapDevelopmentView{State: "not_built", Kind: kind, Profile: p, ProfileHash: bitmapProfileHash(p), Coverage: []heightInterval{}, Gaps: []heightInterval{}, Candidates: []bitmapDevelopmentCandidate{}, Rows: []any{}, OrderedWinnerIDs: []string{}, Ownership: "unknown", Note: "Saved development-profile evidence only. Opening this view starts no index, trace or block scan. The canonical Bitmap semantic profile is not frozen."}
 }
 func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, district, transaction, height *uint64, cursor string, limit int, records bool) (bitmapDevelopmentView, error) {
+	return a.bitmapInstanceViewContext(ctx, kind, "", "", "", district, transaction, height, cursor, limit, records)
+}
+func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedProfile, snapshot string, district, transaction, height *uint64, cursor string, limit int, records bool) (bitmapDevelopmentView, error) {
 	out := bitmapNewView(kind)
-	id := "bitmap-districts"
-	if kind == "parcel" {
-		id = "bitmap-parcels"
-	} else if kind == "chain" {
-		id = "bitmap-chain"
-	} else if kind != "district" {
+	if id == "" {
+		id = map[string]string{"district": "bitmap-districts", "parcel": "bitmap-parcels", "chain": "bitmap-chain"}[kind]
+	}
+	if kind != "district" && kind != "parcel" && kind != "chain" {
 		return out, fmt.Errorf("Bitmap kind must be district, parcel or chain")
 	}
+	instance, resolveErr := bitmapResolvedInstance(ctx, a.dataDir, id)
+	if resolveErr != nil {
+		return out, resolveErr
+	}
+	if instance.Kind != kind {
+		return out, fmt.Errorf("Bitmap instance kind mismatch")
+	}
+	if expectedProfile != "" && expectedProfile != instance.ProfileHash {
+		return out, fmt.Errorf("Bitmap profile changed; select the immutable instance again")
+	}
+	out.Profile = instance.Profile
+	out.ProfileHash = instance.ProfileHash
+	out.InstanceID = id
+	out.Label = instance.Label
+	out.DistrictInstance = instance.DistrictInstance
+	out.DistrictProfileHash = instance.DistrictProfileHash
 	if err := requireReleaseFeature(id); err != nil {
 		return out, err
 	}
 	if limit < 1 || limit > 100 {
 		return out, fmt.Errorf("Bitmap page limit must be 1..100")
 	}
-	h, err := readBitmapDevelopmentHead(ctx, a.dataDir, id)
+	var h *bitmapDevelopmentHead
+	var err error
+	if snapshot != "" {
+		h, err = readBitmapDevelopmentCommit(ctx, a.dataDir, id, snapshot)
+	} else {
+		h, err = readBitmapDevelopmentHead(ctx, a.dataDir, id)
+	}
 	if err != nil {
 		out.State = "unavailable"
 		out.Note = err.Error()
@@ -127,6 +162,7 @@ func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, dis
 		out.State = "ready"
 		out.Snapshot = bitmapSnapshot(h)
 		out.Coverage = []heightInterval{{h.SegmentStart, h.Height}}
+		out.EvaluatedCoverage = append([]heightInterval(nil), out.Coverage...)
 		out.CompleteScope = true
 		out.Result = map[string]any{"winner_count": h.WinnerCount, "candidate_count": h.CandidateCount}
 	}
@@ -146,6 +182,14 @@ func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, dis
 	if h == nil {
 		return out, nil
 	}
+	if kind == "chain" {
+		retention, e := bitmapChainRetentionStatus(ctx, a.dataDir, id)
+		if e != nil {
+			return out, e
+		}
+		out.Retention = &retention
+		out.Coverage = retention.RetainedIntervals
+	}
 	tree := func(root string) *ordinalTree {
 		return newOrdinalTree(filepath.Join(bitmapDevelopmentDir(a.dataDir, id), "pages"), root).withContext(ctx)
 	}
@@ -163,14 +207,17 @@ func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, dis
 			}
 			return out, nil
 		}
-		var row bitmapDevelopmentBlock
-		have, e := tree(h.BlockRoot).get(fmt.Sprintf("%016x", wanted), &row)
+		at, e := bitmapHeadAtSnapshot(ctx, a.dataDir, id, h.Commitment, int64(wanted))
 		if e != nil {
 			return out, e
 		}
-		if !have {
-			return out, fmt.Errorf("completed Bitmap outcome is missing")
+		if at == nil {
+			out.State = "not_retained"
+			out.CompleteScope = false
+			out.Note = "This completed height is not retained. No replay was started."
+			return out, nil
 		}
+		row := at.LastBlock
 		out.Result = row
 		out.BlockEvaluated = row.BlockEvaluated
 		out.OrderedWinnerIDs = row.OrderedWinnerIDs
@@ -226,7 +273,11 @@ func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, dis
 		}
 		raw, e := base64.RawURLEncoding.DecodeString(cursor)
 		var c bitmapDevelopmentCursor
-		if e != nil || json.Unmarshal(raw, &c) != nil || c.Index != id || c.Commitment != h.Commitment || c.Target != target || c.Digest != bitmapCursorDigest(c) || !ordinalKeyValid(c.Before) {
+		generation := uint64(0)
+		if out.Retention != nil {
+			generation = out.Retention.Generation
+		}
+		if e != nil || json.Unmarshal(raw, &c) != nil || c.Index != id || c.Commitment != h.Commitment || c.Target != target || c.ProfileHash != "" && c.ProfileHash != h.ProfileHash || c.Generation != generation || c.Digest != bitmapCursorDigest(c) || !ordinalKeyValid(c.Before) {
 			return out, fmt.Errorf("Bitmap cursor does not match resource/checkpoint")
 		}
 		before = c.Before
@@ -288,6 +339,10 @@ func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, dis
 	}
 	if out.HasMore {
 		c := bitmapDevelopmentCursor{Index: id, Commitment: h.Commitment, Target: target, Before: addressHistoryBefore(last)}
+		c.ProfileHash = h.ProfileHash
+		if out.Retention != nil {
+			c.Generation = out.Retention.Generation
+		}
 		c.Digest = bitmapCursorDigest(c)
 		raw, _ := json.Marshal(c)
 		out.NextCursor = base64.RawURLEncoding.EncodeToString(raw)
@@ -296,7 +351,7 @@ func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, dis
 	if e != nil {
 		return out, e
 	}
-	if latest == nil || latest.Commitment != h.Commitment {
+	if snapshot == "" && (latest == nil || latest.Commitment != h.Commitment) {
 		return out, fmt.Errorf("Bitmap checkpoint changed; restart from the first page")
 	}
 	return out, nil
@@ -313,6 +368,7 @@ func bitmapQueryNumber(r *http.Request, key string) (*uint64, error) {
 	return &n, nil
 }
 func (a *app) registerBitmapDevelopmentRoutes(mux *http.ServeMux) {
+	a.registerBitmapProfileRoutes(mux)
 	for _, path := range []string{"/api/v1/bitmap/view", "/api/v1/bitmap/records"} {
 		mux.HandleFunc(path, a.handleBitmapDevelopmentView)
 	}
@@ -327,9 +383,14 @@ func (a *app) handleBitmapDevelopmentView(w http.ResponseWriter, r *http.Request
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	bitmapSnapshotMu.RLock()
+	defer bitmapSnapshotMu.RUnlock()
 	kind := r.URL.Query().Get("kind")
 	if kind == "" {
 		kind = "district"
+		if id := r.URL.Query().Get("instance"); id != "" && bitmapConsumerID(id) {
+			kind = bitmapConsumerKind(id)
+		}
 	}
 	district, err := bitmapQueryNumber(r, "district")
 	if err != nil {
@@ -354,7 +415,7 @@ func (a *app) handleBitmapDevelopmentView(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	result, err := a.bitmapDevelopmentViewContext(r.Context(), kind, district, transaction, height, r.URL.Query().Get("cursor"), limit, strings.HasSuffix(r.URL.Path, "/records"))
+	result, err := a.bitmapInstanceViewContext(r.Context(), kind, r.URL.Query().Get("instance"), r.URL.Query().Get("expected_profile"), r.URL.Query().Get("snapshot"), district, transaction, height, r.URL.Query().Get("cursor"), limit, strings.HasSuffix(r.URL.Path, "/records"))
 	if err != nil {
 		jsonError(w, 400, err)
 		return
@@ -362,8 +423,15 @@ func (a *app) handleBitmapDevelopmentView(w http.ResponseWriter, r *http.Request
 	writeJSON(w, result)
 }
 func (a *app) bitmapDevelopmentInstancesContext(ctx context.Context) ([]indexInstance, error) {
+	bitmapSnapshotMu.RLock()
+	defer bitmapSnapshotMu.RUnlock()
 	out := []indexInstance{}
-	for _, id := range []string{"bitmap-districts", "bitmap-parcels", "bitmap-chain"} {
+	instances, err := bitmapProfileInstances(ctx, a.dataDir)
+	if err != nil {
+		return nil, err
+	}
+	for _, instance := range instances {
+		id := instance.ID
 		h, err := readBitmapDevelopmentHead(ctx, a.dataDir, id)
 		if err != nil {
 			out = append(out, indexInstance{Definition: id, Version: 1, Network: "bitcoin-mainnet", Coverage: []heightInterval{}, Gaps: []heightInterval{}, Completeness: "unavailable", Queryable: false, Note: "Saved Bitmap evidence is unavailable: " + err.Error()})
@@ -374,7 +442,17 @@ func (a *app) bitmapDevelopmentInstancesContext(ctx context.Context) ([]indexIns
 		}
 		s := bitmapRunConsumer{id: id, head: h}
 		state := a.utxoSelectedChainState(ctx, &utxoCheckpoint{Height: h.Height, BlockHash: h.BlockHash}, a.currentChainAuthority())
-		out = append(out, indexInstance{Definition: id, Version: 1, Network: "bitcoin-mainnet", Coverage: []heightInterval{{h.SegmentStart, h.Height}}, Gaps: []heightInterval{}, Completeness: "complete_contiguous_evaluation_under_experimental_profile", Verification: "header_anchored_processing; " + state + "; consensus_validated=false", Provenance: "locally_derived_development_profile", Retention: "pruned", Queryable: state == "selected_chain", Checkpoint: s.Checkpoint(), Note: "Explicit Gateway development profile, not a frozen canonical Bitmap standard. Ownership is unknown; unresolved evidence never advances coverage."})
+		coverage := []heightInterval{{h.SegmentStart, h.Height}}
+		retention := "full"
+		if instance.Kind == "chain" {
+			view, e := bitmapChainRetentionStatus(ctx, a.dataDir, id)
+			if e != nil {
+				return nil, e
+			}
+			coverage = view.RetainedIntervals
+			retention = view.Mode
+		}
+		out = append(out, indexInstance{Definition: id, Version: 1, Network: "bitcoin-mainnet", Coverage: coverage, Gaps: []heightInterval{}, Completeness: "complete_contiguous_evaluation_under_experimental_profile", Verification: "header_anchored_processing; " + state + "; consensus_validated=false", Provenance: "locally_derived_development_profile", Retention: retention, Queryable: state == "selected_chain", Checkpoint: s.Checkpoint(), Note: instance.Label + ": explicit Gateway development profile " + h.ProfileHash + "; not a frozen canonical Bitmap standard. Ownership is unknown; unresolved evidence never advances coverage."})
 	}
 	return out, nil
 }

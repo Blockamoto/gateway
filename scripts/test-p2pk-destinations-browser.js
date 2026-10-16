@@ -17,6 +17,7 @@ const fixtures={
  '/api/v1/browser/status':{browser:{native_active:false}},'/api/v1/system/status':{},
  '/api/v1/updates/status':{state:'not_configured',current_version:'test',configured:false,auto_check:false},
  '/api/v1/peers':{connections:[],network:{},core_peers:[]},'/api/v1/graph/status':{},'/api/v1/jobs':{jobs:[]},
+ '/api/v1/index/layout':{schema:1,order:{},revision:0},
  '/api/v1/index/status':{definitions:['headers','blocks','tx-locator','txo-spender','utxo-state','address-state','address-history','inscriptions','sat-state'].map(id=>({id,name:id,buildable:id!=='headers',locked:false,version:1,start_height:0,arbitrary_start:true,rules:[],dependencies:[]})),job:{},jobs:[],instances:[],providers:[],live:[],errors:[],timeline:{tip_height:170,tip_hash:anchor.block_hash,tracks:[]}},
  '/api/v1/network':{enabled:false,connected:0,gateway_connected:0,headers:{header_height:170,header_state:'ready'}},
  '/api/v1/setup':{show_automatically:false,settings:{},progress:{stage:0}},

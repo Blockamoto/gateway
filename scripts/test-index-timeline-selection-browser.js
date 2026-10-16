@@ -60,7 +60,8 @@ async function run(){
     const refresh=async preserveFocus=>{const response=page.waitForResponse(r=>r.url()===origin+'/api/v1/index/status');await page.evaluate(()=>refresh());await response;await settle();};
     const drag=async(locator,dx)=>{await locator.waitFor({state:'visible'});const box=await locator.boundingBox();const x=box.x+box.width/2,y=box.y+box.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y,{steps:5});await page.mouse.up();await settle();};
 
-    await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.getByRole('button',{name:'Expand index tracks',exact:true}).click();
+    await page.route('**/api/v1/index/layout',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({schema:1,order:{},revision:0})}));
+  await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.getByRole('button',{name:'Expand index tracks',exact:true}).click();
     const range=()=>page.locator('#timeline-global-range').innerText(),handle=edge=>page.locator('#timeline-ruler .timeline-global-handle.'+edge);
     await jump(100);await page.locator('#timeline-ruler').focus();await page.keyboard.press('i');await jump(112);await page.locator('#timeline-ruler').focus();await page.keyboard.press('o');
     assert.match(await range(),/100.*112/);assert.deepEqual(await picks('blocks'),[{from:100,to:112}]);assert.deepEqual(await picks('headers'),[{from:100,to:112}],'Every track reads the same interval');

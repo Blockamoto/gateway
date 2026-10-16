@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -21,6 +20,10 @@ type indexRunExternalConsumer interface {
 type indexRunBlockSource interface {
 	SetBlockSource(func(context.Context, int64) (blockView, error))
 }
+type indexRunOutcomeConsumer interface {
+	ApplyRetainedOutcome(context.Context, int64) error
+}
+type indexRunRetentionConsumer interface{ ConfigureRetention(string) }
 type indexRunSourceFunc func(context.Context, blockTarget, string) (blockView, error)
 type indexRunConsumer struct {
 	selection  indexRunSelection
@@ -95,6 +98,16 @@ func runPrevout(ctx context.Context, tx, vin int) (utxoCoin, bool) {
 }
 
 func runConsumerOrder(id string) int {
+	if bitmapConsumerID(id) {
+		switch bitmapConsumerKind(id) {
+		case "district":
+			return 5
+		case "parcel":
+			return 6
+		case "chain":
+			return 7
+		}
+	}
 	switch id {
 	case "blocks":
 		return 0
@@ -137,8 +150,11 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 		return nil, err
 	}
 	switch {
-	case strings.HasPrefix(c.Index, "bitmap-"):
+	case bitmapConsumerID(c.Index):
 		v.external, err = openBitmapRunConsumer(ctx, a, c.Index)
+		if configured, ok := v.external.(indexRunRetentionConsumer); ok {
+			configured.ConfigureRetention(c.Retention)
+		}
 	case c.Index == "utxo-state":
 		v.utxo, err = openUTXOStoreContext(ctx, a.dataDir)
 	case c.Index == "address-history":
@@ -284,12 +300,14 @@ func (a *app) saveRunProgress(id, state, reason string, consumers []*indexRunCon
 	if r == nil || r.ID != id {
 		return fmt.Errorf("run was replaced")
 	}
+	before := *r
+	before.Updated = ""
+	beforeDigest := indexDigest(before)
 	if r.State != "pausing" && r.State != "cancelled" {
 		r.State, r.Reason = state, reason
 	}
 	r.Counts = counts
 	r.TargetHeight, r.TargetHash = target, hash
-	r.Updated = time.Now().UTC().Format(time.RFC3339)
 	r.Consumers = nil
 	for _, c := range consumers {
 		p := c.progress
@@ -298,6 +316,12 @@ func (a *app) saveRunProgress(id, state, reason string, consumers []*indexRunCon
 		}
 		r.Consumers = append(r.Consumers, p)
 	}
+	after := *r
+	after.Updated = ""
+	if indexDigest(after) == beforeDigest {
+		return nil
+	}
+	r.Updated = time.Now().UTC().Format(time.RFC3339)
 	return a.persistIndexRunLocked()
 }
 
@@ -482,7 +506,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					continue
 				}
 				for _, upstream := range consumers {
-					if upstream.selection.Index == dependency.Index && (upstream.progress.State == "failed" || upstream.progress.State == "rebuild_required" || upstream.progress.State == "off") {
+					if upstream.selection.Index == dependency.Index && !bitmapConsumerID(c.selection.Index) && (upstream.progress.State == "failed" || upstream.progress.State == "rebuild_required" || upstream.progress.State == "off") {
 						dependencyFailed = true
 					}
 				}
@@ -622,6 +646,79 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		}
 		last = (chosen + 1) % max(1, len(consumers))
 		h := nexts[chosen]
+		// A Chain over retained completed outcomes has no Bitcoin-body input.
+		// Do not route it through load(), even when the body is unavailable.
+		rawRequired := false
+		for _, i := range eligible {
+			if nexts[i] == h && (!bitmapConsumerID(consumers[i].selection.Index) || bitmapConsumerKind(consumers[i].selection.Index) != "chain") {
+				rawRequired = true
+			}
+		}
+		if !rawRequired {
+			for _, i := range eligible {
+				if nexts[i] != h {
+					continue
+				}
+				c := consumers[i]
+				consumer, ok := c.external.(indexRunOutcomeConsumer)
+				if !ok {
+					c.progress.State = "failed"
+					c.progress.Reason = "Outcome-only consumer adapter unavailable"
+					continue
+				}
+				expected, e := hashAt(h)
+				if e != nil {
+					c.progress.State = "waiting"
+					c.progress.Reason = e.Error()
+					c.retryAfter = time.Now().Add(time.Second)
+					continue
+				}
+				publishCtx := context.WithValue(ctx, indexRunPublicationKey{}, func() error {
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+					if !indexRunOptionalWorkAllowed(a.dataDir, c.selection.Index) {
+						return errIndexRunConsumerStopped
+					}
+					current, e := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), h)
+					if e != nil {
+						return e
+					}
+					if current.HashDisplay != expected {
+						return satPublicationAnchorError077{fmt.Errorf("selected outcome block changed before publication")}
+					}
+					return nil
+				})
+				counts.OutcomeReads++
+				err := consumer.ApplyRetainedOutcome(publishCtx, h)
+				if err != nil {
+					c.progress.State = "failed"
+					if errors.Is(err, ErrBitmapEvidenceRequired) {
+						c.progress.State = "waiting"
+						c.retryAfter = time.Now().Add(time.Second)
+					}
+					if errors.Is(err, errIndexRunConsumerStopped) {
+						c.progress.State = "off"
+					}
+					var changed satPublicationAnchorError077
+					if errors.As(err, &changed) {
+						c.progress.State = "waiting"
+						c.retryAfter = time.Now().Add(time.Second)
+					}
+					c.progress.Reason = err.Error()
+				} else {
+					counts.ChainSteps++
+					c.progress.AddedBlocks++
+					c.progress.Height = h
+					c.progress.Reason = ""
+				}
+			}
+			if err := a.saveRunProgress(id, "running", "", consumers, counts, target, targetHash); err != nil {
+				finish("failed", err.Error())
+				return
+			}
+			continue
+		}
 		p, err := load(ctx, h)
 		if err != nil {
 			var unavailable blockUnavailableError
@@ -647,7 +744,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		}
 		needsExtraction := false
 		for _, i := range eligible {
-			if nexts[i] == h && (consumers[i].selection.Index == "inscriptions" || consumers[i].selection.Index == "sat-state" || strings.HasPrefix(consumers[i].selection.Index, "bitmap-")) {
+			if nexts[i] == h && (consumers[i].selection.Index == "inscriptions" || consumers[i].selection.Index == "sat-state" || bitmapConsumerID(consumers[i].selection.Index) && bitmapConsumerKind(consumers[i].selection.Index) != "chain") {
 				needsExtraction = true
 			}
 		}
@@ -704,7 +801,15 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				}
 				return nil
 			})
-			err = a.applyRunConsumer(publishCtx, c, p, authority, runRawRetention(record.Request))
+			if outcome, ok := c.external.(indexRunOutcomeConsumer); ok && bitmapConsumerKind(c.selection.Index) == "chain" {
+				counts.OutcomeReads++
+				err = outcome.ApplyRetainedOutcome(publishCtx, h)
+				if err == nil {
+					counts.ChainSteps++
+				}
+			} else {
+				err = a.applyRunConsumer(publishCtx, c, p, authority, runRawRetention(record.Request))
+			}
 			if err != nil {
 				c.progress.State = "failed"
 				if errors.Is(err, errIndexRunConsumerStopped) {

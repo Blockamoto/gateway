@@ -22,11 +22,11 @@ console.log('Index transport coordinate checks PASS: exact placement, unknown/lo
 
 const definitions=[{id:'blocks',buildable:true},{id:'sat-state',buildable:true},{id:'txo-spender',buildable:true},{id:'address-state',buildable:true},{id:'unsupported',buildable:true,live_supported:false},{id:'locked',buildable:true,locked:true}];
 const prepared={in:170,out:226,in_hash:anchor,out_hash:other,consumers:[{index:'blocks',armed:true,live:true},{index:'sat-state',armed:true,live:true,retain_sat_history:true},{index:'txo-spender',armed:true,live:false,retain_output_values:true,retain_output_scripts:false},{index:'address-state',armed:false,live:true,rebuild:true,rebuild_snapshot:{height:170,block_hash:anchor,commitment:other}},{index:'unsupported',armed:true,live:false},{index:'locked',armed:false,live:false}]};
-const unchanged=plain(prepared),finite=plain(executionRequest(prepared,'play',definitions)),record=plain(executionRequest(prepared,'record',definitions));
-assert(finite.consumers.filter(c=>c.armed).every(c=>c.live===false),'Play stages a finite run even when armed tracks were Live');
-for(const id of ['blocks','sat-state','txo-spender'])assert.equal(record.consumers.find(c=>c.index===id).live,true,'Record stages eligible armed consumers for Live');
-assert.equal(record.consumers.find(c=>c.index==='unsupported').live,false,'Record does not enable unsupported Live');
-for(const next of [finite,record]){assert.equal(next.in,170);assert.equal(next.out,226,'Explicit Out remains a hard cap');assert.equal(next.in_hash,anchor);assert.equal(next.out_hash,other);assert.equal(next.consumers.find(c=>c.index==='sat-state').retain_sat_history,true);assert.equal(next.consumers.find(c=>c.index==='txo-spender').retain_output_values,true);assert.deepEqual(next.consumers.find(c=>c.index==='address-state'),unchanged.consumers.find(c=>c.index==='address-state'),'Unarmed choices and rebuild guard remain intact');}
-assert.deepEqual(plain(prepared),unchanged,'Choosing an execution intent does not mutate its source request');
-assert.throws(()=>executionRequest(prepared,'playback',definitions),/Choose Play or Record/);
-console.log('Index transport intent checks PASS: finite Play, eligible Live Record, hard Out/hash boundaries, independent optional data and unarmed recovery choices.');
+const unchanged=plain(prepared),next=plain(executionRequest(prepared,'play',definitions));
+assert.deepEqual(next,unchanged,'Play preserves staged finite/Live choices, options, source anchors and hard Out');
+assert.notEqual(next,prepared,'Review receives an independent copy');
+assert.equal(next.consumers.find(c=>c.index==='blocks').live,true);
+assert.equal(next.consumers.find(c=>c.index==='txo-spender').live,false,'Mixed run keeps finite consumers finite');
+assert.deepEqual(plain(prepared),unchanged,'Review does not mutate source request');
+assert.throws(()=>executionRequest(prepared,'record',definitions),/Use Play/);
+console.log('Index transport staging checks PASS: one Play preserves per-track Live, hard Out/hash boundaries and unarmed recovery choices.');

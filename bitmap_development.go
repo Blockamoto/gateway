@@ -19,19 +19,34 @@ const bitmapReferenceRevision = "3dbe009313a34abf0fc0cce51a2bde39fc92d1ff"
 const bitmapDevelopmentStart int64 = 792435
 
 type bitmapDevelopmentProfile struct {
-	ID                  string   `json:"id"`
-	FingerprintSchema   string   `json:"fingerprint_schema"`
-	ReferenceRevision   string   `json:"reference_revision"`
-	ParserProfile       string   `json:"parser_profile"`
-	ParserReference     string   `json:"parser_reference"`
-	CanonicalStandard   bool     `json:"canonical_standard"`
-	Rules               []string `json:"rules"`
-	DistrictProfileHash string   `json:"district_profile_hash,omitempty"`
+	ID                  string         `json:"id"`
+	FingerprintSchema   string         `json:"fingerprint_schema"`
+	ReferenceRevision   string         `json:"reference_revision"`
+	ParserProfile       string         `json:"parser_profile"`
+	ParserReference     string         `json:"parser_reference"`
+	CanonicalStandard   bool           `json:"canonical_standard"`
+	Rules               []string       `json:"rules"`
+	DistrictProfileHash string         `json:"district_profile_hash,omitempty"`
+	Kind                string         `json:"kind,omitempty"`
+	Answers             map[string]int `json:"answers,omitempty"`
+	DecoderPolicy       string         `json:"decoder_policy,omitempty"`
+	ParentPolicy        string         `json:"parent_policy,omitempty"`
+	ActivationPolicy    string         `json:"activation_policy,omitempty"`
+	ContextPolicy       string         `json:"context_policy,omitempty"`
+	ActivationHeight    int64          `json:"activation_height,omitempty"`
 }
 
 // Display names and research/build provenance do not define semantic identity.
 // This is a declared development encoding, not the unfinished standard format.
 func bitmapProfileHash(p bitmapDevelopmentProfile) string {
+	if p.FingerprintSchema == bitmapNamedProfileSchema {
+		return indexDigest(struct {
+			Encoding, Kind, Parser, ParserReference, Decoder, Parent, Activation, Context string
+			ActivationHeight                                                              int64
+			Answers                                                                       map[string]int
+			DistrictProfile                                                               string
+		}{p.FingerprintSchema, p.Kind, p.ParserProfile, p.ParserReference, p.DecoderPolicy, p.ParentPolicy, p.ActivationPolicy, p.ContextPolicy, p.ActivationHeight, p.Answers, p.DistrictProfileHash})
+	}
 	return indexDigest(struct {
 		Encoding        string
 		Parser          string
@@ -63,13 +78,13 @@ func bitmapProfile(kind string) bitmapDevelopmentProfile {
 }
 
 func bitmapConsumerID(id string) bool {
-	return id == "bitmap-districts" || id == "bitmap-parcels" || id == "bitmap-chain"
+	return id == "bitmap-districts" || id == "bitmap-parcels" || id == "bitmap-chain" || bitmapCustomConsumerID(id)
 }
 func bitmapConsumerKind(id string) string {
-	if id == "bitmap-parcels" {
+	if id == "bitmap-parcels" || strings.HasPrefix(id, "bitmap-parcels-") && bitmapCustomConsumerID(id) {
 		return "parcel"
 	}
-	if id == "bitmap-chain" {
+	if id == "bitmap-chain" || strings.HasPrefix(id, "bitmap-chain-") && bitmapCustomConsumerID(id) {
 		return "chain"
 	}
 	return "district"

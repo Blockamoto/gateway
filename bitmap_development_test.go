@@ -281,8 +281,8 @@ func TestBitmapDevelopmentCheckedParentRequiresLiveSatInput(t *testing.T) {
 	wrong.Transactions = append([]transactionView(nil), b3.Transactions...)
 	wrong.Transactions[1] = child
 	wrong.Transactions[1].Inputs = []inputView{{N: 0, PrevTxID: cb.TxID}}
-	if proof, err = checkedBitmapParent(ctx, a, wrong, occ, parent); err != nil || proof != nil {
-		t.Fatal("parent metadata without its live input became proof", proof, err)
+	if proof, err = checkedBitmapParent(ctx, a, wrong, occ, parent); !errors.Is(err, ErrBitmapParentInvalid) || proof != nil {
+		t.Fatal("authenticated absent parent consumption was not classified invalid", proof, err)
 	}
 	b3.PreviousBlockHash = testID(999)
 	if proof, err = checkedBitmapParent(ctx, a, b3, occ, parent); err != nil || proof != nil {

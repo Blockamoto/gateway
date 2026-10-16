@@ -20,6 +20,8 @@ func (a *app) registerGatewayRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/headers", a.handleHeaderControl)
 	mux.HandleFunc("/api/v1/network", a.handleNetworkStatus)
 	mux.HandleFunc("/api/v1/data-coverage", a.handleDataCoverage)
+	mux.HandleFunc("/api/v1/index/delete", a.handleIndexDelete)
+	mux.HandleFunc("/api/v1/index/layout", a.handleIndexLayout)
 
 	mux.HandleFunc("/shell/", a.handleShellAsset)
 	mux.HandleFunc("/legacy", func(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +95,7 @@ func (a *app) serveGatewayShell(w http.ResponseWriter, r *http.Request) {
 }
 func (a *app) handleShellAsset(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/shell/")
-	if name != "index-transport.js" && name != "bitmap-view.js" && name != "workspace-resources.js" && name != "sat-view.js" && name != "sat-panel.js" && name != "address-view.js" && name != "address-panel.js" && name != "utxo-panel.js" && name != "theme.js" && name != "theme.css" && name != "app.js" && name != "workspace.js" && name != "style.css" && name != "sparse.css" && name != "updates.js" && name != "updates.css" && name != "index-cards.js" && name != "index-cards.css" && name != "index-timeline.js" && name != "index-timeline.css" && name != "index-workspace.js" && name != "timeline-explorer.js" && name != "block-viewport.css" && name != "block-viewport.js" && name != "transaction-flow-layout.css" && name != "transaction-flow-layout.js" && name != "inscription-viewport.js" && name != "index-semantic.js" && name != "network.js" && name != "network.css" && name != "gateway-mark.svg" && name != "gateway.ico" {
+	if name != "bitmap-workspace.js" && name != "bitmap-workspace.css" && name != "index-transport.js" && name != "bitmap-view.js" && name != "workspace-resources.js" && name != "sat-view.js" && name != "sat-panel.js" && name != "address-view.js" && name != "address-panel.js" && name != "utxo-panel.js" && name != "theme.js" && name != "theme.css" && name != "app.js" && name != "workspace.js" && name != "style.css" && name != "sparse.css" && name != "updates.js" && name != "updates.css" && name != "index-cards.js" && name != "index-cards.css" && name != "index-timeline.js" && name != "index-timeline.css" && name != "index-workspace.js" && name != "timeline-explorer.js" && name != "block-viewport.css" && name != "block-viewport.js" && name != "transaction-flow-layout.css" && name != "transaction-flow-layout.js" && name != "inscription-viewport.js" && name != "index-semantic.js" && name != "network.js" && name != "network.css" && name != "gateway-mark.svg" && name != "gateway.ico" {
 		http.NotFound(w, r)
 		return
 	}

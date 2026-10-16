@@ -1,8 +1,8 @@
 # Bitmap ruleset tracks, attached Chains and comparisons
 
-Design review, 16 October 2026. This document proposes the next development work; it does not change the running preview, its District build, saved profiles, main or the updater.
+Design review, 16 October 2026. The user subsequently authorized implementation on the development branch. This brief defines the implementation target; it does not claim unfinished capabilities are available in the running preview. Its District build, saved profiles, main and the updater remain separate.
 
-The reference remains **Blockamoto/bitmap, `new-main`, commit `1751e0d37073ab920cbd8b5548c61b74c37716d1`**. Read this alongside the [rule-by-rule review](BITMAP-NEW-MAIN-REVIEW.md), [Chain format review](BITMAP-CHAIN-NEW-MAIN-REVIEW.md), [dependency review](INDEX-DEPENDENCIES.md) and [workspace review](WORKSPACE-DESIGN-REVIEW.md). The pinned [District][D], [Parcel][P] and [Chain][C] specifications supply the source rules; the application design and operational policies below are Gateway proposals.
+The reference remains the same pinned source, now **Blockamoto/bitmap-old, `main` (formerly `new-main`), commit `1751e0d37073ab920cbd8b5548c61b74c37716d1`**. Read this alongside the [rule-by-rule review](BITMAP-NEW-MAIN-REVIEW.md), [Chain format review](BITMAP-CHAIN-NEW-MAIN-REVIEW.md), [dependency review](INDEX-DEPENDENCIES.md) and [workspace review](WORKSPACE-DESIGN-REVIEW.md). The pinned [District][D], [Parcel][P] and [Chain][C] specifications supply the source rules; the application design and operational policies below are Gateway proposals.
 
 ## Recommended product model
 
@@ -14,6 +14,8 @@ Each saved custom ruleset gets **one timeline track, typed Districts or Parcels*
 Bitmap
   Reference Districts                     Arm   Live
     Chain                                On    Live
+  Reference Parcels                       Arm   Live
+    Requires: Reference Districts
   Districts — alternative rules          Arm   Live
     Chain                                On    Live
   Parcels — alternative rules            Arm   Live
@@ -28,17 +30,23 @@ The current reference Chain format commits District outcomes only. A Parcel trac
 
 Use the existing Plus location for its reserved custom-index purpose: **Add Bitmap ruleset…**. Built-in tracks remain present; do not restore the old catalogue of optional built-ins.
 
-1. Choose **Districts** or **Parcels**, and clone reference values or an existing profile.
+1. Choose **Districts** or **Parcels**, and clone reference values or an existing profile. Creating Districts offers an unchecked **Also add a linked Parcel ruleset** option. The District settings offer **Add linked Parcel ruleset…** later through the same flow. Pairing is optional; the Parcel remains a distinct profile/track, explicitly bound to that District.
 2. Open the draft in the top-left **Index Settings** tab. Give it a display name.
 3. Edit named rule switches, with a short question, the reference value and the selected `0/1` value. Group core and optional rules; offer a concise changed-values view.
 4. For Parcels, select the exact District track defining its recognized parent. Show that dependency by name and fingerprint.
 5. Validate the interpretation. Unsupported configurations may be retained as clearly labelled drafts, but cannot start indexing.
 6. Save a supported profile to create a distinct track, initially unarmed and non-Live. Saving starts no work. Its District Chain child is initially Off; enabling it is also staged until Start.
-7. Arm the desired tracks, set Live and the global range, then use the existing reviewed transport.
+7. Arm the desired tracks, set Live and the global range, then use the single reviewed Play/Start transport. It preserves per-track Live choices; there is no separate global Record mode changing those choices.
 
 Once saved as an executable profile, its semantics are immutable. **Change rules** clones a new draft/track; it never reinterprets an existing track's results. Renaming is metadata and does not change the rules fingerprint. Existing experimental profiles preserve their old interpretation and provenance.
 
-The review panel must explicitly say when a plan is ready and expose a visible **Start indexing** confirmation. Pressing Play/Record a second time may remain the equivalent shortcut. The current preview's confirmation is too easy to miss; this is recorded feedback, not a completed fix.
+The review panel must explicitly say when a plan is ready and expose a visible **Start indexing** confirmation. Pressing Play a second time is the equivalent shortcut. The former preview's confirmation was too easy to miss. The single Start model supersedes the earlier finite-Play/following-Record design: Arm and Live on each track are the only scheduling choices. Mixed historical catch-up and caught-up Live consumers share fair turns. Idle Live consumers do not re-fetch or reindex unchanged blocks; selected source changes, including same-height reorgs, require new work/reconciliation. Global Out still caps following.
+
+## Track layout and saved-data deletion
+
+Arm and Live use the icons themselves as keyboard-operable pressed buttons, without an adjacent classic switch. Active, inactive and partial group states have visible shape/outline and accessible state. Remove track numbers consistently. Reordering uses a dedicated drag grip and keyboard alternative; persist sibling order by parent. Move parent groups with their descendants, and never move a child outside its owning parent. Reordering must not arm tracks, change dependencies or start work.
+
+Index Settings offers a bin action for saved index data. The first action reviews the scope and dependencies; explicit confirmation is required before removal. The track/profile definition remains available to rebuild, while its saved data and stale run/job consent are cleared or cancelled. Pause active indexing first. Built dependent data blocks deletion of its source until the dependent is cleared; do not silently cascade. Preserve shared output facts, independent archives, source caches, external files, settings and other indexes. Bitcoin headers remain a foundational reset requiring a separate full-profile operation. TXIO layer selections must identify their parent-store deletion scope explicitly.
 
 ## Rule registry and support states
 
@@ -130,7 +138,13 @@ Pruned-to-Full retains future outcomes immediately. Earlier history stays labell
 
 ## Comparison workspace
 
-Comparison is a resource inside the existing timeline workspace, with its details in the top-left Resource tab. Select baseline and variant tracks of the same type, then choose a common checkpoint and segment. Their live heads need not coincide; compare only an authenticated common scope. Pin both snapshots so pagination cannot mix results while Live advances.
+Clicking the **Bitmap group name** opens its Overview/Compare resource in the existing top-left Resource tab. Its chevron only expands/collapses the tracks. Individual tracks retain their own rules and settings. Select a baseline and variants of the same type, then choose a common checkpoint and segment. Their live heads need not coincide; compare only an authenticated common scope. Pin both snapshots so pagination cannot mix results while Live advances.
+
+**Compare actual saved results even when Chain is Off.** Chain is an optional compact commitment layer, not a prerequisite for winner, mapping or candidate-audit comparison. Availability comes from the District/Parcel evidence actually retained. Source blocks need not be fetched merely to display a comparison of sufficient authenticated local records.
+
+Live comparison incrementally consumes bounded pages through the common completed frontier. Coalesce repeated head notifications, cancel obsolete requests when selections change, and invalidate/retract affected results after a reorg. Append-only producer growth preserves previously authenticated comparisons. Compare one selected baseline against selected variants rather than automatically starting every pairwise combination. Opening Compare starts no index, source scan or prerequisite build.
+
+Show compared complete-block count, blocks with actual winner differences, mapping/audit differences, unknown coverage and each track's lag separately. A differing cumulative Chain hash is not evidence that every subsequent block has new winner differences. Unknown evidence is excluded from the compared denominator. Use delta markers and counts for differences, question marks/patterns for unknowns, and a labelled common-frontier marker; color supplements these cues. Each marker has an accessible list equivalent and opens paired block results. Live updates must not move the playhead, replace the inspected detail or steal keyboard focus.
 
 Lead with track names, changed rules, source alignment, compared checkpoint and common evaluated coverage. Show **changed winners**, **changed resolved mappings**, **candidate/audit differences** and **unknown gaps** separately. A different rule fingerprint is expected for a variant and is not itself a winner disagreement.
 
@@ -147,7 +161,17 @@ Full retained history supports a bounded search for the earliest retained diverg
 
 Candidate detail shows configured values and per-rule `pass/fail/unknown/not_applied`, reasons and evidence references. Eligibility and winner selection are separate. Losing-candidate disagreements can exist even when selected winners and Chain hashes match. A local comparison is evidence of these declared evaluations, not independent proof of correct rules, consensus or marketplace adoption.
 
-The main Chain view labels source block, scope, outcome, cumulative history, outcome rules and combined commitment separately, with District numbers and authenticated winning IDs. Keep the Chain storage-profile identifier in Advanced so it cannot be mistaken for the outcome-producing `R`.
+The main Chain view labels these layers separately, with District numbers and authenticated winning IDs:
+
+| Layer | Meaning |
+| --- | --- |
+| Bitcoin source `B` | Selected Bitcoin block hash at this height. |
+| Rules `R` | Exact District semantic profile; the same profile identity applies across its evaluated range. |
+| Isolated outcome `L` | Hash of this block's physically ordered new winning inscription ID records. It does not hash every inscription or the whole current winner map. |
+| Cumulative outcome `C` | Hash combining the preceding cumulative outcome with this block's isolated outcome, using the specified domain. |
+| Combined commitment `F` | Binds segment start/end, Bitcoin source, cumulative outcome and semantic rules. |
+
+With Chain enabled, every completed block calculates its isolated, cumulative and combined commitments. Full history retains each block's records; Pruned retains the current tip plus authenticated recovery points. Both calculate all steps, including completed empty outcomes. Keep the Chain storage-profile identifier in Advanced so it cannot be mistaken for the outcome-producing `R`.
 
 ## Parcel dependency boundary
 
@@ -160,14 +184,14 @@ The preview has a real positive pre-block Sat evidence path, but it does not sup
 | Stage | Deliverable and acceptance gate |
 | --- | --- |
 | 1. Exact executable interpretations | Pin reference and declare decoder, parent, selection and activation/context policies. Keep unresolved drafts unsupported. Preserve every existing profile's identity. |
-| 2. Multiple instances and editor | Separate same-kind tracks through storage, run plans, APIs, URLs and snapshot-bound cursors. Clone, rename and draft save perform no indexing and do not alter the user's active District run. |
+| 2. Multiple instances and editor | Separate same-kind tracks through storage, run plans, APIs, URLs and snapshot-bound cursors. Optional linked Parcel creation works immediately and later without silently rebinding. Clone, rename and draft save perform no indexing and do not alter the user's active District run. |
 | 3. Attached Chain and outcome-only input | Bind each child to its District. With raw blocks unavailable and peers disabled, a Chain-only fixture over retained outcomes completes with zero raw-source reads, block decodes and inscription extractions. Reorg/Off/cancel guards still reject stale publication. Newly evaluated District+Chain reads each needed source once. |
-| 4. Comparison | Test source/scope mismatch, different rules with equal winners, different mappings with equal IDs, losing-only differences, genuine first divergence, sparse/unknown coverage and Live pagination pinned to both snapshots. |
+| 4. Comparison | Test Bitmap-group entry, comparisons with Chain Off, source/scope mismatch, different rules with equal winners, different mappings with equal IDs, losing-only differences, genuine first divergence, sparse/unknown coverage, bounded Live updates, no focus/playhead theft, reorg invalidation and pagination pinned to both snapshots. |
 | 5. Retention and recovery | Test 12/144 rotation boundaries, corrupt-point fallback, missing dependency pages, forks beyond retained coverage, interrupted compaction, reader pins, post-GC restart and canceled/resumed backfill. No pruned record becomes a false empty outcome. |
 | 6. Exact development preview | Package the committed development source, run native create/configure/arm/review/pause/restart/compare checks in disposable profiles, and publish measured feature/coverage limits. Main, released packages, updater and user data remain outside this design work. |
 
 This proposal does not call the current fixed experimental profile canonical Standard, promise all theoretical rule combinations, invent Parcel Chain bytes, or relabel existing state. The next implementation should make supported choices useful and explicit, while keeping unimplemented semantics and unavailable evidence distinguishable.
 
-[D]: https://github.com/Blockamoto/bitmap/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/DISTRICT-RULESET.md
-[P]: https://github.com/Blockamoto/bitmap/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/PARCEL-RULESET.md
-[C]: https://github.com/Blockamoto/bitmap/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/BITMAP-CHAIN.md
+[D]: https://github.com/Blockamoto/bitmap-old/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/DISTRICT-RULESET.md
+[P]: https://github.com/Blockamoto/bitmap-old/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/PARCEL-RULESET.md
+[C]: https://github.com/Blockamoto/bitmap-old/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/BITMAP-CHAIN.md

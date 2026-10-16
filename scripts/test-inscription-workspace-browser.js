@@ -41,7 +41,8 @@ async function listen(server,host='127.0.0.1'){await new Promise(r=>server.liste
    }
    if(url.pathname==='/api/v1/settings'){if(req.method()==='POST')managementWrites++;return reply({settings:{ord_enabled:true}});}return reply({error:'Unexpected fixture request '+url.pathname},'application/json',500);
   });
-  await page.goto(managementOrigin+'/indexes');await page.locator('#timeline-collapse:not([aria-expanded=true])').click();await page.waitForFunction(()=>document.querySelector('.timeline-track[data-index=inscriptions]'));assert.equal(await page.locator('#timeline-add-index').isDisabled(),true,'All built-in tracks are already present; custom additions are deferred');
+  await page.route('**/api/v1/index/layout',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({schema:1,order:{},revision:0})}));
+  await page.goto(managementOrigin+'/indexes');await page.locator('#timeline-collapse:not([aria-expanded=true])').click();await page.waitForFunction(()=>document.querySelector('.timeline-track[data-index=inscriptions]'));assert.equal(await page.locator('#timeline-add-index').isDisabled(),false,'All built-in tracks remain present; Plus offers custom Bitmap rulesets');
   assert.equal(await page.locator('.timeline-track[data-index="blocks"]').count(),1,'Empty Blocks track is present by default');
   await page.locator('.timeline-track[data-index="inscriptions"] .timeline-track-select').click();await page.locator('#timeline-details').evaluate(e=>e.open=true);
   assert.equal(await page.locator('#mode').inputValue(),'lean');assert.equal(await page.locator('#conventional-ids').isChecked(),false);assert.equal(await page.locator('#conventional-ids').isDisabled(),true);assert.equal(await page.locator('#enrich-inscription-ids').isDisabled(),true);

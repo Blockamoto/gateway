@@ -51,7 +51,7 @@ async function main() {
     for (const id of ['timeline-pan-left', 'timeline-pan-right', 'timeline-refresh', 'timeline-expand']) assert.equal(await page.locator('#' + id).count(), 0, id + ' is not a second navigation control');
     assert.equal(await page.locator('#timeline-control-bar,.timeline-control-bar').count(), 1, 'One compact control bar');
     assert.equal(await page.locator('#timeline-transport-slot #timeline-transport').count(), 1, 'Shared transport occupies its intended slot');
-    for (const id of ['timeline-run-start','timeline-run-record','timeline-mark-in','timeline-mark-out','timeline-range-handles','timeline-clear-range']) {
+    for (const id of ['timeline-run-start','timeline-mark-in','timeline-mark-out','timeline-range-handles','timeline-clear-range']) {
       const button = page.locator('#'+id);
       assert((await button.getAttribute('aria-label'))?.length > 3, id+' has a descriptive accessible label');
       assert((await button.getAttribute('title'))?.length > 3, id+' explains its action on hover');
@@ -83,21 +83,23 @@ async function main() {
     assert.deepEqual(await page.locator('.timeline-track[data-group=txio]').evaluateAll(nodes => nodes.map(n => n.dataset.index)), ['txio-links','txio-values','txio-scripts','txio-sat-ranges'], 'Sat ranges stays adjacent to the other TXIO children');
     await capture('desktop-expanded');
     await txio.click(); assert.equal(await labels.isVisible(), true, 'Collapsing TXIO restores its child summary');
-    await page.locator('.timeline-track[data-index=blocks] label[data-switch=arm]').click();
-    await page.locator('.timeline-track[data-index=tx-locator] label[data-switch=arm]').click();
+    await page.locator('.timeline-track[data-index=blocks] button[data-switch=arm]').click();
+    await page.locator('.timeline-track[data-index=tx-locator] button[data-switch=arm]').click();
     await pull.click(); assert.equal(await pull.getAttribute('aria-expanded'), 'false');
     await page.evaluate(()=>timeline.setGlobalRange(20,80));
-    await page.getByRole('button',{name:'Play: Review finite indexing',exact:true}).click();
+    await page.getByRole('button',{name:'Play: Review indexing',exact:true}).click();
     assert.equal((await page.evaluate(() => fixtureCalls)).some(c => c.action === 'run/start'), false, 'Play first reviews, rather than starting a build');
     const playPlan = await page.evaluate(() => fixtureCalls.filter(c=>c.action==='run/plan').at(-1).body);
     assert.deepEqual(playPlan.consumers.filter(c=>c.armed).map(c=>[c.index,c.live]), [['blocks',false],['tx-locator',false]], 'Play prepares a finite pass for armed consumers');
-    await page.getByRole('button',{name:'Record: Review Live indexing',exact:true}).click();
-    assert.equal((await page.evaluate(() => fixtureCalls)).some(c => c.action === 'run/start'), false, 'Switching to Record requires its own review');
-    const recordPlan = await page.evaluate(() => fixtureCalls.filter(c=>c.action==='run/plan').at(-1).body);
-    assert.deepEqual(recordPlan.consumers.filter(c=>c.armed).map(c=>[c.index,c.live]), [['blocks',true],['tx-locator',true]], 'Record prepares Live on armed eligible consumers');
-    assert.equal(recordPlan.in,20); assert.equal(recordPlan.out,80,'Record preserves the user’s hard Out point');
-    await page.getByRole('button',{name:'Record: Start reviewed indexing',exact:true}).click();
-    assert.equal((await page.evaluate(() => fixtureCalls)).filter(c=>c.action==='run/start').length, 1, 'Matching reviewed Record starts exactly one coordinated run');
+    assert.equal(await page.locator('#timeline-run-record').count(),0,'Live is controlled per track, with one shared Play');
+    await pull.click();await page.locator('.timeline-track[data-index=blocks] [data-control=live]').click();await pull.click();
+    await page.getByRole('button',{name:'Play: Review indexing',exact:true}).click();
+    const mixedPlan = await page.evaluate(() => fixtureCalls.filter(c=>c.action==='run/plan').at(-1).body);
+    assert.deepEqual(mixedPlan.consumers.filter(c=>c.armed).map(c=>[c.index,c.live]), [['blocks',true],['tx-locator',false]], 'Play preserves mixed Live and finite choices');
+    assert.equal(mixedPlan.in,20);assert.equal(mixedPlan.out,80,'Live keeps hard Out');
+    assert.match(await page.locator('#timeline-run-review').innerText(),/press Play again/);
+    await page.getByRole('button',{name:'Play: Start reviewed indexing',exact:true}).click();
+    assert.equal((await page.evaluate(() => fixtureCalls)).filter(c=>c.action==='run/start').length,1);
     await page.getByRole('button',{name:'Stop indexing',exact:true}).click();
     const startsBeforeNavigation = 1;
 
@@ -181,7 +183,7 @@ async function main() {
     await page.keyboard.press('Escape'); await pull.click(); await layout('Narrow expanded'); await capture('narrow-expanded'); await pull.click();
     const damagedReason='Saved run controls are damaged; review recovery without changing committed indexes.';
     await page.evaluate(reason=>{fixtureState.run.error=reason;timeline.render(fixtureState);},damagedReason);
-    for(const id of ['timeline-run-start','timeline-run-record']){
+    for(const id of ['timeline-run-start']){
       const control=page.locator('#'+id);assert.equal(await control.isDisabled(),true,id+' refuses execution with damaged run controls');
       assert((await control.getAttribute('title')).includes(damagedReason),id+' exposes the specific unavailable reason');
     }

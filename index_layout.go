@@ -1,0 +1,165 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sync"
+
+	"./internal/updateapply"
+)
+
+var indexLayoutMu sync.Mutex
+
+type indexLayoutDocument struct {
+	Schema   int                 `json:"schema"`
+	Revision uint64              `json:"revision"`
+	Order    map[string][]string `json:"order"`
+	Checksum string              `json:"checksum,omitempty"`
+}
+
+func indexLayoutDigest(d indexLayoutDocument) string { d.Checksum = ""; return indexDigest(d) }
+func indexLayoutPath(root string) string             { return filepath.Join(root, "timeline-layout.json") }
+func indexLayoutParents(ctx context.Context, root string) (map[string]string, error) {
+	parents := map[string]string{
+		"group:blocks": "root", "group:txio": "root", "group:addresses": "root", "group:bitmap": "root",
+		"headers": "group:blocks", "blocks": "group:blocks", "tx-locator": "root", "utxo-state": "root", "inscriptions": "root",
+		"txio-links": "group:txio", "txio-values": "group:txio", "txio-scripts": "group:txio", "txio-sat-ranges": "group:txio",
+		"address-state": "group:addresses", "address-history": "group:addresses",
+	}
+	instances, err := bitmapProfileInstances(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	for _, i := range instances {
+		if i.Kind == "chain" {
+			parents[i.ID] = "district:" + i.DistrictInstance
+		} else {
+			parents[i.ID] = "group:bitmap"
+		}
+	}
+	return parents, nil
+}
+func normalizeIndexLayout(ctx context.Context, root string, order map[string][]string) (map[string][]string, error) {
+	if len(order) > 256 {
+		return nil, fmt.Errorf("too many timeline layout groups")
+	}
+	parents, err := indexLayoutParents(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	allowed := map[string]bool{"root": true}
+	for _, p := range parents {
+		allowed[p] = true
+	}
+	out := map[string][]string{}
+	total := 0
+	for parent, ids := range order {
+		if len(parent) > 100 || len(ids) > 320 {
+			return nil, fmt.Errorf("timeline layout exceeds its bounded group size")
+		}
+		if !allowed[parent] {
+			continue
+		}
+		seen := map[string]bool{}
+		out[parent] = []string{}
+		for _, id := range ids {
+			total++
+			if total > 640 || len(id) > 100 {
+				return nil, fmt.Errorf("timeline layout exceeds its track budget")
+			}
+			expected, known := parents[id]
+			if !known {
+				continue
+			}
+			if expected != parent {
+				return nil, fmt.Errorf("a track cannot move outside its parent")
+			}
+			if !seen[id] {
+				out[parent] = append(out[parent], id)
+				seen[id] = true
+			}
+		}
+	}
+	return out, nil
+}
+func readIndexLayout(ctx context.Context, root string) (indexLayoutDocument, error) {
+	d := indexLayoutDocument{Schema: 1, Order: map[string][]string{}}
+	path := indexLayoutPath(root)
+	if err := updateapply.CheckPath(path); err != nil {
+		return d, err
+	}
+	err := utxoReadJSON(ctx, path, 64<<10, &d)
+	if os.IsNotExist(err) {
+		return d, nil
+	}
+	if err != nil {
+		return d, err
+	}
+	if d.Schema != 1 || d.Order == nil || d.Checksum != indexLayoutDigest(d) {
+		return d, fmt.Errorf("saved timeline layout is damaged; indexing state was not changed")
+	}
+	d.Order, err = normalizeIndexLayout(ctx, root, d.Order)
+	return d, err
+}
+func (a *app) handleIndexLayout(w http.ResponseWriter, r *http.Request) {
+	if !safeLocalRequest(r) {
+		jsonError(w, 403, fmt.Errorf("timeline layout is restricted to the local management interface"))
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		jsonError(w, 405, fmt.Errorf("GET or POST required"))
+		return
+	}
+	indexLayoutMu.Lock()
+	defer indexLayoutMu.Unlock()
+	d, err := readIndexLayout(r.Context(), a.dataDir)
+	if err != nil {
+		jsonError(w, 409, err)
+		return
+	}
+	if r.Method == http.MethodGet {
+		d.Checksum = ""
+		writeJSON(w, d)
+		return
+	}
+	var q struct {
+		Order map[string][]string `json:"order"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	contentType, _, contentErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if contentErr != nil || contentType != "application/json" || decoder.Decode(&q) != nil || decoder.Decode(new(any)) != io.EOF || q.Order == nil {
+		jsonError(w, 400, fmt.Errorf("one bounded JSON layout request is required"))
+		return
+	}
+	d.Order, err = normalizeIndexLayout(r.Context(), a.dataDir, q.Order)
+	if err != nil {
+		jsonError(w, 400, err)
+		return
+	}
+	if err = r.Context().Err(); err != nil {
+		jsonError(w, 409, err)
+		return
+	}
+	d.Revision++
+	d.Checksum = indexLayoutDigest(d)
+	if err = updateapply.CheckPath(indexLayoutPath(a.dataDir)); err == nil {
+		err = atomicWriteJSON(indexLayoutPath(a.dataDir), d)
+	}
+	if err == nil {
+		err = syncDirectory(a.dataDir)
+	}
+	if err != nil {
+		jsonError(w, 409, err)
+		return
+	}
+	d.Checksum = ""
+	writeJSON(w, d)
+}

@@ -2,7 +2,7 @@
 
 Reviewed 15 October 2026 against Gateway source `5b2b1c01368a2dd745148bff98146e29e2100e7a`. This is a design and implementation-gap review. It does not change runtime rules, saved profiles, released applications or user data.
 
-The required reference is **Blockamoto/bitmap, branch `new-main`, commit `1751e0d37073ab920cbd8b5548c61b74c37716d1`**. The previously reviewed `main` revision is not substituted for this source.
+The required reference is **Blockamoto/bitmap-old, branch `main` (formerly `new-main`), commit `1751e0d37073ab920cbd8b5548c61b74c37716d1`**. The previously reviewed `main` revision is not substituted for this source.
 
 ## Finding
 
@@ -176,7 +176,7 @@ Phase B can expose unsupported choices with reasons; it must not make every theo
 
 No production implementation was changed by this review. The next change can proceed under explicitly declared development choices where the reference leaves details open, while unsupported choices remain clearly unavailable and old saved results keep their identities.
 
-[R]: https://github.com/Blockamoto/bitmap/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/README.md
-[D]: https://github.com/Blockamoto/bitmap/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/DISTRICT-RULESET.md
-[P]: https://github.com/Blockamoto/bitmap/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/PARCEL-RULESET.md
-[C]: https://github.com/Blockamoto/bitmap/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/BITMAP-CHAIN.md
+[R]: https://github.com/Blockamoto/bitmap-old/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/README.md
+[D]: https://github.com/Blockamoto/bitmap-old/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/DISTRICT-RULESET.md
+[P]: https://github.com/Blockamoto/bitmap-old/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/PARCEL-RULESET.md
+[C]: https://github.com/Blockamoto/bitmap-old/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/BITMAP-CHAIN.md

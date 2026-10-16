@@ -103,6 +103,7 @@ async function harness(browser, address = '.gateway', failStatus = false, addres
     if (url.pathname === '/shell/gateway.ico') return fulfill('', 'image/x-icon');
     if (url.pathname === '/shell/gateway-mark.svg') return fulfill('<svg xmlns="http://www.w3.org/2000/svg"/>', 'image/svg+xml');
     if(url.pathname==='/indexes')return fulfill(workspaceHTML.replaceAll('__INDEX_NONCE__','fixture').replace('__INDEX_BOOTSTRAP__','{}'),'text/html');
+    if(url.pathname==='/api/v1/index/layout')return fulfill(JSON.stringify({schema:1,order:{},revision:0}),'application/json');
     if(url.pathname==='/api/v1/index/run/prepare')return fulfill(JSON.stringify({...runState,prepared:request.postDataJSON()}),'application/json');
     if(url.pathname==='/api/v1/index/block-map')return fulfill(JSON.stringify({height:Number(url.searchParams.get('height')||0),hash:'b'.repeat(64),transactions:[],indexing:[],total:0}),'application/json');
     if(url.pathname==='/api/v1/flow')return fulfill(JSON.stringify({state:'unavailable',nodes:[],edges:[]}), 'application/json');
@@ -231,7 +232,7 @@ async function run() {
       await h.page.evaluate(() => window.dispatchEvent(new MessageEvent('message', {origin:'https://untrusted.invalid', data:{type:'gateway:navigate', address:'indexes.gateway'}})));
       assert.equal(await h.page.locator('#address').inputValue(), '.gateway');
       assert.deepEqual(h.errors, [], 'uncaught browser exceptions');
-      assert.deepEqual(h.unexpected, [], 'unexpected network/API requests');
+      assert.deepEqual(h.unexpected, [], 'unexpected network/API requests: '+JSON.stringify(h.unexpected));
       assert.ok(h.requests.every(request => request.method === 'GET'||request.path==='/api/v1/navigate'), 'navigation unexpectedly mutated state');
     } finally { await h.context.close(); }
 
@@ -317,7 +318,7 @@ async function run() {
       const addressView=await harness(browser,bitcoinAddress);
       try{
         await workspace(addressView.page).locator('#address-balance').waitFor();await checkRoute(addressView.page,bitcoinAddress,'#address-balance');assert.equal(await workspace(addressView.page).locator('#address-balance').innerText(),'Unavailable');assert.equal(await addressView.page.locator('#content').getByText('[object Object]').count(),0,'Legacy typed address envelope is not passed as the address string');
-        await workspace(addressView.page).getByRole('button',{name:'Inspect Current UTXOs',exact:true}).first().click();const frame=workspace(addressView.page);await frame.locator('#address-state-build-panel').waitFor({state:'visible'});assert.equal(await frame.locator('.timeline-track[data-index="address-state"] [data-control="arm"]').isChecked(),false,'Inspecting does not arm');
+        await workspace(addressView.page).getByRole('button',{name:'Inspect Current UTXOs',exact:true}).first().click();const frame=workspace(addressView.page);await frame.locator('#address-state-build-panel').waitFor({state:'visible'});assert.equal((await frame.locator('.timeline-track[data-index="address-state"] [data-control="arm"]').getAttribute('aria-pressed')==='true'),false,'Inspecting does not arm');
         await addressView.page.locator('#address').fill(bitcoinAddress);await addressView.page.locator('#address-form').evaluate(form=>form.requestSubmit());await workspace(addressView.page).locator('#address-balance').waitFor();await checkRoute(addressView.page,bitcoinAddress,'#address-balance');const resolutions=addressView.requests.filter(r=>r.path==='/api/v1/navigate').length;await addressView.page.locator('#address').fill('i0.3.150');await addressView.page.locator('#address-form').evaluate(form=>form.requestSubmit());await checkRoute(addressView.page,'i0.3.150','iframe.indexes-frame');assert.equal(addressView.requests.filter(r=>r.path==='/api/v1/navigate').length,resolutions+1,'Spending-input BPS navigation resolves once in the shared workspace');assert.equal(addressView.requests.some(r=>r.path==='/api/v1/index/build'),false,'Address navigation never starts a build');assert.deepEqual(addressView.errors,[]);assert.deepEqual(addressView.unexpected,[]);
       }finally{await addressView.context.close()}
       const damagedAddress=await harness(browser,bitcoinAddress,false,'rebuild_required');

@@ -10,22 +10,28 @@ import (
 
 // Definitions describe recipes. They never assert that this node holds their data.
 type indexDefinition struct {
-	Locked            bool     `json:"locked,omitempty"`
-	LockReason        string   `json:"lock_reason,omitempty"`
-	ID                string   `json:"id"`
-	Name              string   `json:"name"`
-	Version           int      `json:"version"`
-	Network           string   `json:"network"`
-	Theory            string   `json:"theory"`
-	Rules             []string `json:"rules"`
-	RuleHash          string   `json:"rule_hash"`
-	Dependencies      []string `json:"dependencies"`
-	StartHeight       int64    `json:"start_height"`
-	ArbitraryStart    bool     `json:"arbitrary_start"`
-	Buildable         bool     `json:"buildable"`
-	CheckpointSchema  int      `json:"checkpoint_schema"`
-	OutputSchema      int      `json:"output_schema"`
-	CanonicalEncoding string   `json:"canonical_encoding"`
+	Kind                string   `json:"kind,omitempty"`
+	ProfileHash         string   `json:"profile_hash,omitempty"`
+	RecipeHash          string   `json:"recipe_hash,omitempty"`
+	DistrictInstance    string   `json:"district_instance,omitempty"`
+	DistrictProfileHash string   `json:"district_profile_hash,omitempty"`
+	ChainInstance       string   `json:"chain_instance,omitempty"`
+	Locked              bool     `json:"locked,omitempty"`
+	LockReason          string   `json:"lock_reason,omitempty"`
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	Version             int      `json:"version"`
+	Network             string   `json:"network"`
+	Theory              string   `json:"theory"`
+	Rules               []string `json:"rules"`
+	RuleHash            string   `json:"rule_hash"`
+	Dependencies        []string `json:"dependencies"`
+	StartHeight         int64    `json:"start_height"`
+	ArbitraryStart      bool     `json:"arbitrary_start"`
+	Buildable           bool     `json:"buildable"`
+	CheckpointSchema    int      `json:"checkpoint_schema"`
+	OutputSchema        int      `json:"output_schema"`
+	CanonicalEncoding   string   `json:"canonical_encoding"`
 }
 
 type indexInstance struct {
@@ -189,6 +195,18 @@ func indexDigest(v any) string {
 	return hex.EncodeToString(h[:])
 }
 func findIndexDefinition(id string) (indexDefinition, error) {
+	if bitmapConsumerID(id) && id != "bitmap-districts" && id != "bitmap-parcels" && id != "bitmap-chain" {
+		base := "bitmap-districts"
+		if bitmapConsumerKind(id) == "parcel" {
+			base = "bitmap-parcels"
+		}
+		if bitmapConsumerKind(id) == "chain" {
+			base = "bitmap-chain"
+		}
+		d, err := findIndexDefinition(base)
+		d.ID = id
+		return d, err
+	}
 	if id == inscriptionLocatorIndex {
 		d, err := findIndexDefinition("tx-locator")
 		if err != nil {

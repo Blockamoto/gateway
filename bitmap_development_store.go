@@ -15,7 +15,12 @@ import (
 )
 
 var bitmapDevelopmentMu sync.Mutex
+
+// Queries hold this read lease across a snapshot. Compaction cannot reclaim its
+// pages midway through a response; subsequent requests authenticate a new lease.
+var bitmapSnapshotMu sync.RWMutex
 var ErrBitmapEvidenceRequired = errors.New("Bitmap requires checked dependency evidence")
+var ErrBitmapParentInvalid = errors.New("authenticated parent output is not consumed by the reveal")
 
 type bitmapDevelopmentCandidate struct {
 	ID                     string             `json:"id"`
@@ -36,6 +41,8 @@ type bitmapDevelopmentCandidate struct {
 	Provenance             *bitmapParentProof `json:"provenance,omitempty"`
 	UnresolvedDependencies []string           `json:"unresolved_dependencies,omitempty"`
 	Ownership              string             `json:"ownership"`
+	RuleResults            []bitmapRuleAudit  `json:"rule_results,omitempty"`
+	DecodeState            string             `json:"decode_state,omitempty"`
 }
 type bitmapParentProof struct {
 	ParentID     string          `json:"parent_id"`
@@ -82,6 +89,9 @@ type bitmapDevelopmentHead struct {
 	CandidateCount       uint64                   `json:"candidate_count"`
 	DependencyCommitment string                   `json:"dependency_commitment,omitempty"`
 	LastBlock            bitmapDevelopmentBlock   `json:"last_block"`
+	DistrictInstance     string                   `json:"district_instance,omitempty"`
+	DistrictReceipt      *bitmapDevelopmentHead   `json:"district_receipt,omitempty"`
+	DistrictReceiptRef   string                   `json:"district_receipt_ref,omitempty"`
 }
 type bitmapDevelopmentPending struct {
 	Schema      int                          `json:"schema"`
@@ -100,6 +110,8 @@ type bitmapRunConsumer struct {
 	head          *bitmapDevelopmentHead
 	hashAt        func(int64) (string, error)
 	blockAt       func(context.Context, int64) (blockView, error)
+	instance      bitmapProfileInstance
+	retention     string
 }
 
 func bitmapDevelopmentDir(root, id string) string {
@@ -107,6 +119,9 @@ func bitmapDevelopmentDir(root, id string) string {
 }
 func bitmapDevelopmentDigest(h bitmapDevelopmentHead) string {
 	h.Commitment = ""
+	if h.DistrictReceiptRef != "" {
+		h.DistrictReceipt = nil
+	}
 	return indexDigest(h)
 }
 func bitmapPendingDigest(p bitmapDevelopmentPending) string { p.Digest = ""; return indexDigest(p) }
@@ -124,6 +139,15 @@ func readBitmapDevelopmentHead(ctx context.Context, root, id string) (*bitmapDev
 		return nil, fmt.Errorf("unknown Bitmap consumer")
 	}
 	dir := bitmapDevelopmentDir(root, id)
+	if bitmapConsumerKind(id) == "chain" {
+		m, err := readBitmapChainManifest(ctx, root, id)
+		if err != nil {
+			return nil, err
+		}
+		if m != nil {
+			return readBitmapDevelopmentCommit(ctx, root, id, m.Current)
+		}
+	}
 	var pointer struct {
 		Commitment string `json:"commitment"`
 	}
@@ -143,8 +167,31 @@ func readBitmapDevelopmentCommit(ctx context.Context, root, id, commit string) (
 	if err := readBitmapJSON(ctx, filepath.Join(dir, "commits", commit[:2], commit+".json"), &h); err != nil {
 		return nil, err
 	}
-	if h.Schema != 1 || h.Index != id || h.Height < h.SegmentStart || h.SegmentStart != bitmapDevelopmentStart || h.Commitment != commit || bitmapDevelopmentDigest(h) != commit || h.ProfileHash != bitmapProfileHash(h.Profile) || h.ProfileHash != bitmapProfileHash(bitmapProfile(bitmapConsumerKind(id))) || !validHash(h.BlockHash) || h.LastBlock.Height != h.Height || h.LastBlock.BlockHash != h.BlockHash || !h.LastBlock.BlockEvaluated || !h.LastBlock.CompleteScope {
+	instance, err := bitmapResolvedInstance(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	if h.Schema != 1 || h.Index != id || h.Height < h.SegmentStart || h.SegmentStart != instance.StartHeight || h.Commitment != commit || bitmapDevelopmentDigest(h) != commit || h.ProfileHash != bitmapProfileHash(h.Profile) || h.ProfileHash != instance.ProfileHash || !validHash(h.BlockHash) || h.LastBlock.Height != h.Height || h.LastBlock.BlockHash != h.BlockHash || !h.LastBlock.BlockEvaluated || !h.LastBlock.CompleteScope || h.DistrictInstance != "" && h.DistrictInstance != instance.DistrictInstance {
 		return nil, fmt.Errorf("Bitmap checkpoint authentication/profile mismatch; explicit reviewed recovery required")
+	}
+	if !instance.Legacy && instance.Kind != "district" && h.DistrictInstance != instance.DistrictInstance {
+		return nil, fmt.Errorf("Bitmap checkpoint lost its exact District instance binding")
+	}
+	if h.DistrictReceiptRef != "" {
+		if bitmapConsumerKind(id) != "chain" || !validHash(h.DistrictReceiptRef) {
+			return nil, fmt.Errorf("invalid Chain source receipt reference")
+		}
+		if h.DistrictReceipt != nil {
+			return nil, fmt.Errorf("ambiguous embedded and referenced Chain receipt")
+		}
+		var receipt bitmapDevelopmentHead
+		if err = readBitmapJSON(ctx, bitmapChainReceiptPath(root, id, h.DistrictReceiptRef), &receipt); err != nil {
+			return nil, err
+		}
+		h.DistrictReceipt = &receipt
+	}
+	if bitmapConsumerKind(id) == "chain" && (h.DistrictReceipt != nil || !instance.Legacy) && !validBitmapChainReceipt(&h, instance) {
+		return nil, fmt.Errorf("Bitmap Chain dependency receipt authentication mismatch")
 	}
 	for _, root := range []string{h.WinnerRoot, h.CandidateRoot, h.TargetRoot, h.BlockRoot} {
 		if root != "" {
@@ -165,6 +212,22 @@ func bitmapHeadAt(ctx context.Context, root, id string, height int64) (*bitmapDe
 	}
 	if height < h.SegmentStart || height > h.Height {
 		return nil, nil
+	}
+	if bitmapConsumerKind(id) == "chain" {
+		m, e := readBitmapChainManifest(ctx, root, id)
+		if e != nil {
+			return nil, e
+		}
+		if m != nil {
+			for _, p := range m.Points {
+				if p.Height == height {
+					return readBitmapDevelopmentCommit(ctx, root, id, p.Commitment)
+				}
+			}
+			if !bitmapHeightRetained(m.RetainedIntervals, height) {
+				return nil, nil
+			}
+		}
 	}
 	var next bitmapDevelopmentBlock
 	have, err := newOrdinalTree(filepath.Join(bitmapDevelopmentDir(root, id), "pages"), h.BlockRoot).withContext(ctx).get(fmt.Sprintf("%016x", height+1), &next)
@@ -192,11 +255,15 @@ func openBitmapRunConsumer(ctx context.Context, a *app, id string) (indexRunExte
 	if err := requireReleaseFeature(id); err != nil {
 		return nil, err
 	}
+	instance, err := bitmapResolvedInstance(ctx, a.dataDir, id)
+	if err != nil {
+		return nil, err
+	}
 	h, err := readBitmapDevelopmentHead(ctx, a.dataDir, id)
 	if err != nil {
 		return nil, err
 	}
-	return &bitmapRunConsumer{a: a, root: a.dataDir, dir: bitmapDevelopmentDir(a.dataDir, id), id: id, head: h}, nil
+	return &bitmapRunConsumer{a: a, root: a.dataDir, dir: bitmapDevelopmentDir(a.dataDir, id), id: id, head: h, instance: instance}, nil
 }
 func (s *bitmapRunConsumer) SetBlockSource(source func(context.Context, int64) (blockView, error)) {
 	s.blockAt = source
@@ -204,7 +271,7 @@ func (s *bitmapRunConsumer) SetBlockSource(source func(context.Context, int64) (
 func (s *bitmapRunConsumer) Close() {}
 func (s *bitmapRunConsumer) NextHeight() int64 {
 	if s.head == nil {
-		return bitmapDevelopmentStart
+		return s.instance.StartHeight
 	}
 	return s.head.Height + 1
 }
@@ -216,6 +283,9 @@ func (s *bitmapRunConsumer) Checkpoint() *indexCheckpoint {
 	return &indexCheckpoint{Schema: 1, Definition: s.id, Version: 1, RuleHash: h.ProfileHash, Network: "bitcoin-mainnet", From: h.SegmentStart, Height: h.Height, BlockHash: h.BlockHash, PreviousCommitment: h.Previous, DependencyFingerprint: h.DependencyCommitment, RecordsHash: h.BlockRoot, Commitment: h.Commitment}
 }
 func (s *bitmapRunConsumer) publish(ctx context.Context, h bitmapDevelopmentHead) error {
+	if bitmapConsumerKind(s.id) == "chain" {
+		return s.publishBitmapChain(ctx, h)
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -244,7 +314,7 @@ func (s *bitmapRunConsumer) publish(ctx context.Context, h bitmapDevelopmentHead
 	}
 	h.Commitment = bitmapDevelopmentDigest(h)
 	path := filepath.Join(s.dir, "commits", h.Commitment[:2], h.Commitment+".json")
-	if err := atomicWriteJSON(path, h); err != nil {
+	if err := writeBitmapChainJSON(ctx, path, h); err != nil {
 		return err
 	}
 	if err := syncDirectory(filepath.Dir(path)); err != nil {
@@ -256,7 +326,7 @@ func (s *bitmapRunConsumer) publish(ctx context.Context, h bitmapDevelopmentHead
 	if err := checkIndexRunPublication(ctx); err != nil {
 		return err
 	}
-	if err := atomicWriteJSON(filepath.Join(s.dir, "head.json"), struct {
+	if err := writeBitmapChainJSON(ctx, filepath.Join(s.dir, "head.json"), struct {
 		Commitment string `json:"commitment"`
 	}{h.Commitment}); err != nil {
 		return err
@@ -284,15 +354,22 @@ func (s *bitmapRunConsumer) Reconcile(ctx context.Context, hashAt func(int64) (s
 			return err
 		}
 		matched := hash == h.BlockHash
-		if matched && s.id != "bitmap-districts" {
-			d, err := bitmapHeadAt(ctx, s.root, "bitmap-districts", h.Height)
+		ownedChainReceipt := matched && bitmapConsumerKind(s.id) == "chain" && validBitmapChainReceipt(h, s.instance)
+		if matched && bitmapConsumerKind(s.id) != "district" && !ownedChainReceipt {
+			d, err := bitmapHeadAt(ctx, s.root, s.instance.DistrictInstance, h.Height)
 			if err != nil {
 				return err
 			}
 			matched = d != nil && d.BlockHash == h.BlockHash && d.Commitment == h.DependencyCommitment
+			if d == nil && bitmapConsumerKind(s.id) == "chain" {
+				matched = validBitmapChainReceipt(h, s.instance)
+			}
 		}
 		if matched {
 			break
+		}
+		if bitmapConsumerKind(s.id) == "chain" {
+			return s.reconcileBitmapChain(ctx, hashAt)
 		}
 		if h.Previous == "" {
 			h = nil
@@ -304,6 +381,15 @@ func (s *bitmapRunConsumer) Reconcile(ctx context.Context, hashAt func(int64) (s
 		}
 	}
 	if h == s.head {
+		if h != nil && bitmapConsumerKind(s.id) == "chain" && s.retention != "" {
+			m, err := readBitmapChainManifest(ctx, s.root, s.id)
+			if err != nil {
+				return err
+			}
+			if m == nil && s.retention != "full" || m != nil && m.Mode != s.retention {
+				return s.publishBitmapChain(ctx, *h)
+			}
+		}
 		return nil
 	}
 	if err := updateapply.CheckPath(s.dir); err != nil {
@@ -316,7 +402,7 @@ func (s *bitmapRunConsumer) Reconcile(ctx context.Context, hashAt func(int64) (s
 		if err := os.Remove(filepath.Join(s.dir, "head.json")); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-	} else if err := atomicWriteJSON(filepath.Join(s.dir, "head.json"), struct {
+	} else if err := writeBitmapChainJSON(ctx, filepath.Join(s.dir, "head.json"), struct {
 		Commitment string `json:"commitment"`
 	}{h.Commitment}); err != nil {
 		return err
@@ -338,11 +424,12 @@ func bitmapTargetKey(district uint64, transaction *uint64) string {
 }
 func (s *bitmapRunConsumer) pending(ctx context.Context, block blockView, rows []bitmapDevelopmentCandidate, note string) error {
 	for i := range rows {
+		rows[i].RuleResults = bitmapRuleAudits(s.instance.Profile, rows[i])
 		if rows[i].Selection == "selected" {
 			rows[i].Selection = "provisional"
 		}
 	}
-	p := bitmapDevelopmentPending{Schema: 1, Index: s.id, ProfileHash: bitmapProfileHash(bitmapProfile(bitmapConsumerKind(s.id))), Height: block.Height, BlockHash: block.Hash, Candidates: rows, Note: note}
+	p := bitmapDevelopmentPending{Schema: 1, Index: s.id, ProfileHash: s.instance.ProfileHash, Height: block.Height, BlockHash: block.Hash, Candidates: rows, Note: note}
 	if s.head != nil {
 		p.Previous = s.head.Commitment
 	}
@@ -363,7 +450,7 @@ func (s *bitmapRunConsumer) pending(ctx context.Context, block blockView, rows [
 	if err := checkIndexRunPublication(ctx); err != nil {
 		return err
 	}
-	if err := atomicWriteBytes(filepath.Join(s.dir, "pending.json"), raw); err != nil {
+	if err := writeBitmapChainBytes(ctx, filepath.Join(s.dir, "pending.json"), raw); err != nil {
 		return err
 	}
 	return fmt.Errorf("%w: %s", ErrBitmapEvidenceRequired, note)
@@ -381,7 +468,7 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 	if s.head != nil && block.PreviousBlockHash != s.head.BlockHash {
 		return fmt.Errorf("Bitmap source ancestry changed; reconcile before resume")
 	}
-	h := bitmapDevelopmentHead{Schema: 1, Index: s.id, Profile: bitmapProfile(bitmapConsumerKind(s.id)), Height: block.Height, BlockHash: block.Hash, SegmentStart: bitmapDevelopmentStart, PreviousBlockHash: block.PreviousBlockHash}
+	h := bitmapDevelopmentHead{Schema: 1, Index: s.id, Profile: s.instance.Profile, Height: block.Height, BlockHash: block.Hash, SegmentStart: s.instance.StartHeight, PreviousBlockHash: block.PreviousBlockHash, DistrictInstance: s.instance.DistrictInstance}
 	if s.head != nil {
 		h = *s.head
 		h.Height = block.Height
@@ -395,8 +482,8 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 	}
 	winners, candidates, targets, blocks := tree(h.WinnerRoot), tree(h.CandidateRoot), tree(h.TargetRoot), tree(h.BlockRoot)
 	row := bitmapDevelopmentBlock{Height: block.Height, BlockHash: block.Hash, BlockEvaluated: true, OrderedWinnerIDs: []string{}, CompleteScope: true, PreviousCommitment: h.Previous}
-	if s.id != "bitmap-districts" {
-		d, err := bitmapHeadAt(ctx, s.root, "bitmap-districts", block.Height)
+	if bitmapConsumerKind(s.id) != "district" {
+		d, err := bitmapHeadAt(ctx, s.root, s.instance.DistrictInstance, block.Height)
 		if err != nil {
 			return err
 		}
@@ -409,8 +496,10 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 		}
 		h.DependencyCommitment = d.Commitment
 		row.DependencyCommitment = d.Commitment
-		if s.id == "bitmap-chain" {
-			row.OutcomeProfileHash = bitmapProfileHash(bitmapProfile("district"))
+		if bitmapConsumerKind(s.id) == "chain" {
+			row.OutcomeProfileHash = s.instance.DistrictProfileHash
+			h.DistrictReceipt = d
+			h.DistrictReceiptRef = ""
 			row.OrderedWinnerIDs = append(row.OrderedWinnerIDs, source.OrderedWinnerIDs...)
 			row.IsolatedHash, err = bitmapIsolatedOutcome(row.OrderedWinnerIDs)
 			if err != nil {
@@ -424,7 +513,7 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 			if err != nil {
 				return err
 			}
-			commit, err := bitmapScopedCommitment(h.SegmentStart, h.Height, h.BlockHash, row.ChainHash, bitmapProfileHash(bitmapProfile("district")))
+			commit, err := bitmapScopedCommitment(h.SegmentStart, h.Height, h.BlockHash, row.ChainHash, s.instance.DistrictProfileHash)
 			if err != nil {
 				return err
 			}
@@ -470,19 +559,20 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 		if o.TxIndex < 0 || o.TxIndex >= len(block.Transactions) || o.TxID != block.Transactions[o.TxIndex].TxID || o.ID != fmt.Sprintf("%si%d", o.TxID, o.Index) {
 			return fmt.Errorf("Bitmap occurrence transaction identity mismatch")
 		}
-		text, reason := bitmapDecodeBody(o.Body, o.Envelope.ContentType)
+		text, reason := bitmapDecodeProfileBody(s.instance.Profile, o.Body, o.Envelope.ContentType)
 		if reason != "" && reason != "unresolved_charset" {
 			text = string(o.Body)
 		}
-		if reason != "unresolved_charset" && !strings.Contains(strings.ToLower(text), ".bitmap") {
+		marker := bitmapClaimMarker(text)
+		if reason != "unresolved_charset" && marker < 0 {
 			continue
 		}
 		stem := text
-		if at := strings.Index(strings.ToLower(text), ".bitmap"); at >= 0 {
-			stem = text[:at]
+		if marker >= 0 {
+			stem = text[:marker]
 		}
 		parts := strings.Split(stem, ".")
-		parcel := s.id == "bitmap-parcels"
+		parcel := bitmapConsumerKind(s.id) == "parcel"
 		if reason != "unresolved_charset" && len(parts) != 1 && len(parts) != 2 {
 			continue
 		}
@@ -490,6 +580,14 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 			continue
 		}
 		c := bitmapDevelopmentCandidate{ID: o.ID, Kind: bitmapConsumerKind(s.id), RevealCoordinate: inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height), RevealHeight: block.Height, RevealHash: block.Hash, TxIndex: o.TxIndex, InscriptionIndex: o.Index, ContentHash: o.ContentSHA256, Eligibility: "ineligible", Selection: "not-selected", Reason: reason, Parents: append([]string(nil), o.Envelope.Parents...), Ownership: "unknown"}
+		if s.instance.Profile.FingerprintSchema == bitmapNamedProfileSchema {
+			c.DecodeState = "pass"
+			if reason == "unresolved_charset" {
+				c.DecodeState = "unknown"
+			} else if reason != "" {
+				c.DecodeState = "fail"
+			}
+		}
 		if len(text) <= 128 {
 			c.Content = text
 		}
@@ -530,11 +628,11 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 		}
 		if parcel {
 			var parent bitmapDevelopmentCandidate
-			d, e := bitmapHeadAt(ctx, s.root, "bitmap-districts", block.Height)
+			d, e := bitmapHeadAt(ctx, s.root, s.instance.DistrictInstance, block.Height)
 			if e != nil {
 				return e
 			}
-			have, e := newOrdinalTree(filepath.Join(bitmapDevelopmentDir(s.root, "bitmap-districts"), "pages"), d.WinnerRoot).withContext(ctx).get(bitmapTargetKey(district, nil), &parent)
+			have, e := newOrdinalTree(filepath.Join(bitmapDevelopmentDir(s.root, s.instance.DistrictInstance), "pages"), d.WinnerRoot).withContext(ctx).get(bitmapTargetKey(district, nil), &parent)
 			if e != nil {
 				return e
 			}
@@ -557,6 +655,9 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 				err = fmt.Errorf("referenced block transaction count is unavailable")
 			}
 			if err != nil {
+				c.Eligibility = "unresolved"
+				c.Reason = "transaction_count_evidence_required"
+				c.UnresolvedDependencies = []string{"authenticated target-block transaction count"}
 				return s.pending(ctx, block, append(staged, c), "Referenced transaction-count evidence is unavailable: "+err.Error())
 			}
 			if source.Height != int64(district) || !integrityVerified(source) || uint64(len(source.Transactions)) != source.TransactionCount {
@@ -590,6 +691,12 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 			}
 			proof, e := checkedBitmapParent(ctx, s.a, block, o, parent)
 			if e != nil {
+				if errors.Is(e, ErrBitmapParentInvalid) {
+					c.Eligibility = "ineligible"
+					c.Reason = "parent_not_consumed_by_reveal"
+					staged = append(staged, c)
+					continue
+				}
 				c.Eligibility = "unresolved"
 				c.Reason = "saved_sat_dependency_unavailable"
 				c.UnresolvedDependencies = []string{e.Error()}
@@ -617,6 +724,7 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 		} else {
 			c.Selection = "selected"
 			c.Reason = "first_eligible_under_development_profile"
+			c.RuleResults = bitmapRuleAudits(s.instance.Profile, c)
 			if err := winners.put(key, c); err != nil {
 				return err
 			}
@@ -629,6 +737,7 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 		return s.pending(ctx, block, staged, "Winner-affecting evidence is unresolved. Complete coverage and the Bitmap Chain do not advance through this block.")
 	}
 	for _, c := range staged {
+		c.RuleResults = bitmapRuleAudits(s.instance.Profile, c)
 		key := bitmapCandidateKey(c)
 		if err := candidates.put(key, c); err != nil {
 			return err
@@ -742,5 +851,5 @@ func checkedBitmapParent(ctx context.Context, a *app, block blockView, o inscrip
 			}
 		}
 	}
-	return nil, nil
+	return nil, ErrBitmapParentInvalid
 }

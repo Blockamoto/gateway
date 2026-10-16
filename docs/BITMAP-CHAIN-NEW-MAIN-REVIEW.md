@@ -1,6 +1,6 @@
 # Bitmap Chain review against new-main
 
-Reviewed 15 October 2026 against [`Blockamoto/bitmap` new-main](https://github.com/Blockamoto/bitmap/tree/1751e0d37073ab920cbd8b5548c61b74c37716d1), specifically its [separated commitment specification](https://github.com/Blockamoto/bitmap/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/BITMAP-CHAIN.md). This supersedes the earlier main-branch reference for future Bitmap design. It does not change or relabel saved experimental data.
+Reviewed 15 October 2026 against [`Blockamoto/bitmap-old` main (formerly new-main)](https://github.com/Blockamoto/bitmap-old/tree/1751e0d37073ab920cbd8b5548c61b74c37716d1), specifically its [separated commitment specification](https://github.com/Blockamoto/bitmap-old/blob/1751e0d37073ab920cbd8b5548c61b74c37716d1/BITMAP-CHAIN.md). This supersedes the earlier main-branch reference for future Bitmap design. It does not change or relabel saved experimental data.
 
 The existing Gateway development encoder already uses the new separated outcome format. The remaining work is chiefly semantic profile definition, evaluation coverage and presentation; matching hash framing does not establish full Standard conformance.
 

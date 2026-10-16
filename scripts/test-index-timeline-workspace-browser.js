@@ -64,10 +64,11 @@ async function run() {
     const rootBox=()=>page.locator('#index-timeline').boundingBox();
     const editorBox=()=>page.locator('.timeline-editor').boundingBox();
     const horizontal='#timeline-scrollbar-horizontal';
-    await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.locator('#timeline-collapse:not([aria-expanded=true])').click();
+    await page.route('**/api/v1/index/layout',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({schema:1,order:{},revision:0})}));
+  await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.locator('#timeline-collapse:not([aria-expanded=true])').click();
     await page.locator('#timeline-divider').waitFor();
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks'],'Headers and Blocks are default tracks even without stored blocks');
-    assert.equal(await page.locator('#timeline-add-index').isDisabled(),true,'Built-ins are already present; Plus is reserved for custom indexes');
+    assert.equal(await page.locator('#timeline-add-index').isDisabled(),false,'Built-ins remain present; Plus offers custom Bitmap rulesets');
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await page.locator('#timeline-details').evaluate(el=>el.open=true);
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks']);

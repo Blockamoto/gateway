@@ -251,17 +251,17 @@ func bitmapRuntimeDefinitions(ctx context.Context, root string) ([]indexDefiniti
 	return out, nil
 }
 func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {
-	if err := requireTimelineRawBuild(context.Background(), a.dataDir, req); err != nil {
-		return indexJob{}, err
-	}
 	if bitmapConsumerID(req.Index) {
 		return indexJob{}, fmt.Errorf("Bitmap development consumers require a reviewed coordinated timeline run")
 	}
-	if !indexRunOptionalWorkAllowed(a.dataDir, req.Index) {
-		return indexJob{}, fmt.Errorf("%s is Off in the timeline; arm it before requesting new work", req.Index)
-	}
 	if err := requireReleaseIndexRequest(req); err != nil {
 		return indexJob{}, err
+	}
+	if err := requireTimelineRawBuild(context.Background(), a.dataDir, req); err != nil {
+		return indexJob{}, err
+	}
+	if !indexRunOptionalWorkAllowed(a.dataDir, req.Index) {
+		return indexJob{}, fmt.Errorf("%s is Off in the timeline; arm it before requesting new work", req.Index)
 	}
 	a.indexLiveControlMu.Lock()
 	defer a.indexLiveControlMu.Unlock()
@@ -284,13 +284,13 @@ func (a *app) startIndexBuildInternal(req indexBuildRequest, live bool) (indexJo
 	return a.startIndexBuildID(req, live, "")
 }
 func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (indexJob, error) {
-	if err := requireTimelineRawBuild(context.Background(), a.dataDir, req); err != nil {
-		return indexJob{}, err
-	}
 	if bitmapConsumerID(req.Index) {
 		return indexJob{}, fmt.Errorf("Bitmap development consumers require a coordinated timeline run")
 	}
 	if err := requireReleaseIndexRequest(req); err != nil {
+		return indexJob{}, err
+	}
+	if err := requireTimelineRawBuild(context.Background(), a.dataDir, req); err != nil {
 		return indexJob{}, err
 	}
 	req = cloneIndexBuildRequest(req)

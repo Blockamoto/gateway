@@ -1,43 +1,42 @@
 {
   "schema": 1,
   "kind": "local-development-acceptance",
-  "runtime_source": "35a39fc4606e4d1fd1a6ab8ee2bedff1a3bd5a33",
-  "client_sha256": "e542d0b5432f5df23f07225113b7c9e21a9edc53243403f20c2170a4187108a7",
-  "artifact_name": "Gateway-Bitmap-Rulesets-Development-35a39fc.zip",
-  "artifact_directory": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\Gateway-Bitmap-Rulesets-Development-35a39fc",
-  "archive_sha256": "91d926e0f199eb71004c07af0d7151fff4f8e55a0609eabb07f8b64760e747aa",
-  "archive_bytes": 80442109,
+  "runtime_source": "8592db50830eb56ad0716453550100685220d6b3",
+  "engine_source": "6f1f3c79e1331ae781ddaa535c25c6ef172a2927",
+  "client_sha256": "1aec5e436ce924ae61623ee45df56e23cbeb138558c64c1fd689d826922f87a9",
+  "artifact_name": "Gateway-Bitmap-Rulesets-Development-8592db5.zip",
+  "artifact_directory": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\Gateway-Bitmap-Rulesets-Development-8592db5",
+  "archive_sha256": "ba18607211d7230f863d12fb079cbf19eb79d0cc1acc05780fabf861979d6270",
+  "archive_bytes": 80519665,
   "application_compatibility_version": "0.7.7 development",
   "published": false,
   "main_or_updater_changed": false,
-  "preview_url": "http://127.0.0.1:53788",
-  "preview_profile": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\preview-profile-35a39fc",
-  "preview_state_note": "Readiness records initial handoff only. No inspection, resetting or migration of the earlier user-facing previews was required. Their indexes and jobs remain separate.",
+  "preview_url": "http://127.0.0.1:58618",
+  "preview_profile": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\preview-profile-8592db5",
+  "preview_state_note": "Initial readiness only. Earlier user-controlled previews, saved indexes and jobs remain untouched.",
   "implemented": [
-    "Reversible panel maximization with typing and embedded-content guards.",
-    "Compact District-owned Parcel hierarchy, nested timeline add rows and attached Chain mini lanes.",
-    "Per-track Standard/Non-standard rules, durable indexed-evidence locks, stable identities and automatic names until renamed.",
-    "Selected-track contextual Skip: symmetric outer start/end jumps, strict saved piece-edge/ruler stops, local deep-unit navigation and neutral simple-timeline behavior."
+    "Single-action Start and persistent top-left status, exact prerequisites and required-origin/resume rules.",
+    "Current-boundary Arm/Live admission with no hidden earlier backfill; durable Pause/Stop/Off publication fences.",
+    "Benign chain-tip extension no longer invalidates a still-selected captured block source.",
+    "One upcoming ephemeral block overlaps current processing; aligned consumers share verified read/decode/extraction and ordered publication.",
+    "Peer failure cooldown, actual dispatch timing, adapter/authority-scoped reconciliation and one progress save per cohort.",
+    "Shift sibling selection and explicit batch/range deletion, custom definition removal with explicit dependency closure, and retained shared evidence.",
+    "Always-accessible attached Chain management and persistent visible deletion receipts after async settings load."
   ],
   "receipts": {
     "packaging": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\package-35a39fc.json",
-      "sha256": "a7bc575b5c9cc7016e3bfa177ef90dade8c170781c51c2f67ef8290de9f4cd3c",
-      "result": "PASS",
-      "checks": [
-        "Every archive member matches the portable directory.",
-        "All four Windows components come from the frozen neutral payload.",
-        "Bundled header count and digest match verified bootstrap metadata."
-      ]
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\package-8592db5.json",
+      "sha256": "c40bee30d54885d0272d776f154e2d5a585c66fe3146e11ec57bb709066a41c7",
+      "result": "PASS"
     },
     "independent_package_audit": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\package-independent-35a39fc.json",
-      "sha256": "79d2d4f26875c5335acd8c6a5cd3afe00c24578b348dd4854841811d1a041074",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\package-independent-8592db5.json",
+      "sha256": "cd00b983a1372b1ef4e4ff49c31e14552de3e9c4ab1301197f4f858b8f670b0e",
       "result": "PASS"
     },
     "compiled_profile_api": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-profile-api-35a39fc\\result.json",
-      "sha256": "c8720c491165c1e8d974d1816427795fdb2fd46958d8e3b3829ff6a9aa22af77",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-profile-api-8592db5\\result.json",
+      "sha256": "9ec4eb09fd56fdc96660193284f45a7e2e84af32713017096791ab35870a1023",
       "result": "PASS",
       "checks": [
         "compiled profile routes and both embedded workspace assets",
@@ -49,146 +48,198 @@
         "Standard classification follows rule values independently of the custom display name",
         "distinct alternative profile and honest unavailable comparison with Chain Off",
         "automatic names follow rule classification until explicit rename, including a deliberately chosen matching name",
-        "stale deletion refused, confirmed owned-data deletion, definition preserved",
-        "observed indexing evidence keeps rules locked after saved-data deletion",
+        "stale batch deletion refused with every explicitly selected dependency preserved",
+        "confirmed whole custom deletion removes only the selected District/Parcel/Chain definitions and owned data",
         "management and inspection never launched an index job",
         "compiled restart preserves profiles and parent-bound layout across local ports without work"
       ]
     },
     "native_ui": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final35a39fc-ui-acceptance.json",
-      "sha256": "5c3e73c999ce1771b8a384b3f1a26d560bf23b543b36c0972362fa2afef935fd",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final8592db5-ui-acceptance.json",
+      "sha256": "430bb140b20387f4c95ea41fc9ccbbdf8254d283bbb3b4525f13336f23957dfc",
       "result": "PASS",
       "suites": [
         {
-          "suite": "bitmap",
+          "suite": "Bitmap",
           "result": "PASS",
-          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final35a39fc-bitmap\\result.json",
-          "receipt_sha256": "ddbec57f3c5ca51d2c1ece4d41523e15ab9576d7182401cb570ca7f48bb14027",
-          "script": "C:\\Users\\camer\\.codex\\worktrees\\utxo-set\\Gateway\\scripts\\test-bitmap-native-browser.js",
-          "executed_script_sha256": "9eca07bf805d2bb90fe283b32cc04b359cbec49cb61b9ae76b8b5ffd4d1ef768",
-          "git_canonical_script_sha256": "d1003242a2082410e6296e34ae72c54a49fbb1e433945b2ba5a9ef23c1ba100a",
-          "neutral_script_sha256": "d1003242a2082410e6296e34ae72c54a49fbb1e433945b2ba5a9ef23c1ba100a"
+          "exit_code": 0,
+          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-bitmap-8592db5\\result.json",
+          "receipt_sha256": "7f998589b43502a61ce1199748f485f226eb06849c98c0246df4ed534722fbf3",
+          "receipt_records_binary_hash": true,
+          "script": "scripts/test-bitmap-native-browser.js",
+          "script_working_sha256": "691fe0a2cad332235589a69a9dfba397e368429b51b942852813c97518483c1c",
+          "script_canonical_sha256": "9439def0a6e5d382940585985b3293df2bf81ca244b549d31fc3b4eb50f0987f",
+          "compiled_source_match": true,
+          "run_by": "timeline_hierarchy_review"
         },
         {
-          "suite": "sats",
+          "suite": "Viewport",
           "result": "PASS",
-          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final35a39fc-sats\\result.json",
-          "receipt_sha256": "438508ce6e6d465d061a0ea467975950d5a2de5301521279d5581e33744efef8",
-          "script": "C:\\Users\\camer\\.codex\\worktrees\\utxo-set\\Gateway\\scripts\\test-sats-native-077.js",
-          "executed_script_sha256": "2cdf7818071d2f0109737e23d9dbd1a55c7cfc086e3c81f21fafcc784547580c",
-          "git_canonical_script_sha256": "ec314f26167e1528d8f4e2cb43030b1975deb5a307ebbae82a3ee37df6055a26",
-          "neutral_script_sha256": "ec314f26167e1528d8f4e2cb43030b1975deb5a307ebbae82a3ee37df6055a26"
+          "exit_code": 0,
+          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-viewport-8592db5\\summary.json",
+          "receipt_sha256": "2cf9647d9e9aceb49e36af293ff6c05c7de5dfca7e7b75001c8c98da1c757bc1",
+          "receipt_records_binary_hash": true,
+          "script": "scripts/test-viewport-native-browser.js",
+          "script_working_sha256": "9e2a6881f03f54aac13fb1e6f79628d88cfc4f83295d9a1a521923ae1dd7e6e7",
+          "script_canonical_sha256": "0a24c6fc05dc976ecb8071ff50f87279e3513620c9444aa64f83122be63235fe",
+          "compiled_source_match": true,
+          "run_by": "timeline_hierarchy_review"
         },
         {
-          "suite": "viewport_maximize_and_skip",
+          "suite": "Inscription security",
           "result": "PASS",
-          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final35a39fc-viewport\\summary.json",
-          "receipt_sha256": "d894321d9f3c0be505bbbfae4d953868a33682a8a24d7fee265c8d2fabef1429",
-          "script": "C:\\Users\\camer\\.codex\\worktrees\\utxo-set\\Gateway\\scripts\\test-viewport-native-browser.js",
-          "executed_script_sha256": "9e2a6881f03f54aac13fb1e6f79628d88cfc4f83295d9a1a521923ae1dd7e6e7",
-          "git_canonical_script_sha256": "0a24c6fc05dc976ecb8071ff50f87279e3513620c9444aa64f83122be63235fe",
-          "neutral_script_sha256": "0a24c6fc05dc976ecb8071ff50f87279e3513620c9444aa64f83122be63235fe"
-        },
-        {
-          "suite": "inscription_security",
-          "result": "PASS",
-          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final35a39fc-inscription\\summary.json",
+          "exit_code": 0,
+          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-inscription-8592db5\\summary.json",
           "receipt_sha256": "a04f20c8510d38bc1f310c326e5c532ef0173d2791b09489b90d50c2df69d2de",
-          "script": "C:\\Users\\camer\\.codex\\worktrees\\utxo-set\\Gateway\\scripts\\test-inscription-native-browser.js",
-          "executed_script_sha256": "a63390cb237d936e369d7ac3218e74da419a581369924023a4c4cfaec38dec44",
-          "git_canonical_script_sha256": "a63390cb237d936e369d7ac3218e74da419a581369924023a4c4cfaec38dec44",
-          "neutral_script_sha256": "a63390cb237d936e369d7ac3218e74da419a581369924023a4c4cfaec38dec44"
+          "receipt_records_binary_hash": false,
+          "script": "scripts/test-inscription-native-browser.js",
+          "script_working_sha256": "a63390cb237d936e369d7ac3218e74da419a581369924023a4c4cfaec38dec44",
+          "script_canonical_sha256": "a63390cb237d936e369d7ac3218e74da419a581369924023a4c4cfaec38dec44",
+          "compiled_source_match": true,
+          "run_by": "timeline_hierarchy_review"
         },
         {
-          "suite": "controls",
+          "suite": "Sats",
           "result": "PASS",
-          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final35a39fc-controls\\result.json",
-          "receipt_sha256": "14bf4cce4ef3cb4d6672a7052cbe4e584c615cdb3ba2d9460b49f293d6b755fe",
-          "script": "C:\\Users\\camer\\.codex\\worktrees\\utxo-set\\Gateway\\scripts\\test-index-cards-browser.js",
-          "executed_script_sha256": "9dae2917ea7b349c906ad48190a03928019e94376ba8bbf4b68b06a9ed627b84",
-          "git_canonical_script_sha256": "61f47f8e7e6604570a844e461cc30a4f159f2bf6e42821a1a55a72c0fa4fed23",
-          "neutral_script_sha256": "61f47f8e7e6604570a844e461cc30a4f159f2bf6e42821a1a55a72c0fa4fed23"
+          "exit_code": 0,
+          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-sats-8592db5\\result.json",
+          "receipt_sha256": "a4c76c94213ed1484232d8198378935ef52f297c7b9a5fceb48db8b578f59cc8",
+          "receipt_records_binary_hash": true,
+          "script": "scripts/test-sats-native-077.js",
+          "script_working_sha256": "b06faa8550b2c898f1b7b28c96e15f52d3df33e0ab38b3fe2b6280464b62ac12",
+          "script_canonical_sha256": "fe5a6152080e798256051a4a36d71abd957b4994eb071a7678574797a86dce89",
+          "compiled_source_match": true,
+          "run_by": "root"
+        },
+        {
+          "suite": "General controls",
+          "result": "PASS",
+          "exit_code": 0,
+          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-controls-8592db5\\result.json",
+          "receipt_sha256": "664fb44aa1ac6bdcd3ac47ef4304866f01c6572ef6c1bc12765c6be28870924d",
+          "receipt_records_binary_hash": true,
+          "script": "scripts/test-index-cards-browser.js",
+          "script_working_sha256": "f2a6867795b1413df9353b12edb892eab74b35fd103c6520dffc9bc76da26168",
+          "script_canonical_sha256": "20e4b9af4f65fecee68c23f6f62b21178ec30cbef9a53b11a9532a8287d006dd",
+          "compiled_source_match": true,
+          "run_by": "root"
         }
       ]
     },
-    "contextual_skip_source": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\skip-source-acceptance.json",
-      "sha256": "11e7ab220bb142c8da181cb0fe2c30fd22668a14aff6de854f3d06288a3453cf",
-      "result": "PASS",
-      "checks": [
-        "Saved origin, sparse local coverage and declaration fallback; provider and unavailable/queryable-false coverage excluded",
-        "Forward before origin / backward after end including end0 snap directly",
-        "Local piece boundaries are strict stops alongside ruler notches at block level",
-        "Deep coordinates compare containing block; inside a valid block range retain local Sat/IO notch units",
-        "Group/collapsed/compact simple navigation clear old context; explicit track selection and status refresh preserve correct scope",
-        "Arm/Live/options/global marks unchanged; no staging or indexing writes"
-      ]
+    "source_ui": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\current-source-interactions\\source-ui-acceptance.json",
+      "sha256": "ab50ad10e990b95878f4e5abe65fc50a998c1f3de315339a35e796b06130f63f",
+      "result": "PASS"
     },
     "full_windows": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\profile-lifecycle-final-backend\\summary.json",
-      "sha256": "c000195b25ba45019f4450e0b8cf845cfbed870a89174661bef47fd6494d319a",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\index-run-admission-final-backend-attempt2\\summary.json",
+      "sha256": "72fa0ce07d9bc2b6df59090dbf11ded6d63c84fc1dd8d76ffeb6d15cea29e2e4",
       "result": "PASS",
-      "test_passes": 1251,
+      "test_passes": 1281,
       "test_failures": 0,
       "test_skips": 46,
-      "passing_packages": 8,
-      "no_test_packages": 2,
-      "go_vet": "PASS",
-      "go_source_inventory_count": 347,
-      "final_source_matches_tested_go_files": true,
-      "note": "The full engine suite ran against the frozen Go inventory. The later navigation change is UI-only; final-source-match binds all unchanged engine files to this replacement.",
-      "exact_client_cleanup": {
-        "note": "Separate opt-in final Windows runtime starts/stops through authenticated loopback; owned temporary test profiles only. External wallet sentinel preserved. This does not turn the earlier full-suite skip into a full-suite pass.",
-        "result": {
-          "completed": "2026-10-16T12:30:12.0231194Z",
-          "source_revision": "35a39fc4606e4d1fd1a6ab8ee2bedff1a3bd5a33",
-          "client_sha256": "e542d0b5432f5df23f07225113b7c9e21a9edc53243403f20c2170a4187108a7",
-          "exit_code": 0,
-          "client": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\payload-35a39fc\\GatewayClient.exe"
+      "packages": [
+        {
+          "Time": "2026-10-16T17:41:53.3727789+01:00",
+          "Action": "pass",
+          "Package": "_/C_/Users/camer/.codex/worktrees/utxo-set/Gateway",
+          "Elapsed": 1325.524
         },
-        "test_failures": 0,
-        "receipt": "exact-client-cleanup.jsonl",
-        "test_passes": 1,
-        "test_skips": 0
-      },
+        {
+          "Time": "2026-10-16T17:41:55.6753813+01:00",
+          "Action": "pass",
+          "Package": "_/C_/Users/camer/.codex/worktrees/utxo-set/Gateway/internal/cleanup",
+          "Elapsed": 1.46
+        },
+        {
+          "Time": "2026-10-16T17:41:58.4810036+01:00",
+          "Action": "pass",
+          "Package": "_/C_/Users/camer/.codex/worktrees/utxo-set/Gateway/internal/datadir",
+          "Elapsed": 1.996
+        },
+        {
+          "Time": "2026-10-16T17:42:28.0161115+01:00",
+          "Action": "pass",
+          "Package": "_/C_/Users/camer/.codex/worktrees/utxo-set/Gateway/internal/updateapply",
+          "Elapsed": 28.389
+        },
+        {
+          "Time": "2026-10-16T17:42:33.3826518+01:00",
+          "Action": "pass",
+          "Package": "_/C_/Users/camer/.codex/worktrees/utxo-set/Gateway/internal/updatepublisher",
+          "Elapsed": 4.178
+        },
+        {
+          "Time": "2026-10-16T17:42:34.8632204+01:00",
+          "Action": "pass",
+          "Package": "_/C_/Users/camer/.codex/worktrees/utxo-set/Gateway/internal/updates",
+          "Elapsed": 0.825
+        },
+        {
+          "Time": "2026-10-16T17:42:37.2028156+01:00",
+          "Action": "pass",
+          "Package": "_/C_/Users/camer/.codex/worktrees/utxo-set/Gateway/packaging/gateway-launcher",
+          "Elapsed": 1.421
+        },
+        {
+          "Time": "2026-10-16T17:42:40.5887717+01:00",
+          "Action": "pass",
+          "Package": "_/C_/Users/camer/.codex/worktrees/utxo-set/Gateway/packaging/native-host",
+          "Elapsed": 2.092
+        },
+        {
+          "Time": "2026-10-16T17:42:40.6698283+01:00",
+          "Action": "skip",
+          "Package": "_/C_/Users/camer/.codex/worktrees/utxo-set/Gateway/packaging/update-helper",
+          "Elapsed": 0
+        },
+        {
+          "Time": "2026-10-16T17:42:40.7283546+01:00",
+          "Action": "skip",
+          "Package": "_/C_/Users/camer/.codex/worktrees/utxo-set/Gateway/packaging/update-publisher",
+          "Elapsed": 0
+        }
+      ],
+      "go_vet": "PASS",
+      "go_source_inventory_count": 357,
       "race_claimed": false
     },
     "engine_source_binding": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\profile-lifecycle-final-backend\\final-source-match.json",
-      "sha256": "1594ece576b26218b590cf9834804f777cd59a6e7eda13ef57759e777312e68a",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\index-run-admission-final-backend-attempt2\\final-source-match.json",
+      "sha256": "7043129c6f2efaaf41c5587c26ac1ce092d14e62760718be6b193bc48340a6f4",
+      "result": "PASS"
+    },
+    "exact_client_cleanup": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\index-run-admission-final-backend-attempt2\\exact-client-cleanup-8592db5-summary.json",
+      "sha256": "fe7cc11f90b61da6497da7c7ec8ff1e0b4bf16791e303c125576c7b6bfa3a95e",
       "result": "PASS"
     },
     "engine_receipt_hashes": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\profile-lifecycle-final-backend\\receipt-hashes.json",
-      "sha256": "39e17559c8f6171f1fa6d93c497744dec537aaae540590e0b085c0004302ad5a",
-      "result": "PASS"
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\index-run-admission-final-backend-attempt2\\receipt-hashes.json",
+      "sha256": "84a40a2bad1d3c9a3e6a6c2cb20aac6e331602f0a3c9b9091003ff9e93dd367a"
     },
     "initial_preview_readiness": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\preview-35a39fc.readiness.json",
-      "sha256": "89c735c534e10ae7dac098c8c48afedb2592d11bef06256e8ddca335872cb244",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\preview-8592db5.readiness.json",
+      "sha256": "7d53459cf38455246f48b24b2ecd82d3e20d945f6cea01aafe4313796300af16",
       "result": "PASS"
+    },
+    "bounded_performance": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\performance-6f1f3c7\\paired-summary.json",
+      "sha256": "015662400c8bc702b157795741352443f282c050aca79bc72711fc2460c1a3b9"
     }
   },
-  "prior_preview": {
-    "runtime_source": "23dd10faff445d1a08195dee73218714add45470",
-    "native_receipt": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final23dd10f-ui-acceptance.json",
-      "sha256": "aab5280be403f8818e2be81bcafcadd74df4f771c0fba43a7cf6c50ae336c25e",
-      "result": "PASS"
-    },
-    "archive_receipt": {
-      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\package-independent-23dd10f.json",
-      "sha256": "91cd69ee9a4d32106176d3947f838bbf0a76e0421dc8501a3760d50998a3ad70",
-      "result": "PASS"
-    },
-    "note": "Earlier exact-app acceptance remains separate; this replacement adds contextual Skip."
-  },
+  "retained_intermediate_evidence": [
+    "The first full engine attempt is explicitly interrupted for the one-bound Raw review correction, not reported as passing.",
+    "The initial 6f1f3c7 Sats check did not observe the expected resumed checkpoint. A strengthened verifier synchronized Resume/status acknowledgement and checked same-run completion plus the exact saved checkpoint; it passed on unchanged engine bytes. This does not establish the original failure's cause.",
+    "A stronger compiled receipt-geometry check failed on 6f1f3c7; replacement8592db5 waits for actual settings readiness and passes that exact check."
+  ],
   "limitations": [
-    "Local development acceptance only; no new release, updater promotion, hosted CI result or local race result is claimed.",
-    "Compiled browser suites exercise real local Go listeners and shipped assets under Chromium; native WebView sharpness is not established.",
-    "Native Bitmap navigation uses unbuilt routes; evaluated comparisons, locking and replay use bounded engine/source-browser fixtures.",
-    "Genuine Sat traversal fixtures use genesis and block one, not a whole-mainnet storage or throughput benchmark.",
-    "Unsupported rule combinations remain unavailable; missing parcel provenance remains unresolved rather than silently launching Satline."
+    "Local development acceptance only: no new release, updater promotion, hosted CI or local race result is claimed.",
+    "Whole-mainnet history, storage, complete ownership and full Bitcoin consensus validation are not established by bounded fixtures.",
+    "Benchmark wall times were confounded by concurrent work; fewer deterministic reconciliation/progress writes are established, not a throughput improvement.",
+    "Unsupported rule combinations and missing Parcel provenance remain explicit blockers; Satline is disabled.",
+    "Cumulative state cannot support arbitrary interval holes; unsupported deletion scopes are blocked without widening.",
+    "Browser checks use the compiled Go server and Chromium. Native WebView sharpness and OS registration are separate.",
+    "The older inscription security receipt does not itself record a binary hash; the final native wrapper records its compiled-source binding without inventing a hash in that raw receipt."
   ]
 }

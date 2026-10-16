@@ -198,7 +198,7 @@ async function run() {
     // Enough established rows to exercise ordinary scrolling and both vertical
     // handles without enabling additional real application features.
     for(let i=0;i<8;i++){
-      const id='fixture-index-'+i;snapshot.definitions.push({...base,id,name:'Fixture index '+i});
+      const id='bitmap-districts-'+i.toString(16).padStart(32,'0');snapshot.definitions.push({...base,id,name:'Fixture District '+i});
       snapshot.instances.push({definition:id,checkpoint:{from:0,height:10},coverage:[{from:0,to:10}],verification:'selected_chain'});
     }
     snapshot.timeline.tracks[1]={id:'blocks',coverage:[{from:499990,to:500010}],gaps:[{from:500000,to:500000}],coverage_complete:false};
@@ -235,7 +235,7 @@ async function run() {
       assert(span(await view())<span(rightBefore),width+' one pixel right of the label divider permits intentional Ctrl zoom');
       await verticalWheelCase(width+' data lane vertical with diagonal drift',lane,{dx:3,dy:120});
       await verticalWheelCase(width+' right scrollbar gutter',page.locator('#timeline-scrollbar-vertical'),{modifiers:['Alt']});
-      const add=page.locator('.timeline-add-track-row');await add.scrollIntoViewIfNeeded();await settle();
+      const add=page.locator('.timeline-add-track-row[data-add-kind=district]');await add.scrollIntoViewIfNeeded();await settle();
       const addPoint=await add.evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x+3,y:r.y+r.height/2};});
       const addBefore=await wheelState(),addScroll=await trackViewport.evaluate(el=>el.scrollTop);
       await page.mouse.move(addPoint.x,addPoint.y);await page.keyboard.down('Control');await page.mouse.wheel(3,-120);await page.keyboard.up('Control');await settle();

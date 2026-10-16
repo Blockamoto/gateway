@@ -200,3 +200,14 @@ Keep legacy single-index entry points as adapters to the same scheduling contrac
 | Shared-fact ownership | [shared_output_facts_gc_075.go](../shared_output_facts_gc_075.go), [sat_pins_077.go](../sat_pins_077.go) |
 | Timeline hierarchy and preferences | [index-timeline.js](../ui/shell/index-timeline.js), [index-workspace.js](../ui/shell/index-workspace.js) |
 | Actual workspace integration | [indexes.html](../ui/shell/indexes.html), [workspace browser checks](../scripts/test-index-workspace-browser.js), [hierarchy browser checks](../scripts/test-timeline-hierarchy-browser.js) |
+
+## Delivered ruleset preview review notes
+
+Captured during the user's review of runtime `74e7529` on 16 October 2026. These are pending design notes; the delivered preview remains unchanged while feedback is collected.
+
+- **Panel maximization:** the physical backtick key maximizes the hovered panel, with the last focused panel as a keyboard fallback. The same key, Escape or a visible Restore layout control returns the exact previous arrangement. Suppress the shortcut in editable fields, during composition and for modifier chords or repeated keydown events. Use one workspace controller for the Inspector, viewport and timeline, preserving live DOM, split ratios, focus and scroll state. Open menus, help and dialogs consume Escape before layout restoration; layout restoration precedes timeline ascent. Coordinate with the existing viewport fullscreen control. Keep Restore outside isolated inscription content, which must not gain authority over app layout.
+- **Inactive track controls:** Arm and follow-new-blocks icons need a faint outline or raised button treatment when off, preserving the clearly pressed treatment when on.
+- **Compact Bitmap rows:** avoid oversized group rows caused by multiple nested control levels; retain a consistent compact height and legible hierarchy.
+- **Add District ruleset:** inside expanded Bitmap, provide a blank track row with a plus button for creating another District ruleset.
+- **District-owned Parcel variants:** each District ruleset remains expandable. Its child rows are the linked Parcel rulesets, followed by a blank plus row inside that District for adding another Parcel ruleset variant. Each Parcel keeps its exact District dependency. The outer District-add row and inner Parcel-add rows have distinct scope.
+- **Attached Chain mini lane:** remove the separate named Bitmap Chain row from the left track list. When a supported parent track has Chain enabled, render a slim Chain lane immediately beneath the parent's timeline lane. The parent's Chain toggle remains the control; this visual refinement does not change store identity, dependency, retention or supported parent kinds.

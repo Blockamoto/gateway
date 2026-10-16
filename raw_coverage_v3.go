@@ -82,6 +82,8 @@ type rawCoverageState struct {
 	legacyDir                  *os.File
 	legacyDirShard, legacyRead int
 	headerMu                   *sync.RWMutex
+	persistSuppressed          bool
+	suppressUntilPublication   bool
 }
 
 var rawCoverageStates sync.Map
@@ -101,6 +103,7 @@ func rawCoverageFor(root, headers string) *rawCoverageState {
 	if !m.loaded {
 		m.loaded = true
 		if e := utxoReadJSON(context.Background(), rawCoveragePath(root), 32<<20, &m.d); e != nil || m.d.Schema != 1 || m.d.Checksum != rawCoverageDigest(m.d) {
+			m.persistSuppressed = true
 			m.d = rawCoverageDocument{Schema: 1, AnchorHeight: -1, Ranges: []heightInterval{}, Manifest: map[string]rawCoverageStamp{}}
 			_, writerErr := os.Stat(rawSegmentDir(root))
 			_, legacyErr := os.Stat(filepath.Join(root, "indexes", "blocks", "bodies-v2"))
@@ -288,6 +291,9 @@ func rawCoverageManifest(ctx context.Context, root string) (map[string]rawCovera
 	return out, nil
 }
 func (m *rawCoverageState) saveLocked() error {
+	if m.persistSuppressed {
+		return nil
+	}
 	m.d.Checksum = rawCoverageDigest(m.d)
 	if e := updateapply.CheckPath(rawCoveragePath(m.root)); e != nil {
 		return e
@@ -363,6 +369,7 @@ func rawCoverageMembershipPublished(root string, height int64, hash string, segm
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.knownEmpty = false
+	m.persistSuppressed, m.suppressUntilPublication = false, false
 	if m.headers == "" {
 		m.headers = filepath.Join(root, "headers", "headers.bin")
 	}
@@ -408,13 +415,20 @@ func rawCoverageMembershipPublished(root string, height int64, hash string, segm
 		}
 	}
 }
-func rawCoverageInvalidated(root string) {
+func rawCoverageInvalidated(root string, whole ...bool) {
 	m := rawCoverageFor(root, "")
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.resetMappingLocked()
 	m.d.Revision++
 	m.reason = "Raw membership changed; metadata coverage is being reconstructed."
+	if len(whole) > 0 && whole[0] {
+		// Whole deletion must not be undone by a pending metadata projection.
+		// A later real body publication explicitly restores persistence.
+		m.persistSuppressed, m.suppressUntilPublication = true, true
+	} else if _, err := os.Stat(rawCoveragePath(root)); os.IsNotExist(err) {
+		m.persistSuppressed = true
+	}
 	_, writerErr := os.Stat(rawSegmentDir(root))
 	_, legacyErr := os.Stat(filepath.Join(root, "indexes", "blocks", "bodies-v2"))
 	if os.IsNotExist(writerErr) && os.IsNotExist(legacyErr) {
@@ -610,6 +624,12 @@ func (a *app) rebuildRawCoverage(m *rawCoverageState) {
 		}
 		m.d.Revision++
 		if e == nil {
+			// A legacy-only/unproven directory is not permission to create a
+			// new store from inspection. Persist only after mapped owned-body
+			// evidence exists, unless whole deletion is awaiting publication.
+			if len(m.d.Ranges) > 0 && !m.suppressUntilPublication {
+				m.persistSuppressed = false
+			}
 			e = m.saveLocked()
 		}
 		if e != nil {

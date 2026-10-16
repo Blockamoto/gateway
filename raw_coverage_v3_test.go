@@ -477,19 +477,26 @@ func TestRawCoverageReorgBackFindsPriorHashCatalogBody(t *testing.T) {
 }
 func TestRawCoveragePersistsPartialCursorAndBoundsLegacyResume(t *testing.T) {
 	a := independentTestApp(t)
-	rawCoverageMetadataFixture(t, a, []heightInterval{{0, 599}})
+	rows := rawCoverageMetadataFixture(t, a, []heightInterval{{0, 599}})
 	manifest, e := rawCoverageManifest(context.Background(), a.dataDir)
 	if e != nil {
 		t.Fatal(e)
 	}
 	_, tip, hash := rawCoverageHeader(a.headersPath, 0)
-	m := rawCoverageFor(a.dataDir, a.headersPath)
+	m := a.rawCoverageState()
+	rawSegmentMu.Lock()
+	rawCoveragePublished(a.dataDir, 0, rows[0].Hash, 0)
+	rawSegmentMu.Unlock()
 	m.mu.Lock()
 	m.d = rawCoverageDocument{Schema: 1, Revision: 1, Ranges: []heightInterval{{0, 511}}, Cursor: 512, AnchorHeight: tip, AnchorHash: hash, Manifest: manifest}
 	if e = m.saveLocked(); e != nil {
 		t.Fatal(e)
 	}
 	m.mu.Unlock()
+	var saved rawCoverageDocument
+	if e = utxoReadJSON(context.Background(), rawCoveragePath(a.dataDir), 32<<20, &saved); e != nil || saved.Cursor != 512 || saved.Complete || rawCoverageCount(saved.Ranges) != 512 || saved.Checksum != rawCoverageDigest(saved) {
+		t.Fatal("partial cursor was not durably saved before restart", saved, e)
+	}
 	key, _ := filepath.Abs(a.dataDir)
 	rawCoverageStates.Delete(key)
 	v := waitRawCoverage(t, a)
@@ -539,6 +546,67 @@ func TestRawCoverageEmptyStatusIsReadOnlyAndPrivate(t *testing.T) {
 	a.handleRawCoverage(w, r)
 	if w.Code != 403 {
 		t.Fatal(w.Code)
+	}
+}
+func TestRawCoverageWholeDeletionStatusRestartAndPublicationDoNotResurrectStore(t *testing.T) {
+	a, _, views := segmentFixtureV3(t)
+	foreign := deleteFixtureFile(t, a.dataDir, "indexes/blocks/bodies-v2/ff/unproven.block", "foreign source")
+	if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "blocks", Armed: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.ensureRawProducerContext(context.Background(), views[0]); err != nil {
+		t.Fatal(err)
+	}
+	if v := waitRawCoverage(t, a); *v.Total != 1 {
+		t.Fatal(v)
+	}
+	waitRawCoverageStopped(a.dataDir)
+	if _, err := os.Stat(rawCoveragePath(a.dataDir)); err != nil {
+		t.Fatal("owned coverage was not saved", err)
+	}
+	q := indexDeleteRequest{Indices: []string{"blocks"}}
+	deleteConfirmBatch(t, a, q)
+	m := a.rawCoverageState()
+	// A recovery page already queued before deletion must respect the same
+	// suppression gate, even when its worker later reaches saveLocked().
+	m.mu.Lock()
+	err := m.saveLocked()
+	m.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCleared := func() {
+		t.Helper()
+		if v := waitRawCoverage(t, a); *v.Total != 0 {
+			t.Fatal("deleted body remained mapped", v)
+		}
+		waitRawCoverageStopped(a.dataDir)
+		if _, err := os.Stat(rawCoveragePath(a.dataDir)); !os.IsNotExist(err) {
+			t.Fatal("inspection recreated deleted summary", err)
+		}
+		r, err := a.reviewIndexDeletionBatch(context.Background(), q)
+		if err != nil || !r.Ready || !r.Items[0].Noop || r.Items[0].Raw.RetainedFiles != 1 {
+			t.Fatal("inspection resurrected removable store", r, err)
+		}
+		if b, err := os.ReadFile(foreign); err != nil || string(b) != "foreign source" {
+			t.Fatal("foreign source changed", err)
+		}
+	}
+	assertCleared()
+	key, _ := filepath.Abs(a.dataDir)
+	rawCoverageStates.Delete(key)
+	assertCleared()
+	if _, err = a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "blocks", Armed: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.ensureRawProducerContext(context.Background(), views[1]); err != nil {
+		t.Fatal(err)
+	}
+	if v := waitRawCoverage(t, a); *v.Total != 1 || *v.To != 1 {
+		t.Fatal("real publication failed to restore coverage", v)
+	}
+	if _, err = os.Stat(rawCoveragePath(a.dataDir)); err != nil {
+		t.Fatal("real publication did not restore durable summary", err)
 	}
 }
 func TestRawProducerPreparedRetryDoesNotRefetchOrPublishDerivedBeforeReceipt(t *testing.T) {

@@ -430,13 +430,13 @@ func (a *app) deleteIndexData(ctx context.Context, id, reviewID string) (map[str
 				return nil, e
 			}
 		}
+		if id == "blocks" {
+			rawCoverageInvalidated(a.dataDir, true)
+		}
 		return map[string]any{"deleted": true, "index": r.Index, "note": "Saved index data deleted. The track remains available, stopped and unarmed; shared facts, source caches and other indexes were preserved."}, nil
 	}()
 	if err != nil {
 		return nil, err
-	}
-	if id == "blocks" {
-		rawCoverageInvalidated(a.dataDir)
 	}
 	if quarantine != "" {
 		if e := indexDeleteRemoveTree(a.dataDir, quarantine); e != nil {

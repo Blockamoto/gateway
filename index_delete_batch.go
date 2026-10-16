@@ -752,13 +752,13 @@ func (a *app) deleteIndexDataBatch(ctx context.Context, q indexDeleteRequest) (m
 			}
 			items = append(items, map[string]any{"index": item.Index, "name": item.Name, "operation": item.Operation, "status": status, "noop": item.Noop, "range": item.Range, "note": note, "raw": item.Raw, "retained": item.Retained})
 		}
+		if containsIndexDeleteID(p.Request.Indices, "blocks") || p.Request.Index == "blocks" {
+			rawCoverageInvalidated(a.dataDir, p.Request.Range == nil)
+		}
 		return map[string]any{"deleted": true, "indices": p.Request.Indices, "index": p.Review.Index, "scope_kind": p.Review.ScopeKind, "range": p.Request.Range, "items": items, "removed_tracks": removedTracks, "noop": noop, "note": "Reviewed deletion completed. Selected consumers are stopped; item results distinguish removed records, retained sources and no owned data."}, nil
 	}()
 	if err != nil {
 		return nil, err
-	}
-	if containsIndexDeleteID(q.Indices, "blocks") || q.Index == "blocks" {
-		rawCoverageInvalidated(a.dataDir)
 	}
 	if quarantine != "" {
 		if e := indexDeleteRemoveTree(a.dataDir, quarantine); e != nil {

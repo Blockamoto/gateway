@@ -26,6 +26,8 @@ The same marks apply to every armed track. Per-track ranges are deferred. A mark
 
 Left/Right steps one item and Shift+Left/Right skips to the previous/next ruler notch at the current zoom level, matching the bar-and-arrow skip buttons. Up/Escape returns to the parent; Down/Enter explores the focused item. Home/End selects the verified parent bounds. Ordinary typing and native control shortcuts are preserved. Navigation never starts indexing or Satline.
 
+Skip also uses the selected track's known bounds. Before an index's positive starting block, Next/Shift+Right goes directly to that start; after a known saved end, Previous/Shift+Left returns to that end. Within its range, normal zoom-relative ruler notches apply, with encountered saved coverage edges as additional stops. Saved scope takes precedence over the declared start. At transaction or Sat depth, boundary checks use the containing block; a boundary jump returns to block level and pans into view. Unknown, group and unavailable-chain cases retain normal navigation. These actions do not alter Arm, Live or global range markers.
+
 Ordinary wheel input scrolls vertically. Ctrl/Command+wheel or pinch zooms in the time area; Shift/horizontal wheel pans. The left label column always scrolls vertically. A centered pull-tab expands and collapses the timeline. Its compact height follows the controls instead of reserving blank space. Expanded groups hide their child-name summary; collapsed groups retain it. Navigation help scrolls within the window and dismisses on outside click or Escape. Sat ranges stays directly beneath the other TXIO layers while retaining its independent Sats engine.
 
 ## Resource workspace

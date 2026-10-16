@@ -138,6 +138,7 @@ async function run() {
     snapshot.timeline.tip_height=1000010;snapshot.timeline.target_height=1000010;snapshot.timeline.tracks[0].coverage[0].to=1000010;
     await refresh();assert.deepEqual(await viewport(),{from:0,to:1000010,fit:true});
     await blockLane.focus();await page.keyboard.press('Home');assert.equal(await page.locator('#index-timeline').getAttribute('data-playhead'),'0','Home moves to first item rather than starting work');
+    await page.keyboard.press('Shift+ArrowRight');assert.equal(Number(await page.locator('#index-timeline').getAttribute('data-playhead')),9,'Selected raw-block piece end is an additional Skip stop');await page.locator('#timeline-group-blocks').click();await page.locator('#timeline-group-blocks').click();await blockLane.focus();await page.keyboard.press('Home');
     const nextNotch=await page.locator('.timeline-ruler-tick').evaluateAll(nodes=>Math.min(...nodes.map(n=>Number(n.dataset.height)).filter(n=>n>0)));await page.keyboard.press('Shift+ArrowRight');assert.equal(Number(await page.locator('#index-timeline').getAttribute('data-playhead')),nextNotch);
     await page.keyboard.press('ArrowLeft');assert.equal(Number(await page.locator('#index-timeline').getAttribute('data-playhead')),nextNotch-1);
     await refresh(true);assert.equal(await blockLane.evaluate(n=>document.activeElement===n),true,'Status redraw preserves lane focus');

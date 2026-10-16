@@ -33,6 +33,10 @@ type indexDeleteReview struct {
 	Dependencies []indexDeleteDependency `json:"dependencies"`
 	Blockers     []string                `json:"blockers"`
 	Note         string                  `json:"note"`
+	Indices      []string                `json:"indices,omitempty"`
+	ScopeKind    string                  `json:"scope_kind,omitempty"`
+	Range        *indexDeleteRange       `json:"range,omitempty"`
+	Items        []indexDeleteItem       `json:"items,omitempty"`
 }
 type indexDeletePathStamp struct {
 	Path     string
@@ -246,7 +250,7 @@ func (a *app) indexDeleteReviewLocked(ctx context.Context, id string) (indexDele
 // TryLock avoids waiting while holding unrelated store locks. A busy reader,
 // writer or collector gets a retry response rather than a lock-order inversion.
 func indexDeleteStorageGuard() (func(), error) {
-	locks := []*sync.Mutex{&indexBrowseMu, &utxoWriterMu, &utxoStateMu, &satWriterMu, &satStateMu, &ordinalMaintenanceMu, &addressHistoryMu, &blocksBodyMigrationMu, &indexLocatorMu, &bitmapDevelopmentMu, &bitmapProfilesMu}
+	locks := []*sync.Mutex{&indexBrowseMu, &utxoWriterMu, &utxoStateMu, &satWriterMu, &satStateMu, &ordinalMaintenanceMu, &addressHistoryMu, &outputFactCollectionMu, &blocksBodyMigrationMu, &indexLocatorMu, &bitmapDevelopmentMu, &bitmapProfilesMu}
 	held := []*sync.Mutex{}
 	release := func() {
 		for i := len(held) - 1; i >= 0; i-- {
@@ -480,7 +484,12 @@ func (a *app) handleIndexDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method == http.MethodGet {
-		v, e := a.reviewIndexDeletion(r.Context(), r.URL.Query().Get("index"))
+		q, e := indexDeleteHTTPReviewRequest(r)
+		if e != nil {
+			jsonError(w, 400, e)
+			return
+		}
+		v, e := a.reviewIndexDeletionBatch(r.Context(), q)
 		if e != nil {
 			jsonError(w, 409, e)
 			return
@@ -493,14 +502,11 @@ func (a *app) handleIndexDelete(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 405, fmt.Errorf("GET review or POST confirmation required"))
 		return
 	}
-	var q struct {
-		Index    string `json:"index"`
-		ReviewID string `json:"review_id"`
-	}
+	var q indexDeleteRequest
 	if !indexRequestBody(w, r, &q) {
 		return
 	}
-	v, e := a.deleteIndexData(r.Context(), q.Index, q.ReviewID)
+	v, e := a.deleteIndexDataBatch(r.Context(), q)
 	if e != nil {
 		jsonError(w, 409, e)
 		return

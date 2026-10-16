@@ -46,6 +46,11 @@ type indexRunRequest struct {
 	Consumers []indexRunSelection `json:"consumers"`
 }
 type indexRunProgress struct {
+	AdmissionState                string               `json:"admission_state,omitempty"`
+	EffectiveFrom                 *int64               `json:"effective_from,omitempty"`
+	RangeMode                     string               `json:"range_mode,omitempty"`
+	OriginHeight                  *int64               `json:"origin_height,omitempty"`
+	NextRequiredHeight            *int64               `json:"next_required_height,omitempty"`
 	ProfileHash                   string               `json:"profile_hash,omitempty"`
 	ConfigurationRevision         uint64               `json:"configuration_revision,omitempty"`
 	DistrictInstance              string               `json:"district_instance,omitempty"`
@@ -73,6 +78,11 @@ type indexRunDependency struct {
 	Action string `json:"action,omitempty"`
 }
 type indexRunCounts struct {
+	SourceMilliseconds     int64 `json:"source_milliseconds,omitempty"`
+	ExtractionMilliseconds int64 `json:"extraction_milliseconds,omitempty"`
+	ApplyMilliseconds      int64 `json:"apply_milliseconds,omitempty"`
+	ProgressMilliseconds   int64 `json:"progress_milliseconds,omitempty"`
+	ReconcileMilliseconds  int64 `json:"reconcile_milliseconds,omitempty"`
 	OutcomeReads           int64 `json:"outcome_reads,omitempty"`
 	ChainSteps             int64 `json:"chain_steps,omitempty"`
 	SourceReads            int64 `json:"source_reads"`
@@ -81,6 +91,10 @@ type indexRunCounts struct {
 	CacheHits              int64 `json:"cache_hits"`
 }
 type indexRunRecord struct {
+	AdmissionRevision   uint64             `json:"admission_revision,omitempty"`
+	FrontierHeight      int64              `json:"frontier_height,omitempty"`
+	FrontierEpoch       uint64             `json:"frontier_epoch,omitempty"`
+	Phase               string             `json:"phase,omitempty"`
 	InitialTargetHeight int64              `json:"initial_target_height"`
 	ID                  string             `json:"id"`
 	State               string             `json:"state"`
@@ -114,6 +128,10 @@ type indexRunPlan struct {
 	Consumers    []indexRunProgress `json:"consumers"`
 	Notes        []string           `json:"notes"`
 }
+
+type indexRunPlanBlockedError struct{ Plan indexRunPlan }
+
+func (e indexRunPlanBlockedError) Error() string { return e.Plan.Reason }
 
 func indexRunPath(root string) string          { return filepath.Join(root, "indexes", "run.json") }
 func indexRunDigest(d indexRunDocument) string { d.Checksum = ""; d.Error = ""; return indexDigest(d) }
@@ -294,6 +312,9 @@ func indexRunProjectionAllowed(root string, height int64) bool {
 		return false
 	}
 	c, ok = runSelection(d.Run.Request, "address-state")
+	if p, exists := indexRunProgressFor(d.Run, "address-state"); exists && (p.AdmissionState == "blocked" || p.EffectiveFrom != nil && height < *p.EffectiveFrom) {
+		return false
+	}
 	return ok && c.Armed && (c.Live && d.Run.Request.Out == nil || height <= d.Run.InitialTargetHeight)
 }
 
@@ -310,16 +331,22 @@ func (a *app) prepareIndexRun(req indexRunRequest) (indexRunDocument, error) {
 	prior := cloneIndexRunDocument(a.indexRunState)
 	a.indexRunState.Configured = true
 	a.indexRunState.Prepared = req
-	if r := a.indexRunState.Run; r != nil && (r.State == "running" || r.State == "waiting") {
+	if r := a.indexRunState.Run; r != nil && (r.State == "running" || r.State == "waiting" || r.State == "paused") {
+		changed := false
 		for i := range r.Request.Consumers {
 			active := &r.Request.Consumers[i]
 			next, ok := runSelection(req, active.Index)
 			if !ok || !next.Armed {
+				changed = changed || active.Armed
 				active.Armed = false
 			}
 			if !ok || !next.Live {
+				changed = changed || active.Live
 				active.Live = false
 			}
+		}
+		if changed {
+			r.AdmissionRevision = effectiveIndexRunAdmissionRevision(r) + 1
 		}
 	}
 	if err = a.persistIndexRunLocked(); err != nil {
@@ -371,6 +398,18 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 		}
 		armed++
 		q := indexRunProgress{Index: c.Index, State: "ready", Height: -1, To: p.TargetHeight}
+		q.RangeMode = "contiguous_append"
+		if c.Index == "address-history" {
+			q.RangeMode = "sparse"
+		}
+		if c.Index == "address-state" {
+			q.RangeMode = "snapshot_projection"
+		}
+		if c.Index == "utxo-state" || c.Index == "sat-state" {
+			origin := int64(0)
+			q.OriginHeight = &origin
+			q.RangeMode = "complete_prefix"
+		}
 		d, _ := findIndexDefinition(c.Index)
 		q.From = defaultIndexFrom(d)
 		if req.In != nil {
@@ -392,6 +431,9 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			if q.From < instance.StartHeight {
 				q.From = instance.StartHeight
 			}
+			origin := instance.StartHeight
+			q.OriginHeight = &origin
+			q.RangeMode = "complete_prefix"
 			head, err = indexRunBitmapHead(ctx, a, c.Index)
 		} else if c.Index == "utxo-state" {
 			var u *utxoStore
@@ -573,6 +615,16 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 		if q.Reason == "" {
 			q.Reason = "Ready to reuse saved coverage and process missing blocks within the global window."
 		}
+		if c.Index != "address-state" {
+			next := q.From
+			if head != nil && !c.Rebuild {
+				next = head.Height + 1
+			}
+			if q.RangeMode == "complete_prefix" && head == nil && q.OriginHeight != nil {
+				next = *q.OriginHeight
+			}
+			q.NextRequiredHeight = &next
+		}
 		if q.State == "needs_prerequisite" || q.State == "blocked" || q.State == "rebuild_required" {
 			p.Ready = false
 		}
@@ -636,6 +688,12 @@ func (a *app) handleIndexRun(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		result, err = a.startIndexRun(r.Context(), req.Request, req.PlanID)
+	case "/amend":
+		var req indexRunAmendment
+		if !indexRequestBody(w, r, &req) {
+			return
+		}
+		result, err = a.amendIndexRun(r.Context(), req)
 	case "/control":
 		var req struct {
 			Action string `json:"action"`
@@ -650,6 +708,13 @@ func (a *app) handleIndexRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		var blocked indexRunPlanBlockedError
+		if errors.As(err, &blocked) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			writeJSON(w, map[string]any{"error": err.Error(), "plan": blocked.Plan})
+			return
+		}
 		jsonError(w, 409, err)
 		return
 	}
@@ -664,9 +729,9 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 		return indexRunDocument{}, err
 	}
 	if !p.Ready {
-		return indexRunDocument{}, fmt.Errorf("resolve the run's blocked prerequisites before starting")
+		return indexRunDocument{}, indexRunPlanBlockedError{p}
 	}
-	if planID == "" || planID != p.PlanID {
+	if planID != "" && planID != p.PlanID {
 		return indexRunDocument{}, fmt.Errorf("the reviewed run changed; review its current plan again")
 	}
 	a.indexMu.Lock()
@@ -679,8 +744,12 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 	if err = a.loadIndexRunLocked(); err != nil {
 		return indexRunDocument{}, err
 	}
+	if previous := a.indexRunState.Run; previous != nil && previous.State != "complete" && previous.State != "cancelled" {
+		return cloneIndexRunDocument(a.indexRunState), fmt.Errorf("stop the existing run before starting a different interval; Resume preserves its admitted choices")
+	}
 	prior := cloneIndexRunDocument(a.indexRunState)
-	record := &indexRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), State: "running", Request: p.Request, TargetHeight: p.TargetHeight, InitialTargetHeight: p.TargetHeight, TargetHash: p.TargetHash, Consumers: p.Consumers, Updated: time.Now().UTC().Format(time.RFC3339)}
+	record := &indexRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), AdmissionRevision: 1, State: "running", Phase: "boundary", Request: p.Request, TargetHeight: p.TargetHeight, InitialTargetHeight: p.TargetHeight, TargetHash: p.TargetHash, Consumers: p.Consumers, Updated: time.Now().UTC().Format(time.RFC3339)}
+	record.FrontierHeight = initialIndexRunFrontier(record)
 	a.indexRunState.Configured = true
 	a.indexRunState.Prepared = p.Request
 	a.indexRunState.Run = record
@@ -695,6 +764,9 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 	return cloneIndexRunDocument(a.indexRunState), nil
 }
 func (a *app) controlIndexRun(ctx context.Context, id, action string) (indexRunDocument, error) {
+	if action == "stop" {
+		action = "cancel"
+	}
 	if action == "resume" {
 		d := a.indexRunSnapshot()
 		if d.Run == nil || d.Run.ID != id {
@@ -758,12 +830,19 @@ func (a *app) controlIndexRun(ctx context.Context, id, action string) (indexRunD
 	return d, nil
 }
 func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDocument, error) {
-	plan, err := a.planIndexRun(ctx, r.Request)
+	resumeRequest := r.Request
+	resumeRequest.Consumers = append([]indexRunSelection(nil), r.Request.Consumers...)
+	for i := range resumeRequest.Consumers {
+		if p, exists := indexRunProgressFor(r, resumeRequest.Consumers[i].Index); exists && p.AdmissionState == "blocked" {
+			resumeRequest.Consumers[i].Armed = false
+		}
+	}
+	plan, err := a.planIndexRun(ctx, resumeRequest)
 	if err != nil {
 		return indexRunDocument{}, err
 	}
 	if !plan.Ready {
-		return indexRunDocument{}, fmt.Errorf("the admitted run now needs prerequisite or recovery review before resuming")
+		return indexRunDocument{}, indexRunPlanBlockedError{plan}
 	}
 	a.indexLiveControlMu.Lock()
 	defer a.indexLiveControlMu.Unlock()
@@ -800,6 +879,9 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 	a.indexRunState.Run.State = "running"
 	a.indexRunState.Run.Reason = ""
 	for i := range a.indexRunState.Run.Consumers {
+		if a.indexRunState.Run.Consumers[i].AdmissionState == "blocked" {
+			continue
+		}
 		a.indexRunState.Run.Consumers[i].State = "ready"
 		a.indexRunState.Run.Consumers[i].Reason = ""
 	}

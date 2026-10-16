@@ -157,24 +157,30 @@ def main():
         owned = profile / 'indexes' / 'bitmap-development-v1' / track['id']
         owned.mkdir(parents=True)
         (owned / 'fixture.txt').write_text('Disposable owned deletion fixture', encoding='utf-8')
-        review = call('/api/v1/index/delete?index=' + track['id'])
+        blocked = call('/api/v1/index/delete?index=' + track['id'])
+        assert not blocked['ready'] and blocked['exists']
+        assert {parcel['id'], chain['id']} <= {item['index'] for item in blocked['dependencies']}
+        deletion_ids = [track['id'], parcel['id'], chain['id']]
+        deletion_query = '/api/v1/index/delete?' + '&'.join('index=' + identity for identity in deletion_ids)
+        review = call(deletion_query)
         assert review['ready'] and review['exists']
         (owned / 'head.json').write_text('{}', encoding='utf-8')
-        call('/api/v1/index/delete', dict(index=track['id'], review_id=review['review_id']), 409)
-        review = call('/api/v1/index/delete?index=' + track['id'])
-        result = call('/api/v1/index/delete', dict(index=track['id'], review_id=review['review_id']))
+        call('/api/v1/index/delete', dict(indices=deletion_ids, review_id=review['review_id']), 409)
+        review = call(deletion_query)
+        result = call('/api/v1/index/delete', dict(indices=deletion_ids, review_id=review['review_id']))
         assert result['deleted'] and not result.get('cleanup_pending') and not owned.exists()
-        assert any(item['id'] == track['id'] for item in call('/api/v1/bitmap/profiles')['instances'])
-        locked_track = next(item for item in call('/api/v1/bitmap/profiles')['instances'] if item['id'] == track['id'])
-        assert locked_track['rules_locked'] and not locked_track.get('rules_editable')
-        checks.append('stale deletion refused, confirmed owned-data deletion, definition preserved')
-        checks.append('observed indexing evidence keeps rules locked after saved-data deletion')
+        assert set(result['removed_tracks']) == set(deletion_ids)
+        remaining = {item['id'] for item in call('/api/v1/bitmap/profiles')['instances']}
+        assert not remaining.intersection(deletion_ids)
+        assert variant['id'] in remaining
+        checks.append('stale batch deletion refused with every explicitly selected dependency preserved')
+        checks.append('confirmed whole custom deletion removes only the selected District/Parcel/Chain definitions and owned data')
         after = call('/api/v1/index/status')
         assert not after['jobs'] and after['run'].get('run') is None
         checks.append('management and inspection never launched an index job')
         layout = {'root': ['group:bitmap', 'group:txio', 'group:blocks'],
                   'group:txio': ['txio-sat-ranges', 'txio-links'],
-                  'district:' + track['id']: [parcel['id']]}
+                  'district:bitmap-districts': ['bitmap-parcels']}
         saved = call('/api/v1/index/layout', dict(order=layout))
         assert saved['order'] == layout and saved['revision'] > 0
         process.terminate()
@@ -201,7 +207,7 @@ def main():
         assert endpoint and endpoint != previous_endpoint, 'Restart must exercise a new browser origin'
         restored = call('/api/v1/index/layout')
         assert restored == saved
-        assert len(call('/api/v1/bitmap/profiles')['instances']) == 8
+        assert len(call('/api/v1/bitmap/profiles')['instances']) == 5
         assert call('/api/v1/index/status')['run'].get('run') is None
         checks.append('compiled restart preserves profiles and parent-bound layout across local ports without work')
         receipt = dict(result='PASS', binary=str(binary), binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),

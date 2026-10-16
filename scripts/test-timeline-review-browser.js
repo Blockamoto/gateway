@@ -87,21 +87,23 @@ async function main() {
     await page.locator('.timeline-track[data-index=tx-locator] button[data-switch=arm]').click();
     await pull.click(); assert.equal(await pull.getAttribute('aria-expanded'), 'false');
     await page.evaluate(()=>timeline.setGlobalRange(20,80));
-    await page.getByRole('button',{name:'Play: Review indexing',exact:true}).click();
-    assert.equal((await page.evaluate(() => fixtureCalls)).some(c => c.action === 'run/start'), false, 'Play first reviews, rather than starting a build');
-    const playPlan = await page.evaluate(() => fixtureCalls.filter(c=>c.action==='run/plan').at(-1).body);
-    assert.deepEqual(playPlan.consumers.filter(c=>c.armed).map(c=>[c.index,c.live]), [['blocks',false],['tx-locator',false]], 'Play prepares a finite pass for armed consumers');
+    await page.getByRole('button',{name:'Start indexing',exact:true}).click();
+    await page.getByRole('button',{name:'Stop indexing',exact:true}).waitFor();
+    const finite = await page.evaluate(() => fixtureCalls.filter(c=>c.action==='run/start').at(-1).body.request);
+    assert.deepEqual(finite.consumers.filter(c=>c.armed).map(c=>[c.index,c.live]), [['blocks',false],['tx-locator',false]], 'One Play starts a finite pass for the selected consumers');
+    assert.equal((await page.evaluate(() => fixtureCalls)).some(c=>c.action==='run/plan'),false,'No separate review call or second approval is required');
+    assert.equal(await page.locator('#timeline-run-review').count(),0,'Status is an inline panel, never an indexing overlay');
     assert.equal(await page.locator('#timeline-run-record').count(),0,'Live is controlled per track, with one shared Play');
-    await pull.click();await page.locator('.timeline-track[data-index=blocks] [data-control=live]').click();await pull.click();
-    await page.getByRole('button',{name:'Play: Review indexing',exact:true}).click();
-    const mixedPlan = await page.evaluate(() => fixtureCalls.filter(c=>c.action==='run/plan').at(-1).body);
-    assert.deepEqual(mixedPlan.consumers.filter(c=>c.armed).map(c=>[c.index,c.live]), [['blocks',true],['tx-locator',false]], 'Play preserves mixed Live and finite choices');
-    assert.equal(mixedPlan.in,20);assert.equal(mixedPlan.out,80,'Live keeps hard Out');
-    assert.match(await page.locator('#timeline-run-review').innerText(),/press Play again/);
-    await page.getByRole('button',{name:'Play: Start reviewed indexing',exact:true}).click();
-    assert.equal((await page.evaluate(() => fixtureCalls)).filter(c=>c.action==='run/start').length,1);
     await page.getByRole('button',{name:'Stop indexing',exact:true}).click();
-    const startsBeforeNavigation = 1;
+    await pull.click();await page.locator('.timeline-track[data-index=blocks] [data-control=live]').click();await pull.click();
+    await page.getByRole('button',{name:'Start indexing',exact:true}).click();
+    await page.getByRole('button',{name:'Stop indexing',exact:true}).waitFor();
+    const mixed = await page.evaluate(() => fixtureCalls.filter(c=>c.action==='run/start').at(-1).body.request);
+    assert.deepEqual(mixed.consumers.filter(c=>c.armed).map(c=>[c.index,c.live]), [['blocks',true],['tx-locator',false]], 'Play preserves mixed Live and finite choices');
+    assert.equal(mixed.in,20);assert.equal(mixed.out,80,'Live keeps hard Out');
+    assert.equal((await page.evaluate(() => fixtureCalls)).filter(c=>c.action==='run/start').length,2);
+    await page.getByRole('button',{name:'Stop indexing',exact:true}).click();
+    const startsBeforeNavigation = 2;
 
     // Read the actual visible ruler ticks. The expected destination does not
     // recompute or import the implementation's spacing algorithm.

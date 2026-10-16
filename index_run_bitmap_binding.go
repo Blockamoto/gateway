@@ -90,14 +90,17 @@ func (a *app) indexRunBitmapBindingsReserved(ids []string) (bool, string, error)
 }
 
 func (a *app) indexRunBoundConsumerContext(ctx context.Context, p indexRunProgress) context.Context {
-	base := a.indexRunConsumerContext(ctx, p.Index)
+	base := a.indexRunConsumerContext(ctx, p.Index, p)
 	if !bitmapConsumerID(p.Index) {
 		return base
 	}
 	return context.WithValue(base, indexRunPublicationKey{}, func() error {
+		if err := validateIndexRunBitmapProgress(ctx, a.dataDir, p); err != nil {
+			return err
+		}
 		if err := checkIndexRunPublication(base); err != nil {
 			return err
 		}
-		return validateIndexRunBitmapProgress(base, a.dataDir, p)
+		return nil
 	})
 }

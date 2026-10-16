@@ -153,6 +153,10 @@ func (a *app) addressViewContext(ctx context.Context, input, mode, cursor string
 }
 func (a *app) addressSelectedHashes(ctx context.Context, authority chainAuthorityView) func(int64) (string, error) {
 	return func(height int64) (string, error) {
+		current := a.currentChainAuthority()
+		if current.Source != authority.Source || current.Height < authority.Height {
+			return "", selectedAuthorityRetry(fmt.Errorf("selected chain provider or height changed; retry against its current authority"))
+		}
 		if _, err := a.utxoSelectedTarget(ctx, authority, authority.Height); err != nil {
 			return "", err
 		}

@@ -362,3 +362,7 @@ body.indexes-workspace .index-timeline[data-timeline-collapsed=true]{grid-templa
 .workspace-restore-layout[hidden]{display:none}.workspace-panel-maximized>.timeline-pane-tabs,.workspace-panel-maximized>.timeline-control-bar{padding-right:120px!important}
 .workspace-panel-maximized>#workspace-viewport-fullscreen{display:none}.workspace-panel-maximized .viewport-navigation{padding-right:125px}
 .timeline-track-switch[aria-pressed=false]{border-color:color-mix(in srgb,var(--line) 75%,transparent)!important;background:color-mix(in srgb,var(--panel2) 45%,transparent)!important;box-shadow:0 1px 1px #0001,inset 0 1px #fff2}
+
+.timeline-track[data-track-selected=true]>.timeline-track-heading{background:color-mix(in srgb,var(--mint) 13%,var(--panel));box-shadow:inset 3px 0 var(--mint)}
+
+.timeline-run-panel{overflow:auto;min-height:0;flex:1;padding:14px 18px}.timeline-run-panel h2{font-size:18px;margin:0 0 12px}.timeline-run-consumer,.timeline-run-requirements{border-top:1px solid var(--line);padding:10px 0}.timeline-run-consumer p{margin:5px 0}.timeline-run-consumer button{font-size:11px}.timeline-run-feedback{font-weight:600}.index-delete-receipt{padding:10px;text-align:left;border-left:3px solid var(--mint);margin:8px 0}.index-delete-review li button{margin-left:8px}

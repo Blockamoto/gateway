@@ -113,7 +113,7 @@ async function api(action, body, requestOptions={}) {
   const options = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)};
   const response = await fetch('/api/v1/index/' + action, {...options,...requestOptions});
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Request failed (' + response.status + ')');
+  if (!response.ok) {const error=new Error(result.error || 'Request failed (' + response.status + ')');error.details=result;error.status=response.status;throw error;}
   return result;
 }
 function request() {
@@ -145,7 +145,7 @@ function syncRetainedStart() {
   $('from').readOnly=Boolean(instance)||!d.arbitrary_start;
   if(fixed!==null&&Number.isSafeInteger(fixed)&&$('from').value!==String(fixed)) {
     $('from').value=String(fixed);invalidatePlan();
-    message('Saved index history starts at block '+fixed+'. The first block is fixed; review the updated range before starting.');
+    message('Saved index history starts at block '+fixed+'. Indexing status checks the exact required continuation; active joins never backfill automatically.');
   }
 }
 function selectIndex(id, view, initialLive = false) {
@@ -182,7 +182,7 @@ function showRequirements(){
  const holder=$('index-requirements'),d=selectedDefinition();holder.replaceChildren(element('h3','Requirements'));if(!d)return;
  const names={'blocks':'Source blocks','headers':'Headers','utxo-state':'UTXO set','sat-state':'Sat ranges','address-state':'Current UTXOs','address-history':'Historical outputs','tx-locator':'Transaction locators','bitmap-districts':'Bitmap Districts','bitmap-parcels':'Bitmap Parcels','bitmap-chain':'BitmapChain'};
  const row=(name,state,reason,id)=>{const p=element('p',undefined,'small');p.append(element('strong',name+' · '+state+' '),element('span',reason+' '));if(id){const button=element('button','Inspect '+(names[id]||id),'text-button');button.type='button';button.onclick=()=>inspectIndex(id);p.append(button);}holder.append(p);};
- const actual=(status?.run?.run?.consumers||[]).find(c=>c.index===d.id);if(actual?.dependencies?.length){for(const dependency of actual.dependencies)row(names[dependency.index]||dependency.index,human(dependency.state),dependency.reason,dependency.action?dependency.index:null);return;}
+ const actual=(status?.run?.run?.consumers||[]).find(c=>c.index===d.id),policy=window.GatewayIndexTransport.rangePolicy(d,actual);if(policy)row('Indexing scope',policy.mode==='complete_prefix'?'Required prefix':policy.mode==='snapshot_projection'?'Saved snapshot':policy.mode==='sparse'?'Independent ranges':'Append only',policy.text);if(actual?.dependencies?.length){for(const dependency of actual.dependencies)row(names[dependency.index]||dependency.index,human(dependency.state),dependency.reason,dependency.action?dependency.index:null);return;}
  if(d.id==='headers'){row('Provider synchronization',status?.timeline?.syncing?'Syncing':'Inspect source status','Headers identify the selected chain; this is not a block derivation job.');return;}
  if(d.id==='address-state'){const u=status?.utxo||{},ready=Number.isSafeInteger(u.processed_height)&&!!u.processed_hash;row('Saved UTXO state',ready?'Available at block '+u.processed_height:'Not established','Current Addresses projects one complete saved checkpoint; it does not scan creation ranges.','utxo-state');row('Optional Sat joins','Checkpoint-dependent','Ranges and known holdings require matching Sat and address checkpoints.','sat-state');return;}
  const blocks=(status?.providers||[]).filter(p=>p.id==='blocks'),ready=blocks.some(p=>p.queryable);row('Source blocks',ready?'A provider reports available':'Checked when requested','Local data is preferred; missing evidence can be fetched. Raw blocks need not be armed to read source blocks.','blocks');
@@ -214,6 +214,7 @@ function showRules() {
   }
   $('rule-theory').textContent = d.theory;
   $('rule-json').textContent = pretty(d);
+  const rangePolicy=window.GatewayIndexTransport.rangePolicy(d,(status?.run?.run?.consumers||[]).find(c=>c.index===d.id));$('from').disabled=['complete_prefix','snapshot_projection'].includes(rangePolicy?.mode);$('from').title=$('from').disabled?rangePolicy.text:'Global In/Out in the timeline own the shared scope.';
   $('from').placeholder = String(d.start_height);
   $('from-start-note').textContent=d.id==='inscriptions'&&d.network==='bitcoin-mainnet'?'Mainnet inscriptions suggest 767430 (inscription zero). Custom starts remain available; this is not preceding sat history.':'Block heights are inclusive. Review the plan before fetching data.';
   $('from-note').textContent = d.id==='address-history'?'Choose inclusive output-creation ranges. Overlapping ranges reuse saved coverage; separate ranges and earlier history are supported. Gaps remain unknown.':d.id === 'bitmap' ? 'Bitmap history always begins at block ' + d.start_height + '. Choose only the last block to index.' : (d.arbitrary_start ? 'A fresh bounded scan may start at any block. Compatible overlapping or adjacent ranges reuse saved coverage; disjoint ranges and prepending history are not supported.' : 'Fresh state starts at block ' + d.start_height + '; a mid-history fresh start is not valid.');
@@ -240,7 +241,7 @@ function showJob(job) {
 }
 function showInstances(instances) {
   const holder = $('instances'); holder.replaceChildren();
-  if (!instances?.length) { holder.append(element('p', 'Turn on Live to catch up all applicable history and follow new blocks, or review a bounded range. Derived answers appear here as blocks are committed.', 'small muted')); const button = element('button', 'Review a bounded range'); button.addEventListener('click', () => { selectIndex(selectedIndex || 'blocks', 'build'); }); holder.append(button); return; }
+  if (!instances?.length) { holder.append(element('p', 'No saved index is established. Choose Arm and Live on the timeline, then press Play once. Active runs admit new tracks only at their current safe boundary; required earlier state is reported in Indexing status.', 'small muted')); const button = element('button', 'Inspect indexing settings'); button.addEventListener('click', () => { selectIndex(selectedIndex || 'blocks', 'build'); }); holder.append(button); return; }
   for (const instance of instances) {
     const card = element('article', undefined, 'index-entry'); card.append(element('h3', instance.definition));
     const list = element('dl', undefined, 'index-meta');
@@ -340,7 +341,7 @@ function syncLiveForm(){ $('end-field').hidden = $('initial-live').checked; $('t
 $('initial-live').addEventListener('change',()=>{syncLiveForm();invalidatePlan();});
 for (const id of ['from', 'to', 'retention', 'mode', 'retain-sat-history', 'conventional-ids','retain-output-values','retain-output-scripts']) $(id).addEventListener('input', invalidatePlan);
 $('enrich-inscription-ids').addEventListener('click',()=>{const saved=status?.instances?.find(x=>x.definition==='inscriptions')?.checkpoint;if(!saved||selectedIndex!=='inscriptions'||!inscriptionLocatorsAvailable())return;$('conventional-ids').checked=true;$('initial-live').checked=false;$('from').value=String(saved.from);$('to').value=String(saved.height);syncLiveForm();invalidatePlan();message('Conventional ID enrichment selected for the retained inscription range. Review the plan before fetching any missing reveal blocks.');$('plan-button').focus();});
-$('plan-form').addEventListener('submit',event=>{event.preventDefault();event.stopImmediatePropagation();message('Use the shared timeline review to start indexing.');},true);
+$('plan-form').addEventListener('submit',event=>{event.preventDefault();event.stopImmediatePropagation();message('Use Play in the timeline to start the selected tracks. Requirements appear in Indexing status.');},true);
 $('plan-form').addEventListener('submit', async event => {
   event.preventDefault(); invalidatePlan(); const serial=planSerial; $('plan-button').disabled = true;
   try {
@@ -502,6 +503,7 @@ window.addEventListener('message',event=>{if(event.source!==parent||event.origin
  if(event.data?.type==='gateway:workspace-select-index'){const id=event.data.index;if(typeof id!=='string')return;const value={index:id,rebuild_snapshot:event.data.rebuild_snapshot};if(!workspaceReady){pendingIndex=value;return;}if(definitions.some(d=>d.id===id&&!d.locked))openIndexBuild(value);}
 });
 function openIndexBuild(value){inspectIndex(value.index,value.rebuild_snapshot?{rebuild:true,rebuild_snapshot:value.rebuild_snapshot}:{});}
+document.addEventListener('gateway:timeline-delete-selection',event=>resources?.deleteSelection?.(event.detail?.indices));
 document.addEventListener('gateway:timeline-inspect-index',event=>{const detail=event.detail||{};if(typeof detail.id==='string'&&definitions.some(d=>d.id===detail.id&&!d.locked))inspectIndex(detail.id,detail.options||{});});
 function showSemantic(){timeline.zoomIntoFocus();}
 utxoPanel=window.GatewayUTXOPanel.mount({root:$('utxo-build-panel'),api,refresh,notify:message});

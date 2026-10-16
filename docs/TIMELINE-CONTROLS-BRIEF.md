@@ -6,6 +6,18 @@ This brief is based on the published Sats application and a code review on 15 Oc
 
 The companion [index dependency review](INDEX-DEPENDENCIES.md) distinguishes block evidence, mandatory state, optional lookup indexes and explorer joins. The [workspace design review](WORKSPACE-DESIGN-REVIEW.md) places all resource details and contextual advanced settings inside the timeline workspace, with Settings and Peers as the retained exceptions.
 
+## Latest execution and deletion refinements
+
+One Start validates the current choices and starts ready work without a separate plan popup or second press. Persistent run status, effective range, prerequisites and errors live in the top-left panel; the toolbar and tracks remain the execution controls. Idle Arm/Live selects preferences. During an active or paused run, Arm/Live changes amend that same run at a safe block boundary without changing its admitted global bounds. Pause remains paused; Stop prevents queued admissions.
+
+A newly armed consumer joins the current processing point and never backfills earlier blocks in that active run. Complete-prefix engines require authenticated prior state: UTXO/Sats begin at genesis, Bitmap begins at its declared profile origin, and Chain needs completed matching District receipts and its own valid predecessor. Missing prefix remains visibly armed and blocked. Explicit Stop/new Start is required for the earlier build. An incompatible In is rejected instead of silently widened; Out can cap a valid prefix. See the [required-origin matrix](INDEX-DEPENDENCIES.md#required-origins-and-range-behavior-in-the-development-build).
+
+Aligned consumers share each block's read/decode/extraction. One bounded upcoming block may be fetched while the current block is processed, with selected-source checks and ordered publications preserved. Raw Blocks is the sole new durable serialized-body owner for the shared pass. Failure cooldown and measured block-serving performance affect peer selection, while user cancellation does not penalize peers. Phase timings and controlled fixtures distinguish acquisition from parsing, evaluation and persistence; no whole-mainnet throughput claim follows from those fixtures.
+
+Deletion uses an exact selected-track set and optional global In/Out scope in the top-left panel. Shift extends sibling track selection; guarded Delete opens that scope. Whole custom District/Parcel deletion removes its definition only after every exact dependent definition is explicitly included. Clearing an attached Chain alone preserves its descriptor so it can be rebuilt. Built-in tracks remain. Sparse history and raw-body removal have different capabilities from contiguous suffix rewind or cumulative state, and unsupported holes are blocked without implicit expansion. Persist success, no-data, failure and pending-cleanup feedback across refresh. Chain management stays reachable from its parent even when Chain is Off.
+
+These refinements supersede older review-gated and next-run-only descriptions below; exact package acceptance is recorded separately.
+
 ## Track controls
 
 Keep these states separate:

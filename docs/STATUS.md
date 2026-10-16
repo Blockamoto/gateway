@@ -1,5 +1,13 @@
 # Gateway status
 
+## Current development pass: direct controls, origin rules and throughput
+
+The user authorized the next development-only replacement: one-click Start with top-left status, current-boundary Arm/Live admission, required-origin enforcement, bounded block prefetch and better peer selection, plus exact multi-track/range deletion and always-accessible attached Chain management. No Gateway main, release, updater or existing preview profile is changed.
+
+The [required-origin report](INDEX-DEPENDENCIES.md#required-origins-and-range-behavior-in-the-development-build) verifies genesis-first UTXO/Sats, declared-origin Bitmap state, receipt-bound Chain, snapshot Current Addresses and range-capable source/history indexes. Mid-run arming never silently backfills; missing prefix stays armed and blocked. Out may cap a valid prefix; an incompatible In is rejected. The declaration for current Bitmap profiles remains the development segment starting at block 792435 with earlier claims unevaluated.
+
+The [development guide](TESTING-TIMELINE-BITMAP-DEVELOPMENT.md) describes single-action controls, explicit dependencies, sparse versus cumulative deletion limits and the controlled performance excerpt. Focused origin/admission/authority/prefetch/peer tests and Sats/Addresses/UTXO/transport browser checks pass. Exact replacement-package acceptance and a fresh complete backend result are still pending at this source snapshot; earlier package records below apply only to their named builds.
+
 ## Development: timeline workspace and Bitmap
 
 The user authorized implementing the [timeline controls brief](TIMELINE-CONTROLS-BRIEF.md), [dependency review](INDEX-DEPENDENCIES.md) and [workspace design review](WORKSPACE-DESIGN-REVIEW.md), together with experimental District, Parcel and Bitmap Chain indexing. Work is on a separate local development branch. A locally served portable preview is the acceptance target; main, released packages, live updater delivery and existing user profiles remain unchanged.

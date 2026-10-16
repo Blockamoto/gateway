@@ -83,6 +83,7 @@ jobs:
           node scripts/test-workspace-maximize-browser.js
           python3 scripts/test-bitmap-profiles-native-api.py --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/browser-bitmap-profile-api"
           node scripts/test-timeline-review-browser.js
+          node scripts/test-index-interactions-browser.js
           node scripts/test-addresses-browser.js
           node scripts/test-sats-077-browser.js
           node scripts/test-sat-point-browser-077.js

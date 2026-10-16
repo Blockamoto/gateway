@@ -34,12 +34,15 @@ type indexRunConsumer struct {
 	external   indexRunExternalConsumer
 	enrich     bool
 	retryAfter time.Time
+	reconciled bool
+	authority  chainAuthorityView
 }
 type indexRunPreparedKey struct{}
 type indexRunPublicationKey struct{}
 type indexRunAddressProjectionKey struct{}
 
 var errIndexRunConsumerStopped = errors.New("consumer is Off in the prepared timeline")
+var errIndexRunAdmissionChanged = errors.New("the track's active admission changed before publication")
 
 func checkIndexRunPublication(ctx context.Context) error {
 	if ctx == nil {
@@ -61,13 +64,43 @@ func checkIndexConsumerPublication(ctx context.Context, root, index string) erro
 	return nil
 }
 
-func (a *app) indexRunConsumerContext(ctx context.Context, index string) context.Context {
+func (a *app) indexRunConsumerContext(ctx context.Context, index string, admitted ...indexRunProgress) context.Context {
 	return context.WithValue(ctx, indexRunPublicationKey{}, func() error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if !indexRunOptionalWorkAllowed(a.dataDir, index) {
+		d, err := readIndexRunDocument(a.dataDir)
+		if err != nil {
+			return err
+		}
+		if !d.Configured {
+			live, err := readIndexLiveState(a.dataDir)
+			if err != nil {
+				return err
+			}
+			if live.Policies[index].Stopped {
+				return errIndexRunConsumerStopped
+			}
+			return nil
+		}
+		selection, ok := runSelection(d.Prepared, index)
+		if !ok || !selection.Armed {
 			return errIndexRunConsumerStopped
+		}
+		if d.Run != nil {
+			if d.Run.State != "running" && d.Run.State != "waiting" {
+				return errIndexRunConsumerStopped
+			}
+			selection, ok = runSelection(d.Run.Request, index)
+			if !ok || !selection.Armed {
+				return errIndexRunConsumerStopped
+			}
+			if len(admitted) > 0 {
+				current, exists := indexRunProgressFor(d.Run, index)
+				if !exists || !sameIndexRunAdmission(current, admitted[0]) || current.AdmissionState == "blocked" {
+					return errIndexRunAdmissionChanged
+				}
+			}
 		}
 		return nil
 	})
@@ -221,7 +254,27 @@ func (c *indexRunConsumer) next(target int64) int64 {
 	}
 	return c.progress.From
 }
+
+func sameIndexRunAdmission(a, b indexRunProgress) bool {
+	if a.EffectiveFrom == nil || b.EffectiveFrom == nil {
+		return a.EffectiveFrom == nil && b.EffectiveFrom == nil
+	}
+	return *a.EffectiveFrom == *b.EffectiveFrom
+}
 func (a *app) reconcileRunConsumer(ctx context.Context, c *indexRunConsumer, authority chainAuthorityView) error {
+	if err := checkIndexRunPublication(ctx); err != nil {
+		return err
+	}
+	if c.reconciled && c.authority.Source == authority.Source && c.authority.Height == authority.Height && c.authority.Hash == authority.Hash {
+		return nil
+	}
+	err := a.reconcileRunConsumerUncached(ctx, c, authority)
+	if err == nil {
+		c.reconciled, c.authority = true, authority
+	}
+	return err
+}
+func (a *app) reconcileRunConsumerUncached(ctx context.Context, c *indexRunConsumer, authority chainAuthorityView) error {
 	hashAt := a.addressSelectedHashes(ctx, authority)
 	if c.external != nil {
 		return c.external.Reconcile(ctx, hashAt)
@@ -313,13 +366,31 @@ func (a *app) saveRunProgress(id, state, reason string, consumers []*indexRunCon
 	}
 	r.Counts = counts
 	r.TargetHeight, r.TargetHash = target, hash
+	// A click may have durably admitted a new member while this cohort was
+	// applying. Progress must never erase that pending intent or an Off fence.
+	saved := append([]indexRunProgress(nil), r.Consumers...)
 	r.Consumers = nil
+	seen := map[string]bool{}
 	for _, c := range consumers {
 		p := c.progress
+		for _, pending := range saved {
+			if pending.Index == p.Index && (!sameIndexRunAdmission(pending, p) || pending.AdmissionState == "blocked" && p.AdmissionState != "blocked") {
+				p = pending
+			}
+		}
 		if cp := c.checkpoint(); cp != nil {
 			p.Height, p.BlockHash, p.Commitment = cp.Height, cp.BlockHash, cp.Commitment
 		}
+		if selection, ok := runSelection(r.Request, p.Index); !ok || !selection.Armed {
+			p.State, p.AdmissionState, p.Reason = "off", "off", "Off; committed records are retained."
+		}
 		r.Consumers = append(r.Consumers, p)
+		seen[p.Index] = true
+	}
+	for _, p := range saved {
+		if !seen[p.Index] {
+			r.Consumers = append(r.Consumers, p)
+		}
 	}
 	after := *r
 	after.Updated = ""
@@ -340,6 +411,11 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 	consumers := []*indexRunConsumer{}
 	counts := record.Counts
 	for _, p := range record.Consumers {
+		if p.AdmissionState == "blocked" {
+			selection, _ := runSelection(record.Request, p.Index)
+			consumers = append(consumers, &indexRunConsumer{selection: selection, progress: p})
+			continue
+		}
 		c, err := a.openRunConsumer(a.indexRunBoundConsumerContext(ctx, p), record, p)
 		if c == nil {
 			s, _ := runSelection(record.Request, p.Index)
@@ -369,6 +445,17 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 	}()
 	target, targetHash := record.TargetHeight, record.TargetHash
 	finish := func(state, reason string) {
+		if state == "paused" {
+			memberState := "paused"
+			if current := a.indexRunSnapshot().Run; current != nil && current.ID == id && current.State == "cancelled" {
+				memberState = "cancelled"
+			}
+			for _, c := range consumers {
+				if c.progress.State == "running" || c.progress.State == "waiting" || c.progress.State == "ready" || c.progress.State == "pending" {
+					c.progress.State, c.progress.Reason = memberState, reason
+				}
+			}
+		}
 		if state == "complete" && ctx.Err() == nil {
 			for _, c := range consumers {
 				var err error
@@ -405,6 +492,15 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 	cache := map[string]*indexRunPrepared{}
 	order := []string{}
 	cacheBytes := 0
+	source := a.indexSourceBlock
+	if a.indexRunSourceBlock != nil {
+		source = a.indexRunSourceBlock
+	}
+	prefetch := newIndexRunPrefetch(ctx, func(callCtx context.Context, target blockTarget) (blockView, error) {
+		return source(callCtx, target, "ephemeral")
+	})
+	defer prefetch.Close()
+	admissionRevision := effectiveIndexRunAdmissionRevision(record)
 	var load func(context.Context, int64) (*indexRunPrepared, error)
 	load = func(callCtx context.Context, h int64) (*indexRunPrepared, error) {
 		authority := a.currentChainAuthority()
@@ -416,12 +512,19 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			counts.CacheHits++
 			return p, nil
 		}
-		retention := runRawRetention(record.Request)
-		source := a.indexSourceBlock
-		if a.indexRunSourceBlock != nil {
-			source = a.indexRunSourceBlock
+		// Source reads never create optional Raw Blocks coverage. That track's
+		// own Apply is the single durable owner, including cached-body promotion.
+		retention := "ephemeral"
+		started := time.Now()
+		b, elapsed, queued, err := prefetch.Take(callCtx, t)
+		if !queued {
+			// A different frontier won the fair scheduling turn. Do not leave
+			// an obsolete request occupying the only speculative source slot.
+			prefetch.Reset()
+			b, err = source(callCtx, t, retention)
+			elapsed = time.Since(started)
 		}
-		b, err := source(callCtx, t, retention)
+		counts.SourceMilliseconds += elapsed.Milliseconds()
 		if err != nil {
 			return nil, err
 		}
@@ -472,9 +575,71 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			return
 		}
 		record = d.Run
+		if revision := effectiveIndexRunAdmissionRevision(record); revision != admissionRevision {
+			prefetch.Reset()
+			admissionRevision = revision
+		}
 		if record.State == "cancelled" || record.State == "pausing" {
 			finish("paused", record.Reason)
 			return
+		}
+		// Admit new members only between complete cohorts. A later Off/Stop is
+		// still enforced by each consumer's final publication guard.
+		for _, p := range record.Consumers {
+			var existing *indexRunConsumer
+			var position int
+			for j, c := range consumers {
+				if c.selection.Index == p.Index {
+					existing, position = c, j
+					break
+				}
+			}
+			if existing != nil && sameIndexRunAdmission(existing.progress, p) && p.AdmissionState != "pending" && p.AdmissionState != "blocked" {
+				continue
+			}
+			if existing != nil && p.AdmissionState == "blocked" {
+				existing.progress = p
+				continue
+			}
+			if existing != nil && sameIndexRunAdmission(existing.progress, p) && existing.progress.AdmissionState == "admitted" && p.AdmissionState == "pending" {
+				continue
+			}
+			selection, _ := runSelection(record.Request, p.Index)
+			if existing != nil && existing.external != nil {
+				existing.external.Close()
+			}
+			c := &indexRunConsumer{selection: selection, progress: p}
+			if p.AdmissionState != "blocked" && selection.Armed {
+				opened, err := a.openRunConsumer(a.indexRunBoundConsumerContext(ctx, p), record, p)
+				if opened != nil {
+					c = opened
+				}
+				if err != nil {
+					c.progress.State, c.progress.Reason = "failed", err.Error()
+				} else {
+					c.progress.AdmissionState = "admitted"
+					c.progress.State = "ready"
+				}
+			}
+			if source, ok := c.external.(indexRunBlockSource); ok {
+				source.SetBlockSource(func(callCtx context.Context, h int64) (blockView, error) {
+					p, err := load(callCtx, h)
+					if err != nil {
+						return blockView{}, err
+					}
+					return p.block, nil
+				})
+			}
+			if existing != nil {
+				consumers[position] = c
+			} else {
+				consumers = append(consumers, c)
+			}
+		}
+		for i := 1; i < len(consumers); i++ {
+			for j := i; j > 0 && runConsumerOrder(consumers[j].selection.Index) < runConsumerOrder(consumers[j-1].selection.Index); j-- {
+				consumers[j], consumers[j-1] = consumers[j-1], consumers[j]
+			}
 		}
 		authority := a.currentChainAuthority()
 		hashAt := a.addressSelectedHashes(ctx, authority)
@@ -500,6 +665,11 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			c.selection.Live = selection.Live
 			if selection.Live && record.Request.Out == nil {
 				consumerTarget = target
+			}
+			if c.progress.AdmissionState == "blocked" {
+				c.progress.State = "blocked"
+				waiting = true
+				continue
 			}
 			if c.progress.State == "failed" || c.progress.State == "rebuild_required" {
 				failed = true
@@ -535,8 +705,20 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					continue
 				}
 			}
-			if err := a.reconcileRunConsumer(consumerCtx, c, authority); err != nil {
+			reconcileStarted := time.Now()
+			reconcileNeeded := !c.reconciled || c.authority.Source != authority.Source || c.authority.Height != authority.Height || c.authority.Hash != authority.Hash
+			err := a.reconcileRunConsumer(consumerCtx, c, authority)
+			if reconcileNeeded {
+				counts.ReconcileMilliseconds += time.Since(reconcileStarted).Milliseconds()
+			}
+			if err != nil {
 				c.progress.State = "waiting"
+				if errors.Is(err, errIndexRunConsumerStopped) {
+					c.progress.State = "off"
+				}
+				if errors.Is(err, errIndexRunAdmissionChanged) {
+					c.progress.State = "waiting"
+				}
 				if runTerminal(err) {
 					c.progress.State = "rebuild_required"
 					failed = true
@@ -595,6 +777,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					c.progress.Reason = e.Error()
 					if errors.Is(e, errIndexRunConsumerStopped) {
 						c.progress.State = "off"
+					} else if isSelectedAuthorityRetry(e) {
+						c.progress.State = "waiting"
+						c.retryAfter = time.Now().Add(time.Second)
+						waiting = true
 					} else if ctx.Err() != nil {
 						c.progress.State = "paused"
 					} else {
@@ -609,6 +795,14 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				continue
 			}
 			h := c.next(consumerTarget)
+			c.progress.NextRequiredHeight = &h
+			if c.progress.EffectiveFrom != nil && h < *c.progress.EffectiveFrom {
+				c.progress.State, c.progress.AdmissionState = "blocked", "blocked"
+				c.progress.RequiresLeadIn = true
+				c.progress.Reason = "This saved state needs an earlier prefix than the active join boundary. Stop this run to explicitly build that prefix."
+				waiting = true
+				continue
+			}
 			c.progress.To = consumerTarget
 			if h > consumerTarget {
 				c.progress.State = "complete"
@@ -627,6 +821,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			eligible = append(eligible, i)
 		}
 		if len(eligible) == 0 {
+			if !waiting {
+				_ = a.setIndexRunFrontier(id, target+1, false)
+			}
 			if failed && !waiting {
 				finish("complete_with_errors", "Some consumers could not complete; successful checkpoints are retained.")
 				return
@@ -659,6 +856,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		}
 		last = (chosen + 1) % max(1, len(consumers))
 		h := nexts[chosen]
+		if err := a.setIndexRunFrontier(id, h, true); err != nil {
+			finish("paused", "The current stop intent was preserved.")
+			return
+		}
 		// A Chain over retained completed outcomes has no Bitcoin-body input.
 		// Do not route it through load(), even when the body is unavailable.
 		rawRequired := false
@@ -701,15 +902,24 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					return nil
 				})
 				counts.OutcomeReads++
+				started := time.Now()
 				err := consumer.ApplyRetainedOutcome(publishCtx, h)
+				counts.ApplyMilliseconds += time.Since(started).Milliseconds()
 				if err != nil {
 					c.progress.State = "failed"
 					if errors.Is(err, ErrBitmapEvidenceRequired) {
 						c.progress.State = "waiting"
 						c.retryAfter = time.Now().Add(time.Second)
 					}
+					if isSelectedAuthorityRetry(err) {
+						c.progress.State = "waiting"
+						c.retryAfter = time.Now().Add(time.Second)
+					}
 					if errors.Is(err, errIndexRunConsumerStopped) {
 						c.progress.State = "off"
+					}
+					if errors.Is(err, errIndexRunAdmissionChanged) {
+						c.progress.State = "waiting"
 					}
 					var changed satPublicationAnchorError077
 					if errors.As(err, &changed) {
@@ -721,9 +931,12 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					counts.ChainSteps++
 					c.progress.AddedBlocks++
 					c.progress.Height = h
+					next := h + 1
+					c.progress.NextRequiredHeight = &next
 					c.progress.Reason = ""
 				}
 			}
+			_ = a.setIndexRunFrontier(id, h+1, false)
 			if err := a.saveRunProgress(id, "running", "", consumers, counts, target, targetHash); err != nil {
 				finish("failed", err.Error())
 				return
@@ -732,8 +945,12 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		}
 		p, err := load(ctx, h)
 		if err != nil {
+			if ctx.Err() != nil {
+				finish("paused", "Paused; committed records are retained.")
+				return
+			}
 			var unavailable blockUnavailableError
-			retry := errors.As(err, &unavailable)
+			retry := errors.As(err, &unavailable) || isSelectedAuthorityRetry(err)
 			for _, i := range eligible {
 				if nexts[i] == h {
 					consumers[i].progress.State = "waiting"
@@ -753,6 +970,32 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 			continue
 		}
+		// Acquire at most one upcoming raw block while this cohort derives and
+		// commits. The scheduling cap belongs to each admitted member; outcome-
+		// only Chains never cause speculative Bitcoin reads.
+		upcoming := int64(-1)
+		for _, i := range eligible {
+			c := consumers[i]
+			if bitmapConsumerID(c.selection.Index) && bitmapConsumerKind(c.selection.Index) == "chain" {
+				continue
+			}
+			candidate := nexts[i]
+			if candidate == h {
+				candidate++
+			}
+			cap := record.InitialTargetHeight
+			if c.selection.Live && record.Request.Out == nil {
+				cap = target
+			}
+			if candidate <= cap && (upcoming < 0 || candidate < upcoming) {
+				upcoming = candidate
+			}
+		}
+		if upcoming >= 0 {
+			if candidate, e := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), upcoming); e == nil && cache[candidate.HashDisplay] == nil {
+				prefetch.Schedule(candidate)
+			}
+		}
 		needsExtraction := false
 		for _, i := range eligible {
 			if nexts[i] == h && (consumers[i].selection.Index == "inscriptions" || consumers[i].selection.Index == "sat-state" || bitmapConsumerID(consumers[i].selection.Index) && bitmapConsumerKind(consumers[i].selection.Index) != "chain") {
@@ -760,7 +1003,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 		}
 		if needsExtraction && p.extraction == nil {
+			started := time.Now()
 			x, e := extractInscriptionOccurrences(p.block)
+			counts.ExtractionMilliseconds += time.Since(started).Milliseconds()
 			counts.InscriptionExtractions++
 			if e != nil {
 				for _, i := range eligible {
@@ -789,6 +1034,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 			selected, e := hashAt(h)
 			if e != nil || selected != p.block.Hash {
+				prefetch.Reset()
 				cache = map[string]*indexRunPrepared{}
 				order = nil
 				cacheBytes = 0
@@ -810,6 +1056,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				}
 				return nil
 			})
+			started := time.Now()
 			if outcome, ok := c.external.(indexRunOutcomeConsumer); ok && bitmapConsumerKind(c.selection.Index) == "chain" {
 				counts.OutcomeReads++
 				err = outcome.ApplyRetainedOutcome(publishCtx, h)
@@ -819,13 +1066,18 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			} else {
 				err = a.applyRunConsumer(publishCtx, c, p, authority, runRawRetention(record.Request))
 			}
+			counts.ApplyMilliseconds += time.Since(started).Milliseconds()
 			if err != nil {
 				c.progress.State = "failed"
 				if errors.Is(err, errIndexRunConsumerStopped) {
 					c.progress.State = "off"
 				}
+				if errors.Is(err, errIndexRunAdmissionChanged) {
+					c.progress.State = "waiting"
+				}
 				var changed satPublicationAnchorError077
 				if errors.As(err, &changed) {
+					prefetch.Reset()
 					c.progress.State = "waiting"
 					c.retryAfter = time.Now().Add(time.Second)
 					cache = map[string]*indexRunPrepared{}
@@ -836,6 +1088,14 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					c.progress.State = "waiting"
 					c.retryAfter = time.Now().Add(time.Second)
 				}
+				if isSelectedAuthorityRetry(err) {
+					prefetch.Reset()
+					c.progress.State = "waiting"
+					c.retryAfter = time.Now().Add(time.Second)
+					cache = map[string]*indexRunPrepared{}
+					order = nil
+					cacheBytes = 0
+				}
 				if runTerminal(err) {
 					c.progress.State = "rebuild_required"
 				}
@@ -843,12 +1103,17 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			} else {
 				c.progress.AddedBlocks++
 				c.progress.Height = h
-			}
-			if e = a.saveRunProgress(id, "running", "", consumers, counts, target, targetHash); e != nil {
-				finish("failed", e.Error())
-				return
+				next := h + 1
+				c.progress.NextRequiredHeight = &next
 			}
 		}
+		_ = a.setIndexRunFrontier(id, h+1, false)
+		started := time.Now()
+		if e := a.saveRunProgress(id, "running", "", consumers, counts, target, targetHash); e != nil {
+			finish("failed", e.Error())
+			return
+		}
+		counts.ProgressMilliseconds += time.Since(started).Milliseconds()
 		processed++
 		if processed%128 == 0 {
 			sharedDue := processed%utxoSharedMaintenanceBlocks == 0

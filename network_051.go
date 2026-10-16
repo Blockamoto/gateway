@@ -76,9 +76,10 @@ type bitcoinNetwork struct {
 	allowPrivate     bool
 }
 type bitcoinSession struct {
-	addrReceived      bool // protected by n.mu
-	addrAsked         bool // protected by n.mu
-	inboundAddrAsked  bool // protected by n.mu
+	blockWork         bitcoinBlockWork // protected by n.mu
+	addrReceived      bool             // protected by n.mu
+	addrAsked         bool             // protected by n.mu
+	inboundAddrAsked  bool             // protected by n.mu
 	serveQueue        chan message
 	retired           bool                 // protected by n.mu; shutdown is not a peer failure
 	headerUnavailable bool                 // protected by n.mu; uncorrelated headers timed out
@@ -271,6 +272,9 @@ func (s *bitcoinSession) send(command string, payload []byte) error {
 	return s.sendLocked(command, payload, time.Now().Add(8*time.Second))
 }
 func (s *bitcoinSession) sendRequest(ctx context.Context, command string, payload []byte) error {
+	return s.sendRequestWithDispatch(ctx, command, payload, nil)
+}
+func (s *bitcoinSession) sendRequestWithDispatch(ctx context.Context, command string, payload []byte, dispatched *time.Time) error {
 	// A serving handler can own the writer while this direction waits. Do not
 	// emit a request whose caller has already cancelled during that wait.
 	tick := time.NewTicker(5 * time.Millisecond)
@@ -291,6 +295,9 @@ func (s *bitcoinSession) sendRequest(ctx context.Context, command string, payloa
 	deadline := time.Now().Add(8 * time.Second)
 	if end, ok := ctx.Deadline(); ok && end.Before(deadline) {
 		deadline = end
+	}
+	if dispatched != nil {
+		*dispatched = time.Now()
 	}
 	return s.sendLocked(command, payload, deadline)
 }
@@ -357,6 +364,9 @@ func (s *bitcoinSession) readLoop() {
 	}
 }
 func (s *bitcoinSession) request(ctx context.Context, command string, payload []byte, accept func(message) bool) (message, error) {
+	return s.requestWithDispatch(ctx, command, payload, accept, nil)
+}
+func (s *bitcoinSession) requestWithDispatch(ctx context.Context, command string, payload []byte, accept func(message) bool, dispatched *time.Time) (message, error) {
 	if e := ctx.Err(); e != nil {
 		return message{}, e
 	}
@@ -403,7 +413,7 @@ func (s *bitcoinSession) request(ctx context.Context, command string, payload []
 		}
 		s.n.mu.Unlock()
 	}()
-	if e := s.sendRequest(ctx, command, payload); e != nil {
+	if e := s.sendRequestWithDispatch(ctx, command, payload, dispatched); e != nil {
 		return message{}, e
 	}
 	for {
@@ -504,18 +514,15 @@ func (n *bitcoinNetwork) fetchBlockContext(parent context.Context, hash [32]byte
 	var last error
 	tried := map[string]bool{}
 	for attempt := 0; attempt < 4; attempt++ {
-		s, e := n.waitSession(ctx, true)
+		_, e := n.waitSession(ctx, true)
 		if e != nil {
 			return nil, "", e
 		}
-		sessions := n.listSessions()
-		for _, x := range sessions {
-			if x.transportEligible(true) && !tried[x.peer.addr] {
-				s = x
-				break
+		s := n.reserveBlockSession(tried)
+		if s == nil {
+			if last == nil {
+				last = fmt.Errorf("archival peers are temporarily busy or cooling down")
 			}
-		}
-		if tried[s.peer.addr] {
 			break
 		}
 		tried[s.peer.addr] = true
@@ -528,22 +535,31 @@ func (n *bitcoinNetwork) fetchBlockContext(parent context.Context, hash [32]byte
 		_ = binary.Write(&req, binary.LittleEndian, inv)
 		req.Write(hash[:])
 		sub, done := context.WithTimeout(ctx, 15*time.Second)
-		m, e := s.request(sub, "getdata", req.Bytes(), func(m message) bool { return m.command == "block" || m.command == "notfound" })
+		var dispatched time.Time
+		m, e := s.requestWithDispatch(sub, "getdata", req.Bytes(), func(m message) bool { return m.command == "block" || m.command == "notfound" }, &dispatched)
 		done()
+		elapsed := time.Duration(0)
+		if !dispatched.IsZero() {
+			elapsed = time.Since(dispatched)
+		}
 		if e != nil {
+			n.finishBlockSession(s, elapsed, false, !dispatched.IsZero() && parent.Err() == nil && n.ctx.Err() == nil)
 			last = e
 			continue
 		}
 		if m.command == "notfound" {
+			n.finishBlockSession(s, elapsed, false, true)
 			last = fmt.Errorf("peer does not have this block")
 			continue
 		}
 		if len(m.payload) < 81 || hash256(m.payload[:80]) != hash || (len(header) == 80 && !bytes.Equal(header, m.payload[:80])) {
+			n.finishBlockSession(s, elapsed, false, true)
 			last = fmt.Errorf("peer supplied the wrong block")
 			s.close(last.Error())
 			continue
 		}
 		// Full Merkle/witness verification is still done by the existing parser.
+		n.finishBlockSession(s, elapsed, true, false)
 		return m.payload, s.peer.addr, nil
 	}
 	return nil, "", fmt.Errorf("WAITING_FOR_PEERS: no connected archival peer supplied the block: %v", last)

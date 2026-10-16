@@ -2,6 +2,28 @@
 
 Use this review to plan the [timeline controls and coordinated indexing work](TIMELINE-CONTROLS-BRIEF.md) together with the authorized Bitmap development implementation. It describes the released Sats execution paths reviewed on 15 October 2026, including behavior that a catalog dependency list alone does not explain. The released behavior below is the audit baseline; implementation changes are described in the brief and must be verified separately. New Bitmap consumers use distinct experimental identities, and existing user profiles remain untouched.
 
+## Required origins and range behavior in the development build
+
+This review distinguishes an arbitrary **starting** range from stopping a valid continuous build at Out. A verified saved checkpoint permits resume; it does not require rebuilding from the origin each time. No missing prefix may be filled implicitly when a track is armed during an active run.
+
+| Consumer | Required origin or source | Range and continuation rule |
+| --- | --- | --- |
+| UTXO set | Bitcoin genesis, or its authenticated prior UTXO state. | Every next block is required. A fresh later In is invalid; Out can cap a valid prefix. |
+| Sats / Sat ranges | Bitcoin genesis, or its authenticated Sat checkpoint/savepoint and ordered replay. | Every next block is required. Neither a current UTXO snapshot nor a later reveal establishes prior Sat identities. |
+| Bitmap Districts | The exact profile's declared beginning, then its authenticated contiguous winner/evaluation state. | Arbitrary later In is invalid because earlier eligible claims can determine winners. Current development profiles declare block 792435 and explicitly leave earlier claims unevaluated. |
+| Bitmap Parcels | Its declared beginning, prior Parcel state and the exact linked District interpretation and parent evidence. | Do not skip earlier state or silently build Sats to discover missing provenance. |
+| Bitmap Chain | The declared segment beginning, or its own authenticated predecessor and exact completed District receipts. | May catch up from retained District outcomes without raw blocks. Missing outcomes are gaps, never empty results. |
+| Current Addresses | A complete selected-chain saved UTXO checkpoint. | Whole-snapshot projection, not an arbitrary block-range scan. A source beyond Out cannot recreate an older snapshot. |
+| Raw Blocks, Transaction locators, TXIO and inscription occurrences/content | Verified blocks for a fresh chosen interval. | Fresh arbitrary starts are supported. Existing contiguous stores must extend from their saved end without gaps or implicit prepending. Previous-output or provenance lookups may remain unresolved. |
+| Historical Addresses | Verified outputs in explicitly scanned creation ranges. | Genuine sparse coverage supports separate intervals. |
+| Headers | Selected-chain provider synchronization. | Not a range-addressable derived index or an ordinary shared-run consumer. |
+
+The planner reports `range_mode`, `origin_height` and `next_required_height` separately from requested In/Out. The panel must show required origin/resume state and reject an incompatible In instead of silently widening the user's interval. Current Addresses shows the exact source checkpoint. A marked Out remains a finite cap; retention of historical Sat ranges or raw block bodies is independent of the required processing history.
+
+During a run, a newly armed consumer joins at the current safe processing boundary. If its required prefix is absent, it remains **Armed / Needs earlier state** and starts no hidden backfill. Explicit Stop and a new suitable Start are required to build the prefix. Pause is not Stop and does not reset this rule. Deletion likewise cannot punch arbitrary holes in UTXO, Sats or Bitmap state; unsupported scopes must explain the blocker without deleting extra data.
+
+Verified paths include `index_run.go`, `index_run_admission.go`, `utxo_store.go`, `sat_recovery_077.go`, `bitmap_development_store.go` and `index_delete_range.go`. The following sections preserve the earlier release-baseline audit; the origin policy above and the current timeline brief describe this development pass.
+
 ## Dependency types
 
 Distinguish five relationships in the planner and UI:

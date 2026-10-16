@@ -984,59 +984,17 @@ func (a *app) failGraphBuild(err error) {
 }
 
 func (a *app) graphBlockForHeight(height int64) (blockView, error) {
-	target, err := a.resolveBlockTarget(strconv.FormatInt(height, 10))
+	return a.graphBlockForHeightContext(context.Background(), height)
+}
+
+func (a *app) graphBlockForHeightContext(ctx context.Context, height int64) (blockView, error) {
+	target, err := a.resolveBlockTargetContext(ctx, strconv.FormatInt(height, 10))
 	if err != nil {
 		return blockView{}, err
 	}
-	var payload []byte
-	source, sourceNetwork := "", ""
-	// Graph backfill is intentionally optimized for existing local history.
-	// Prefer the read-only Core block-store mount over live getblock RPC so an
-	// archival node can be indexed without serializing the whole chain through
-	// RPC, and the exact same path keeps working while Core is stopped.
-	if bd, e := a.mountedCoreBlock(target.HashDisplay); e == nil && len(bd.Raw) >= 81 {
-		payload, source, sourceNetwork = bd.Raw, "Bitcoin Core read-only block-store mount", "core_mount"
-	} else if hit, e := a.localStorageBlock(target); e == nil && len(hit.Raw) >= 81 {
-		payload, source, sourceNetwork = hit.Raw, hit.Source, hit.Network
-	}
-	if payload == nil {
-		payload, source, err = fetchBlock(target.HashRaw, target.ExpectedHeader, a.preferred)
-		if err == nil {
-			sourceNetwork = "bitcoin"
-		} else if bd, peer, e2 := a.fetchBlockFromOverlay(target.HashDisplay); e2 == nil {
-			payload, source, sourceNetwork = bd.Raw, peer.Addr, "bod"
-		} else {
-			return blockView{}, fmt.Errorf("graph block %d unavailable: Bitcoin %v; Gateway %v", height, err, e2)
-		}
-	}
-	v, err := parseBlockDetailed(target.Height, target.HashDisplay, target.ExpectedHeader, payload, source, false)
+	v, err := a.fetchAndDecodeTargetContext(ctx, target)
 	if err != nil {
 		return blockView{}, err
-	}
-	v.SourceNetwork = sourceNetwork
-	v.LocatorPeer = target.LocatorPeer
-	if sourceNetwork == "cache" {
-		a.cacheMu.RLock()
-		entry, ok := a.cacheIndex.Blocks[strings.ToLower(target.HashDisplay)]
-		a.cacheMu.RUnlock()
-		if !ok || entry.Private {
-			v.CacheVisibility = "private"
-		} else {
-			v.CacheVisibility = "public"
-		}
-	} else if sourceNetwork != "core" && sourceNetwork != "core_mount" && sourceNetwork != "archive" {
-		a.settingsMu.RLock()
-		private := a.settings.PrivacyMode
-		a.settingsMu.RUnlock()
-		if private {
-			v.CacheVisibility = "private"
-		} else {
-			v.CacheVisibility = "public"
-		}
-	}
-	if target.ConsensusAuthority {
-		v.VerificationState = "consensus_validated"
-		v.Verification.ConsensusValidated = true
 	}
 	if !v.Verification.HeaderChainMatch && !v.Verification.ConsensusValidated {
 		return blockView{}, fmt.Errorf("graph block %d is not anchored to the selected Bitcoin chain", height)
@@ -1071,7 +1029,7 @@ func (a *app) runGraphBuild(ctx context.Context) {
 				_ = a.saveGraphBuildState()
 				continue
 			}
-			v, err := a.graphBlockForHeight(h)
+			v, err := a.graphBlockForHeightContext(ctx, h)
 			if err != nil {
 				if ctx.Err() != nil {
 					return

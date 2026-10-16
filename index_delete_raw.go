@@ -27,12 +27,16 @@ type indexDeleteRawFile struct {
 	Category string `json:"category"`
 }
 type indexDeleteRawSummary struct {
-	RemovableFiles  int             `json:"removable_files"`
-	RemovableBytes  int64           `json:"removable_bytes"`
-	RetainedFiles   int             `json:"retained_files"`
-	RetainedBytes   int64           `json:"retained_bytes"`
-	RetainedReasons []string        `json:"retained_reasons"`
-	Range           *heightInterval `json:"range,omitempty"`
+	SegmentBodies                int             `json:"segment_bodies"`
+	SegmentLogicalBytes          int64           `json:"segment_logical_bytes"`
+	SegmentPhysicalRetainedBytes int64           `json:"segment_physical_retained_bytes"`
+	SegmentPhysicalRemovedBytes  int64           `json:"segment_physical_removed_bytes"`
+	RemovableFiles               int             `json:"removable_files"`
+	RemovableBytes               int64           `json:"removable_bytes"`
+	RetainedFiles                int             `json:"retained_files"`
+	RetainedBytes                int64           `json:"retained_bytes"`
+	RetainedReasons              []string        `json:"retained_reasons"`
+	Range                        *heightInterval `json:"range,omitempty"`
 }
 type indexDeleteRawAnchor struct {
 	height int64

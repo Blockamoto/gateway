@@ -14,49 +14,62 @@ import (
 func TestIntegrationInitialLiveAndFollowing(t *testing.T) {
 	a := prepareLiveTestApp063(t)
 	zero := int64(0)
-	j, err := a.startIndexBuild(indexBuildRequest{Index: "blocks", From: &zero, Live: true, Retention: "ephemeral"})
-	if err != nil || !j.Live {
-		t.Fatalf("initial Live: %+v %v", j, err)
+	req := indexRunRequest{In: &zero, Consumers: []indexRunSelection{{Index: "blocks", Armed: true, Live: true}}}
+	if _, err := a.prepareIndexRun(req); err != nil {
+		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	if j, err = a.waitIndexBuild(ctx); err != nil || j.Height != 0 {
-		t.Fatalf("catchup %+v %v", j, err)
+	if _, err := a.startIndexRun(context.Background(), req, ""); err != nil {
+		t.Fatal(err)
 	}
-	policies, err := a.indexLivePolicies()
-	if err != nil || !policies["blocks"].Enabled || policies["blocks"].Retention != "ephemeral" {
-		t.Fatal(policies, err)
-	}
-	policy := policies["blocks"]
-	policy.Retention = "retain"
-	if err = a.writeIndexLivePolicy(policy); err != nil {
+	waitRunCondition(t, a, func(d indexRunDocument) bool {
+		return d.Run != nil && d.Run.State == "waiting" && len(d.Run.Consumers) == 1 && d.Run.Consumers[0].Height == 0
+	})
+	// Retain the old preference as compatibility metadata. It cannot select a
+	// second storage path or override the actual timeline Raw Arm choice.
+	policy := indexLivePolicy{Index: "blocks", Enabled: true, Retention: "retain", Mode: "lean", InitialFrom: &zero}
+	if err := a.writeIndexLivePolicy(policy); err != nil {
 		t.Fatal(err)
 	}
 	raw, hash := installBlockOneHeader063(t, a)
 	hashCoordinateConnect(t, a, indexBitcoinSource(t, raw))
-	a.liveIndexTick()
-	if j, err = a.waitIndexBuild(ctx); err != nil || j.Height != 1 || !j.Live {
-		t.Fatalf("follow %+v %v", j, err)
+	followed := waitRunCondition(t, a, func(d indexRunDocument) bool {
+		return d.Run != nil && len(d.Run.Consumers) == 1 && d.Run.Consumers[0].Height == 1
+	})
+	if _, err := os.Stat(filepath.Join(a.dataDir, "blocks", "raw", "1-"+hash+".block")); !os.IsNotExist(err) {
+		t.Fatal("Raw duplicated the legacy cache", err)
 	}
-	if _, err = os.Stat(filepath.Join(a.dataDir, "blocks", "raw", "1-"+hash+".block")); !os.IsNotExist(err) {
-		t.Fatal("ephemeral persisted raw", err)
-	}
-	if retained, err := os.ReadFile(filepath.Join(a.dataDir, "indexes", "sources", hash+".block")); err != nil || string(retained) != string(raw) {
-		t.Fatal("Live did not apply the updated shared retention", err)
-	}
-	if original, err := os.ReadFile(filepath.Join(a.dataDir, "blocks", "raw", "0-"+genesisHashDisplay+".block")); err != nil || string(original) != string(testGenesisBlockPayload(t)) {
-		t.Fatal("retention change altered a preexisting raw source", err)
-	}
-	if err = a.writeIndexLivePolicy(policy); err != nil {
+	target, err := a.localBlockTarget(1)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = a.setIndexLivePolicy(indexLiveRequest{Index: "blocks", Action: "pause"}); err != nil {
+	if retained, _, err := readIndexedRawBody(a.dataDir, target, nil); err != nil || string(retained) != string(raw) {
+		t.Fatal("Live Raw build lost its durable serialized body", err)
+	}
+	if _, err := os.Stat(filepath.Join(a.dataDir, "indexes", "sources", hash+".block")); !os.IsNotExist(err) {
+		t.Fatal("legacy retention preference created a duplicate source body", err)
+	}
+	if original, err := os.ReadFile(filepath.Join(a.dataDir, "blocks", "raw", "0-"+genesisHashDisplay+".block")); err != nil || string(original) != string(testGenesisBlockPayload(t)) {
+		t.Fatal("retention changed preexisting raw source", err)
+	}
+	if _, err := a.controlIndexRun(context.Background(), followed.Run.ID, "pause"); err != nil {
+		t.Fatal(err)
+	}
+	paused := waitRun(t, a)
+	if paused.Run.State != "paused" || !paused.Run.Request.Consumers[0].Live {
+		t.Fatal("Pause lost the independent Live choice", paused)
+	}
+	policy.Paused = true
+	if err := a.writeIndexLivePolicy(policy); err != nil {
 		t.Fatal(err)
 	}
 	restarted := &app{dataDir: a.dataDir, headersPath: a.headersPath, settings: a.settings, status: a.getStatus(), cacheIndex: newCacheIndex()}
-	p, err := restarted.indexLivePolicies()
-	if err != nil || !p["blocks"].Paused || p["blocks"].Retention != "retain" {
-		t.Fatal(p, err)
+	policies, err := restarted.indexLivePolicies()
+	if err != nil || !policies["blocks"].Paused || policies["blocks"].Retention != "retain" {
+		t.Fatal("legacy metadata is unreadable", policies, err)
+	}
+	saved := restarted.indexRunSnapshot()
+	if saved.Run == nil || saved.Run.State != "paused" || !saved.Run.Request.Consumers[0].Armed || !saved.Run.Request.Consumers[0].Live {
+		t.Fatal("restart lost actual Raw/Live consent", saved)
 	}
 }
 
@@ -112,6 +125,7 @@ func TestIntegrationDefaultAndReviewedInitialLiveRanges(t *testing.T) {
 
 func TestIntegrationBitcoinBuildDoesNotDuplicatePrivateTxMap(t *testing.T) {
 	a := prepareLiveTestApp063(t)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	raw, _ := installBlockOneHeader063(t, a)
 	hashCoordinateConnect(t, a, indexBitcoinSource(t, raw))
 	a.cacheMu.Lock()
@@ -139,7 +153,7 @@ func TestIntegrationBitcoinBuildDoesNotDuplicatePrivateTxMap(t *testing.T) {
 	}
 	rows := a.indexProviderViews()
 	committed := indexProviderRow(t, rows, "blocks", "gateway_committed_index")
-	if !committed.Queryable || committed.Serveable || len(committed.PublicCoverage) != 0 || committed.Readiness != "retained_records_durable_id_lookup" {
+	if !committed.Queryable || committed.Serveable || len(committed.PublicCoverage) != 0 || committed.Readiness != "retained_block_metadata_body_lookup" {
 		t.Fatal("private committed capability", committed)
 	}
 }
@@ -180,6 +194,7 @@ func explorerCommitFixture064(t *testing.T, count int, duplicate bool) (*indexSt
 	if err := os.WriteFile(filepath.Join(filepath.Dir(filepath.Dir(s.dir)), "headers.bin"), headers, 0600); err != nil {
 		t.Fatal(err)
 	}
+	installLegacyRawLocators(t, s)
 	return s, first
 }
 
@@ -258,6 +273,7 @@ func TestIntegrationReadinessRequiresActualPeersAndSyncedCore(t *testing.T) {
 
 func TestIntegrationOmittedResumeStartKeepsAuthenticatedRange(t *testing.T) {
 	a := prepareLiveTestApp063(t)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	zero := int64(0)
 	if _, err := a.startIndexBuild(indexBuildRequest{Index: "blocks", From: &zero, To: &zero, Mode: "full"}); err != nil {
 		t.Fatal(err)
@@ -317,14 +333,19 @@ func TestIntegrationBitcoinBatchRejectsTamperingAndUnverifiedReceipts(t *testing
 	if _, err := s.readBatch(s.head.Commitment); err == nil {
 		t.Fatal("raw body receipt mutation escaped committed hash")
 	}
-	b.Bitcoin.TxIDs[0] = strings.Repeat("f", 64)
+	b.Bitcoin.RawBody.Bytes--
+	b.Bitcoin.TransactionCount++
 	b.Checkpoint.RecordsHash = batchRecordsHash(b)
 	b.Checkpoint.Commitment = checkpointHash(b.Checkpoint)
 	if err := atomicWriteJSON(filepath.Join(s.dir, "commits", b.Checkpoint.Commitment+".json"), b); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.readBatch(b.Checkpoint.Commitment); err == nil {
-		t.Fatal("self-consistent hash accepted transaction positions outside the committed Merkle root")
+	selfConsistent, err := s.readBatch(b.Checkpoint.Commitment)
+	if err != nil {
+		t.Fatal("structurally valid receipt could not reach body verification", err)
+	}
+	if _, err := a.decodedIndexBlockContext(context.Background(), s, selfConsistent); err == nil {
+		t.Fatal("self-consistent hash accepted transaction count that differs from verified body")
 	}
 	// A changed selected header cannot keep a stale local index authoritative.
 	h, err := a.readSelectedHeader(0)
@@ -441,17 +462,38 @@ func TestIntegrationBlockIndexOfflineTransactionsAndLocator(t *testing.T) {
 				t.Fatal(err)
 			}
 			if id == "blocks" {
-				if err = os.Remove(filepath.Join(a.dataDir, "blocks", "raw", "0-"+genesisHashDisplay+".block")); err != nil {
-					t.Fatal(err)
+				for _, file := range []struct{ dir, ext string }{{"raw", ".block"}, {"json", ".json"}, {"hex", ".hex"}} {
+					if err = os.Remove(filepath.Join(a.dataDir, "blocks", file.dir, "0-"+genesisHashDisplay+file.ext)); err != nil && !os.IsNotExist(err) {
+						t.Fatal(err)
+					}
 				}
+				// A fresh app also drops the already-coalesced decoded response, so
+				// known-position resolution must actually open the durable body.
+				a = restartExplorerFixture064(t, a)
 			}
 			a.cacheIndex = newCacheIndex()
 			result, found, err := a.indexedTransaction(b.Transactions[0].TxID)
-			if err != nil || !found || result.Transaction.TxID != b.Transactions[0].TxID {
-				t.Fatalf("lookup %+v %v %v", result, found, err)
-			}
-			if id == "blocks" && result.SourceNetwork != "local_index" {
-				t.Fatal("did not use retained transaction record")
+			if id == "blocks" {
+				if err != nil || found {
+					t.Fatal("Raw-only built an unrequested transaction reverse lookup", result, found, err)
+				}
+				coordinate, ok := parseBODCoordinate("0.0")
+				if !ok {
+					t.Fatal("transaction position grammar")
+				}
+				known, err := a.resolveCoordinate(coordinate)
+				if err != nil || known.Resolution.Transaction.TxID != b.Transactions[0].TxID || known.Resolution.SourceNetwork != "index_retained" {
+					t.Fatal("known block position lost its retained body", known, err)
+				}
+				path, err := graphShardPath(s.dir, s.locatorKind(), b.Transactions[0].TxID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Fatal("position lookup created a Raw transaction shard", err)
+				}
+			} else if err != nil || !found || result.Transaction.TxID != b.Transactions[0].TxID {
+				t.Fatalf("explicit Locator lookup %+v %v %v", result, found, err)
 			}
 			if _, found, err = a.indexedTransaction(strings.Repeat("a", 64)); found || err != nil {
 				t.Fatal("invented transaction", found, err)
@@ -514,6 +556,7 @@ func TestIntegrationRetainedBlockExplorerPrivate(t *testing.T) {
 
 func TestIntegrationReviewedFixedRangeStopsFollowing(t *testing.T) {
 	a := prepareLiveTestApp063(t)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	zero := int64(0)
 	if err := a.writeIndexLivePolicy(indexLivePolicy{Index: "blocks", Enabled: true, InitialFrom: &zero, Retention: "retain"}); err != nil {
 		t.Fatal(err)

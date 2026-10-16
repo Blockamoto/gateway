@@ -268,39 +268,12 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 	return p, nil
 }
 
-// Committed Bitcoin records are local derivation evidence, not a claim that raw
-// bytes remain cached. Their content-addressed batches were integrity-checked at
-// ingestion and are anchored again to the current selected header here.
+// Index and Explorer reads share source acquisition, exact verification, and the
+// current timeline Raw retention rule. Committed legacy/v2/v3 Blocks providers
+// are resolved inside the shared local-first acquisition, not an outer bypass.
 func (a *app) indexSourceBlock(ctx context.Context, target blockTarget, retention string) (blockView, error) {
-	if retention == "pruned" {
-		retention = "ephemeral"
-	}
-	if retention == "ephemeral" {
-		s, err := indexStoreHead(a.dataDir, "blocks")
-		if err != nil {
-			return blockView{}, err
-		}
-		if s.checkpoint != nil && target.Height >= s.checkpoint.From && target.Height <= s.checkpoint.Height {
-			commit, ready, e := s.activeLocatorCommitContext(ctx, target.Height)
-			if e != nil {
-				return blockView{}, e
-			}
-			if ready && commit != "" {
-				batch, e := s.readBatch(commit)
-				if e != nil {
-					return blockView{}, e
-				}
-				if batch.Checkpoint.BlockHash == target.HashDisplay && batch.Bitcoin != nil && reusableBitcoinEvidence(batch.Bitcoin) {
-					if decoded, decodeErr := a.decodedIndexBlockContext(ctx, s, batch); decodeErr == nil {
-						return decoded, nil
-					}
-				}
-			}
-		}
-	}
 	return a.fetchBlockWithPolicyContext(ctx, target, retention)
 }
-
 func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 	defer a.indexBuildFinished()
 	finish := func(state string, err error) {
@@ -333,6 +306,10 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 	}
 	// Re-plan at execution time because an earlier queued job may have added
 	// reusable coverage after this request was reviewed.
+	if err := requireTimelineRawBuild(ctx, a.dataDir, indexBuildRequest{Index: j.Index, Outputs: j.Outputs}); err != nil {
+		finish("paused", err)
+		return
+	}
 	plan, err := a.planIndexBuild(indexBuildRequest{Rebuild: j.Rebuild, Index: j.Index, From: &j.From, To: &j.To, Mode: j.Mode, Retention: j.Retention, Outputs: j.Outputs, RetainSatHistory: j.RetainSatHistory, SatHistoryConfigured: true, ConventionalIDs: j.ConventionalIDs, RetainOutputValues: outputHistoryOption(j.Index, j.RetainOutputValues), RetainOutputScripts: outputHistoryOption(j.Index, j.RetainOutputScripts), OutputHistoryFrom: &j.OutputHistoryFrom})
 	if err != nil {
 		if satTerminalError077(err) {
@@ -346,7 +323,7 @@ func (a *app) runSharedIndexBuild(ctx context.Context, j indexJob) {
 	j.Progress = nil
 	for _, output := range plan.Outputs {
 		p := indexOutputProgress{Index: output.Index, State: "running", From: output.From, To: j.To, Height: output.From - 1}
-		s, e := openIndexStoreContext(ctx, a.dataDir, output.Index)
+		s, e := openIndexStoreContext(legacyRawPublicationContext(ctx, a.dataDir, output.Index), a.dataDir, output.Index)
 		if e != nil {
 			if output.Index == "sat-state" && satTerminalError077(e) {
 				finish("rebuild_required", e)

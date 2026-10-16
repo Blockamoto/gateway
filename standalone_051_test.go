@@ -171,6 +171,9 @@ func Test051StandaloneKnownHashBeforeHeadersAndRestart(t *testing.T) {
 	display := reverseHex(hash[:])
 	addr := ordinaryFixture051(t, block, "")
 	a := independentTestApp(t)
+	if _, e := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "blocks", Armed: true}}}); e != nil {
+		t.Fatal("configure actual Raw storage consent", e)
+	}
 	a.network.add(addr, "manual_bitcoin", 0)
 	a.network.start()
 	eventually051(t, func() bool { return len(a.network.listSessions()) == 1 })
@@ -217,10 +220,17 @@ func Test051StandaloneKnownHashBeforeHeadersAndRestart(t *testing.T) {
 		t.Fatal("restart lost headers or saved addresses")
 	}
 	again, e := b.fetchAndDecode("1")
-	if e != nil || !again.FromCache || again.SourceNetwork != "cache" || !again.Verification.HeaderChainMatch {
+	if e != nil || again.FromCache || again.SourceNetwork != "index_retained" || !again.Verification.HeaderChainMatch {
 		t.Fatalf("offline reuse: %+v %v", again, e)
 	}
-	t.Logf("Core disabled, no mount: ordinary peer %s supplied block1 %s before headers; header synchronization and offline cache restart passed", addr, display)
+	target, e := b.localBlockTarget(1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if saved, _, e := readIndexedRawBody(b.dataDir, target, nil); e != nil || !bytes.Equal(saved, block) {
+		t.Fatal("retained body changed across header anchoring and restart", e)
+	}
+	t.Logf("Core disabled, no mount: ordinary peer %s supplied block1 %s before headers; header synchronization and offline retained-body restart passed", addr, display)
 }
 func Test051UnavailableAnchorPreservesCompletedHops(t *testing.T) {
 	a := independentTestApp(t)

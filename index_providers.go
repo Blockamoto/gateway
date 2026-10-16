@@ -297,6 +297,10 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 		}
 		if r.Provider == "gateway_committed_index" && r.Queryable {
 			r.Readiness = "retained_records_durable_id_lookup"
+			if r.ID == "blocks" {
+				r.Readiness = "retained_block_metadata_body_lookup"
+				r.Note += " Raw retains block-level access; new transaction-hash lookup requires the explicit Locator index."
+			}
 		}
 		if r.Provider == "gateway_browsed_index" && r.Queryable {
 			r.Readiness = "retained_sparse_browse_records"

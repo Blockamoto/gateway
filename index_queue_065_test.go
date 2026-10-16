@@ -89,6 +89,7 @@ func Test065QueueLiveHandoffHistoryIsBounded(t *testing.T) {
 
 func Test065QueueCoalescingPreservesExplicitLiveChoice(t *testing.T) {
 	a, _ := testAppWithGenesis(t)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	a.settings.CoreDisabled, a.settings.CoreMountDisabled, a.settings.NetworkDisabled = true, true, true
 	a.indexJob, a.indexCancel = indexJob{ID: "fixture-writer", Index: "bitmap", State: "running"}, func() {}
 	defer func() {
@@ -194,6 +195,7 @@ func Test065QueueSharedChildPauseFailureDoesNotCancelWorker(t *testing.T) {
 
 func Test065QueueLiveHandoffYieldsWriterToNextReviewedJob(t *testing.T) {
 	a, _ := testAppWithGenesis(t)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	a.settings.CoreDisabled, a.settings.CoreMountDisabled, a.settings.NetworkDisabled = true, true, true
 	zero := int64(0)
 	waiting := indexJob{ID: "live-yield", Index: "blocks", State: "waiting", Live: true, Error: "fixture source unavailable"}

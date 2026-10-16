@@ -110,10 +110,10 @@ func Test064FreshLiveBuildsHistoryCatchesUpAndFollowsTip(t *testing.T) {
 	if err != nil || !view.On || !view.Enabled || view.State != "catching_up" || view.Lag != 1 {
 		t.Fatalf("fresh history offer: %+v %v", view, err)
 	}
-	a.liveIndexTick()
-	first := waitLiveComplete064(t, a)
-	if first.From != 0 || first.To != 0 || first.Height != 0 || first.Mode != "lean" || first.Retention != "ephemeral" {
-		t.Fatalf("fresh Live did not start applicable history: %+v", first)
+	startTimelineRawLive063(t, a, "lean")
+	first := waitTimelineRawHeight063(t, a, 0)
+	if first.Run.Consumers[0].From != 0 {
+		t.Fatal("fresh Live skipped explicit genesis", first)
 	}
 	before, err := indexStoreHead(a.dataDir, "blocks")
 	if err != nil || before.checkpoint == nil || before.checkpoint.From != 0 {
@@ -123,10 +123,9 @@ func Test064FreshLiveBuildsHistoryCatchesUpAndFollowsTip(t *testing.T) {
 		t.Fatal("fresh genesis reread ignored locally available source")
 	}
 	installBlockOneHeader063(t, a)
-	a.liveIndexTick()
-	second := waitLiveComplete064(t, a)
-	if second.From != 0 || second.To != 1 || second.Height != 1 || second.Mode != "lean" {
-		t.Fatalf("following next selected tip: %+v", second)
+	second := waitTimelineRawHeight063(t, a, 1)
+	if second.Run.ID != first.Run.ID || second.Run.Consumers[0].From != 0 {
+		t.Fatal("Live did not preserve its admitted scope", second)
 	}
 	after, err := indexStoreHead(a.dataDir, "blocks")
 	if err != nil || after.checkpoint == nil || after.checkpoint.PreviousCommitment != before.checkpoint.Commitment || after.checkpoint.From != 0 {
@@ -141,7 +140,7 @@ func Test064FreshLiveBuildsHistoryCatchesUpAndFollowsTip(t *testing.T) {
 		t.Fatalf("caught-up state: %+v", view)
 	}
 	a.liveIndexTick()
-	if got := a.indexJobSnapshot(); got.ID != second.ID {
+	if got := a.indexRunSnapshot(); got.Run == nil || got.Run.ID != second.Run.ID {
 		t.Fatal("synced index unnecessarily rebuilt")
 	}
 	if len(a.publishedIndexManifests()) != 0 {
@@ -249,6 +248,7 @@ func Test064LiveKeepsExistingAuthenticatedSubsetAndMode(t *testing.T) {
 	peer, _ := hashCoordinateBitcoinSource(t, raw)
 	hashCoordinateConnect(t, a, peer)
 	one := int64(1)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	if _, err := a.startIndexBuild(indexBuildRequest{Index: "blocks", From: &one, To: &one, Mode: "full", Retention: "retain"}); err != nil {
 		t.Fatal(err)
 	}
@@ -281,10 +281,12 @@ func Test064LiveKeepsExistingAuthenticatedSubsetAndMode(t *testing.T) {
 	if _, err := a.setIndexLivePolicy(indexLiveRequest{Index: "blocks", Action: "enable"}); err != nil {
 		t.Fatal(err)
 	}
-	a.liveIndexTick()
-	job := waitLiveWriterReleased063(t, a)
-	if job.State != "waiting" || job.From != 1 || job.Mode != "full" || job.Retention != "retain" {
-		t.Fatalf("Live silently refilled before authenticated subset or changed mode: %+v", job)
+	startTimelineRawLive063(t, a, "full")
+	waiting := waitRunCondition(t, a, func(d indexRunDocument) bool {
+		return d.Run != nil && d.Run.State == "waiting" && d.Run.TargetHeight == 2
+	})
+	if waiting.Run.Consumers[0].From != 1 || waiting.Run.Request.Consumers[0].Mode != "full" {
+		t.Fatal("Live changed authenticated subset or saved mode", waiting)
 	}
 	store, err := indexStoreHead(a.dataDir, "blocks")
 	if err != nil || store.checkpoint == nil || store.checkpoint.From != 1 {

@@ -51,6 +51,7 @@ type indexDeleteAction struct {
 	History        *addressHistoryStore
 	HistoryRemoved []addressHistoryBlock
 	Browse         *indexDeleteBrowseRange
+	Segments       *indexDeleteRawSegments
 }
 type indexDeleteBatchPlan struct {
 	Request indexDeleteRequest
@@ -136,7 +137,7 @@ func indexDeleteIntersects(r *heightInterval, first, last int64) bool {
 }
 
 // Caller owns live, index and run admission locks. This is read-only.
-func (a *app) planIndexDeletionLocked(ctx context.Context, request indexDeleteRequest) (indexDeleteBatchPlan, error) {
+func (a *app) planIndexDeletionLocked(ctx context.Context, request indexDeleteRequest, storageLocked ...bool) (indexDeleteBatchPlan, error) {
 	q, err := indexDeleteNormalize(request)
 	if err != nil {
 		return indexDeleteBatchPlan{}, err
@@ -257,16 +258,66 @@ func (a *app) planIndexDeletionLocked(ctx context.Context, request indexDeleteRe
 				return out, e
 			}
 			act.RawFiles, act.Item.Raw = files, &raw
+			locked := len(storageLocked) > 0 && storageLocked[0]
+			segments, segmentRange, e := a.indexDeleteSegmentInventory(ctx, q.Range, locked)
+			if e != nil {
+				return out, e
+			}
+			act.Segments = segments
+			if segments != nil {
+				raw.SegmentBodies = len(segments.Rows)
+				for _, row := range segments.Rows {
+					raw.SegmentLogicalBytes += row.Bytes
+				}
+				raw.SegmentPhysicalRetainedBytes = segments.PhysicalBytes
+				if segmentRange != nil {
+					if raw.Range == nil {
+						raw.Range = segmentRange
+					} else {
+						if segmentRange.From < raw.Range.From {
+							raw.Range.From = segmentRange.From
+						}
+						if segmentRange.To > raw.Range.To {
+							raw.Range.To = segmentRange.To
+						}
+					}
+				}
+			}
+			if q.Range == nil {
+				paths, removed, retained, e := rawSegmentWholeDeletePaths(a.dataDir)
+				if e != nil {
+					return out, e
+				}
+				act.Paths = append(act.Paths, paths...)
+				raw.SegmentPhysicalRemovedBytes = removed
+				raw.SegmentPhysicalRetainedBytes = retained
+				if act.Segments != nil {
+					act.Segments.Whole = true
+				}
+				act.Item.Exists = act.Item.Exists || len(paths) > 0
+			}
+			act.Item.Raw = &raw
 			act.Item.Exists = act.Item.Exists || len(files) > 0
+			act.Item.Exists = act.Item.Exists || raw.SegmentBodies > 0
 			act.Item.Noop = !act.Item.Exists
 			act.Item.Scope = append(act.Item.Scope, fmt.Sprintf("%d verified Gateway-owned serialized source copies (%d logical bytes); shared hard-link allocations may differ", raw.RemovableFiles, raw.RemovableBytes))
 			act.Item.Retained = []string{"Independent derived indexes, shared facts, headers and settings", "Unselected, unproven or unsafe source copies; external Core and separately configured archives"}
 			act.Item.Retained = append(act.Item.Retained, raw.RetainedReasons...)
+			if raw.SegmentBodies > 0 && q.Range != nil {
+				act.Item.Scope = append(act.Item.Scope, fmt.Sprintf("%d segment-backed bodies (%d logical bytes) lose active availability", raw.SegmentBodies, raw.SegmentLogicalBytes))
+				act.Item.Retained = append(act.Item.Retained, fmt.Sprintf("%d physical bytes in shared append segments remain pending reviewed compaction; neighbors and unpublished tails are not overwritten", raw.SegmentPhysicalRetainedBytes))
+			}
+			if raw.SegmentPhysicalRemovedBytes > 0 {
+				act.Item.Scope = append(act.Item.Scope, fmt.Sprintf("%d physical bytes in recognized Raw-owned segments, including unpublished append tails", raw.SegmentPhysicalRemovedBytes))
+			}
+			if q.Range == nil && raw.SegmentPhysicalRetainedBytes > 0 {
+				act.Item.Retained = append(act.Item.Retained, fmt.Sprintf("%d physical bytes in damaged or unproven segment files are retained", raw.SegmentPhysicalRetainedBytes))
+			}
 			if q.Range != nil {
 				act.Item.Operation = "prune_raw_bodies"
 				act.Item.Range = raw.Range
-				act.Item.Noop = len(files) == 0
-				act.Item.Scope = []string{fmt.Sprintf("%d verified raw source copies in the displayed inclusive block interval (%d logical bytes)", raw.RemovableFiles, raw.RemovableBytes)}
+				act.Item.Noop = len(files) == 0 && raw.SegmentBodies == 0
+				act.Item.Scope = []string{fmt.Sprintf("%d verified raw source copies (%d logical bytes) and %d segment bodies (%d logical bytes) in the displayed inclusive block interval", raw.RemovableFiles, raw.RemovableBytes, raw.SegmentBodies, raw.SegmentLogicalBytes)}
 				act.Item.Retained = append(act.Item.Retained, "Ordered Blocks metadata and checkpoints are preserved; actual raw-body coverage shows the resulting holes.")
 				act.Item.Note = "Remove only actual serialized raw bodies in this interval. Ordered metadata, source copies outside the interval and derived indexes remain."
 			}
@@ -301,8 +352,16 @@ func (a *app) planIndexDeletionLocked(ctx context.Context, request indexDeleteRe
 		Items    []indexDeleteItem
 		Sources  [][]indexDeleteRawFile
 		Bindings []string
-	}{copyRequest, out.Review.Items, indexDeletePlanRaw(out.Actions), indexDeletePlanBindings(out.Actions)})
+		Segments []*indexDeleteRawSegments
+	}{copyRequest, out.Review.Items, indexDeletePlanRaw(out.Actions), indexDeletePlanBindings(out.Actions), indexDeletePlanSegments(out.Actions)})
 	return out, nil
+}
+func indexDeletePlanSegments(actions []indexDeleteAction) []*indexDeleteRawSegments {
+	var out []*indexDeleteRawSegments
+	for _, a := range actions {
+		out = append(out, a.Segments)
+	}
+	return out
 }
 func indexDeletePlanRaw(actions []indexDeleteAction) [][]indexDeleteRawFile {
 	var out [][]indexDeleteRawFile
@@ -398,16 +457,6 @@ func (a *app) stopIndexDeletionMembersLocked(ids []string) error {
 		if err = a.writeIndexLivePolicy(p); err != nil {
 			return err
 		}
-		if indexBrowseAvailable(id) {
-			b, e := a.readIndexBrowseState()
-			if e != nil {
-				return e
-			}
-			b.Policies[id] = false
-			if e = atomicWriteJSON(filepath.Join(a.dataDir, "indexes", "browse-policy.json"), b); e != nil {
-				return e
-			}
-		}
 	}
 	for n := range a.indexRunState.Prepared.Consumers {
 		c := &a.indexRunState.Prepared.Consumers[n]
@@ -465,7 +514,7 @@ func (a *app) deleteIndexDataBatch(ctx context.Context, q indexDeleteRequest) (m
 			return nil, e
 		}
 		defer release()
-		p, e := a.planIndexDeletionLocked(ctx, q)
+		p, e := a.planIndexDeletionLocked(ctx, q, true)
 		if e != nil {
 			return nil, e
 		}
@@ -591,6 +640,11 @@ func (a *app) deleteIndexDataBatch(ctx context.Context, q indexDeleteRequest) (m
 			}
 		}
 		for _, act := range p.Actions {
+			if act.Segments != nil {
+				if e = a.applyIndexDeleteSegments(ctx, act.Segments, backup); e != nil {
+					return rollback(e)
+				}
+			}
 			if act.Generic != nil {
 				if e = a.applyIndexDeleteGeneric(ctx, act.Generic, backup, move); e != nil {
 					return rollback(e)

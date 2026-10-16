@@ -30,28 +30,33 @@ type bitcoinAddress struct {
 	LastAttempt time.Time `json:"last_attempt,omitempty"`
 }
 type networkPeerView struct {
-	Role            string                   `json:"role,omitempty"`
-	ID              string                   `json:"id"`
-	Address         string                   `json:"address"`
-	Owner           string                   `json:"owner"`
-	Direction       string                   `json:"direction"`
-	Transport       string                   `json:"transport"`
-	Source          string                   `json:"discovery_source"`
-	State           string                   `json:"state"`
-	Services        uint64                   `json:"services"`
-	ServiceHex      string                   `json:"services_hex"`
-	ProtocolVersion int32                    `json:"protocol_version"`
-	Protocols       []string                 `json:"protocols"`
-	Negotiated      []gatewayProtocolSupport `json:"negotiated_protocols,omitempty"`
-	Gateway         bool                     `json:"gateway"`
-	BOD             bool                     `json:"bod"`
-	TargetHeight    int64                    `json:"target_height_estimate"`
-	Connected       time.Time                `json:"connected,omitempty"`
-	Updated         time.Time                `json:"updated"`
-	LastWork        string                   `json:"last_work,omitempty"`
-	Received        uint64                   `json:"bytes_received"`
-	Sent            uint64                   `json:"bytes_sent"`
-	LastError       string                   `json:"last_error,omitempty"`
+	BlockInFlight             int                      `json:"block_in_flight,omitempty"`
+	BlockResponses            uint64                   `json:"block_responses,omitempty"`
+	BlockFailures             uint64                   `json:"block_failures,omitempty"`
+	BlockBytes                uint64                   `json:"block_bytes,omitempty"`
+	BlockTransferMilliseconds int64                    `json:"block_transfer_milliseconds,omitempty"`
+	Role                      string                   `json:"role,omitempty"`
+	ID                        string                   `json:"id"`
+	Address                   string                   `json:"address"`
+	Owner                     string                   `json:"owner"`
+	Direction                 string                   `json:"direction"`
+	Transport                 string                   `json:"transport"`
+	Source                    string                   `json:"discovery_source"`
+	State                     string                   `json:"state"`
+	Services                  uint64                   `json:"services"`
+	ServiceHex                string                   `json:"services_hex"`
+	ProtocolVersion           int32                    `json:"protocol_version"`
+	Protocols                 []string                 `json:"protocols"`
+	Negotiated                []gatewayProtocolSupport `json:"negotiated_protocols,omitempty"`
+	Gateway                   bool                     `json:"gateway"`
+	BOD                       bool                     `json:"bod"`
+	TargetHeight              int64                    `json:"target_height_estimate"`
+	Connected                 time.Time                `json:"connected,omitempty"`
+	Updated                   time.Time                `json:"updated"`
+	LastWork                  string                   `json:"last_work,omitempty"`
+	Received                  uint64                   `json:"bytes_received"`
+	Sent                      uint64                   `json:"bytes_sent"`
+	LastError                 string                   `json:"last_error,omitempty"`
 }
 type bitcoinNetwork struct {
 	app              *app
@@ -70,6 +75,8 @@ type bitcoinNetwork struct {
 	saveMu           sync.Mutex
 	persistenceError string
 	headerCursor     uint64
+	blockCursor      uint64
+	blockDownloads   *bitcoinBlockDownloads
 	nextDial         time.Time
 	clock            func() time.Time
 	noBootstrap      bool
@@ -96,7 +103,9 @@ type bitcoinSession struct {
 	once              sync.Once
 	writeMu           sync.Mutex
 	replyMu           sync.Mutex
-	pendingReply      *sessionPendingReply // protected by replyMu
+	pendingReply      *sessionPendingReply              // protected by replyMu
+	pendingBlocks     map[[32]byte]*sessionPendingReply // hash-correlated, protected by replyMu
+	blockSlots        chan struct{}                     // initialized under replyMu
 	slot              chan struct{}
 }
 
@@ -316,7 +325,7 @@ func (s *bitcoinSession) sendLocked(command string, payload []byte, deadline tim
 }
 func (s *bitcoinSession) readLoop() {
 	for {
-		_ = s.peer.conn.SetReadDeadline(time.Now().Add(110 * time.Second))
+		_ = s.peer.conn.SetReadDeadline(time.Now().Add(20 * time.Minute))
 		m, e := readMessage(s.peer.conn)
 		if e != nil {
 			s.close(e.Error())
@@ -359,7 +368,18 @@ func (s *bitcoinSession) readLoop() {
 			s.deliverReply(m)
 		case "headers", "block", "notfound":
 			s.deliverReply(m)
-		case "inv": // A new tip is discovered by the periodic header request.
+		case "inv": // Header validation remains with the header synchronizer.
+			if count, used, e := decodeCompactSizeMinimal(m.payload); e == nil && count <= 50000 && uint64(len(m.payload)-used) == count*36 {
+				s.n.mu.Lock()
+				for ; used < len(m.payload); used += 36 {
+					if binary.LittleEndian.Uint32(m.payload[used:used+4])&0x3fffffff == 2 {
+						var h [32]byte
+						copy(h[:], m.payload[used+4:used+36])
+						delete(s.blockWork.missing, h)
+					}
+				}
+				s.n.mu.Unlock()
+			}
 		}
 	}
 }
@@ -507,62 +527,7 @@ func (n *bitcoinNetwork) fetchBlock(hash [32]byte, header []byte) ([]byte, strin
 	return n.fetchBlockContext(n.ctx, hash, header)
 }
 func (n *bitcoinNetwork) fetchBlockContext(parent context.Context, hash [32]byte, header []byte) ([]byte, string, error) {
-	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
-	defer cancel()
-	stop := context.AfterFunc(n.ctx, cancel)
-	defer stop()
-	var last error
-	tried := map[string]bool{}
-	for attempt := 0; attempt < 4; attempt++ {
-		_, e := n.waitSession(ctx, true)
-		if e != nil {
-			return nil, "", e
-		}
-		s := n.reserveBlockSession(tried)
-		if s == nil {
-			if last == nil {
-				last = fmt.Errorf("archival peers are temporarily busy or cooling down")
-			}
-			break
-		}
-		tried[s.peer.addr] = true
-		inv := uint32(2)
-		if s.peer.services&nodeWitnessService != 0 {
-			inv = 0x40000002
-		}
-		var req bytes.Buffer
-		req.Write(encodeVarInt(1))
-		_ = binary.Write(&req, binary.LittleEndian, inv)
-		req.Write(hash[:])
-		sub, done := context.WithTimeout(ctx, 15*time.Second)
-		var dispatched time.Time
-		m, e := s.requestWithDispatch(sub, "getdata", req.Bytes(), func(m message) bool { return m.command == "block" || m.command == "notfound" }, &dispatched)
-		done()
-		elapsed := time.Duration(0)
-		if !dispatched.IsZero() {
-			elapsed = time.Since(dispatched)
-		}
-		if e != nil {
-			n.finishBlockSession(s, elapsed, false, !dispatched.IsZero() && parent.Err() == nil && n.ctx.Err() == nil)
-			last = e
-			continue
-		}
-		if m.command == "notfound" {
-			n.finishBlockSession(s, elapsed, false, true)
-			last = fmt.Errorf("peer does not have this block")
-			continue
-		}
-		if len(m.payload) < 81 || hash256(m.payload[:80]) != hash || (len(header) == 80 && !bytes.Equal(header, m.payload[:80])) {
-			n.finishBlockSession(s, elapsed, false, true)
-			last = fmt.Errorf("peer supplied the wrong block")
-			s.close(last.Error())
-			continue
-		}
-		// Full Merkle/witness verification is still done by the existing parser.
-		n.finishBlockSession(s, elapsed, true, false)
-		return m.payload, s.peer.addr, nil
-	}
-	return nil, "", fmt.Errorf("WAITING_FOR_PEERS: no connected archival peer supplied the block: %v", last)
+	return n.fetchTargetBlockContext(parent, blockTarget{Height: -1, HashRaw: hash, HashDisplay: reverseHex(hash[:]), ExpectedHeader: header})
 }
 func (n *bitcoinNetwork) gatewayPeers() []overlayPeer {
 	if !releaseFeatureAvailable("gateway-peerhood") {

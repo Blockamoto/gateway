@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -13,6 +14,16 @@ func (a *app) timelineIndexedBodiesSource(headers *timelineLocalReader, problems
 	root := filepath.Join(a.dataDir, "indexes", "blocks", "bodies-v2")
 	shards, complete, err := timelineDirectory(root, 256)
 	source.Complete = complete
+	rows, segmentComplete, segmentErr := rawSegmentInventory(context.Background(), a.dataDir)
+	source.Complete = source.Complete && segmentComplete && segmentErr == nil
+	if segmentErr != nil {
+		*problems = append(*problems, "gateway_indexed_raw_bodies: segment inventory unavailable")
+	}
+	for _, row := range rows {
+		if headers.matches(row.Height, row.Hash) && rawSegmentFramePresent(a.dataDir, row) {
+			source.Ranges = append(source.Ranges, heightInterval{row.Height, row.Height})
+		}
+	}
 	if err != nil {
 		*problems = append(*problems, "gateway_indexed_raw_bodies: inventory unavailable")
 		return source

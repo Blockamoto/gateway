@@ -33,6 +33,9 @@ type sessionPendingReply struct {
 }
 
 func (s *bitcoinSession) deliverReply(m message) {
+	if s.deliverBlockReply(m) {
+		return
+	}
 	s.replyMu.Lock()
 	pending := s.pendingReply
 	s.replyMu.Unlock()

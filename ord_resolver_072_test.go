@@ -17,7 +17,12 @@ import (
 func ordDecodedFixture072(t *testing.T, a *app, block blockView, target blockTarget) {
 	t.Helper()
 	a.objects = map[string]*objectFetch{}
-	a.decoded = map[string]blockView{fmt.Sprintf("%s:%d:%s:%t:%x", target.HashDisplay, target.Height, target.ChainAuthority, target.ConsensusAuthority, target.ExpectedHeader): block}
+	a.blockBaseAcquire = func(ctx context.Context, requested blockTarget, settings appSettings) (blockView, error) {
+		if requested.HashDisplay != target.HashDisplay || requested.Height != target.Height {
+			return blockView{}, fmt.Errorf("fixture block unavailable")
+		}
+		return block, nil
+	}
 }
 
 func Test072OrdPinnedDirectPositionWithoutLocators(t *testing.T) {
@@ -94,7 +99,7 @@ func Test072OrdSparseLocationResolvesAndDistinguishesUnavailableBytes(t *testing
 	// A different sparse reveal is located, but no raw block is available in an
 	// offline profile. That is distinct from a TXID for which no location exists.
 	a.objects = map[string]*objectFetch{}
-	a.decoded = map[string]blockView{}
+	a.blockBaseAcquire = nil
 	_, err = a.resolveInscription(context.Background(), block.Transactions[500].TxID+"i0", "")
 	var failure *inscriptionResolutionError
 	if !errors.As(err, &failure) || failure.State != ordBytesUnavailable || failure.Location == nil || failure.Location.TxIndex != 500 {
@@ -192,7 +197,7 @@ func Test072CoreHeightFetchUsesCallerCancellation(t *testing.T) {
 }
 
 func Test072CoalescedConsumersCancelIndependently(t *testing.T) {
-	a := &app{objects: map[string]*objectFetch{}, decoded: map[string]blockView{}}
+	a := &app{objects: map[string]*objectFetch{}}
 	ctx, cancel := context.WithCancel(context.Background())
 	work, stop := context.WithCancel(context.Background())
 	f := &objectFetch{done: make(chan struct{}), cancel: stop, waiters: 2}

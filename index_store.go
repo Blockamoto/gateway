@@ -79,14 +79,8 @@ func openIndexStore(root, id string) (*indexStore, error) {
 	return openIndexStoreContext(context.Background(), root, id)
 }
 func openIndexStoreContext(ctx context.Context, root, id string) (*indexStore, error) {
-	if id == "blocks" {
-		// Failed conversions retain the fully readable legacy root. Cancellation
-		// still stops a build rather than silently continuing its work.
-		_ = migrateBlockBodiesContext(ctx, root)
-		if e := ctx.Err(); e != nil {
-			return nil, e
-		}
-	}
+	// Existing Raw generations remain in place. Opening or resuming never
+	// converts their body format or creates transaction reverse locators.
 
 	s, e := indexStoreHead(root, id)
 	if e != nil {
@@ -355,7 +349,7 @@ func (s *indexStore) readBatch(commit string) (indexBatch, error) {
 		} else if b.Bitcoin.BodySchema != 0 || b.Bitcoin.RawBody != nil {
 			return b, fmt.Errorf("raw body metadata in legacy transaction locator")
 		}
-		if len(b.Bitcoin.TxIDs) == 0 || (s.definition.ID == "tx-locator" && len(b.Bitcoin.Transactions) != 0) {
+		if b.Bitcoin.BodySchema != 3 && len(b.Bitcoin.TxIDs) == 0 || (s.definition.ID == "tx-locator" && len(b.Bitcoin.Transactions) != 0) {
 			return b, fmt.Errorf("invalid Bitcoin index payload")
 		}
 		for i, id := range b.Bitcoin.TxIDs {
@@ -486,6 +480,9 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 			return fmt.Errorf("Bitcoin index requires locally verified block and transaction evidence")
 		}
 		for i, tx := range block.Transactions {
+			if s.definition.ID == "blocks" {
+				break
+			} // Exact parser-owned bytes are validated by prepareRawBitcoinRecord.
 			if !validHash(tx.TxID) || tx.Index != i {
 				return fmt.Errorf("Bitcoin index requires ordered transaction identifiers")
 			}
@@ -527,16 +524,15 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 		}
 	} else if s.definition.ID == "tx-locator" && s.head.Mode != "" {
 		b.TransactionLocator = transactionLocatorFromBlock(block)
-	} else if s.definition.ID == "blocks" || s.definition.ID == "tx-locator" {
+	} else if s.definition.ID == "blocks" {
+		b.Bitcoin, e = s.prepareRawBitcoinRecord(block)
+		if e != nil {
+			return e
+		}
+	} else if s.definition.ID == "tx-locator" {
 		b.Bitcoin = &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: []string{}}
 		for _, tx := range block.Transactions {
 			b.Bitcoin.TxIDs = append(b.Bitcoin.TxIDs, tx.TxID)
-		}
-		if s.definition.ID == "blocks" {
-			b.Bitcoin, e = s.prepareRawBitcoinRecord(block)
-			if e != nil {
-				return e
-			}
 		}
 	} else if s.definition.ID == "bitmap" {
 		b.Bitmap = bitmapCandidatesLookup(extracted.Occurrences, func(n uint64) (string, bool) { v, ok := s.winners[n]; return v, ok })

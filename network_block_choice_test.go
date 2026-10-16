@@ -11,42 +11,36 @@ import (
 	"time"
 )
 
-func TestBlockPeerChoiceCooldownBusyAndRecovery(t *testing.T) {
+func TestBlockPeerChoiceCapacityRefillWithoutSpeedRanking(t *testing.T) {
 	n := &bitcoinNetwork{sessions: map[string]*bitcoinSession{}}
-	now := time.Now()
-	n.clock = func() time.Time { return now }
-	makePeer := func(addr string, age time.Duration) *bitcoinSession {
-		s := &bitcoinSession{n: n, peer: &peerConn{addr: addr, services: nodeNetworkService}, slot: make(chan struct{}, 1), view: networkPeerView{State: "connected", Connected: now.Add(-age)}}
-		n.sessions[addr] = s
-		return s
+	for _, addr := range []string{"a", "b"} {
+		n.sessions[addr] = &bitcoinSession{n: n, peer: &peerConn{addr: addr, services: nodeNetworkService}, slot: make(chan struct{}, 1), view: networkPeerView{State: "connected"}}
 	}
-	slow, fast := makePeer("slow", time.Hour), makePeer("fast", time.Minute)
-	first := n.reserveBlockSession(nil)
-	if first != slow {
-		t.Fatal("stable initial ordering changed")
+	a, b := n.sessions["a"], n.sessions["b"]
+	a.blockWork.successes = 1
+	a.blockWork.latency = time.Hour
+	b.blockWork.successes = 1
+	b.blockWork.latency = time.Microsecond
+	for i := 0; i < 2*coreBlocksPerPeer; i++ {
+		if n.reserveBlockSession(nil) == nil {
+			t.Fatal("capacity unavailable", i)
+		}
 	}
-	n.finishBlockSession(first, 15*time.Second, false, true)
-	next := n.reserveBlockSession(nil)
-	if next != fast {
-		t.Fatal("failed oldest peer selected again")
+	if a.blockWork.active != coreBlocksPerPeer || b.blockWork.active != coreBlocksPerPeer || n.reserveBlockSession(nil) != nil {
+		t.Fatal("per-peer limit not enforced")
 	}
-	n.finishBlockSession(next, 20*time.Millisecond, true, false)
-	if got := n.reserveBlockSession(nil); got != fast {
-		t.Fatal("successful server not preferred")
+	n.finishBlockSession(a, time.Second, true, false)
+	if n.reserveBlockSession(nil) != a {
+		t.Fatal("free capacity was not refilled independently of speed")
 	}
-	// A concurrent request uses an idle recovered peer instead of queueing
-	// behind the otherwise preferred session.
-	now = now.Add(time.Minute)
-	if got := n.reserveBlockSession(nil); got != slow {
-		t.Fatal("busy preferred server prevented parallel acquisition")
+	n.finishBlockSession(b, 0, false, true)
+	if n.reserveBlockSession(map[string]bool{"b": true}) != nil {
+		t.Fatal("tried peer selected again")
 	}
-	n.finishBlockSession(fast, time.Second, false, false)
-	n.finishBlockSession(slow, time.Second, true, false)
-	if slow.blockWork.failures != 0 || !slow.blockWork.retryAfter.IsZero() {
-		t.Fatal("successful retry did not restore eligibility")
+	if !b.blockWork.retryAfter.IsZero() {
+		t.Fatal("custom cooldown reintroduced")
 	}
 }
-
 func TestBlockPeerNotFoundFallsBackAndNextBlockSkipsFailedServer(t *testing.T) {
 	a := independentTestApp(t)
 	badLocal, badRemote := net.Pipe()
@@ -55,7 +49,7 @@ func TestBlockPeerNotFoundFallsBackAndNextBlockSkipsFailedServer(t *testing.T) {
 	bad := sessionRepairManaged(t, a, badLocal, "127.0.0.1:60310")
 	good := sessionRepairManaged(t, a, goodLocal, "127.0.0.1:60311")
 	a.network.mu.Lock()
-	bad.peer.services, good.peer.services = nodeNetworkService, nodeNetworkService
+	bad.peer.services, good.peer.services = nodeNetworkService|nodeWitnessService, nodeNetworkService|nodeWitnessService
 	bad.view.Connected, good.view.Connected = time.Now().Add(-time.Hour), time.Now()
 	a.network.mu.Unlock()
 	raw := make([]byte, 81)

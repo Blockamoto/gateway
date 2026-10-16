@@ -11,7 +11,7 @@
   "raw_block_redownload_required": false,
   "index_schema": 3,
   "index_rebuild_required": false,
-  "block_body_schema": 2,
+  "block_body_schema": 3,
   "txio_schema": 3,
   "utxo_schema": 2,
   "cache_metadata_schema": 2,
@@ -35,7 +35,7 @@
   "sat_state_profile": "gateway-sat-fifo-mainnet-bps-v2",
   "sat_savepoint_intervals": [12, 144],
   "sat_savepoints_per_interval": 2,
-  "note": "UTXO retains its 288 self-contained recovery transitions. Sats process ordinal identity from genesis, sharing output facts and retaining two savepoints every 12 blocks and two every 144 blocks. Older experimental Sat state requires a reviewed rebuild and remains preserved. Historical ranges are optional; Satline caches visited paths. Addresses, positional TXIO and raw-backed Blocks remain compatible. Known inscription holdings require matching checkpoints and disclose identity coverage. Complete consensus validation and Gateway peerhood remain deferred. Release and hosted update promotion require later review.",
+  "note": "New Raw Blocks records retain serialized Bitcoin bytes in segmented body schema 3 with block-level metadata; general transaction lookup remains an explicit Locator choice. Legacy decoded and schema 2 Raw records remain readable without automatic conversion. Schema 3 bodies require this development build; an older executable may not read new records. UTXO retains its 288 recovery transitions. Sats process identity from genesis and retain two savepoints every 12 and 144 blocks; older experimental Sat state requires a reviewed rebuild. Historical ranges remain optional. Addresses and positional TXIO remain independently selected. Complete consensus validation and Gateway peerhood remain deferred. This local development build is not a published release or updater promotion.",
   "satline_wire": 1,
   "satline_publication_schema": 1,
   "release_status": "prerelease"

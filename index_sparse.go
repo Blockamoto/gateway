@@ -467,10 +467,17 @@ func (a *app) committedTransactionLocation(ctx context.Context, txid, blockHash 
 		if s.checkpoint == nil || a.indexChainState(s.checkpoint) != "selected_chain" || publishedOnly && !a.storedIndexPublicationMatches(id, s.checkpoint) {
 			continue
 		}
-		if err = s.ensureIndexLocators(ctx); err != nil {
-			return txLocation{}, false, err
+		if id != "blocks" {
+			if err = s.ensureIndexLocators(ctx); err != nil {
+				return txLocation{}, false, err
+			}
 		}
-		records, err := s.bitcoinLocatorRecords(ctx, txid)
+		var records []indexLocatorRecord
+		if id == "blocks" {
+			records, err = s.bitcoinLocatorRecordsReadOnly(ctx, txid)
+		} else {
+			records, err = s.bitcoinLocatorRecords(ctx, txid)
+		}
 		if err != nil {
 			return txLocation{}, false, err
 		}

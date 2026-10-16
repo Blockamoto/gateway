@@ -107,6 +107,7 @@ func (a *app) indexRunConsumerContext(ctx context.Context, index string, admitte
 }
 
 type indexRunPrepared struct {
+	cacheBytes int
 	block      blockView
 	extraction *inscriptionBlockResult
 	refs       map[string]map[string]outputFactRef
@@ -500,6 +501,8 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		return source(callCtx, target, "ephemeral")
 	})
 	defer prefetch.Close()
+	peerWindow := &indexRunDownloadWindow{a: a, ctx: ctx}
+	defer peerWindow.Reset()
 	admissionRevision := effectiveIndexRunAdmissionRevision(record)
 	var load func(context.Context, int64) (*indexRunPrepared, error)
 	load = func(callCtx context.Context, h int64) (*indexRunPrepared, error) {
@@ -512,8 +515,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			counts.CacheHits++
 			return p, nil
 		}
-		// Source reads never create optional Raw Blocks coverage. That track's
-		// own Apply is the single durable owner, including cached-body promotion.
+		// Shared acquisition may retain sparse verified Raw body membership
+		// while global Raw is On. Only the Raw consumer's Apply advances its
+		// sequential checkpoint; this compatibility policy cannot override On.
 		retention := "ephemeral"
 		started := time.Now()
 		b, elapsed, queued, err := prefetch.Take(callCtx, t)
@@ -537,13 +541,13 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		// Bound the cache by decoded JSON as well as entry count. An oversized
 		// block still serves its ready consumers without being retained here.
 		encoded, _ := json.Marshal(b)
-		size := len(encoded)
+		size := len(encoded) + len(b.verifiedRaw)
+		p.cacheBytes = size
 		if size <= 32<<20 {
 			for len(order) > 0 && (len(order) >= 8 || cacheBytes+size > 32<<20) {
 				old := order[0]
 				order = order[1:]
-				raw, _ := json.Marshal(cache[old].block)
-				cacheBytes -= len(raw)
+				cacheBytes -= cache[old].cacheBytes
 				delete(cache, old)
 			}
 			cache[b.Hash] = p
@@ -577,6 +581,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		record = d.Run
 		if revision := effectiveIndexRunAdmissionRevision(record); revision != admissionRevision {
 			prefetch.Reset()
+			peerWindow.Reset()
 			admissionRevision = revision
 		}
 		if record.State == "cancelled" || record.State == "pausing" {
@@ -869,6 +874,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 		}
 		if !rawRequired {
+			peerWindow.Reset()
 			for _, i := range eligible {
 				if nexts[i] != h {
 					continue
@@ -943,6 +949,23 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 			continue
 		}
+		// Prime the missing-body window before awaiting its first block. A
+		// stalling first peer must not leave all other transports idle.
+		initialRanges := []indexRunDownloadRange{}
+		for _, i := range eligible {
+			c := consumers[i]
+			if bitmapConsumerID(c.selection.Index) && bitmapConsumerKind(c.selection.Index) == "chain" {
+				continue
+			}
+			cap := record.InitialTargetHeight
+			if c.selection.Live && record.Request.Out == nil {
+				cap = target
+			}
+			if nexts[i] <= cap {
+				initialRanges = append(initialRanges, indexRunDownloadRange{nexts[i], cap})
+			}
+		}
+		peerWindow.Update(a.currentChainAuthority(), initialRanges)
 		p, err := load(ctx, h)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -974,6 +997,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		// commits. The scheduling cap belongs to each admitted member; outcome-
 		// only Chains never cause speculative Bitcoin reads.
 		upcoming := int64(-1)
+		peerRanges := []indexRunDownloadRange{}
 		for _, i := range eligible {
 			c := consumers[i]
 			if bitmapConsumerID(c.selection.Index) && bitmapConsumerKind(c.selection.Index) == "chain" {
@@ -990,7 +1014,11 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			if candidate <= cap && (upcoming < 0 || candidate < upcoming) {
 				upcoming = candidate
 			}
+			if candidate <= cap {
+				peerRanges = append(peerRanges, indexRunDownloadRange{candidate, cap})
+			}
 		}
+		peerWindow.Update(a.currentChainAuthority(), peerRanges)
 		if upcoming >= 0 {
 			if candidate, e := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), upcoming); e == nil && cache[candidate.HashDisplay] == nil {
 				prefetch.Schedule(candidate)

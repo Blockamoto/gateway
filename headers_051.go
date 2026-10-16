@@ -233,6 +233,7 @@ func (a *app) syncIndependentHeaders(ctx context.Context) error {
 		if working == canonical {
 			tip := hash256(headers[len(headers)-1])
 			hash := reverseHex(tip[:])
+			s.n.noteSelectedPeerHeaders(s, count-1, hash)
 			elapsed := time.Since(started).Seconds()
 			a.setStatus(func(st *appStatus) {
 				st.HeaderCount = count

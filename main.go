@@ -4,6 +4,7 @@ import (
 	"./internal/cleanup"
 	"./internal/datadir"
 	"./internal/updateapply"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -67,8 +68,7 @@ type app struct {
 	fetchMu           sync.Mutex
 	objectsMu         sync.Mutex
 	objects           map[string]*objectFetch
-	decoded           map[string]blockView
-	decodedOrder      []string
+	blockBaseAcquire  func(context.Context, blockTarget, appSettings) (blockView, error) // explicit test/source injection
 	knowledgeMu       sync.Mutex
 	knowledgeClosing  bool
 	knowledgeSeen     map[string]bool

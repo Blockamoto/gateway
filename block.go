@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -277,9 +278,8 @@ func (a *app) fetchAndDecodeTargetUncachedContext(ctx context.Context, target bl
 	return a.fetchBlockWithPolicyContext(ctx, target, "legacy")
 }
 
-// Index jobs select source retention without changing global settings or
-// implicitly building unrelated graph indexes. Existing user caches keep their
-// original publication policy.
+// Every source caller uses the same acquisition path. The timeline controls
+// retention; source reads never create optional graph or transaction indexes.
 type blockUnavailableError struct{ error }
 
 func (a *app) fetchBlockWithPolicy(target blockTarget, policy string) (blockView, error) {
@@ -289,17 +289,71 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 	if err := ctx.Err(); err != nil {
 		return blockView{}, err
 	}
-
-	prefixHeight := target.Height
-	if prefixHeight < 0 {
-		prefixHeight = 0
+	a.settingsMu.RLock()
+	settings := a.settings
+	a.settingsMu.RUnlock()
+	view, err := a.coalescedBlockBaseContext(ctx, target, settings, func(work context.Context) (blockView, error) {
+		return a.acquireBlockBaseContext(work, target, settings)
+	})
+	if err != nil {
+		return blockView{}, err
 	}
-	prefix := fmt.Sprintf("%d-%s", prefixHeight, target.HashDisplay)
-	if target.Height < 0 {
-		prefix = "hash-" + target.HashDisplay
+	if err = ctx.Err(); err != nil {
+		return blockView{}, err
 	}
-	binPath := filepath.Join(a.dataDir, "blocks", "raw", prefix+".block")
+	if target.Height < 0 && view.Height >= 0 {
+		target.Height = view.Height
+	}
+	view.LocatorPeer = target.LocatorPeer
+	view.Evidence = a.blockEvidence(target, view.SourceNetwork, view.SourcePeer, view.FromCache)
+	if view.SourceNetwork == "cache" || view.FromCache {
+		a.cacheMu.RLock()
+		entry, ok := a.cacheIndex.Blocks[strings.ToLower(target.HashDisplay)]
+		a.cacheMu.RUnlock()
+		if ok && entry.Private {
+			view.CacheVisibility = "private"
+		} else if ok {
+			view.CacheVisibility = "public"
+		}
+		if ok {
+			view.SavedFiles = savedFilesView{Block: filepath.Join("blocks", "raw", filepath.Base(entry.Prefix)+".block")}
+		}
+	} else if view.SourceNetwork != "core" && view.SourceNetwork != "core_mount" && view.SourceNetwork != "archive" {
+		if settings.PrivacyMode {
+			view.CacheVisibility = "private"
+		} else {
+			view.CacheVisibility = "public"
+		}
+	}
+	if view.SourceNetwork == "index_retained" || view.SourceNetwork == "local_index" {
+		view.CacheVisibility = "private"
+	}
+	if target.ConsensusAuthority {
+		view.VerificationState = "consensus_validated"
+		view.Verification.ConsensusValidated = true
+		view.Note = "Bitcoin Core confirmed this exact block at the requested active-chain height; Gateway independently verified the serialized body."
+	}
+	// Legacy call signatures remain source-compatible. Their retention string
+	// cannot override the timeline's sole Raw on/off choice.
+	if timelineRawBlocksOn(a.dataDir) {
+		_, err = retainVerifiedRawBlock(ctx, a.dataDir, view, func() error { return checkTimelineRawBlocksOn(ctx, a.dataDir) })
+		if err != nil && !errors.Is(err, errIndexRunConsumerStopped) {
+			return blockView{}, err
+		}
+	}
+	if err = ctx.Err(); err != nil {
+		return blockView{}, err
+	}
+	return view, nil
+}
 
+// Acquisition has no retention or optional index side effects. Concurrent
+// explorer and build requests share this verified base, then apply their own
+// cancellation, visibility and current timeline policy to private clones.
+func (a *app) acquireBlockBaseContext(ctx context.Context, target blockTarget, settings appSettings) (blockView, error) {
+	if legacy, found, err := a.legacyRawBodyBase(ctx, target); found && err == nil {
+		return legacy, nil
+	}
 	var payload []byte
 	var retainedView *blockView
 	source := ""
@@ -322,6 +376,7 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 			got := hash256(hit.Raw[:80])
 			if got == target.HashRaw && (len(target.ExpectedHeader) != 80 || bytes.Equal(hit.Raw[:80], target.ExpectedHeader)) {
 				payload, source, sourceNetwork, fromCache = hit.Raw, hit.Source, hit.Network, hit.FromCache
+				retainedView = hit.Decoded
 				if target.Height < 0 && hit.Height >= 0 {
 					target.Height = hit.Height
 				}
@@ -333,16 +388,14 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 			return blockView{}, err
 		}
 		var err error
-		a.settingsMu.RLock()
-		offline := a.settings.NetworkDisabled
-		a.settingsMu.RUnlock()
+		offline := settings.NetworkDisabled
 		if offline {
 			return blockView{}, blockUnavailableError{fmt.Errorf("verified block bytes are unavailable locally while peer networking is disabled")}
 		}
 		if a.network != nil {
-			payload, source, err = a.network.fetchBlockContext(ctx, target.HashRaw, target.ExpectedHeader)
+			payload, source, err = a.network.fetchTargetBlockContext(ctx, target)
 		} else {
-			payload, source, err = fetchBlockContext(ctx, target.HashRaw, target.ExpectedHeader, a.preferred)
+			err = fmt.Errorf("managed Bitcoin block transport is unavailable; waiting for network initialization")
 		}
 		if err == nil {
 			sourceNetwork = "bitcoin"
@@ -365,17 +418,6 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 		return blockView{}, err
 	}
 
-	// Keep the existing raw-object path when a hash-only cache entry later gets
-	// anchored at a height. Relabelling the index must not orphan its bytes.
-	if fromCache {
-		a.cacheMu.RLock()
-		entry, exists := a.cacheIndex.Blocks[strings.ToLower(target.HashDisplay)]
-		a.cacheMu.RUnlock()
-		if exists {
-			prefix = entry.Prefix
-			binPath = filepath.Join(a.dataDir, "blocks", "raw", prefix+".block")
-		}
-	}
 	var view blockView
 	if retainedView != nil {
 		view = *retainedView
@@ -383,97 +425,14 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 		var err error
 		view, err = parseBlockDetailed(target.Height, target.HashDisplay, target.ExpectedHeader, payload, source, fromCache)
 		if err != nil {
+			if sourceNetwork == "bitcoin" && a.network != nil {
+				a.network.rejectBlockPayload(target, source, err)
+				return blockView{}, blockUnavailableError{fmt.Errorf("peer supplied an invalid block body; waiting for another provider: %w", err)}
+			}
 			return blockView{}, err
 		}
 	}
 	view.SourceNetwork = sourceNetwork
-	view.LocatorPeer = target.LocatorPeer
-	view.Evidence = a.blockEvidence(target, sourceNetwork, source, fromCache)
-	// Privacy mode is a local client policy. For newly learned remote data it
-	// marks derived cache/index knowledge private before any indexes are updated.
-	// Existing cached objects keep the visibility they had when first stored.
-	if sourceNetwork == "cache" || fromCache {
-		a.cacheMu.RLock()
-		entry, ok := a.cacheIndex.Blocks[strings.ToLower(target.HashDisplay)]
-		a.cacheMu.RUnlock()
-		if ok && entry.Private {
-			view.CacheVisibility = "private"
-		} else if ok {
-			view.CacheVisibility = "public"
-		}
-	} else if sourceNetwork != "core" && sourceNetwork != "core_mount" && sourceNetwork != "archive" {
-		a.settingsMu.RLock()
-		privateLookup := a.settings.PrivacyMode
-		a.settingsMu.RUnlock()
-		if privateLookup {
-			view.CacheVisibility = "private"
-		} else {
-			view.CacheVisibility = "public"
-		}
-	}
-	if target.ConsensusAuthority {
-		// The body may come from mounted Core storage, BOD cache, or the Bitcoin
-		// network. Live Core independently mapped this exact hash to this height
-		// on its validated active chain, so the body's verified hash/Merkle/PoW
-		// checks can inherit Core's consensus-validation authority.
-		view.VerificationState = "consensus_validated"
-		view.Verification.ConsensusValidated = true
-		view.Note = "Bitcoin Core confirmed this exact block hash at the requested height on its consensus-validated active chain. Bitcoin on Demand independently checked the returned body's block hash, proof-of-work and transaction Merkle root."
-	} else if sourceNetwork == "core_mount" {
-		if view.Verification.HeaderChainMatch {
-			view.Note = "Read directly from Bitcoin Core's block files while Core may be offline. Gateway independently checked the block hash, proof-of-work, Merkle root and local header-chain anchor. Core files were not modified or duplicated."
-		} else {
-			view.Note = "Read directly from Bitcoin Core's block files while Core may be offline. Gateway checked the block hash, proof-of-work and Merkle root; local chain anchoring is still pending. Core files were not modified or duplicated."
-		}
-	}
-	// Verified derived knowledge is retained independently of raw block cache
-	// possession. This is what lets range materialization build a sparse index
-	// without forcing duplicate block storage.
-	if sourceNetwork == "index_retained" {
-		view.CacheVisibility = "private"
-	}
-	if policy == "legacy" {
-		a.indexVerifiedBlockKnowledge(view)
-	}
-	if err := a.restoreCommittedRawBody(ctx, target, payload); err != nil {
-		return blockView{}, err
-	}
-
-	a.settingsMu.RLock()
-	cacheEnabled := a.settings.CacheBlocks
-	a.settingsMu.RUnlock()
-	if policy != "legacy" {
-		cacheEnabled = policy == "cache"
-	}
-	if policy != "legacy" && !fromCache {
-		view.CacheVisibility = "private"
-	}
-	writeCache := cacheEnabled && (sourceNetwork != "index_retained" || policy == "cache") && sourceNetwork != "core" && sourceNetwork != "core_mount" && sourceNetwork != "archive"
-	if policy == "retain" && sourceNetwork != "index_retained" && sourceNetwork != "core" && sourceNetwork != "core_mount" && sourceNetwork != "archive" {
-		retained := filepath.Join(a.dataDir, "indexes", "sources", target.HashDisplay+".block")
-		if len(payload) > maxMessageSize {
-			return blockView{}, fmt.Errorf("retained block exceeds Bitcoin block size limit")
-		}
-		if err := writeSharedRawObject(a.dataDir, retained, target, payload); err != nil {
-			return blockView{}, err
-		}
-	}
-	if fromCache || writeCache {
-		view.SavedFiles = savedFilesView{
-			Block: filepath.Join("blocks", "raw", filepath.Base(binPath)),
-			Hex:   "",
-			JSON:  "",
-		}
-	}
-	if !fromCache && writeCache {
-		if err := writeSharedRawObject(a.dataDir, binPath, target, payload); err != nil {
-			return blockView{}, err
-		}
-	}
-	if writeCache {
-		a.indexCachedBlockPolicy(view, prefix, policy == "legacy")
-		a.enforceCacheLimitPolicy(policy == "cache")
-	}
 	return view, nil
 }
 
@@ -607,6 +566,8 @@ func parseBlockDetailed(height int64, hashDisplay string, expectedHeader, payloa
 	txs = annotateCoordinates(height, txs)
 
 	return blockView{
+		verifiedRaw:      append([]byte(nil), payload...),
+		verifiedRawProof: newVerifiedBlockBytes(height, strings.ToLower(hashDisplay), txCount, payload),
 		Coordinate: func() string {
 			if height >= 0 {
 				return strconv.FormatInt(height, 10)

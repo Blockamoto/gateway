@@ -45,42 +45,50 @@ func inspectCore(s appSettings) coreStatus {
 }
 
 type objectFetch struct {
-	done    chan struct{}
-	v       blockView
-	e       error
-	cancel  context.CancelFunc
-	waiters int
+	done        chan struct{}
+	v           blockView
+	e           error
+	cancel      context.CancelFunc
+	waiters     int
+	finished    bool
+	fetch       func(context.Context) (blockView, error)
+	settingsKey string
 }
 
 func (a *app) coalescedBlock(t blockTarget) (blockView, error) {
 	return a.coalescedBlockContext(context.Background(), t)
 }
 
+// Compatibility entry point. Every source caller now enters the same base
+// acquisition inside fetchBlockWithPolicyContext; an outer Explorer cache would
+// bypass per-caller evidence and the current Raw retention intent.
 func (a *app) coalescedBlockContext(ctx context.Context, t blockTarget) (blockView, error) {
+	return a.fetchBlockWithPolicyContext(ctx, t, "legacy")
+}
+
+func blockObjectKey(t blockTarget, settings appSettings) string {
+	return fmt.Sprintf("mainnet:%s:%x:%d:%s:%t:%t:%x:%d:%s", t.HashDisplay, t.HashRaw, t.Height, t.ChainAuthority, t.ConsensusAuthority, t.LocalHeader, t.ExpectedHeader, blockVerifierVersion, indexDigest(settings))
+}
+
+func (a *app) coalescedBlockBaseContext(ctx context.Context, t blockTarget, settings appSettings, fetch func(context.Context) (blockView, error)) (blockView, error) {
 	if err := ctx.Err(); err != nil {
 		return blockView{}, err
 	}
-	// Key includes anchor authority. Reorg membership is checked by target resolution,
-	// never inferred from an old decoded object.
-	key := fmt.Sprintf("%s:%d:%s:%t:%x", t.HashDisplay, t.Height, t.ChainAuthority, t.ConsensusAuthority, t.ExpectedHeader)
+	if a.blockBaseAcquire != nil {
+		fetch = func(work context.Context) (blockView, error) { return a.blockBaseAcquire(work, t, settings) }
+	}
+	key := blockObjectKey(t, settings)
 	a.objectsMu.Lock()
 	if a.objects == nil {
 		a.objects = map[string]*objectFetch{}
-		a.decoded = map[string]blockView{}
 	}
-	if v, ok := a.decoded[key]; ok {
-		a.objectsMu.Unlock()
-		return v, nil
-	}
-	if f, ok := a.objects[key]; ok {
+	if f := a.objects[key]; f != nil {
 		f.waiters++
 		a.objectsMu.Unlock()
 		return a.waitForBlockObject(ctx, key, f)
 	}
-	// Work belongs to the set of consumers, rather than the first caller's
-	// request. An obsolete viewer cannot cancel a still-interested index job.
 	work, cancel := context.WithCancel(context.Background())
-	f := &objectFetch{done: make(chan struct{}), cancel: cancel, waiters: 1}
+	f := &objectFetch{done: make(chan struct{}), cancel: cancel, waiters: 1, fetch: fetch, settingsKey: indexDigest(settings)}
 	a.objects[key] = f
 	a.objectsMu.Unlock()
 	go a.fetchBlockObject(work, key, f, t)
@@ -88,40 +96,89 @@ func (a *app) coalescedBlockContext(ctx context.Context, t blockTarget) (blockVi
 }
 
 func (a *app) waitForBlockObject(ctx context.Context, key string, f *objectFetch) (blockView, error) {
-	select {
-	case <-ctx.Done():
+	defer func() {
 		a.objectsMu.Lock()
 		f.waiters--
 		if f.waiters == 0 && a.objects[key] == f {
 			delete(a.objects, key)
-			f.cancel()
+			if f.cancel != nil {
+				f.cancel()
+			}
 		}
 		a.objectsMu.Unlock()
+	}()
+	select {
+	case <-ctx.Done():
 		return blockView{}, ctx.Err()
 	case <-f.done:
-		return f.v, f.e
 	}
+	if err := ctx.Err(); err != nil {
+		return blockView{}, err
+	}
+	if f.e != nil {
+		return blockView{}, f.e
+	}
+	return cloneAcquiredBlock(f.v), nil
+}
+
+func (a *app) blockSourceSettingsKey() string {
+	a.settingsMu.RLock()
+	settings := a.settings
+	a.settingsMu.RUnlock()
+	return indexDigest(settings)
 }
 
 func (a *app) fetchBlockObject(ctx context.Context, key string, f *objectFetch, t blockTarget) {
-	defer f.cancel()
-	f.v, f.e = a.fetchAndDecodeTargetUncachedContext(ctx, t)
-	a.objectsMu.Lock()
-	// The final waiter may already have abandoned this object and a fresh
-	// consumer may have started a replacement. Never delete that new fetch.
-	if a.objects[key] == f {
-		delete(a.objects, key)
+	if f.cancel != nil {
+		defer f.cancel()
 	}
-	if f.e == nil && ctx.Err() == nil {
-		a.decoded[key] = f.v
-		a.decodedOrder = append(a.decodedOrder, key)
-		for len(a.decodedOrder) > 4 {
-			delete(a.decoded, a.decodedOrder[0])
-			a.decodedOrder = a.decodedOrder[1:]
+	if err := ctx.Err(); err != nil {
+		f.e = err
+	} else if f.settingsKey != "" && a.blockSourceSettingsKey() != f.settingsKey {
+		f.e = blockUnavailableError{fmt.Errorf("block source settings changed; retry the request")}
+	} else if f.fetch == nil {
+		f.e = fmt.Errorf("missing base block acquisition")
+	} else {
+		f.v, f.e = f.fetch(ctx)
+		if f.e == nil {
+			f.e = ctx.Err()
+		}
+		if f.e == nil && a.blockSourceSettingsKey() != f.settingsKey {
+			f.e = blockUnavailableError{fmt.Errorf("block source settings changed; retry the request")}
 		}
 	}
+	a.objectsMu.Lock()
+	f.finished = true
 	close(f.done)
+	if f.waiters == 0 && a.objects[key] == f {
+		delete(a.objects, key)
+	}
 	a.objectsMu.Unlock()
+}
+
+// Parsed body slices and private byte receipts are owned by each caller. This
+// allows resource decoration without changing another consumer's exact proof.
+func cloneAcquiredBlock(v blockView) blockView {
+	out := v
+	out.verifiedRaw = append([]byte(nil), v.verifiedRaw...)
+	if v.verifiedRawProof != nil {
+		proof := *v.verifiedRawProof
+		out.verifiedRawProof = &proof
+	}
+	if v.Evidence != nil {
+		evidence := *v.Evidence
+		out.Evidence = &evidence
+	}
+	out.Transactions = append([]transactionView(nil), v.Transactions...)
+	for i := range out.Transactions {
+		tx := &out.Transactions[i]
+		tx.Inputs = append([]inputView(nil), tx.Inputs...)
+		for j := range tx.Inputs {
+			tx.Inputs[j].Witness = append([]string(nil), tx.Inputs[j].Witness...)
+		}
+		tx.Outputs = append([]outputView(nil), tx.Outputs...)
+	}
+	return out
 }
 func (a *app) scheduleKnowledgeSave() {
 	a.knowledgeMu.Lock()

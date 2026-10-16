@@ -14,6 +14,10 @@ import (
 func deleteHeight(v int64) *int64 { return &v }
 func deleteConfirmBatch(t *testing.T, a *app, q indexDeleteRequest) map[string]any {
 	t.Helper()
+	// Legacy cache fixture setup may still be flushing its initial rebuild.
+	// A real concurrent save correctly refuses deletion; this success helper
+	// starts its review after that unrelated fixture work has finished.
+	a.updateBackgroundWork.Wait()
 	r, e := a.reviewIndexDeletionBatch(context.Background(), q)
 	if e != nil || !r.Ready {
 		t.Fatal(r, e)

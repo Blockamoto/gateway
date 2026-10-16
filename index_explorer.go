@@ -26,15 +26,16 @@ const indexExplorerMaxBatches = 512
 const indexExplorerMaxBytes int64 = 64 << 20
 
 // Bitcoin batches reuse the same immutable range/checkpoint machinery. Blocks
-// preserve verified serialized bodies plus compact ordered transaction IDs;
-// old decoded batches remain readable. Locator-only batches preserve IDs in
+// preserve verified serialized bodies plus block-level access metadata;
+// old decoded/ordered-ID batches remain readable. Locator-only batches preserve IDs in
 // block order and require a source provider for transaction bytes.
 type bitcoinIndexBlock struct {
-	BodySchema      int               `json:"body_schema,omitempty"`
-	RawBody         *indexedRawBody   `json:"raw_body,omitempty"`
-	VerifierVersion int               `json:"verifier_version,omitempty"`
-	TxIDs           []string          `json:"txids"`
-	Transactions    []transactionView `json:"transactions,omitempty"`
+	TransactionCount uint64            `json:"transaction_count,omitempty"`
+	BodySchema       int               `json:"body_schema,omitempty"`
+	RawBody          *indexedRawBody   `json:"raw_body,omitempty"`
+	VerifierVersion  int               `json:"verifier_version,omitempty"`
+	TxIDs            []string          `json:"txids,omitempty"`
+	Transactions     []transactionView `json:"transactions,omitempty"`
 }
 
 func reusableBitcoinEvidence(block *bitcoinIndexBlock) bool {
@@ -141,7 +142,7 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 		copy := candidate
 		location = &copy
 	}
-	for _, id := range []string{"blocks", "tx-locator"} {
+	for _, id := range []string{"tx-locator", "blocks"} {
 		if !releaseFeatureAvailable(id) {
 			continue
 		}
@@ -155,8 +156,10 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 		if s.checkpoint == nil || a.indexChainState(s.checkpoint) != "selected_chain" {
 			continue
 		}
-		if err = s.ensureIndexLocators(ctx); err != nil {
-			return txResolutionView{}, false, err
+		if id != "blocks" {
+			if err = s.ensureIndexLocators(ctx); err != nil {
+				return txResolutionView{}, false, err
+			}
 		}
 		var candidate *txLocation
 		var retained *transactionView
@@ -199,12 +202,17 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 			}
 			return nil
 		}
-		records, err := s.bitcoinLocatorRecords(ctx, txid)
+		var records []indexLocatorRecord
+		if id == "blocks" {
+			records, err = s.bitcoinLocatorRecordsReadOnly(ctx, txid)
+		} else {
+			records, err = s.bitcoinLocatorRecords(ctx, txid)
+		}
 		if err != nil {
 			return txResolutionView{}, false, err
 		}
 		complete := true
-		if len(records) == 0 {
+		if len(records) == 0 && id != "blocks" {
 			// Auxiliary fallback for old/repairable preview data; new commits
 			// persist the compact pointer before publishing their head.
 			complete, err = walkExplorerIndex(ctx, s, visit)

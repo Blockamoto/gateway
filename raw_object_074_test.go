@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func rawObjectTarget074(raw []byte) blockTarget {
@@ -29,83 +28,37 @@ func requireSameRawAllocation074(t *testing.T, paths ...string) {
 	}
 }
 
-func Test074NewBlocksSharesCacheAndRetainedRawAllocation(t *testing.T) {
-	for _, policy := range []string{"ephemeral", "cache", "retain"} {
-		t.Run(policy, func(t *testing.T) {
-			a, raw := testAppWithGenesis(t)
-			a.settings.NetworkDisabled, a.settings.CoreDisabled, a.settings.CoreMountDisabled = true, true, true
-			cache := filepath.Join(a.dataDir, "blocks", "raw", "0-"+genesisHashDisplay+".block")
-			probe := filepath.Join(a.dataDir, "hard-link-probe")
-			if err := os.Link(cache, probe); err != nil {
-				t.Skip("profile filesystem does not support hard links; copy fallback has separate coverage", err)
-			}
-			if err := os.Remove(probe); err != nil {
-				t.Fatal(err)
-			}
-			target := rawObjectTarget074(raw)
-			view, err := a.fetchBlockWithPolicy(target, policy)
-			if err != nil {
-				t.Fatal(err)
-			}
-			s, err := openIndexStore(a.dataDir, "blocks")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = s.appendBlock(view, 0, policy); err != nil {
-				t.Fatal(err)
-			}
-			durable, _ := indexedRawBodyPath(a.dataDir, genesisHashDisplay)
-			paths := []string{cache, durable}
-			if policy == "retain" {
-				paths = append(paths, filepath.Join(a.dataDir, "indexes", "sources", genesisHashDisplay+".block"))
-			}
-			requireSameRawAllocation074(t, paths...)
-			t.Logf("%d raw retention names, %d logical bytes, %d unique serialized bytes", len(paths), len(paths)*len(raw), len(raw))
-			// Run the real cache trimmer under a one-MiB cap. Its first
-			// victim must be this old cache name, not the durable allocation.
-			old := time.Unix(1, 0)
-			if err = os.Chtimes(cache, old, old); err != nil {
-				t.Fatal(err)
-			}
-			filler := filepath.Join(a.dataDir, "blocks", "raw", "eviction-fixture.block")
-			if err = atomicWriteBytes(filler, make([]byte, 2<<20)); err != nil {
-				t.Fatal(err)
-			}
-			a.settings.StorageCapMB = 1
-			a.enforceCacheLimitPolicy(true)
-			if _, err = os.Stat(cache); !os.IsNotExist(err) {
-				t.Fatal("cache trimmer did not remove its retention name", err)
-			}
-			if stored, _, err := readIndexedRawBody(a.dataDir, target, nil); err != nil || !bytes.Equal(stored, raw) {
-				t.Fatal("cache unlink removed durable offline bytes", err)
-			}
-			if err = writeSharedRawObject(a.dataDir, cache, target, raw); err != nil {
-				t.Fatal(err)
-			}
-			requireSameRawAllocation074(t, cache, durable)
-			// Atomic repair detaches a cache name; it must never change the
-			// durable inode while it is shared with an independent retention.
-			if err = atomicWriteBytes(cache, []byte("damaged cache fixture")); err != nil {
-				t.Fatal(err)
-			}
-			if stored, _, err := readIndexedRawBody(a.dataDir, target, nil); err != nil || !bytes.Equal(stored, raw) {
-				t.Fatal("atomic cache replacement changed retained bytes", err)
-			}
-			if err = writeSharedRawObject(a.dataDir, cache, target, raw); err != nil {
-				t.Fatal(err)
-			}
-			requireSameRawAllocation074(t, cache, durable)
-			// Sharing a physical object grants no additional serving permission.
-			a.cacheMu.Lock()
-			entry := a.cacheIndex.Blocks[genesisHashDisplay]
-			entry.Private = true
-			a.cacheIndex.Blocks[genesisHashDisplay] = entry
-			a.cacheMu.Unlock()
-			a.settings.ShareCache = true
-			if _, err = a.storageBlockForServing(context.Background(), genesisHashDisplay); err == nil {
-				t.Fatal("hard link promoted private retention into public serving")
-			}
-		})
+func Test074NewBlocksSegmentsAreIndependentOfCacheRetention(t *testing.T) {
+	a, raw := testAppWithGenesis(t)
+	a.settings.NetworkDisabled, a.settings.CoreDisabled, a.settings.CoreMountDisabled = true, true, true
+	target := rawObjectTarget074(raw)
+	view, err := a.fetchBlockWithPolicy(target, "ephemeral")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := openIndexStore(a.dataDir, "blocks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.appendBlock(view, 0, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	cache := filepath.Join(a.dataDir, "blocks", "raw", "0-"+genesisHashDisplay+".block")
+	if err = atomicWriteBytes(cache, []byte("damaged cache fixture")); err != nil {
+		t.Fatal(err)
+	}
+	if stored, _, err := readIndexedRawBody(a.dataDir, target, nil); err != nil || !bytes.Equal(stored, raw) {
+		t.Fatal("cache replacement changed segment bytes", err)
+	}
+	if err = os.Remove(cache); err != nil {
+		t.Fatal(err)
+	}
+	if stored, _, err := readIndexedRawBody(a.dataDir, target, nil); err != nil || !bytes.Equal(stored, raw) {
+		t.Fatal("cache unlink removed durable bytes", err)
+	}
+	a.settings.ShareCache = true
+	if _, err = a.storageBlockForServing(context.Background(), genesisHashDisplay); err == nil {
+		t.Fatal("private segment exposed to serving")
 	}
 }
 

@@ -142,8 +142,8 @@ func TestSparseTransactionNewCompletePayloadAndDenseBlocksStability(t *testing.T
 				Previous string
 				Bitcoin  *bitcoinIndexBlock
 			}{block.PreviousBlockHash, batch.Bitcoin})
-			if batch.TransactionLocator != nil || batch.Bitcoin == nil || batch.Bitcoin.BodySchema != 2 || batch.Bitcoin.RawBody == nil || len(batch.Bitcoin.Transactions) != 0 || len(batch.Bitcoin.TxIDs) != 1 || batch.Checkpoint.RecordsHash != wantHash || strings.Contains(string(raw), `"inscription_block"`) || strings.Contains(string(raw), `"tx count"`) {
-				t.Fatal("raw-backed Blocks contract lost dense transaction locations", batch)
+			if batch.TransactionLocator != nil || batch.Bitcoin == nil || batch.Bitcoin.BodySchema != 3 || batch.Bitcoin.RawBody == nil || batch.Bitcoin.TransactionCount != 1 || len(batch.Bitcoin.Transactions) != 0 || len(batch.Bitcoin.TxIDs) != 0 || batch.Checkpoint.RecordsHash != wantHash || strings.Contains(string(raw), `"inscription_block"`) || strings.Contains(string(raw), `"tx count"`) {
+				t.Fatal("body-only Raw contract retained transaction locators or lost block metadata", batch)
 			}
 		}
 	}

@@ -12,6 +12,7 @@ import (
 func buildGenesisBlockIndex066(t *testing.T, a *app) indexCheckpoint {
 	t.Helper()
 	zero := int64(0)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	if _, err := a.startIndexBuild(indexBuildRequest{Index: "blocks", From: &zero, To: &zero, Mode: "lean", Retention: "ephemeral"}); err != nil {
 		t.Fatal(err)
 	}
@@ -26,6 +27,29 @@ func buildGenesisBlockIndex066(t *testing.T, a *app) indexCheckpoint {
 		t.Fatalf("missing genesis checkpoint: %v", err)
 	}
 	return *s.checkpoint
+}
+
+func startTimelineRawLive063(t *testing.T, a *app, mode string) indexRunDocument {
+	t.Helper()
+	req := indexRunRequest{Consumers: []indexRunSelection{{Index: "blocks", Armed: true, Live: true, indexRunOptions: indexRunOptions{Mode: mode}}}}
+	if _, err := a.prepareIndexRun(req); err != nil {
+		t.Fatal(err)
+	}
+	d, err := a.startIndexRun(context.Background(), req, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+func waitTimelineRawHeight063(t *testing.T, a *app, height int64) indexRunDocument {
+	t.Helper()
+	hash, err := a.canonicalHashAtHeight(height)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return waitRunCondition(t, a, func(d indexRunDocument) bool {
+		return d.Run != nil && len(d.Run.Consumers) == 1 && d.Run.Consumers[0].Height == height && d.Run.Consumers[0].BlockHash == hash
+	})
 }
 
 func installBlockOneHeader063(t *testing.T, a *app) ([]byte, string) {
@@ -100,7 +124,7 @@ func Test064LiveExplicitlyStartsFreshHistoryAndPersistsPolicy(t *testing.T) {
 	}
 }
 
-func Test063LiveCatchupIsEphemeralAndDoesNotExpandPublication(t *testing.T) {
+func Test063LiveCatchupUsesRawArmAndDoesNotExpandPublication(t *testing.T) {
 	a := prepareLiveTestApp063(t)
 	buildGenesisBlockIndex066(t, a)
 	raw, blockOneHash := installBlockOneHeader063(t, a)
@@ -110,15 +134,11 @@ func Test063LiveCatchupIsEphemeralAndDoesNotExpandPublication(t *testing.T) {
 	if err != nil || !view.Enabled {
 		t.Fatalf("enable: %+v %v", view, err)
 	}
-	a.liveIndexTick()
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	job, err := a.waitIndexBuild(ctx)
-	if err != nil || job.State != "complete" || !job.Live || job.Height != 1 {
-		t.Fatalf("live catch-up: %+v %v", job, err)
-	}
+	a.liveIndexTick() // Configured timeline owns new work; the legacy tick yields.
+	startTimelineRawLive063(t, a, "lean")
+	waitTimelineRawHeight063(t, a, 1)
 	s, err := indexStoreHead(a.dataDir, "blocks")
-	if err != nil || s.checkpoint == nil || s.checkpoint.Height != 1 || s.checkpoint.BlockHash != blockOneHash || s.head.Retention != "ephemeral" {
+	if err != nil || s.checkpoint == nil || s.checkpoint.Height != 1 || s.checkpoint.BlockHash != blockOneHash || s.head.Retention != "retain" {
 		t.Fatalf("live head: %+v %+v %v", s.head, s.checkpoint, err)
 	}
 	if _, err := os.Stat(filepath.Join(a.dataDir, "blocks", "raw", "1-"+blockOneHash+".block")); !os.IsNotExist(err) {
@@ -173,12 +193,8 @@ func Test063LiveRepairsSelectedChainReorgBeforeExtending(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.liveIndexTick()
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	job, err := a.waitIndexBuild(ctx)
-	if err != nil || job.State != "complete" || job.Height != 1 {
-		t.Fatalf("reorg live catch-up: %+v %v", job, err)
-	}
+	startTimelineRawLive063(t, a, "lean")
+	waitTimelineRawHeight063(t, a, 1)
 	repaired, err := indexStoreHead(a.dataDir, "blocks")
 	if err != nil || repaired.checkpoint == nil || repaired.checkpoint.BlockHash != blockOneHash || repaired.checkpoint.PreviousCommitment != initial.Commitment {
 		t.Fatalf("wrong repaired head: %+v %v", repaired.checkpoint, err)

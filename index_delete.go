@@ -250,7 +250,7 @@ func (a *app) indexDeleteReviewLocked(ctx context.Context, id string) (indexDele
 // TryLock avoids waiting while holding unrelated store locks. A busy reader,
 // writer or collector gets a retry response rather than a lock-order inversion.
 func indexDeleteStorageGuard() (func(), error) {
-	locks := []*sync.Mutex{&indexBrowseMu, &utxoWriterMu, &utxoStateMu, &satWriterMu, &satStateMu, &ordinalMaintenanceMu, &addressHistoryMu, &outputFactCollectionMu, &blocksBodyMigrationMu, &indexLocatorMu, &bitmapDevelopmentMu, &bitmapProfilesMu}
+	locks := []*sync.Mutex{&indexBrowseMu, &utxoWriterMu, &utxoStateMu, &satWriterMu, &satStateMu, &ordinalMaintenanceMu, &addressHistoryMu, &outputFactCollectionMu, &blocksBodyMigrationMu, &rawSegmentMu, &indexLocatorMu, &bitmapDevelopmentMu, &bitmapProfilesMu}
 	held := []*sync.Mutex{}
 	release := func() {
 		for i := len(held) - 1; i >= 0; i-- {
@@ -268,7 +268,12 @@ func indexDeleteStorageGuard() (func(), error) {
 		release()
 		return nil, fmt.Errorf("a Bitmap snapshot is in use; finish that read and review deletion again")
 	}
-	return func() { bitmapSnapshotMu.Unlock(); release() }, nil
+	if !rawSegmentSnapshotMu.TryLock() {
+		bitmapSnapshotMu.Unlock()
+		release()
+		return nil, fmt.Errorf("a Raw segment read is active; review deletion after it finishes")
+	}
+	return func() { rawSegmentSnapshotMu.Unlock(); bitmapSnapshotMu.Unlock(); release() }, nil
 }
 
 func (a *app) reviewIndexDeletion(ctx context.Context, id string) (indexDeleteReview, error) {
@@ -384,16 +389,6 @@ func (a *app) deleteIndexData(ctx context.Context, id, reviewID string) (map[str
 			a.indexJob.State = "cancelled"
 			a.indexJob.WaitingReason = "Saved index data deleted; review a new build."
 			if e = atomicWriteJSON(filepath.Join(a.dataDir, "indexes", "job.json"), a.indexJob); e != nil {
-				return nil, e
-			}
-		}
-		if indexBrowseAvailable(r.Index) {
-			b, e := a.readIndexBrowseState()
-			if e != nil {
-				return nil, e
-			}
-			b.Policies[r.Index] = false
-			if e = atomicWriteJSON(filepath.Join(a.dataDir, "indexes", "browse-policy.json"), b); e != nil {
 				return nil, e
 			}
 		}

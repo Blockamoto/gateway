@@ -4,6 +4,16 @@ This local development build combines the timeline controls, persistent resource
 
 Use the supplied portable directory and its own data profile. Keep other Gateway installations and profiles separate. The running preview address is supplied with the build; `Start preview.cmd` can start another portable session and prints its local address. No browser or Windows integration registration is required.
 
+## Raw storage and Core-based acquisition
+
+The [Core alignment contract](BLOCK-FETCHING-CORE-ALIGNMENT.md) describes the current block-acquisition work. Raw Blocks is a retention choice: save verified serialized Bitcoin bytes and the small storage catalog needed to find those bytes and resume safely. It does not build new transaction-ID lookup rows or save decoded transaction/input/output arrays. Open a known block or BPS coordinate to derive its details on demand. Use the optional Transaction Locator track when you want new transaction-ID-to-location lookup coverage.
+
+New bodies use bounded append segments. Existing legacy data remains readable without automatic conversion or deletion. New schema 3 records require this development build; use its separate portable profile when comparing with an older executable. Logical range deletion may retain shared physical segment bytes until safe compaction; the completion receipt must distinguish those facts.
+
+Bulk and on-demand requests share the hash-correlated body-download manager. Bulk work fills a forward window while consumers decode and publish in order. The pinned Core reference supplies peer capacities, pool topology and stall policy; Gateway keeps its own bounded ephemeral-memory budget and existing source precedence. These choices do not establish a numerical speed ratio against Core.
+
+To check the separation, start Raw Blocks alone over a small valid range, then open a block and transaction by known position. Do not expect a new bare transaction hash lookup to succeed solely because Raw stored that body. Inspect Transaction Locator if the location is unknown; inspecting it must not arm or start it. Repeat with Raw Off and another eligible consumer armed: source bytes can be read temporarily without creating Raw retention coverage.
+
 ## Shared indexing controls
 
 Every available built-in track appears by default. Expand a group to see its layers. Plus adds custom Bitmap rulesets; displaying or creating a track does not start indexing. Track numbers are omitted. Drag the dedicated grip, or use its Alt+Up/Down alternative, to arrange sibling tracks; children stay within their parent and groups move with their descendants.

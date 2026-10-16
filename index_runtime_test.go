@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -56,44 +58,59 @@ func indexBitcoinSource(t *testing.T, raw []byte) string {
 func TestIndexSourceRetentionPolicies(t *testing.T) {
 	raw := testGenesisBlockPayload(t)
 	peer := indexBitcoinSource(t, raw)
-	for _, policy := range []string{"ephemeral", "cache", "retain"} {
-		t.Run(policy, func(t *testing.T) {
-			a, _ := testAppWithGenesis(t)
-			// Remove only this fixture's preloaded Gateway-owned raw cache.
-			if e := os.Remove(filepath.Join(a.dataDir, "blocks", "raw", "0-"+genesisHashDisplay+".block")); e != nil {
-				t.Fatal(e)
-			}
-			a.cacheIndex = newCacheIndex()
-			a.settings.CoreDisabled = true
-			a.settings.CoreMountDisabled = true
-			a.preferred = []string{peer}
-			target, e := a.localBlockTarget(0)
-			if e != nil {
-				t.Fatal(e)
-			}
-			view, e := a.fetchBlockWithPolicy(target, policy)
-			if e != nil {
-				t.Fatal(e)
-			}
-			if !integrityVerified(view) || view.SourceNetwork != "bitcoin" {
-				t.Fatalf("not a Bitcoin-verified fetch: %+v", view.Verification)
-			}
-			_, cacheErr := os.Stat(filepath.Join(a.dataDir, "blocks", "raw", "0-"+genesisHashDisplay+".block"))
-			_, retainErr := os.Stat(filepath.Join(a.dataDir, "indexes", "sources", genesisHashDisplay+".block"))
-			if (cacheErr == nil) != (policy == "cache") || (retainErr == nil) != (policy == "retain") {
-				t.Fatalf("wrong retention cache=%v retain=%v", cacheErr, retainErr)
-			}
-			if policy == "cache" && !a.cacheIndex.Blocks[genesisHashDisplay].Private {
-				t.Fatal("index source implicitly published")
-			}
-		})
+	for _, armed := range []bool{false, true} {
+		for _, policy := range []string{"ephemeral", "cache", "retain"} {
+			t.Run(fmt.Sprintf("raw_%t_%s", armed, policy), func(t *testing.T) {
+				a := prepareLiveTestApp063(t)
+				if err := os.Remove(filepath.Join(a.dataDir, "blocks", "raw", "0-"+genesisHashDisplay+".block")); err != nil {
+					t.Fatal(err)
+				}
+				a.cacheIndex = newCacheIndex()
+				a.settings.CoreDisabled = true
+				a.settings.CoreMountDisabled = true
+				a.settings.PrivacyMode = true
+				hashCoordinateConnect(t, a, peer)
+				if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "blocks", Armed: armed}}}); err != nil {
+					t.Fatal(err)
+				}
+				target, err := a.localBlockTarget(0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				view, err := a.fetchBlockWithPolicy(target, policy)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !integrityVerified(view) || view.SourceNetwork != "bitcoin" {
+					t.Fatal("not a Bitcoin-verified fetch", view, err)
+				}
+				for _, path := range []string{filepath.Join(a.dataDir, "blocks", "raw", "0-"+genesisHashDisplay+".block"), filepath.Join(a.dataDir, "indexes", "sources", genesisHashDisplay+".block")} {
+					if _, err := os.Stat(path); !os.IsNotExist(err) {
+						t.Fatal("legacy retention string created duplicate storage", path, err)
+					}
+				}
+				retained, _, err := readIndexedRawBody(a.dataDir, target, nil)
+				if armed {
+					if err != nil || !bytes.Equal(retained, raw) {
+						t.Fatal("Raw Arm did not retain exact serialized body", err)
+					}
+				} else if err == nil {
+					t.Fatal("legacy retention string overrode Raw Off")
+				}
+				if len(a.publishedIndexManifests()) != 0 {
+					t.Fatal("source retention published private index data")
+				}
+			})
+		}
 	}
 }
+
 func TestIndexJobNoCoreBoundedBuildAndRestart(t *testing.T) {
 	a, _ := testAppWithGenesis(t)
 	a.settings.CoreDisabled = true
 	a.settings.CoreMountDisabled = true
 	zero := int64(0)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	j, e := a.startIndexBuild(indexBuildRequest{Index: "blocks", From: &zero, To: &zero, Retention: "ephemeral"})
 	if e != nil {
 		t.Fatal(e)

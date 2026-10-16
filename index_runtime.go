@@ -251,6 +251,9 @@ func bitmapRuntimeDefinitions(ctx context.Context, root string) ([]indexDefiniti
 	return out, nil
 }
 func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {
+	if err := requireTimelineRawBuild(context.Background(), a.dataDir, req); err != nil {
+		return indexJob{}, err
+	}
 	if bitmapConsumerID(req.Index) {
 		return indexJob{}, fmt.Errorf("Bitmap development consumers require a reviewed coordinated timeline run")
 	}
@@ -281,6 +284,9 @@ func (a *app) startIndexBuildInternal(req indexBuildRequest, live bool) (indexJo
 	return a.startIndexBuildID(req, live, "")
 }
 func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (indexJob, error) {
+	if err := requireTimelineRawBuild(context.Background(), a.dataDir, req); err != nil {
+		return indexJob{}, err
+	}
 	if bitmapConsumerID(req.Index) {
 		return indexJob{}, fmt.Errorf("Bitmap development consumers require a coordinated timeline run")
 	}
@@ -523,6 +529,11 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		finish("paused", err)
 		return
 	}
+	if err := requireTimelineRawBuild(ctx, a.dataDir, indexBuildRequest{Index: j.Index, Outputs: j.Outputs}); err != nil {
+		finish("paused", err)
+		return
+	}
+	ctx = legacyRawPublicationContext(ctx, a.dataDir, j.Index)
 	// Validate persisted dependency history off the request goroutine. A large
 	// resume must not freeze the GUI's start request.
 	checked, e := openIndexStoreContext(ctx, a.dataDir, j.Index)
@@ -728,13 +739,10 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 		} else if b.Bitcoin != nil {
 			data := b.Bitcoin
 			bodyState := "legacy_decoded"
-			if b.Bitcoin.BodySchema == 2 {
-				bodyState = "unavailable"
-				if decoded, err := a.decodedIndexBlockContext(context.Background(), s, b); err == nil {
-					copy := *b.Bitcoin
-					copy.Transactions = decoded.Transactions
-					data, bodyState = &copy, "verified_raw_decoded_on_demand"
-				}
+			if b.Bitcoin.BodySchema == 2 || b.Bitcoin.BodySchema == 3 {
+				// A storage overview never decodes every body on the page.
+				// Known block/transaction detail routes explicitly request bytes.
+				bodyState = "raw_metadata_only; body_verified_on_explicit_detail"
 			}
 			rows = append(rows, struct {
 				Height    int64              `json:"block_height"`

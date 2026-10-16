@@ -44,6 +44,10 @@ type savedFilesView struct {
 }
 
 type blockView struct {
+	// Owned immutable serialized evidence; never exposed through JSON. Each
+	// successful parser call copies its input so providers cannot mutate it.
+	verifiedRaw        []byte
+	verifiedRawProof   *verifiedBlockBytes
 	Evidence           *resourceEvidence `json:"evidence,omitempty"`
 	Coordinate         string            `json:"coordinate,omitempty"`
 	Height             int64             `json:"height"`

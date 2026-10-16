@@ -9,7 +9,9 @@ import (
 )
 
 // One upcoming block overlaps acquisition/validation with the current block's
-// consumers. It is not a disk cache and never invokes a publication operation.
+// consumers. The shared acquisition path may retain a verified sparse Raw body
+// while the global Raw track is On; it never advances a derived index checkpoint.
+// The serialized peer-download window itself never publishes retained bodies.
 // The existing parser bounds a single serialized block; retaining one result
 // avoids accumulating multiple oversized decoded blocks beside the work cache.
 type indexRunPrefetch struct {

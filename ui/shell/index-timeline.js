@@ -168,7 +168,7 @@ window.GatewayIndexTimeline = (() => {
     function makeSwitch(text,control) {
       const label=el('label',undefined,'index-switch');label.append(el('span',text));const input=el('input');input.type='checkbox';input.setAttribute('role','switch');const track=el('span',undefined,'switch-track');track.setAttribute('aria-hidden','true');label.append(input,track);input.addEventListener('change',()=>change(control,input.checked));switches.append(label);return {label,input};
     }
-    const on=makeSwitch('Indexing','on'),live=makeSwitch('Follow new blocks','live'),browse=makeSwitch('Index as you browse','browse');browse.input.id='timeline-browse-index';browse.label.title='Save this index’s verified results when you browse a block. This does not start a historical scan.';
+    const on=makeSwitch('Indexing','on'),live=makeSwitch('Follow new blocks','live');
     const focus=button('Focus selection','timeline-focus','Zoom to selected coverage',()=>focusSelection());
     const inspect=button('Open in Explorer','timeline-open-entity',null,()=>{if(selection&&selection.kind==='block'&&healthy&&!current()?.locked)openEntity?.(selected,selection.from);});
     const build=button('Build this range','timeline-build-range',null,()=>{const ranges=selectedRanges();if(ranges.length===1&&current()?.definition.buildable&&!current()?.locked&&healthy&&!busy)prepareRange(ranges[0]);});
@@ -506,8 +506,6 @@ window.GatewayIndexTimeline = (() => {
       setMeta(isTrack?[['Available locally',blockCount(m.total)+(m.complete?'':' · mapped so far')],['Separate ranges',format(m.coverage.length)],['Local header tip',format(snapshot.timeline?.tip_height)]]:[['Selection',blockCount(length)],['Available locally',format(available)+' / '+format(length)],['Coverage',available===length?'Complete':available?'Partial':m.complete?'Not stored':'Not established']]);
       const stateTrack=['utxo-state','address-state','txio-sat-ranges'].includes(d.id);controls.hidden=stateTrack;switches.hidden=true;
       on.input.checked=m.on;live.input.checked=m.live;on.input.disabled=live.input.disabled=!healthy||busy||m.locked||!d.buildable;
-      const browsePreference=(snapshot.browse||[]).find(p=>p.index===d.id),browseSupported=['tx-locator','inscriptions'].includes(d.id)&&browsePreference?.available===true;
-      browse.label.hidden=!browseSupported;browse.input.checked=Boolean(browsePreference?.enabled);browse.input.disabled=!healthy||busy||m.locked||!browseSupported;browse.input.setAttribute('aria-label',d.id+' Index as you browse');
       on.input.setAttribute('aria-label',d.id+' On');live.input.setAttribute('aria-label',d.id+' Live');
       on.label.title='Allow indexing work. Turning off keeps saved records.';live.label.title='Catch up from saved progress and follow new blocks. This may fetch many blocks.';
       focus.disabled=m.locked||isTrack&&!m.coverage.length&&!picks.length;focus.hidden=m.locked;inspect.hidden=!!onFocus||s.kind!=='block'||m.locked;inspect.disabled=!healthy;
@@ -586,7 +584,6 @@ window.GatewayIndexTimeline = (() => {
     }
     async function change(control,checked) {
       const m=current();if(!m||!healthy||busy||m.locked){renderInspector();return;}
-      if(control==='browse'){const id=m.definition.id;if(!['tx-locator','inscriptions'].includes(id))return;busy=true;renderInspector();try{const result=await api('browse',{index:id,enabled:checked});snapshot={...snapshot,browse:[...(snapshot.browse||[]).filter(p=>p.index!==id),result]};notify(checked?'Verified '+m.definition.name+' results will be saved as you browse.':'Browsing no longer saves '+m.definition.name+' results. Existing records remain.');await refresh();}catch(error){notify(error.message,true);}finally{busy=false;render();}return;}
       const id=m.definition.owner||m.definition.id;busy=true;renderInspector();try{const action=control==='on'?(checked?'start':'stop'):(checked?'enable':'disable'),result=await api('live',{index:id,action});snapshot={...snapshot,live:[...(snapshot.live||[]).filter(p=>p.index!==id),result]};notify(control==='live'?(checked?'Following new blocks. Gateway will catch up from saved progress.':'Following new blocks is off. Saved data remains available.'):(checked?'Indexing is on. Choose a range, or follow new blocks.':'Indexing stopped. Saved data remains available.'));await refresh();}catch(error){notify(error.message,true);}finally{busy=false;render();}
     }
     const Resize=doc.defaultView?.ResizeObserver;if(Resize){const observer=new Resize(()=>{if(!drawing){drawing=true;doc.defaultView.requestAnimationFrame(()=>{drawing=false;draw();});}});observer.observe(ruler);observer.observe(trackViewport);}

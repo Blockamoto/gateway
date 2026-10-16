@@ -80,7 +80,7 @@ func Test077NumberNavigationSelectedTipBoundaryCanonicalAndReadOnly(t *testing.T
 	if after := numberNavigationFiles077(t, a.dataDir); !reflect.DeepEqual(before, after) {
 		t.Fatalf("classification changed profile files: before=%v after=%v", before, after)
 	}
-	if len(a.objects) != 0 || len(a.decoded) != 0 || a.indexCancel != nil || len(a.satlineJobs) != 0 {
+	if len(a.objects) != 0 || a.indexCancel != nil || len(a.satlineJobs) != 0 {
 		t.Fatal("classification started block resolution, an index job or Satline storage")
 	}
 }

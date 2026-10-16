@@ -581,6 +581,12 @@ func Test074RawBlocksInventoryDoesNotClaimEvictedOrForkedCoverage(t *testing.T) 
 	if err := migrateBlockBodiesContext(context.Background(), a.dataDir); err != nil {
 		t.Fatal(err)
 	}
+	// Legacy receipts are projected by bounded background metadata recovery.
+	// Wait for a completed mapping before making a possession assertion.
+	if saved := waitRawCoverage(t, a); saved.Total == nil || *saved.Total != 1 {
+		t.Fatal("legacy raw mapping did not complete", saved)
+	}
+	waitRawCoverageStopped(a.dataDir)
 	projection := a.indexTimeline(indexDefinitions(), nil, nil)
 	var ranges []heightInterval
 	for _, track := range projection.Tracks {
@@ -601,25 +607,55 @@ func Test074RawBlocksInventoryDoesNotClaimEvictedOrForkedCoverage(t *testing.T) 
 	// selected header, even while its receipt and size remain intact.
 	fork := append([]byte(nil), raw[:80]...)
 	fork[76] ^= 1
-	if err := os.WriteFile(a.headersPath, fork, 0600); err != nil {
+	a.headerChainMu.Lock()
+	err := os.WriteFile(a.headersPath, fork, 0600)
+	a.headerChainMu.Unlock()
+	if err != nil {
 		t.Fatal(err)
 	}
+	a.headerChainMu.RLock()
 	f, err := os.Open(a.headersPath)
 	if err != nil {
+		a.headerChainMu.RUnlock()
 		t.Fatal(err)
 	}
 	reader := &timelineLocalReader{file: f, count: 1, hashes: map[int64]string{}}
 	problems := []string{}
 	if source := a.timelineIndexedBodiesSource(reader, &problems); len(source.Ranges) != 0 {
+		f.Close()
+		a.headerChainMu.RUnlock()
 		t.Fatal("forked body advertised as selected-chain possession")
 	}
 	f.Close()
-	if err := os.WriteFile(a.headersPath, raw[:80], 0600); err != nil {
+	a.headerChainMu.RUnlock()
+	if forked := waitRawCoverage(t, a); forked.Total == nil || *forked.Total != 0 {
+		t.Fatal("completed fork mapping retained the wrong body", forked)
+	}
+	waitRawCoverageStopped(a.dataDir)
+	a.headerChainMu.Lock()
+	err = os.WriteFile(a.headersPath, raw[:80], 0600)
+	a.headerChainMu.Unlock()
+	if err != nil {
 		t.Fatal(err)
 	}
+	if restored := waitRawCoverage(t, a); restored.Total == nil || *restored.Total != 1 {
+		t.Fatal("restored selected branch lost its retained body", restored)
+	}
+	waitRawCoverageStopped(a.dataDir)
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
+	// This test deliberately removes bytes outside the managed deletion API.
+	// A fresh manager must validate the saved manifest against actual files.
+	key, err := filepath.Abs(a.dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawCoverageStates.Delete(key)
+	if missing := waitRawCoverage(t, a); missing.Total == nil || *missing.Total != 0 {
+		t.Fatal("startup validation counted removed raw bytes", missing)
+	}
+	waitRawCoverageStopped(a.dataDir)
 	projection = a.indexTimeline(indexDefinitions(), nil, nil)
 	for _, track := range projection.Tracks {
 		if track.ID != "blocks" {

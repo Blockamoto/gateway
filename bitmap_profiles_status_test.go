@@ -42,7 +42,7 @@ func TestBitmapUnbuiltCustomProfilesAppearInRealStatusAndTimeline(t *testing.T) 
 		}
 		custom++
 		d, ok := definitions[i.ID]
-		if !ok || d.Name != i.Label || d.Kind != i.Kind || d.ProfileHash != i.ProfileHash || d.RuleHash != i.ProfileHash || !d.Buildable || d.Locked || d.StartHeight != i.StartHeight || d.DistrictInstance != i.DistrictInstance || d.DistrictProfileHash != i.DistrictProfileHash || d.ChainInstance != i.ChainInstance {
+		if !ok || d.Name != i.Label || d.Kind != i.Kind || d.ProfileHash != i.ProfileHash || d.RuleHash != i.ProfileHash || d.ConfigurationRevision != bitmapEffectiveConfigurationRevision(i) || d.Classification != bitmapProfileClassification(i) || !d.Buildable || d.Locked || d.StartHeight != i.StartHeight || d.DistrictInstance != i.DistrictInstance || d.DistrictProfileHash != i.DistrictProfileHash || d.ChainInstance != i.ChainInstance {
 			t.Fatal("unbuilt custom interpretation missing or mislabeled", i, d)
 		}
 		template, err := findIndexDefinition(i.ID)

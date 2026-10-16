@@ -31,6 +31,7 @@ func (a *app) handleBitmapProfiles(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, 409, err)
 			return
 		}
+		instances = a.bitmapProfileLifecycleViews(r.Context(), instances)
 		writeJSON(w, map[string]any{"reference_revision": bitmapNamedReferenceRevision, "registry": map[string]any{"district": bitmapRuleRegistry("district"), "parcel": bitmapRuleRegistry("parcel")}, "reference": map[string]any{"district": bitmapReferenceAnswers("district"), "parcel": bitmapReferenceAnswers("parcel")}, "instances": instances, "drafts": d.Drafts, "revision": d.Revision, "note": "Named Gateway development interpretations; canonical upstream profile bytes remain unfinished. Saving starts no indexing."})
 		return
 	}
@@ -61,10 +62,21 @@ func (a *app) handleBitmapProfiles(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, bitmapValidateProfile(r.Context(), a.dataDir, q))
 		return
 	}
-	out, err := bitmapSaveProfile(r.Context(), a.dataDir, q)
+	var out map[string]any
+	var err error
+	if q.Action == "update" {
+		out, err = a.updateBitmapProfile(r.Context(), q)
+	} else {
+		out, err = bitmapSaveProfile(r.Context(), a.dataDir, q)
+	}
 	if err != nil {
-		jsonError(w, 400, err)
+		status := http.StatusBadRequest
+		if q.Action == "update" {
+			status = http.StatusConflict
+		}
+		jsonError(w, status, err)
 		return
 	}
+	a.annotateBitmapProfileMutation(r.Context(), out)
 	writeJSON(w, out)
 }

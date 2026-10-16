@@ -23,33 +23,34 @@ type bitmapDevelopmentSnapshot struct {
 	ConsensusValidated bool   `json:"consensus_validated"`
 }
 type bitmapDevelopmentView struct {
-	InstanceID          string                       `json:"instance"`
-	Label               string                       `json:"label"`
-	DistrictInstance    string                       `json:"district_instance,omitempty"`
-	DistrictProfileHash string                       `json:"district_profile_hash,omitempty"`
-	EvaluatedCoverage   []heightInterval             `json:"evaluated_coverage"`
-	Retention           *bitmapChainRetentionView    `json:"retention,omitempty"`
-	State               string                       `json:"state"`
-	Kind                string                       `json:"kind"`
-	Snapshot            *bitmapDevelopmentSnapshot   `json:"snapshot"`
-	Profile             bitmapDevelopmentProfile     `json:"profile"`
-	ProfileHash         string                       `json:"profile_hash"`
-	Coverage            []heightInterval             `json:"coverage"`
-	Gaps                []heightInterval             `json:"gaps"`
-	Result              any                          `json:"result"`
-	Candidates          []bitmapDevelopmentCandidate `json:"candidates"`
-	Rows                []any                        `json:"rows"`
-	PendingCandidates   []bitmapDevelopmentCandidate `json:"pending_candidates,omitempty"`
-	NextCursor          string                       `json:"next_cursor"`
-	HasMore             bool                         `json:"has_more"`
-	BlockEvaluated      bool                         `json:"block_evaluated"`
-	OrderedWinnerIDs    []string                     `json:"ordered_winner_ids"`
-	IsolatedHash        string                       `json:"isolated_outcome_hash,omitempty"`
-	ChainHash           string                       `json:"outcome_chain_hash,omitempty"`
-	ScopedCommitment    *string                      `json:"bitmap_chain_commitment"`
-	CompleteScope       bool                         `json:"complete_scope"`
-	Ownership           string                       `json:"ownership"`
-	Note                string                       `json:"note"`
+	ConfigurationRevision uint64                       `json:"configuration_revision"`
+	InstanceID            string                       `json:"instance"`
+	Label                 string                       `json:"label"`
+	DistrictInstance      string                       `json:"district_instance,omitempty"`
+	DistrictProfileHash   string                       `json:"district_profile_hash,omitempty"`
+	EvaluatedCoverage     []heightInterval             `json:"evaluated_coverage"`
+	Retention             *bitmapChainRetentionView    `json:"retention,omitempty"`
+	State                 string                       `json:"state"`
+	Kind                  string                       `json:"kind"`
+	Snapshot              *bitmapDevelopmentSnapshot   `json:"snapshot"`
+	Profile               bitmapDevelopmentProfile     `json:"profile"`
+	ProfileHash           string                       `json:"profile_hash"`
+	Coverage              []heightInterval             `json:"coverage"`
+	Gaps                  []heightInterval             `json:"gaps"`
+	Result                any                          `json:"result"`
+	Candidates            []bitmapDevelopmentCandidate `json:"candidates"`
+	Rows                  []any                        `json:"rows"`
+	PendingCandidates     []bitmapDevelopmentCandidate `json:"pending_candidates,omitempty"`
+	NextCursor            string                       `json:"next_cursor"`
+	HasMore               bool                         `json:"has_more"`
+	BlockEvaluated        bool                         `json:"block_evaluated"`
+	OrderedWinnerIDs      []string                     `json:"ordered_winner_ids"`
+	IsolatedHash          string                       `json:"isolated_outcome_hash,omitempty"`
+	ChainHash             string                       `json:"outcome_chain_hash,omitempty"`
+	ScopedCommitment      *string                      `json:"bitmap_chain_commitment"`
+	CompleteScope         bool                         `json:"complete_scope"`
+	Ownership             string                       `json:"ownership"`
+	Note                  string                       `json:"note"`
 }
 type bitmapDevelopmentCursor struct {
 	Index       string `json:"index"`
@@ -123,6 +124,7 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 	}
 	out.Profile = instance.Profile
 	out.ProfileHash = instance.ProfileHash
+	out.ConfigurationRevision = bitmapEffectiveConfigurationRevision(instance)
 	out.InstanceID = id
 	out.Label = instance.Label
 	out.DistrictInstance = instance.DistrictInstance
@@ -418,6 +420,11 @@ func (a *app) handleBitmapDevelopmentView(w http.ResponseWriter, r *http.Request
 	result, err := a.bitmapInstanceViewContext(r.Context(), kind, r.URL.Query().Get("instance"), r.URL.Query().Get("expected_profile"), r.URL.Query().Get("snapshot"), district, transaction, height, r.URL.Query().Get("cursor"), limit, strings.HasSuffix(r.URL.Path, "/records"))
 	if err != nil {
 		jsonError(w, 400, err)
+		return
+	}
+	expectedRevision, err := bitmapQueryConfigurationRevision(r, "expected_configuration_revision")
+	if err != nil || expectedRevision != 0 && expectedRevision != result.ConfigurationRevision {
+		jsonError(w, 400, fmt.Errorf("Bitmap configuration revision changed; refresh the selected track"))
 		return
 	}
 	writeJSON(w, result)

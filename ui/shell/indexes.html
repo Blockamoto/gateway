@@ -513,7 +513,7 @@ window.GatewayIndexWorkspace.mountLayout($('index-timeline'),$('message'));
 explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message,viewport:$('workspace-viewport-body'),onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:resourceIntent});
 viewport=window.GatewayInscriptionViewport.mount({document,explorer,viewport:$('workspace-viewport-body'),contentOrigin:workspaceBoot.content_origin,notify:message,onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:resourceIntent});
 resources=window.GatewayWorkspaceResources.mount({document,explorer,timeline,status:()=>status,inspect:inspectIndex,onNavigate:navigateWorkspace,onResolved:(address)=>publishAddress(address,true),refresh,notify:message});
-document.addEventListener('gateway:bitmap-add-profile',event=>resources.openBitmapSettings(null,event.detail||{}));
+document.addEventListener('gateway:bitmap-add-profile',event=>resources.addBitmapTrack(event.detail||{}));
 document.addEventListener('gateway:bitmap-overview',()=>navigateWorkspace('bitmap.gateway'));
 for(const id of ['mode','retain-output-values','retain-output-scripts','conventional-ids'])$(id).addEventListener('change',()=>{if(!selectedIndex)return;const owner=id.startsWith('retain-output-')?'txo-spender':selectedIndex,patch=id==='mode'?{mode:$('mode').value}:id==='conventional-ids'?{conventional_ids:inscriptionLocatorsAvailable()&&$('conventional-ids').checked}:{[id==='retain-output-values'?'retain_output_values':'retain_output_scripts']:$(id).checked};timeline.setConsumerOptions?.(owner,patch);});
 selectView('catalog');

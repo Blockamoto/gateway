@@ -222,6 +222,7 @@ func bitmapRuntimeDefinitions(ctx context.Context, root string) ([]indexDefiniti
 			return nil, err
 		}
 		d.Name, d.Kind = instance.Label, instance.Kind
+		d.ConfigurationRevision, d.Classification = bitmapEffectiveConfigurationRevision(instance), bitmapProfileClassification(instance)
 		d.ProfileHash, d.RecipeHash, d.RuleHash = instance.ProfileHash, d.RuleHash, instance.ProfileHash
 		d.DistrictInstance, d.DistrictProfileHash, d.ChainInstance = instance.DistrictInstance, instance.DistrictProfileHash, instance.ChainInstance
 		d.StartHeight = instance.StartHeight

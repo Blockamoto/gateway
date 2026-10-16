@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -45,19 +46,24 @@ type indexRunRequest struct {
 	Consumers []indexRunSelection `json:"consumers"`
 }
 type indexRunProgress struct {
-	Source         *indexRunSnapshot    `json:"source,omitempty"`
-	Dependencies   []indexRunDependency `json:"dependencies"`
-	Index          string               `json:"index"`
-	State          string               `json:"state"`
-	Reason         string               `json:"reason,omitempty"`
-	From           int64                `json:"from"`
-	To             int64                `json:"to"`
-	Height         int64                `json:"height"`
-	BlockHash      string               `json:"block_hash,omitempty"`
-	Commitment     string               `json:"commitment,omitempty"`
-	RequiresLeadIn bool                 `json:"requires_lead_in,omitempty"`
-	ReusedBlocks   int64                `json:"reused_blocks"`
-	AddedBlocks    int64                `json:"added_blocks"`
+	ProfileHash                   string               `json:"profile_hash,omitempty"`
+	ConfigurationRevision         uint64               `json:"configuration_revision,omitempty"`
+	DistrictInstance              string               `json:"district_instance,omitempty"`
+	DistrictProfileHash           string               `json:"district_profile_hash,omitempty"`
+	DistrictConfigurationRevision uint64               `json:"district_configuration_revision,omitempty"`
+	Source                        *indexRunSnapshot    `json:"source,omitempty"`
+	Dependencies                  []indexRunDependency `json:"dependencies"`
+	Index                         string               `json:"index"`
+	State                         string               `json:"state"`
+	Reason                        string               `json:"reason,omitempty"`
+	From                          int64                `json:"from"`
+	To                            int64                `json:"to"`
+	Height                        int64                `json:"height"`
+	BlockHash                     string               `json:"block_hash,omitempty"`
+	Commitment                    string               `json:"commitment,omitempty"`
+	RequiresLeadIn                bool                 `json:"requires_lead_in,omitempty"`
+	ReusedBlocks                  int64                `json:"reused_blocks"`
+	AddedBlocks                   int64                `json:"added_blocks"`
 }
 type indexRunDependency struct {
 	Index  string `json:"index"`
@@ -111,6 +117,11 @@ type indexRunPlan struct {
 
 func indexRunPath(root string) string          { return filepath.Join(root, "indexes", "run.json") }
 func indexRunDigest(d indexRunDocument) string { d.Checksum = ""; d.Error = ""; return indexDigest(d) }
+
+// Optional writers inspect the durable policy without the app's indexRunMu.
+// On Windows their read handle must close before atomic replacement of run.json.
+var indexRunFileMu sync.RWMutex
+
 func cloneIndexRunDocument(d indexRunDocument) indexRunDocument {
 	b, _ := json.Marshal(d)
 	var c indexRunDocument
@@ -118,6 +129,8 @@ func cloneIndexRunDocument(d indexRunDocument) indexRunDocument {
 	return c
 }
 func readIndexRunDocument(root string) (indexRunDocument, error) {
+	indexRunFileMu.RLock()
+	defer indexRunFileMu.RUnlock()
 	d := indexRunDocument{Schema: 1, Prepared: indexRunRequest{Consumers: []indexRunSelection{}}}
 	err := utxoReadJSON(context.Background(), indexRunPath(root), 1<<20, &d)
 	if os.IsNotExist(err) {
@@ -158,6 +171,8 @@ func (a *app) loadIndexRunLocked() error {
 	return a.indexRunError
 }
 func (a *app) persistIndexRunLocked() error {
+	indexRunFileMu.Lock()
+	defer indexRunFileMu.Unlock()
 	a.indexRunState.Revision++
 	a.indexRunState.Checksum = indexRunDigest(a.indexRunState)
 	if err := atomicWriteJSON(indexRunPath(a.dataDir), a.indexRunState); err != nil {
@@ -366,7 +381,7 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 		}
 		var head *indexCheckpoint
 		if bitmapConsumerID(c.Index) { // The instance adapter owns its distinct immutable rules/store.
-			instance, e := bitmapResolvedInstance(ctx, a.dataDir, c.Index)
+			instance, e := bindIndexRunBitmapProgress(ctx, a.dataDir, &q)
 			if e != nil {
 				q.State = "blocked"
 				q.Reason = e.Error()
@@ -768,6 +783,11 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 	state := a.indexRunState.Run.State
 	if state != "paused" && state != "failed" && state != "complete_with_errors" {
 		return indexRunDocument{}, fmt.Errorf("the run is no longer resumable; its current stop intent is preserved")
+	}
+	for _, consumer := range a.indexRunState.Run.Consumers {
+		if err := validateIndexRunBitmapProgress(ctx, a.dataDir, consumer); err != nil {
+			return indexRunDocument{}, err
+		}
 	}
 	for _, c := range r.Request.Consumers {
 		if c.Armed {

@@ -87,6 +87,51 @@ func TestIndexDeleteStaleReviewAndActiveWriterRefused(t *testing.T) {
 		t.Fatal("refused deletion touched data")
 	}
 }
+
+func TestIndexDeleteBitmapConfigurationAndEvidenceLockSurviveClearing(t *testing.T) {
+	ctx, root := context.Background(), t.TempDir()
+	a := &app{dataDir: root}
+	i := bitmapTestCreateProfile(t, root, "Editable District", 1, false)
+	before, err := a.reviewIndexDeletion(ctx, i.ID)
+	if err != nil || !before.Ready {
+		t.Fatal(before, err)
+	}
+	rules := bitmapReferenceAnswers("district")
+	rules["text"] = 0
+	updated, err := a.updateBitmapProfile(ctx, bitmapProfileRequest{Action: "update", ID: i.ID, Kind: "district", Label: i.Label, Rules: rules, ExpectedProfile: i.ProfileHash, ExpectedConfigurationRevision: bitmapEffectiveConfigurationRevision(i)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	i = updated["instance"].(bitmapProfileInstance)
+	if _, err = a.deleteIndexData(ctx, i.ID, before.ReviewID); err == nil || !strings.Contains(err.Error(), "review deletion again") {
+		t.Fatal("stale rules confirmation accepted", err)
+	}
+	dir := bitmapDevelopmentDir(root, i.ID)
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(dir, "head.json"), []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	review, err := a.reviewIndexDeletion(ctx, i.ID)
+	if err != nil || !review.Ready || !review.Exists {
+		t.Fatal(review, err)
+	}
+	if _, err = a.deleteIndexData(ctx, i.ID, review.ReviewID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("saved data remains", err)
+	}
+	locked, err := bitmapResolvedInstance(ctx, root, i.ID)
+	if err != nil || !locked.RulesLocked || locked.ProfileHash != i.ProfileHash {
+		t.Fatal("deletion erased the indexed interpretation lock", locked, err)
+	}
+	_, err = a.updateBitmapProfile(ctx, bitmapProfileRequest{Action: "update", ID: i.ID, Kind: "district", Label: i.Label, Rules: bitmapReferenceAnswers("district"), ExpectedProfile: i.ProfileHash, ExpectedConfigurationRevision: bitmapEffectiveConfigurationRevision(i)})
+	if err == nil {
+		t.Fatal("clearing indexed data silently unlocked its rules")
+	}
+}
 func TestIndexDeleteInscriptionsClearsOwnedLocatorButPreservesTransactionIndex(t *testing.T) {
 	root := t.TempDir()
 	a := &app{dataDir: root}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"./internal/updateapply"
@@ -38,6 +39,9 @@ func indexLayoutParents(ctx context.Context, root string) (map[string]string, er
 	}
 	for _, i := range instances {
 		if i.Kind == "chain" {
+			// Chain is an attached canvas lane, not a reorderable label row.
+			continue
+		} else if i.Kind == "parcel" {
 			parents[i.ID] = "district:" + i.DistrictInstance
 		} else {
 			parents[i.ID] = "group:bitmap"
@@ -46,6 +50,12 @@ func indexLayoutParents(ctx context.Context, root string) (map[string]string, er
 	return parents, nil
 }
 func normalizeIndexLayout(ctx context.Context, root string, order map[string][]string) (map[string][]string, error) {
+	return normalizeIndexLayoutVersion(ctx, root, order, false)
+}
+
+// Only a saved v1 document may move its formerly top-level Parcel rows into
+// their exact District. New layout requests cannot use this migration to reparent.
+func normalizeIndexLayoutVersion(ctx context.Context, root string, order map[string][]string, legacy bool) (map[string][]string, error) {
 	if len(order) > 256 {
 		return nil, fmt.Errorf("too many timeline layout groups")
 	}
@@ -58,6 +68,7 @@ func normalizeIndexLayout(ctx context.Context, root string, order map[string][]s
 		allowed[p] = true
 	}
 	out := map[string][]string{}
+	seen := map[string]map[string]bool{}
 	total := 0
 	for parent, ids := range order {
 		if len(parent) > 100 || len(ids) > 320 {
@@ -66,8 +77,9 @@ func normalizeIndexLayout(ctx context.Context, root string, order map[string][]s
 		if !allowed[parent] {
 			continue
 		}
-		seen := map[string]bool{}
-		out[parent] = []string{}
+		if out[parent] == nil {
+			out[parent] = []string{}
+		}
 		for _, id := range ids {
 			total++
 			if total > 640 || len(id) > 100 {
@@ -77,19 +89,26 @@ func normalizeIndexLayout(ctx context.Context, root string, order map[string][]s
 			if !known {
 				continue
 			}
-			if expected != parent {
+			targetParent := parent
+			if legacy && parent == "group:bitmap" && strings.HasPrefix(expected, "district:") {
+				targetParent = expected
+			}
+			if expected != targetParent {
 				return nil, fmt.Errorf("a track cannot move outside its parent")
 			}
-			if !seen[id] {
-				out[parent] = append(out[parent], id)
-				seen[id] = true
+			if seen[targetParent] == nil {
+				seen[targetParent] = map[string]bool{}
+			}
+			if !seen[targetParent][id] {
+				out[targetParent] = append(out[targetParent], id)
+				seen[targetParent][id] = true
 			}
 		}
 	}
 	return out, nil
 }
 func readIndexLayout(ctx context.Context, root string) (indexLayoutDocument, error) {
-	d := indexLayoutDocument{Schema: 1, Order: map[string][]string{}}
+	d := indexLayoutDocument{Schema: 2, Order: map[string][]string{}}
 	path := indexLayoutPath(root)
 	if err := updateapply.CheckPath(path); err != nil {
 		return d, err
@@ -101,10 +120,12 @@ func readIndexLayout(ctx context.Context, root string) (indexLayoutDocument, err
 	if err != nil {
 		return d, err
 	}
-	if d.Schema != 1 || d.Order == nil || d.Checksum != indexLayoutDigest(d) {
+	if (d.Schema != 1 && d.Schema != 2) || d.Order == nil || d.Checksum != indexLayoutDigest(d) {
 		return d, fmt.Errorf("saved timeline layout is damaged; indexing state was not changed")
 	}
-	d.Order, err = normalizeIndexLayout(ctx, root, d.Order)
+	d.Order, err = normalizeIndexLayoutVersion(ctx, root, d.Order, d.Schema == 1)
+	d.Schema = 2
+	d.Checksum = indexLayoutDigest(d)
 	return d, err
 }
 func (a *app) handleIndexLayout(w http.ResponseWriter, r *http.Request) {

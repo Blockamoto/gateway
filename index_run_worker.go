@@ -138,6 +138,11 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 	c, _ := runSelection(r.Request, p.Index)
 	v := &indexRunConsumer{selection: c, progress: p}
 	var err error
+	if bitmapConsumerID(p.Index) {
+		if err = checkIndexRunPublication(ctx); err != nil {
+			return v, err
+		}
+	}
 	if c.Rebuild {
 		switch c.Index {
 		case "utxo-state":
@@ -335,7 +340,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 	consumers := []*indexRunConsumer{}
 	counts := record.Counts
 	for _, p := range record.Consumers {
-		c, err := a.openRunConsumer(a.indexRunConsumerContext(ctx, p.Index), record, p)
+		c, err := a.openRunConsumer(a.indexRunBoundConsumerContext(ctx, p), record, p)
 		if c == nil {
 			s, _ := runSelection(record.Request, p.Index)
 			c = &indexRunConsumer{selection: s, progress: p}
@@ -521,7 +526,15 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				waiting = true
 				continue
 			}
-			consumerCtx := a.indexRunConsumerContext(ctx, c.selection.Index)
+			consumerCtx := a.indexRunBoundConsumerContext(ctx, c.progress)
+			if bitmapConsumerID(c.selection.Index) {
+				if err := checkIndexRunPublication(consumerCtx); err != nil {
+					c.progress.State = "failed"
+					c.progress.Reason = err.Error()
+					failed = true
+					continue
+				}
+			}
 			if err := a.reconcileRunConsumer(consumerCtx, c, authority); err != nil {
 				c.progress.State = "waiting"
 				if runTerminal(err) {
@@ -673,12 +686,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					c.retryAfter = time.Now().Add(time.Second)
 					continue
 				}
-				publishCtx := context.WithValue(ctx, indexRunPublicationKey{}, func() error {
-					if err := ctx.Err(); err != nil {
+				consumerCtx := a.indexRunBoundConsumerContext(ctx, c.progress)
+				publishCtx := context.WithValue(consumerCtx, indexRunPublicationKey{}, func() error {
+					if err := checkIndexRunPublication(consumerCtx); err != nil {
 						return err
-					}
-					if !indexRunOptionalWorkAllowed(a.dataDir, c.selection.Index) {
-						return errIndexRunConsumerStopped
 					}
 					current, e := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), h)
 					if e != nil {
@@ -785,12 +796,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				c.progress.Reason = "Selected branch changed before publication."
 				continue
 			}
-			publishCtx := context.WithValue(blockCtx, indexRunPublicationKey{}, func() error {
-				if err := ctx.Err(); err != nil {
+			consumerCtx := a.indexRunBoundConsumerContext(blockCtx, c.progress)
+			publishCtx := context.WithValue(consumerCtx, indexRunPublicationKey{}, func() error {
+				if err := checkIndexRunPublication(consumerCtx); err != nil {
 					return err
-				}
-				if !indexRunOptionalWorkAllowed(a.dataDir, c.selection.Index) {
-					return errIndexRunConsumerStopped
 				}
 				current, e := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), h)
 				if e != nil {

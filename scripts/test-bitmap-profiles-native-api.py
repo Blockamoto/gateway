@@ -94,13 +94,65 @@ def main():
         checks.append('instance/profile-bound unknown reads without jobs')
         renamed = call('/api/v1/bitmap/profiles', dict(action='rename', id=track['id'], label='Renamed reference'))
         assert renamed['instance']['profile_hash'] == track['profile_hash']
+        assert renamed['instance']['configuration_revision'] == track['configuration_revision']
         checks.append('rename preserves executable rules identity')
+        track = renamed['instance']
+        assert track['classification'] == 'standard' and track['rules_editable']
+        assert not any(item.get('rules_editable') for item in initial['instances'])
+        delete_before_edit = call('/api/v1/index/delete?index=' + track['id'])
+        original_hash = track['profile_hash']
+        original_revision = track['configuration_revision']
+        update = dict(action='update', id=track['id'], kind='district',
+                      label=track['label'], rules=dict(initial['reference']['district'], text=0),
+                      expected_profile=original_hash,
+                      expected_configuration_revision=original_revision)
+        edited = call('/api/v1/bitmap/profiles', update)
+        track = edited['instance']
+        assert track['id'] == parcel['district_instance']
+        assert track['profile_hash'] != original_hash
+        assert track['configuration_revision'] > original_revision
+        assert track['classification'] == 'non_standard' and track['rules_editable']
+        current = {item['id']: item for item in call('/api/v1/bitmap/profiles')['instances']}
+        parcel, chain = current[parcel['id']], current[chain['id']]
+        assert parcel['district_profile_hash'] == chain['district_profile_hash'] == track['profile_hash']
+        assert parcel['profile']['district_profile_hash'] == track['profile_hash']
+        call('/api/v1/bitmap/profiles', update, 409)
+        call('/api/v1/bitmap/view?kind=district&instance=' + track['id'] + '&expected_profile=' + original_hash, expected=400)
+        call('/api/v1/index/delete', dict(index=track['id'], review_id=delete_before_edit['review_id']), 409)
+        checks.append('unindexed rules edit preserves IDs, atomically rebinds children and refuses stale edits, views and deletion reviews')
+        restored_rules = call('/api/v1/bitmap/profiles', dict(action='update', id=track['id'],
+                    kind='district', label=track['label'], rules=initial['reference']['district'],
+                    expected_profile=track['profile_hash'],
+                    expected_configuration_revision=track['configuration_revision']))
+        track = restored_rules['instance']
+        assert track['classification'] == 'standard' and track['profile_hash'] == original_hash
+        assert track['configuration_revision'] > original_revision
+        assert track['label'] == 'Renamed reference'
+        current = {item['id']: item for item in call('/api/v1/bitmap/profiles')['instances']}
+        parcel, chain = current[parcel['id']], current[chain['id']]
+        checks.append('Standard classification follows rule values independently of the custom display name')
         rules = dict(initial['reference']['district'], text=0)
-        variant = call('/api/v1/bitmap/profiles', dict(action='create', kind='district', label='Media comparison', rules=rules))['instance']
+        variant = call('/api/v1/bitmap/profiles', dict(action='create', kind='district',
+                    label='Bitmap District Standard 2', auto_label=True, rules=rules))['instance']
         assert variant['profile_hash'] != track['profile_hash']
+        assert variant['auto_label'] and variant['label'] == 'Bitmap District Non-standard 2'
         result = call('/api/v1/bitmap/compare?baseline=' + track['id'] + '&variant=' + variant['id'])
         assert result['state'] == 'unavailable' and result['compared_blocks'] == 0
         checks.append('distinct alternative profile and honest unavailable comparison with Chain Off')
+        variant = call('/api/v1/bitmap/profiles', dict(action='update', id=variant['id'],
+                    kind='district', label=variant['label'], auto_label=True,
+                    rules=initial['reference']['district'], expected_profile=variant['profile_hash'],
+                    expected_configuration_revision=variant['configuration_revision']))['instance']
+        assert variant['classification'] == 'standard' and variant['label'] == 'Bitmap District Standard 2'
+        variant = call('/api/v1/bitmap/profiles', dict(action='rename', id=variant['id'],
+                    label=variant['label']))['instance']
+        assert not variant.get('auto_label')
+        variant = call('/api/v1/bitmap/profiles', dict(action='update', id=variant['id'],
+                    kind='district', label=variant['label'], rules=rules,
+                    expected_profile=variant['profile_hash'],
+                    expected_configuration_revision=variant['configuration_revision']))['instance']
+        assert variant['classification'] == 'non_standard' and variant['label'] == 'Bitmap District Standard 2'
+        checks.append('automatic names follow rule classification until explicit rename, including a deliberately chosen matching name')
 
         owned = profile / 'indexes' / 'bitmap-development-v1' / track['id']
         owned.mkdir(parents=True)
@@ -113,13 +165,16 @@ def main():
         result = call('/api/v1/index/delete', dict(index=track['id'], review_id=review['review_id']))
         assert result['deleted'] and not result.get('cleanup_pending') and not owned.exists()
         assert any(item['id'] == track['id'] for item in call('/api/v1/bitmap/profiles')['instances'])
+        locked_track = next(item for item in call('/api/v1/bitmap/profiles')['instances'] if item['id'] == track['id'])
+        assert locked_track['rules_locked'] and not locked_track.get('rules_editable')
         checks.append('stale deletion refused, confirmed owned-data deletion, definition preserved')
+        checks.append('observed indexing evidence keeps rules locked after saved-data deletion')
         after = call('/api/v1/index/status')
         assert not after['jobs'] and after['run'].get('run') is None
         checks.append('management and inspection never launched an index job')
         layout = {'root': ['group:bitmap', 'group:txio', 'group:blocks'],
                   'group:txio': ['txio-sat-ranges', 'txio-links'],
-                  'district:' + track['id']: [chain['id']]}
+                  'district:' + track['id']: [parcel['id']]}
         saved = call('/api/v1/index/layout', dict(order=layout))
         assert saved['order'] == layout and saved['revision'] > 0
         process.terminate()

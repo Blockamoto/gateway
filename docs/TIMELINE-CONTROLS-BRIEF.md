@@ -203,7 +203,7 @@ Keep legacy single-index entry points as adapters to the same scheduling contrac
 
 ## Delivered ruleset preview review notes
 
-Captured during the user's review of runtime `74e7529` on 16 October 2026. These are pending design notes; the delivered preview remains unchanged while feedback is collected.
+Captured during the user's review of runtime `74e7529` on 16 October 2026, then authorized for implementation on the development branch. A replacement build will receive separate acceptance; the delivered preview remains unchanged.
 
 - **Panel maximization:** the physical backtick key maximizes the hovered panel, with the last focused panel as a keyboard fallback. The same key, Escape or a visible Restore layout control returns the exact previous arrangement. Suppress the shortcut in editable fields, during composition and for modifier chords or repeated keydown events. Use one workspace controller for the Inspector, viewport and timeline, preserving live DOM, split ratios, focus and scroll state. Open menus, help and dialogs consume Escape before layout restoration; layout restoration precedes timeline ascent. Coordinate with the existing viewport fullscreen control. Keep Restore outside isolated inscription content, which must not gain authority over app layout.
 - **Inactive track controls:** Arm and follow-new-blocks icons need a faint outline or raised button treatment when off, preserving the clearly pressed treatment when on.

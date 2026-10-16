@@ -6,39 +6,41 @@ The reference remains the same pinned source, now **Blockamoto/bitmap-old, `main
 
 ## Recommended product model
 
-Each saved custom ruleset gets **one timeline track, typed Districts or Parcels**. It has its own immutable interpretation, progress, winner state and coverage. Multiple District interpretations can build in the same shared run without overwriting one another.
+Each custom ruleset gets **one timeline track, typed Districts or Parcels**. It has a stable track ID and its own configuration revision, progress, winner state and coverage. Rules remain editable while the track and affected dependents are unindexed and unreserved; indexed evidence locks the interpretation. Multiple District interpretations can build in the same shared run without overwriting one another.
 
 **Bitmap Chain belongs beneath the District track whose outcomes it commits.** Its parent binding is explicit and immutable. Enabling Chain stages that child consumer for the next reviewed run; each durably completed District block can then feed one Chain step. It is not a global Chain that mixes all interpretations.
 
 ```text
-Bitmap
-  Reference Districts                     Arm   Live
-    Chain                                On    Live
-  Reference Parcels                       Arm   Live
-    Requires: Reference Districts
-  Districts — alternative rules          Arm   Live
-    Chain                                On    Live
-  Parcels — alternative rules            Arm   Live
-    Requires: Reference Districts
+Bitmap                                     [click: comparisons]
+  Reference Districts                     Arm   Live   Chain
+    [thin Chain lane in the time area only, when enabled]
+    Reference Parcels                     Arm   Live
+    Parcels — alternative rules           Arm   Live
+    [+ add Parcel ruleset under this District]
+  Districts — alternative rules           Arm   Live   Chain
+    [+ add Parcel ruleset under this District]
+  [+ add District ruleset for comparison]
 ```
 
-The illustration uses readable control names; the production controls retain the compact symbols, accessible names and hover explanations already established. The Chain child also has an independent storage choice in Index Settings: **Full history** or **Pruned — current + recovery**. Live scheduling and pruning answer different questions.
+The illustration uses readable control names; the production controls retain compact symbols, accessible names and hover explanations. Chain has no separate named left-column track row or duplicate Arm control. Its enabled mini lane stays immediately beneath its District canvas. Its independent Live and **Full history** or **Pruned — current + recovery** choices remain in the parent track's settings. Live scheduling and pruning answer different questions.
 
 The current reference Chain format commits District outcomes only. A Parcel track may link to its selected District's Chain, but must not imply that its Parcel results are included. Parcel-to-Parcel result comparisons are useful without inventing a Parcel Chain format. [Source: Chain specification][C].
 
 ## Creation and editing
 
-Use the existing Plus location for its reserved custom-index purpose: **Add Bitmap ruleset…**. Built-in tracks remain present; do not restore the old catalogue of optional built-ins.
+Create tracks from the timeline's blank plus rows. Built-in tracks remain present; do not restore the old catalogue of optional built-ins or duplicate add-track actions in the top-left details panel.
 
-1. Choose **Districts** or **Parcels**, and clone reference values or an existing profile. Creating Districts offers an unchecked **Also add a linked Parcel ruleset** option. The District settings offer **Add linked Parcel ruleset…** later through the same flow. Pairing is optional; the Parcel remains a distinct profile/track, explicitly bound to that District.
-2. Open the draft in the top-left **Index Settings** tab. Give it a display name.
+1. Use Bitmap's plus row to create an unarmed Standard-settings District track. Expand a District and use its nested plus row to create a Parcel variant bound to that exact District. Pairing is optional; every Parcel remains a distinct profile/track inside its parent.
+2. Creating selects that track's top-left **Index Settings** tab. Choose Standard settings or an existing named profile and give the track a display name.
 3. Edit named rule switches, with a short question, the reference value and the selected `0/1` value. Group core and optional rules; offer a concise changed-values view.
-4. For Parcels, select the exact District track defining its recognized parent. Show that dependency by name and fingerprint.
+4. For Parcels, show the exact District dependency by name and fingerprint. Changing parent requires a new Parcel track; editing does not reparent an existing row.
 5. Validate the interpretation. Unsupported configurations may be retained as clearly labelled drafts, but cannot start indexing.
-6. Save a supported profile to create a distinct track, initially unarmed and non-Live. Saving starts no work. Its District Chain child is initially Off; enabling it is also staged until Start.
+6. Save supported rule changes into the same unindexed track, updating its configuration revision and rules fingerprint. Saving starts no work. The District's attached Chain is initially Off; enabling it is staged until Start.
 7. Arm the desired tracks, set Live and the global range, then use the single reviewed Play/Start transport. It preserves per-track Live choices; there is no separate global Record mode changing those choices.
 
-Once saved as an executable profile, its semantics are immutable. **Change rules** clones a new draft/track; it never reinterprets an existing track's results. Renaming is metadata and does not change the rules fingerprint. Existing experimental profiles preserve their old interpretation and provenance.
+Once indexing evidence exists, the track's rules lock persistently, including after ordinary data deletion. Admitted or resumable work also reserves affected bindings until canceled or replaced through review. An unbuilt District edit atomically updates its attached Chain and linked unbuilt Parcel fingerprints, retaining each Parcel's rule answers; any locked dependent blocks the edit. Prepared reviews and comparison cursors bind configuration revisions and become stale after an edit. Renaming is independent metadata and does not change the rules fingerprint or configuration revision. Existing fixed experimental profiles preserve their original interpretation and provenance.
+
+Standard/Non-standard is derived from the selected reference answers rather than a nickname. Generated names follow that classification while they remain automatically managed; explicitly renaming a track preserves the chosen name. Keep the stable track identifier available in details without restoring the removed ordinal track-number column.
 
 The review panel must explicitly say when a plan is ready and expose a visible **Start indexing** confirmation. Pressing Play a second time is the equivalent shortcut. The former preview's confirmation was too easy to miss. The single Start model supersedes the earlier finite-Play/following-Record design: Arm and Live on each track are the only scheduling choices. Mixed historical catch-up and caught-up Live consumers share fair turns. Idle Live consumers do not re-fetch or reindex unchanged blocks; selected source changes, including same-height reorgs, require new work/reconciliation. Global Out still caps following.
 
@@ -72,18 +74,19 @@ The profile must declare exact parser, charset/decoder, parent validator, select
 
 ## Identity, isolation and shared work
 
-Keep four concepts separate:
+Keep these concepts separate:
 
 | Concept | Purpose |
 | --- | --- |
 | Track instance | Durable identity for one saved track and its data. Display names may change. |
+| Configuration revision | Version of an unindexed track's editable configuration; binds reviews and dependent interpretations independently of its name. |
 | Semantic profile `R` | Exact executable interpretation, including named answers and semantic dependency/activation policy. |
 | Source/scope | Network, selected Bitcoin branch, evaluated interval and sufficient prior context. |
 | Storage and scheduling | Retention, Live, Arm, cache policy and checkpoint cadence. These do not alter `R`. |
 
-A Parcel profile binds its District semantic `R`; its track also selects the particular District instance providing authenticated data. Changing the District interpretation requires a new dependent Parcel profile. An attached Chain binds both the exact District instance and `R`.
+A Parcel profile binds its District semantic `R` and exact District instance. An eligible unbuilt District edit recomputes the dependent Parcel profile atomically within the same track ID. Once any affected track is indexed or reserved, use a separate ruleset track instead of reinterpreting its evidence. An attached Chain binds the exact District instance, `R` and configuration revision.
 
-Runs, heads, APIs, URLs/history and pagination must select **instance + kind + expected profile**. Current fixed consumer IDs reject two same-kind selections and map reads to one fixed directory. Merely adding a profile dropdown over that directory would overwrite or confuse evidence. See [profile definitions](../bitmap_development.go), [store acceptance](../bitmap_development_store.go), [read selectors](../bitmap_development_api.go), [run admission](../index_run.go) and [timeline definitions](../ui/shell/index-timeline.js).
+Runs, heads, APIs, URLs/history and pagination must select **instance + kind + expected profile**, with mutable pre-build configuration revisions bound at review/admission/resume/publication. Distinct instances retain distinct directories; a profile dropdown over one shared store would overwrite or confuse evidence. See [profile definitions](../bitmap_development.go), [store acceptance](../bitmap_development_store.go), [read selectors](../bitmap_development_api.go), [run admission](../index_run.go) and [timeline definitions](../ui/shell/index-timeline.js).
 
 Share verified Bitcoin bytes and compatible physical inscription extraction once. Key extraction by its actual parser policy; profiles using a different parser cannot reuse a result merely because it came from the same block. Reuse sufficient authenticated candidate evidence, not only the current grammar-filtered candidate rows or short body previews. Every profile owns its eligibility decisions, winner map, ordered progression and publication guard.
 

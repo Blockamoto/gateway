@@ -259,6 +259,9 @@ func (s *bitmapRunConsumer) applyDistrictOutcome(ctx context.Context, d *bitmapD
 	if err = t.put(fmt.Sprintf("%016x", h.Height), r); err != nil {
 		return err
 	}
+	if err := s.lockProfileEvidence(ctx); err != nil {
+		return err
+	}
 	h.BlockRoot, err = t.flush()
 	if err != nil {
 		return err
@@ -324,6 +327,9 @@ func (s *bitmapRunConsumer) chainRecoveryHeads(ctx context.Context, h bitmapDeve
 	return points, nil
 }
 func (s *bitmapRunConsumer) persistChainCommit(ctx context.Context, h bitmapDevelopmentHead) (bitmapDevelopmentHead, error) {
+	if err := s.lockProfileEvidence(ctx); err != nil {
+		return h, err
+	}
 	if h.DistrictReceipt == nil {
 		d, err := readBitmapDevelopmentCommit(ctx, s.root, s.instance.DistrictInstance, h.DependencyCommitment)
 		if err != nil {

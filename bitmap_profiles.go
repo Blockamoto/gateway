@@ -3,7 +3,6 @@ package main
 // Named Gateway profiles are deliberately distinct from the preserved preview
 // profiles and from an unfinished upstream canonical bit-field serialization.
 import (
-	"./internal/updateapply"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -181,20 +180,26 @@ type bitmapProfileValidation struct {
 	Note        string                    `json:"note"`
 }
 type bitmapProfileInstance struct {
-	ID                  string                   `json:"id"`
-	Kind                string                   `json:"kind"`
-	Label               string                   `json:"label"`
-	Profile             bitmapDevelopmentProfile `json:"profile"`
-	ProfileHash         string                   `json:"profile_hash"`
-	Rules               map[string]int           `json:"rules,omitempty"`
-	StartHeight         int64                    `json:"start_height"`
-	DistrictInstance    string                   `json:"district_instance,omitempty"`
-	DistrictProfileHash string                   `json:"district_profile_hash,omitempty"`
-	ChainInstance       string                   `json:"chain_instance,omitempty"`
-	State               string                   `json:"state"`
-	Legacy              bool                     `json:"legacy,omitempty"`
-	Draft               bool                     `json:"draft,omitempty"`
-	Note                string                   `json:"note"`
+	AutoLabel             bool                     `json:"auto_label,omitempty"`
+	ConfigurationRevision uint64                   `json:"configuration_revision,omitempty"`
+	RulesLocked           bool                     `json:"rules_locked,omitempty"`
+	RulesEditable         bool                     `json:"rules_editable,omitempty"`
+	RulesLockReason       string                   `json:"rules_lock_reason,omitempty"`
+	Classification        string                   `json:"classification,omitempty"`
+	ID                    string                   `json:"id"`
+	Kind                  string                   `json:"kind"`
+	Label                 string                   `json:"label"`
+	Profile               bitmapDevelopmentProfile `json:"profile"`
+	ProfileHash           string                   `json:"profile_hash"`
+	Rules                 map[string]int           `json:"rules,omitempty"`
+	StartHeight           int64                    `json:"start_height"`
+	DistrictInstance      string                   `json:"district_instance,omitempty"`
+	DistrictProfileHash   string                   `json:"district_profile_hash,omitempty"`
+	ChainInstance         string                   `json:"chain_instance,omitempty"`
+	State                 string                   `json:"state"`
+	Legacy                bool                     `json:"legacy,omitempty"`
+	Draft                 bool                     `json:"draft,omitempty"`
+	Note                  string                   `json:"note"`
 }
 type bitmapProfileDocument struct {
 	Schema    int                     `json:"schema"`
@@ -204,15 +209,18 @@ type bitmapProfileDocument struct {
 	Checksum  string                  `json:"checksum"`
 }
 type bitmapProfileRequest struct {
-	Action           string         `json:"action"`
-	ID               string         `json:"id,omitempty"`
-	Kind             string         `json:"kind"`
-	Label            string         `json:"label"`
-	Rules            map[string]int `json:"rules"`
-	DistrictInstance string         `json:"district_instance,omitempty"`
-	LinkedParcel     bool           `json:"linked_parcel,omitempty"`
-	ParcelLabel      string         `json:"parcel_label,omitempty"`
-	ParcelRules      map[string]int `json:"parcel_rules,omitempty"`
+	AutoLabel                     bool           `json:"auto_label,omitempty"`
+	ExpectedProfile               string         `json:"expected_profile,omitempty"`
+	ExpectedConfigurationRevision uint64         `json:"expected_configuration_revision,omitempty"`
+	Action                        string         `json:"action"`
+	ID                            string         `json:"id,omitempty"`
+	Kind                          string         `json:"kind"`
+	Label                         string         `json:"label"`
+	Rules                         map[string]int `json:"rules"`
+	DistrictInstance              string         `json:"district_instance,omitempty"`
+	LinkedParcel                  bool           `json:"linked_parcel,omitempty"`
+	ParcelLabel                   string         `json:"parcel_label,omitempty"`
+	ParcelRules                   map[string]int `json:"parcel_rules,omitempty"`
 }
 
 func bitmapCustomConsumerID(id string) bool {
@@ -316,6 +324,8 @@ func bitmapProfileDocumentDigest(d bitmapProfileDocument) string {
 	return indexDigest(d)
 }
 func bitmapReadProfileDocument(ctx context.Context, root string) (bitmapProfileDocument, error) {
+	bitmapProfileFileMu.RLock()
+	defer bitmapProfileFileMu.RUnlock()
 	d := bitmapProfileDocument{Schema: 2, Instances: []bitmapProfileInstance{}, Drafts: []bitmapProfileInstance{}}
 	err := readBitmapJSON(ctx, bitmapProfilePath(root), &d)
 	if os.IsNotExist(err) {
@@ -400,7 +410,9 @@ func bitmapLegacyInstance(id string) bitmapProfileInstance {
 }
 func bitmapResolvedInstance(ctx context.Context, root, id string) (bitmapProfileInstance, error) {
 	if id == "bitmap-districts" || id == "bitmap-parcels" || id == "bitmap-chain" {
-		return bitmapLegacyInstance(id), nil
+		i := bitmapLegacyInstance(id)
+		i.ConfigurationRevision = bitmapEffectiveConfigurationRevision(i)
+		return i, nil
 	}
 	if !bitmapCustomConsumerID(id) {
 		return bitmapProfileInstance{}, fmt.Errorf("invalid Bitmap instance identity")
@@ -411,6 +423,7 @@ func bitmapResolvedInstance(ctx context.Context, root, id string) (bitmapProfile
 	}
 	for _, i := range d.Instances {
 		if i.ID == id {
+			i.ConfigurationRevision = bitmapEffectiveConfigurationRevision(i)
 			return i, nil
 		}
 	}
@@ -422,7 +435,11 @@ func bitmapProfileInstances(ctx context.Context, root string) ([]bitmapProfileIn
 		return nil, err
 	}
 	out := []bitmapProfileInstance{bitmapLegacyInstance("bitmap-districts"), bitmapLegacyInstance("bitmap-parcels"), bitmapLegacyInstance("bitmap-chain")}
-	return append(out, d.Instances...), nil
+	out = append(out, d.Instances...)
+	for n := range out {
+		out[n].ConfigurationRevision = bitmapEffectiveConfigurationRevision(out[n])
+	}
+	return out, nil
 }
 func bitmapNamedSemanticProfile(kind string, answers map[string]int, districtR string) bitmapDevelopmentProfile {
 	p := bitmapDevelopmentProfile{ID: "gateway-bitmap-" + kind + "-named-development-v2", FingerprintSchema: bitmapNamedProfileSchema, ReferenceRevision: bitmapNamedReferenceRevision, ParserProfile: inscriptionParserProfile, ParserReference: inscriptionReferenceCommit, Kind: kind, Answers: bitmapCopyAnswers(answers), DecoderPolicy: "declared-charset-strict-gateway-v1", ActivationPolicy: "gateway-declared-segment-begin-v1", ActivationHeight: bitmapDevelopmentStart, ContextPolicy: "earlier-claims-not-evaluated; recognition is segment-scoped; no canonical-first-winner claim", Rules: []string{"Named answers under an explicit Gateway development interpretation; not canonical profile bytes.", "Whole own-body canonical claim grammar; first eligible physical reveal order.", "burns=0 preserves recognized claims after later burning; ownership is separate."}}
@@ -545,6 +562,7 @@ func bitmapSaveProfile(ctx context.Context, root string, q bitmapProfileRequest)
 		for n := range d.Instances {
 			if d.Instances[n].ID == q.ID {
 				d.Instances[n].Label = strings.TrimSpace(q.Label)
+				d.Instances[n].AutoLabel = false
 				found = true
 			}
 		}
@@ -562,6 +580,13 @@ func bitmapSaveProfile(ctx context.Context, root string, q bitmapProfileRequest)
 		if v.State != "ready" && q.Action != "save_draft" {
 			return map[string]any{"validation": v}, fmt.Errorf("Bitmap profile is %s; review its named rule issues", v.State)
 		}
+		if q.AutoLabel {
+			label, e := bitmapAutomaticLabel(q.Kind, q.Label, q.Rules)
+			if e != nil {
+				return nil, e
+			}
+			q.Label = label
+		}
 		if len(d.Instances) >= 189 || len(d.Drafts) >= 64 {
 			return nil, fmt.Errorf("Bitmap profile limit reached")
 		}
@@ -569,7 +594,7 @@ func bitmapSaveProfile(ctx context.Context, root string, q bitmapProfileRequest)
 		if e != nil {
 			return nil, e
 		}
-		i := bitmapProfileInstance{ID: "bitmap-districts-" + suffix, Kind: q.Kind, Label: strings.TrimSpace(q.Label), Rules: bitmapCopyAnswers(q.Rules), StartHeight: bitmapDevelopmentStart, DistrictInstance: q.DistrictInstance, State: v.State, Note: v.Note}
+		i := bitmapProfileInstance{AutoLabel: q.AutoLabel, ConfigurationRevision: 1, ID: "bitmap-districts-" + suffix, Kind: q.Kind, Label: strings.TrimSpace(q.Label), Rules: bitmapCopyAnswers(q.Rules), StartHeight: bitmapDevelopmentStart, DistrictInstance: q.DistrictInstance, State: v.State, Note: v.Note}
 		if q.Kind == "parcel" {
 			i.ID = "bitmap-parcels-" + suffix
 		}
@@ -618,28 +643,14 @@ func bitmapSaveProfile(ctx context.Context, root string, q bitmapProfileRequest)
 					return nil, fmt.Errorf("linked Parcel profile is %s", pv.State)
 				}
 				pp := *pv.Profile
-				d.Instances = append(d.Instances, bitmapProfileInstance{ID: "bitmap-parcels-" + ps, Kind: "parcel", Label: strings.TrimSpace(label), Rules: bitmapCopyAnswers(rules), Profile: pp, ProfileHash: bitmapProfileHash(pp), StartHeight: bitmapDevelopmentStart, DistrictInstance: i.ID, DistrictProfileHash: i.ProfileHash, State: "ready", Note: v.Note})
+				d.Instances = append(d.Instances, bitmapProfileInstance{ConfigurationRevision: 1, ID: "bitmap-parcels-" + ps, Kind: "parcel", Label: strings.TrimSpace(label), Rules: bitmapCopyAnswers(rules), Profile: pp, ProfileHash: bitmapProfileHash(pp), StartHeight: bitmapDevelopmentStart, DistrictInstance: i.ID, DistrictProfileHash: i.ProfileHash, State: "ready", Note: v.Note})
 			}
 		}
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	d.Revision++
-	d.Checksum = bitmapProfileDocumentDigest(d)
-	if err := updateapply.CheckPath(bitmapProfilePath(root)); err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(filepath.Dir(bitmapProfilePath(root)), 0700); err != nil {
-		return nil, err
-	}
-	if err := updateapply.CheckPath(bitmapProfilePath(root)); err != nil {
-		return nil, err
-	}
-	if err := atomicWriteJSON(bitmapProfilePath(root), d); err != nil {
-		return nil, err
-	}
-	if err := syncDirectory(filepath.Dir(bitmapProfilePath(root))); err != nil {
+	if err := bitmapWriteProfileDocument(ctx, root, &d); err != nil {
 		return nil, err
 	}
 	out := map[string]any{"ok": true, "revision": d.Revision}

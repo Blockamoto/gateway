@@ -79,6 +79,9 @@ jobs:
           export NODE_PATH="$RUNNER_TEMP/gateway-browser/node_modules"
           node scripts/test-bitmap-view-browser.js
           node scripts/test-workspace-resources-browser.js
+          node scripts/test-bitmap-profiles-browser.js
+          node scripts/test-workspace-maximize-browser.js
+          python3 scripts/test-bitmap-profiles-native-api.py --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/browser-bitmap-profile-api"
           node scripts/test-timeline-review-browser.js
           node scripts/test-addresses-browser.js
           node scripts/test-sats-077-browser.js

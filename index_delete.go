@@ -142,9 +142,14 @@ func (a *app) indexDeleteReviewLocked(ctx context.Context, id string) (indexDele
 	if d, e := findIndexDefinition(id); e == nil {
 		r.Name = d.Name
 	}
+	profileBinding := ""
 	if bitmapConsumerID(id) {
 		if i, e := bitmapResolvedInstance(ctx, a.dataDir, id); e == nil {
 			r.Name = i.Label
+			profileBinding = indexDigest(struct {
+				Profile, District, DistrictProfile string
+				Revision                           uint64
+			}{i.ProfileHash, i.DistrictInstance, i.DistrictProfileHash, bitmapEffectiveConfigurationRevision(i)})
 		}
 	}
 	paths, err := indexDeletePaths(a.dataDir, id)
@@ -227,13 +232,14 @@ func (a *app) indexDeleteReviewLocked(ctx context.Context, id string) (indexDele
 	}
 	r.Ready = len(r.Blockers) == 0
 	r.ReviewID = indexDigest(struct {
-		Index        string
-		Stamps       []indexDeletePathStamp
-		Run          indexRunDocument
-		Queue        []indexQueueEntry
-		Policy       indexLivePolicy
-		Dependencies []indexDeleteDependency
-	}{id, stamps, cloneIndexRunDocument(a.indexRunState), a.indexQueue, policies[id], r.Dependencies})
+		Index          string
+		Stamps         []indexDeletePathStamp
+		Run            indexRunDocument
+		Queue          []indexQueueEntry
+		Policy         indexLivePolicy
+		Dependencies   []indexDeleteDependency
+		ProfileBinding string
+	}{id, stamps, cloneIndexRunDocument(a.indexRunState), a.indexQueue, policies[id], r.Dependencies, profileBinding})
 	return r, nil
 }
 
@@ -301,6 +307,23 @@ func (a *app) deleteIndexData(ctx context.Context, id, reviewID string) (map[str
 		paths, e := indexDeletePaths(a.dataDir, r.Index)
 		if e != nil {
 			return nil, e
+		}
+		if bitmapCustomConsumerID(r.Index) {
+			haveEvidence, err := bitmapProfileHasEvidence(ctx, a.dataDir, r.Index)
+			if err != nil {
+				return nil, err
+			}
+			if haveEvidence {
+				i, err := bitmapResolvedInstance(ctx, a.dataDir, r.Index)
+				if err != nil {
+					return nil, err
+				}
+				// Keep the indexed interpretation locked even after its owned
+				// directory is detached. The storage guard owns bitmapProfilesMu.
+				if err = bitmapProfileLockForWriteLocked(ctx, a.dataDir, i.ID, i.ProfileHash, bitmapEffectiveConfigurationRevision(i)); err != nil {
+					return nil, err
+				}
+			}
 		}
 		// Stop future publishers before detaching any store. Changes are durable;
 		// a failure leaves data stopped rather than reviving a stale saved job.

@@ -289,6 +289,9 @@ func (s *bitmapRunConsumer) publish(ctx context.Context, h bitmapDevelopmentHead
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := s.lockProfileEvidence(ctx); err != nil {
+		return err
+	}
 	if err := updateapply.CheckPath(s.dir); err != nil {
 		return err
 	}
@@ -450,6 +453,9 @@ func (s *bitmapRunConsumer) pending(ctx context.Context, block blockView, rows [
 	if err := checkIndexRunPublication(ctx); err != nil {
 		return err
 	}
+	if err := s.lockProfileEvidence(ctx); err != nil {
+		return err
+	}
 	if err := writeBitmapChainBytes(ctx, filepath.Join(s.dir, "pending.json"), raw); err != nil {
 		return err
 	}
@@ -521,6 +527,9 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 			row.Note = "District outcomes under the declared experimental profile; this digest does not prove correct evaluation or complete consensus validation."
 			h.LastBlock = row
 			if err := blocks.put(fmt.Sprintf("%016x", block.Height), row); err != nil {
+				return err
+			}
+			if err := s.lockProfileEvidence(ctx); err != nil {
 				return err
 			}
 			h.BlockRoot, err = blocks.flush()
@@ -752,6 +761,9 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 	h.CandidateCount += uint64(len(staged))
 	h.LastBlock = row
 	if err := blocks.put(fmt.Sprintf("%016x", block.Height), row); err != nil {
+		return err
+	}
+	if err := s.lockProfileEvidence(ctx); err != nil {
 		return err
 	}
 	for _, pair := range []struct {

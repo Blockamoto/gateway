@@ -103,6 +103,7 @@ type bitmapComparisonCounts struct {
 	Unknown   int64 `json:"unknown_blocks"`
 }
 type bitmapComparisonView struct {
+	Bindings           map[string]bitmapConfigurationBinding `json:"bindings"`
 	State              string                                `json:"state"`
 	Kind               string                                `json:"kind"`
 	From               int64                                 `json:"from"`
@@ -122,11 +123,23 @@ type bitmapComparisonView struct {
 	Note       string                `json:"note"`
 }
 type bitmapComparisonCursor struct {
+	BaselineProfile, VariantProfile   string
+	BaselineRevision, VariantRevision uint64
 	Baseline, Variant                 string
 	BaselineSnapshot, VariantSnapshot string
 	From, To, Next                    int64
 	Counts                            bitmapComparisonCounts
 	MAC                               string
+}
+
+type bitmapConfigurationBinding struct {
+	Instance              string `json:"instance"`
+	ProfileHash           string `json:"profile_hash"`
+	ConfigurationRevision uint64 `json:"configuration_revision"`
+}
+
+func bitmapConfigurationOf(i bitmapProfileInstance) bitmapConfigurationBinding {
+	return bitmapConfigurationBinding{i.ID, i.ProfileHash, bitmapEffectiveConfigurationRevision(i)}
 }
 
 var bitmapComparisonKey struct {
@@ -268,6 +281,10 @@ func bitmapComparisonReadSide(ctx context.Context, root, id, snapshot string, he
 }
 
 func (a *app) bitmapCompareContext(ctx context.Context, baseline, variant string, from, to *int64, limit int, cursor string, after *int64, afterHash string) (bitmapComparisonView, error) {
+	return a.bitmapCompareBoundContext(ctx, baseline, variant, from, to, limit, cursor, after, afterHash, nil)
+}
+
+func (a *app) bitmapCompareBoundContext(ctx context.Context, baseline, variant string, from, to *int64, limit int, cursor string, after *int64, afterHash string, expected map[string]bitmapConfigurationBinding) (bitmapComparisonView, error) {
 	out := bitmapComparisonView{State: "unavailable", BaselineID: baseline, VariantID: variant, Rows: []bitmapComparisonRow{}, Snapshots: map[string]*bitmapDevelopmentSnapshot{}, Lag: map[string]int64{}, CommonFrontier: -1, ComparedThrough: -1, Note: "Compare actual saved results under declared Gateway profiles. Unknown evidence is excluded from compared counts; no work is started."}
 	if limit < 1 || limit > 100 {
 		return out, fmt.Errorf("comparison limit must be1..100")
@@ -285,6 +302,15 @@ func (a *app) bitmapCompareContext(ctx context.Context, baseline, variant string
 	}
 	out.Kind = b.Kind
 	out.RulesDiffer = b.ProfileHash != v.ProfileHash
+	out.Bindings = map[string]bitmapConfigurationBinding{"baseline": bitmapConfigurationOf(b), "variant": bitmapConfigurationOf(v)}
+	for side, binding := range expected {
+		current, ok := out.Bindings[side]
+		if !ok || binding.Instance != "" && binding.Instance != current.Instance || binding.ProfileHash != "" && binding.ProfileHash != current.ProfileHash || binding.ConfigurationRevision != 0 && binding.ConfigurationRevision != current.ConfigurationRevision {
+			out.State = "reset_required"
+			out.Note = "A selected track configuration changed. Clear the previous comparison and review its current rules."
+			return out, nil
+		}
+	}
 	var bh, vh *bitmapDevelopmentHead
 	var cur bitmapComparisonCursor
 	if cursor != "" {
@@ -294,6 +320,11 @@ func (a *app) bitmapCompareContext(ctx context.Context, baseline, variant string
 		}
 		if cur.Baseline != baseline || cur.Variant != variant || from != nil && *from != cur.From || to != nil && *to != cur.To || after != nil {
 			return out, fmt.Errorf("comparison cursor does not match selected instances/scope")
+		}
+		if cur.BaselineProfile != b.ProfileHash || cur.VariantProfile != v.ProfileHash || cur.BaselineRevision != bitmapEffectiveConfigurationRevision(b) || cur.VariantRevision != bitmapEffectiveConfigurationRevision(v) {
+			out.State = "reset_required"
+			out.Note = "Comparison cursor belongs to an earlier track configuration. Start a fresh comparison."
+			return out, nil
 		}
 		bh, err = readBitmapDevelopmentCommit(ctx, a.dataDir, baseline, cur.BaselineSnapshot)
 		if err == nil {
@@ -386,7 +417,7 @@ func (a *app) bitmapCompareContext(ctx context.Context, baseline, variant string
 	}
 	out.From, out.To = start, end
 	if cursor == "" {
-		cur = bitmapComparisonCursor{Baseline: baseline, Variant: variant, BaselineSnapshot: bh.Commitment, VariantSnapshot: vh.Commitment, From: start, To: end, Next: start}
+		cur = bitmapComparisonCursor{Baseline: baseline, Variant: variant, BaselineProfile: b.ProfileHash, VariantProfile: v.ProfileHash, BaselineRevision: bitmapEffectiveConfigurationRevision(b), VariantRevision: bitmapEffectiveConfigurationRevision(v), BaselineSnapshot: bh.Commitment, VariantSnapshot: vh.Commitment, From: start, To: end, Next: start}
 	} else {
 		start, end = cur.From, cur.To
 		out.From, out.To = start, end
@@ -518,9 +549,25 @@ func (a *app) handleBitmapComparison(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	expected := map[string]bitmapConfigurationBinding{}
+	for _, side := range []string{"baseline", "variant"} {
+		revision, err := bitmapQueryConfigurationRevision(r, side+"_configuration_revision")
+		if err != nil {
+			jsonError(w, 400, err)
+			return
+		}
+		profile := r.URL.Query().Get(side + "_profile")
+		if profile != "" && !validHash(profile) {
+			jsonError(w, 400, fmt.Errorf("invalid comparison profile binding"))
+			return
+		}
+		if revision != 0 || profile != "" {
+			expected[side] = bitmapConfigurationBinding{ProfileHash: profile, ConfigurationRevision: revision}
+		}
+	}
 	bitmapSnapshotMu.RLock()
 	defer bitmapSnapshotMu.RUnlock()
-	out, err := a.bitmapCompareContext(r.Context(), r.URL.Query().Get("baseline"), r.URL.Query().Get("variant"), from, to, limit, r.URL.Query().Get("cursor"), after, r.URL.Query().Get("after_hash"))
+	out, err := a.bitmapCompareBoundContext(r.Context(), r.URL.Query().Get("baseline"), r.URL.Query().Get("variant"), from, to, limit, r.URL.Query().Get("cursor"), after, r.URL.Query().Get("after_hash"), expected)
 	if err != nil {
 		jsonError(w, 400, err)
 		return

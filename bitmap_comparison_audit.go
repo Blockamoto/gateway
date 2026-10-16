@@ -13,19 +13,21 @@ import (
 )
 
 type bitmapCandidateAuditPage struct {
-	State          string                       `json:"state"`
-	Instance       string                       `json:"instance"`
-	ProfileHash    string                       `json:"profile_hash"`
-	Snapshot       *bitmapDevelopmentSnapshot   `json:"snapshot"`
-	Height         int64                        `json:"height"`
-	BlockHash      string                       `json:"block_hash"`
-	CandidateCount int                          `json:"candidate_count"`
-	Rows           []bitmapDevelopmentCandidate `json:"rows"`
-	NextCursor     string                       `json:"next_cursor"`
-	HasMore        bool                         `json:"has_more"`
-	Note           string                       `json:"note"`
+	ConfigurationRevision uint64                       `json:"configuration_revision"`
+	State                 string                       `json:"state"`
+	Instance              string                       `json:"instance"`
+	ProfileHash           string                       `json:"profile_hash"`
+	Snapshot              *bitmapDevelopmentSnapshot   `json:"snapshot"`
+	Height                int64                        `json:"height"`
+	BlockHash             string                       `json:"block_hash"`
+	CandidateCount        int                          `json:"candidate_count"`
+	Rows                  []bitmapDevelopmentCandidate `json:"rows"`
+	NextCursor            string                       `json:"next_cursor"`
+	HasMore               bool                         `json:"has_more"`
+	Note                  string                       `json:"note"`
 }
 type bitmapCandidateAuditCursor struct {
+	ConfigurationRevision       uint64
 	Instance, Profile, Snapshot string
 	Height                      int64
 	Before                      string
@@ -54,6 +56,7 @@ func (a *app) bitmapCandidateAuditContext(ctx context.Context, id, snapshot, exp
 		return out, fmt.Errorf("choose the District or Parcel producer for candidate audit")
 	}
 	out.ProfileHash = i.ProfileHash
+	out.ConfigurationRevision = bitmapEffectiveConfigurationRevision(i)
 	if expected != "" && expected != i.ProfileHash {
 		return out, fmt.Errorf("candidate audit profile mismatch")
 	}
@@ -101,7 +104,7 @@ func (a *app) bitmapCandidateAuditContext(ctx context.Context, id, snapshot, exp
 		if e != nil {
 			return out, e
 		}
-		if !hmac.Equal([]byte(mac), []byte(c.MAC)) || c.Instance != id || c.Profile != i.ProfileHash || c.Snapshot != snapshot || c.Height != height || len(c.Before) != 32 || !ordinalKeyValid(c.Before) || !strings.HasPrefix(c.Before, fmt.Sprintf("%016x", height)) || c.Read < 0 || c.Read > out.CandidateCount {
+		if !hmac.Equal([]byte(mac), []byte(c.MAC)) || c.Instance != id || c.Profile != i.ProfileHash || c.ConfigurationRevision != bitmapEffectiveConfigurationRevision(i) || c.Snapshot != snapshot || c.Height != height || len(c.Before) != 32 || !ordinalKeyValid(c.Before) || !strings.HasPrefix(c.Before, fmt.Sprintf("%016x", height)) || c.Read < 0 || c.Read > out.CandidateCount {
 			return out, fmt.Errorf("candidate audit cursor does not match source/profile/scope")
 		}
 		before, read = c.Before, c.Read
@@ -155,7 +158,7 @@ func (a *app) bitmapCandidateAuditContext(ctx context.Context, id, snapshot, exp
 		return out, nil
 	}
 	if out.HasMore {
-		c := bitmapCandidateAuditCursor{Instance: id, Profile: i.ProfileHash, Snapshot: snapshot, Height: height, Before: addressHistoryBefore(last), Read: read}
+		c := bitmapCandidateAuditCursor{Instance: id, Profile: i.ProfileHash, ConfigurationRevision: bitmapEffectiveConfigurationRevision(i), Snapshot: snapshot, Height: height, Before: addressHistoryBefore(last), Read: read}
 		c.MAC, err = bitmapCandidateCursorMAC(c)
 		if err != nil {
 			return out, err
@@ -205,6 +208,11 @@ func (a *app) handleBitmapCandidateAudit(w http.ResponseWriter, r *http.Request)
 	out, err := a.bitmapCandidateAuditContext(r.Context(), r.URL.Query().Get("instance"), r.URL.Query().Get("snapshot"), r.URL.Query().Get("expected_profile"), *height, limit, r.URL.Query().Get("cursor"))
 	if err != nil {
 		jsonError(w, 400, err)
+		return
+	}
+	expectedRevision, err := bitmapQueryConfigurationRevision(r, "expected_configuration_revision")
+	if err != nil || expectedRevision != 0 && expectedRevision != out.ConfigurationRevision {
+		jsonError(w, 400, fmt.Errorf("candidate audit configuration changed; refresh the selected track"))
 		return
 	}
 	writeJSON(w, out)

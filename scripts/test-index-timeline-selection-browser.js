@@ -35,6 +35,7 @@ async function run(){
       if(url.pathname==='/favicon.ico')return reply('','image/x-icon');
       if(url.pathname==='/api/v1/appearance')return reply({theme:'light',default:'light'});
       const body=req.method()==='POST'?req.postDataJSON():null;calls.push({method:req.method(),path:url.pathname,body,time:Date.now()});
+      if(url.pathname==='/api/v1/index/run/prepare')return reply({schema:1,prepared:body});
       if(url.pathname==='/api/v1/index/status')return unavailable?reply({error:'Fixture status unavailable'},'application/json',503):reply(snapshot);
       if(url.pathname==='/api/v1/index/query')return reply({rows:[],total:0,total_known:true,inspected_blocks:0,chain_state:'selected_chain'});
       if(url.pathname==='/api/v1/index/block-map'){const height=parseInt(url.searchParams.get('block'),16);return reply({height,hash:height.toString(16).padStart(64,'0'),total:1,transaction_count:1,transactions:[{index:0,txid:height.toString(16).padStart(64,'0'),output_sats:5000000000,vsize:100,weight:400,coinbase:true}]});}
@@ -55,91 +56,27 @@ async function run(){
     const activeMarker=()=>page.evaluate(()=>({height:Number(document.activeElement.dataset.height),edge:document.activeElement.dataset.edge,index:document.activeElement.closest('.timeline-track')?.dataset.index}));
     const heightPoint=async(height,target='.timeline-lane[data-index="blocks"]')=>{const current=await view(),box=await page.locator(target).boundingBox();assert(height>=current.from&&height<=current.to);return{x:box.x+(height-current.from+.5)/(current.to-current.from+1)*box.width,y:box.y+box.height/2};};
     const clickHeight=async(height,modifiers=[])=>{const point=await heightPoint(height);for(const key of modifiers)await page.keyboard.down(key);await page.mouse.click(point.x,point.y);for(const key of modifiers.reverse())await page.keyboard.up(key);await settle();};
-    const jump=async height=>{const before=navigations().length;await selectHeight(page,height,'blocks');await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');assert.equal(navigations().length,before+1,'A deliberate jump loads exactly one block immediately');};
-    const refresh=async preserveFocus=>{const response=page.waitForResponse(r=>r.url()===origin+'/api/v1/index/status');if(preserveFocus)await page.locator('#timeline-refresh').evaluate(button=>button.click());else await page.locator('#timeline-refresh').click();await response;await settle();};
+    const jump=async height=>{const focused=()=>navigations().filter(c=>c.body.address===height+'.bitcoin').length,before=focused();await selectHeight(page,height,'blocks');await page.waitForFunction(height=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready'&&explorer.state().loadedHeight===height,height);assert(focused()-before<=1,'A deliberate jump reuses known evidence or loads its focused block only once: '+JSON.stringify({height,before,requests:navigations().map(c=>c.body)}));};
+    const refresh=async preserveFocus=>{const response=page.waitForResponse(r=>r.url()===origin+'/api/v1/index/status');await page.evaluate(()=>refresh());await response;await settle();};
     const drag=async(locator,dx)=>{await locator.waitFor({state:'visible'});const box=await locator.boundingBox();const x=box.x+box.width/2,y=box.y+box.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y,{steps:5});await page.mouse.up();await settle();};
 
-    await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.locator('#timeline-expand').click();
-    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks'],'Both foundational tracks exist without raw blocks');
-    assert.equal(await page.locator('.timeline-add-track-row').evaluate(el=>el.parentElement.lastElementChild===el),true,'Plus row is after all tracks');
-    assert.equal(await page.locator('.timeline-track[data-index="blocks"] .timeline-track-placeholder').isVisible(),false,'Empty coverage does not obscure selectable positions');
-    const plus=page.locator('#timeline-add-index'),picker=page.locator('#timeline-index-picker');
-    await plus.click();assert.equal(await picker.locator('[data-index="inscriptions"]').isDisabled(),true);
-    const pickerBounds=await picker.boundingBox(),plusBounds=await plus.boundingBox();
-    assert(pickerBounds.y>=0&&pickerBounds.y+pickerBounds.height<=1000,'Tall catalog popup stays inside the viewport');
-    assert(pickerBounds.y+pickerBounds.height<=plusBounds.y-7||pickerBounds.y>=plusBounds.y+plusBounds.height+7,'Catalog popup preserves a clear gap around its plus trigger');
-    assert.equal(await picker.evaluate(el=>el.scrollHeight>el.clientHeight),true,'Tall catalog has its own scroll area');
-    const trackScroll=await page.locator('#timeline-track-viewport').evaluate(el=>el.scrollTop),pickerView=await view(),pickerPicks=await picks('blocks');
-    await page.mouse.move(pickerBounds.x+pickerBounds.width/2,pickerBounds.y+pickerBounds.height/2);await page.mouse.wheel(0,300);await page.waitForTimeout(100);
-    assert((await picker.evaluate(el=>el.scrollTop))>0,'Wheel scrolls the catalog rather than being intercepted by timeline navigation');
-    assert.equal(await page.locator('#timeline-track-viewport').evaluate(el=>el.scrollTop),trackScroll);
-    assert.deepEqual(await view(),pickerView,'Catalog wheel cannot zoom or pan the timeline');assert.deepEqual(await picks('blocks'),pickerPicks,'Catalog wheel preserves indexing picks');
-    await plus.click();assert.equal(await picker.isVisible(),false,'Plus remains clickable and closes a full catalog');
-    await plus.click();await page.keyboard.press('Escape');assert.equal(await picker.isVisible(),false,'Escape closes even when all catalog entries are disabled');
-    await plus.click();await page.locator('#timeline-inspector-tab').click();assert.equal(await picker.isVisible(),false,'An outside click closes the catalog');
-    await page.setViewportSize({width:390,height:844});await plus.click();
-    const narrowPicker=await picker.boundingBox(),narrowPlus=await plus.boundingBox();
-    assert(narrowPicker.x>=0&&narrowPicker.x+narrowPicker.width<=390&&narrowPicker.y>=0&&narrowPicker.y+narrowPicker.height<=844,'The full catalog fits a narrow viewport');
-    assert(narrowPicker.y+narrowPicker.height<=narrowPlus.y-7||narrowPicker.y>=narrowPlus.y+narrowPlus.height+7,'Narrow catalog retains a clear plus-trigger gap');
-    await plus.click();assert.equal(await picker.isVisible(),false,'Plus also closes the full catalog in narrow windows');await page.setViewportSize({width:1440,height:1000});
-    await track('blocks').click();await page.locator('#timeline-inspector-tab').click();
-    assert.equal(await page.getByRole('switch',{name:'blocks On',exact:true}).isVisible(),true);
-    await jump(100);const first=navigations().length;
-    await clickHeight(102,['Shift']);assert.deepEqual(await picks('blocks'),[{from:100,to:102}],'Shift click forms an inclusive interval');assert.equal(await playhead(),100,'Range operations leave the explored position unchanged');
-    await clickHeight(101,['Control']);assert.deepEqual(await picks('blocks'),[{from:100,to:100},{from:102,to:102}],'Ctrl deselects an interior height without filling its hole');
-    await clickHeight(112,['Control']);assert.deepEqual(await picks('blocks'),[{from:100,to:100},{from:102,to:102},{from:112,to:112}],'Ctrl adds a distant single block');
-    assert.equal(await page.locator('#timeline-build-range').isDisabled(),true,'Separated selections cannot silently become one indexing plan');
-    await marker(102).click({modifiers:['Control']});assert.deepEqual(await picks('blocks'),[{from:100,to:100},{from:112,to:112}],'Ctrl click at a full-height marker centre deselects its exact block');
-    await marker(112).click({modifiers:['Meta']});assert.deepEqual(await picks('blocks'),[{from:100,to:100}],'Command click shares individual toggle semantics');
-    await marker(100).click({modifiers:['Shift']});assert.deepEqual(await picks('blocks'),[{from:100,to:112}],'Shift click on a marker uses the saved anchor rather than being swallowed');
-    assert.equal(navigations().length,first,'Modifier selections never request block data');
-
-    // Repeated keys must continue reaching the replacement marker after redraw.
-    await marker(112,'out').focus();await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');
-    assert.deepEqual(await picks('blocks'),[{from:100,to:110}]);assert.deepEqual(await activeMarker(),{height:110,edge:'out',index:'blocks'});
-    await refresh(true);assert.deepEqual(await activeMarker(),{height:110,edge:'out',index:'blocks'},'Status redraw preserves focused endpoint identity');
-    await marker(110,'out').click({modifiers:['Control']});assert.deepEqual(await picks('blocks'),[{from:100,to:109}],'Out marker toggles its inclusive endpoint, not the next block at the visual boundary');
-    await clickHeight(114,['Control']);await marker(114).focus();await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');
-    assert.deepEqual(await picks('blocks'),[{from:100,to:109},{from:112,to:112}]);assert.deepEqual(await activeMarker(),{height:112,edge:'single',index:'blocks'});
-    await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');
-    assert.deepEqual(await picks('blocks'),[{from:100,to:110}],'Moving a single marker into adjacency correctly normalizes the interval');
-    assert.deepEqual(await activeMarker(),{height:110,edge:'out',index:'blocks'},'Merged selections retain a usable corresponding endpoint');
-    const lane=await page.locator('.timeline-lane[data-index="blocks"]').boundingBox(),rangeSpan=(await view()).to-(await view()).from+1;
-    await drag(marker(110,'out'),-lane.width/rangeSpan*2);assert.deepEqual(await picks('blocks'),[{from:100,to:108}],'Pointer endpoint dragging changes only its exact indexing range');
-    assert.equal(await playhead(),100);assert.equal(navigations().length,first,'Marker editing does not explore or fetch');
-    await track('headers').click();assert.equal(await playhead(),100);await track('blocks').click();
-    assert.deepEqual(await picks('blocks'),[{from:100,to:108}],'Track changes retain selected indexing ranges');
-    assert.equal(await page.locator('#timeline-inspector').getAttribute('data-kind'),'track');assert.equal(await page.getByRole('switch',{name:'blocks On',exact:true}).isVisible(),true,'Clicking the track name returns to its settings');
-    assert.equal(await page.locator('#timeline-inspector').getAttribute('data-active-pane'),'inspector','Track switches respect the chosen upper tab');
-
-    // Scrubbing emits no request until the final pointer position settles.
-    await jump(200);const beforeScrub=navigations().length,point=await heightPoint(205,'#timeline-ruler');
-    await page.mouse.move(point.x,point.y);await page.mouse.down();await page.waitForTimeout(350);
-    assert.equal(navigations().length,beforeScrub,'The first scrub position is not loaded immediately');
-    const moved=await heightPoint(207,'#timeline-ruler');await page.mouse.move(moved.x,moved.y,{steps:2});await page.waitForTimeout(350);
-    const final=await heightPoint(209,'#timeline-ruler');await page.mouse.move(final.x,final.y,{steps:2});await page.mouse.up();await page.waitForTimeout(450);
-    assert.equal(navigations().length,beforeScrub,'Intermediate blocks are skipped while scrubbing');
-    await page.waitForTimeout(700);assert.equal(navigations().length,beforeScrub+1);assert.equal(navigations().at(-1).body.address,'209.bitcoin','Only the settled playhead block loads');
-    assert.deepEqual(await picks('blocks'),[{from:200,to:200}],'Ruler scrubbing leaves indexing selections intact');
-    assert.equal(await playhead(),209);
-    const beforeMarkerClick=navigations().length;await marker(200).click();await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');
-    assert.equal(await playhead(),200);assert.equal(navigations().length,beforeMarkerClick+1);assert.equal(navigations().at(-1).body.address,'200.bitcoin','Plain click on a selected marker explores its block after the playhead moved elsewhere');
-    assert.deepEqual(await picks('blocks'),[{from:200,to:200}],'Exploring a selected marker does not change indexing selections');
-    await page.locator('#timeline-ruler').focus();await page.keyboard.press('ArrowRight');await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');
-    assert.equal(await playhead(),201);assert.equal(await page.locator('#timeline-ruler').evaluate(el=>document.activeElement===el),true,'Ruler keyboard focus survives its child redraw');
-    const beforeDirect=navigations().length,picksBeforeDirect=await picks('blocks');await clickHeight(211);await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');
-    assert.equal(navigations().length,beforeDirect+1);assert.equal(navigations().at(-1).body.address,'211.bitcoin','Direct block clicks load immediately');
-    assert.deepEqual(await picks('blocks'),picksBeforeDirect,'Ordinary block clicks explore without overwriting indexing selections');
-    unavailable=true;await refresh(false);const beforeOffline=navigations().length;await clickHeight(212);await page.waitForTimeout(1100);
-    assert.equal(await playhead(),212);assert.equal(navigations().length,beforeOffline,'Unavailable status pauses Explorer loading even though local focus can change');
-    unavailable=false;await refresh(false);await page.waitForFunction(()=>document.querySelector('#timeline-explorer-panel').dataset.state==='ready');
-    assert.equal(navigations().length,beforeOffline+1);assert.equal(navigations().at(-1).body.address,'212.bitcoin','Status recovery loads the latest playhead rather than its previous stale position');
-
-    assert.deepEqual(errors,[],'No browser script errors');assert.deepEqual(unexpected,[],'No unexpected or external request');
-    assert.equal(calls.filter(c=>c.method==='POST'&&c.path!=='/api/v1/navigate').length,0,'Selections and navigation never create indexing, live or sharing work');
-    if(out){await page.screenshot({path:path.join(out,'timeline-selections.png'),fullPage:true});fs.writeFileSync(path.join(out,'summary.json'),JSON.stringify({result:'PASS',blockRequests:navigations().map(c=>c.body.address),indexMutationRequests:0},null,2)+'\n');}
-    console.log('Index timeline selection browser PASS: default tracks; inclusive Shift and Ctrl/Command gaps; exact endpoint toggles; marker keyboard/pointer focus and merge; retained track selections; independent playhead; settled and immediate Explorer loading; unavailable-status pause; zero indexing mutations.');
-    await page.close();
+    await page.route('**/api/v1/index/layout',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({schema:1,order:{},revision:0})}));
+  await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.getByRole('button',{name:'Expand index tracks',exact:true}).click();
+    const range=()=>page.locator('#timeline-global-range').innerText(),handle=edge=>page.locator('#timeline-ruler .timeline-global-handle.'+edge);
+    await jump(100);await page.locator('#timeline-ruler').focus();await page.keyboard.press('i');await jump(112);await page.locator('#timeline-ruler').focus();await page.keyboard.press('o');
+    assert.match(await range(),/100.*112/);assert.deepEqual(await picks('blocks'),[{from:100,to:112}]);assert.deepEqual(await picks('headers'),[{from:100,to:112}],'Every track reads the same interval');
+    await handle('out').focus();await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowLeft');assert.deepEqual(await picks('blocks'),[{from:100,to:110}]);assert.equal(await handle('out').evaluate(n=>document.activeElement===n),true,'Endpoint redraw preserves focus for repeated keys');
+    await refresh(true);assert.equal(await handle('out').evaluate(n=>document.activeElement===n),true,'Status refresh preserves marker identity');
+    await drag(handle('out'),24);const moved=await picks('blocks');assert.equal(moved[0].from,100);assert(moved[0].to>110,'Captured pointer moves only the global Out');
+    await handle('in').click({button:'right'});assert.equal(await page.locator('#timeline-clear-in').isDisabled(),true);assert.equal(await page.locator('#timeline-clear-out').isDisabled(),false,'Clear one edge leaves the other');
+    await page.locator('#timeline-clear-out').click();assert.deepEqual(await picks('blocks'),[]);
+    await jump(120);await page.locator('#timeline-mark-in').click();await jump(100);await page.locator('#timeline-mark-out').click();assert.match(await page.locator('#message').innerText(),/In must precede Out/);assert.equal(await page.locator('#timeline-clear-out').isDisabled(),true,'Rejected reversed endpoint does not replace the valid range');
+    await page.locator('#timeline-clear-range').click();await jump(100);await page.locator('#timeline-mark-in').click();await clickHeight(112,['Shift']);assert.deepEqual(await picks('blocks'),[{from:100,to:112}],'Shift selects one global interval');
+    const prior=await picks('blocks');await jump(130);await page.locator('#timeline-ruler').focus();await page.keyboard.press('ArrowLeft');assert.deepEqual(await picks('blocks'),prior,'Stepping moves focus without rewriting marks');
+    await page.reload({waitUntil:'networkidle'});assert.match(await range(),/100.*112/,'Marked interval persists through reload');
+    unavailable=true;await refresh();assert.equal(await page.locator('#timeline-run-start').isDisabled(),true);unavailable=false;await refresh();
+    const mutations=calls.filter(c=>c.method==='POST'&&!['/api/v1/navigate','/api/v1/index/run/prepare'].includes(c.path));assert.deepEqual(mutations,[],'Marking, navigating and staging never executes indexing');
+    assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[]);console.log('Global timeline selection browser PASS: one shared In/Out, repeated keyboard focus, captured drag, individual clearing, reversed rejection, shared Shift interval, navigation isolation, persistence and unavailable status.');
   }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 }
 run().catch(error=>{console.error(error.stack||error);process.exitCode=1;});

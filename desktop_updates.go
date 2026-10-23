@@ -1052,6 +1052,14 @@ func (a *app) registerUpdateRoutes(mux *http.ServeMux) {
 	for _, operation := range []string{"status", "config", "check", "download", "apply"} {
 		op := operation
 		mux.HandleFunc("/api/v1/updates/"+op, func(w http.ResponseWriter, r *http.Request) {
+			if portablePreviewBuild != "" {
+				if op == "status" && r.Method == "GET" {
+					satlineReply(w, desktopUpdateStatus{State: "disabled", CurrentVersion: appVersion, Platform: runtime.GOOS + "-" + runtime.GOARCH, ApplyUnavailableReason: portablePreviewUpdateReason})
+				} else {
+					jsonError(w, http.StatusForbidden, fmt.Errorf("%s", portablePreviewUpdateReason))
+				}
+				return
+			}
 			if a.updater == nil {
 				jsonError(w, 503, fmt.Errorf("desktop updater is unavailable"))
 				return

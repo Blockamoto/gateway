@@ -233,6 +233,10 @@ func (a *app) runSatIndexBuild077(ctx context.Context, j indexJob) {
 		return nil
 	}
 	for {
+		if !indexRunOptionalWorkAllowed(a.dataDir, j.Index) {
+			finish("paused", nil)
+			return
+		}
 		if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
 			finish("paused", nil)
 			return

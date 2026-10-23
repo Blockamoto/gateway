@@ -1,16 +1,40 @@
 # Indexing and positional inscriptions
 
-The 0.7.7 development source enables **Headers**, **Bitcoin Blocks**, **Inscriptions**, **Transaction Locator**, **Transaction Input/Output (TXIO)**, **UTXO set**, **Addresses** and **Sats**. Addresses offers Current UTXOs and independently retained Historical outputs; see [the Addresses guide](ADDRESSES-INDEX.md). TXIO has optional Values and exact ScriptPubKeys history, plus a Sat ranges child with independent retained coverage. Gateway peerhood and later index stages remain gated. The published Addresses release and updater remain tracked separately in [status](STATUS.md).
+The 0.7.8 development source enables **Headers**, **Bitcoin Blocks**, **Inscriptions**, **Transaction Locator**, **Transaction Input/Output (TXIO)**, **UTXO set**, **Addresses**, **Sats** and fixed canonical **Bitmap** indexes. Addresses offers Current UTXOs and independently retained Historical outputs; see [the Addresses guide](ADDRESSES-INDEX.md). TXIO has optional Values and exact ScriptPubKeys history, plus a Sat ranges child with independent retained coverage. Gateway peerhood and later index stages remain gated. Published releases and updater delivery remain tracked separately in [status](STATUS.md).
+
+## Development: Raw blocks and optional transaction lookup
+
+Raw Blocks retains verified serialized block bodies and compact block-level metadata. New Raw Blocks writes do not build a reverse transaction-hash index. **Transaction Locator** is the separate, explicit opt-in choice for new transaction-ID-to-block/position coverage, with the same timeline Arm choice governing optional sparse facts from explicitly viewed blocks.
+
+A known block or BPS transaction/output position still opens directly: Gateway loads and decodes that exact block. A transaction hash with a known containing block can also resolve within that single block. A bare transaction ID needs existing saved location evidence or a capable provider such as an available Core txindex; Gateway does not scan all retained Raw Blocks to discover its location. Existing legacy Raw locator evidence remains readable without creating or repairing more of it. Private bridges required by explicitly running TXIO, UTXO or Sats consumers are separate from the general Transaction Locator index.
+
+The Raw Blocks timeline control governs newly fetched bodies everywhere: **Off** uses them temporarily; **On** retains them for both Explorer and index requests. Turning it on does not start a historical scan, and turning it off does not erase existing files. Per-index source-retention controls and the Settings cache toggle are removed from the current UI. Mandatory UTXO/Sat recovery facts, Sat historical ranges and Chain Full/Pruned history remain separate derived-data choices.
+
+Timeline **Arm** is also the consent for new optional Transaction Locator and Inscription facts from blocks explicitly opened in Explorer. There is no second Index as you browse preference. Disarming preserves prior facts and prevents new optional singleton writes. Viewed-block facts remain sparse; they do not advance a contiguous build head or launch Sats, UTXO, Bitmap or other prefix processing. Legacy browsing data stays readable, while missing, damaged or unconfigured timeline consent authorizes no optional writes.
+
+Verified local bytes are reused before requesting missing bodies. Core-style block download coordination does not make Core mandatory, change index consent or authorize copying every transaction into another lookup store. Previous published release notes describe their original behavior; this development policy supersedes their Raw-derived transaction-location behavior for new writes.
+
+## Canonical Bitmap portable preview
+
+Gateway 0.7.8 provides fixed canonical District and Parcel indexes using the pinned [Bitmap rules](https://github.com/Blockamoto/bitmap/blob/335958311eb1c8ce4d14c48bc5c21d23c7a4b134/README.md). New identities authenticate the exact implemented rules and source revision; they do not resume experimental checkpoints. Read-only index views expose these rules and machine metadata. Canonical builds begin at genesis to establish the first qualifying reveal.
+
+Bodies come from the claimant's own inscription envelope. Parsed `text/plain` matching is case insensitive and permits MIME parameters. Evaluation uses the actual ASCII body bytes and ignores the declared charset. Exact decimal grammar rejects leading zeros, whitespace and trailing bytes. Districts cannot exceed reveal height. Parcels must fit the referenced district's transaction count and have a proven parent-tag-3 child relationship to the selected valid District. Missing dependency evidence stays unresolved; a parent declaration alone is not proof.
+
+The optional District and Parcel chains are independent derived records. Each consumes authenticated outcomes from its corresponding index and selected Bitcoin anchors. Chain-only catch-up uses retained outcomes without loading raw blocks when the required history exists. Missing history is a gap, distinct from a completed empty result. The [pinned chain draft](https://github.com/Blockamoto/bitmap/blob/577bae5e5810cb2389f1e02f322438df567f0089/README.md) leaves mechanical encodings unresolved, so this preview identifies a replaceable development codec rather than claiming interoperable upstream chain hashes.
+
+Custom creation, rule editing and comparisons are unavailable through UI and execution APIs. Legacy definitions and results remain available for inspection and explicit data management. Ordinary coverage, timeline Start/Pause/Resume, Live and retention controls remain available on the four new fixed tracks. Opening any view starts no indexing. See [portable testing](TESTING-0.7.8.md).
 
 ## What coverage means
 
 Headers identify blocks and their place in the selected proof-of-work chain. They do not contain transaction bodies or establish that any block is stored locally. A packaged snapshot accelerates first startup; ordinary Bitcoin synchronization validates and extends it.
 
+Raw saved-body coverage counts durable bodies retained by the Raw control, including bodies fetched by other armed consumers. It is distinct from the Raw backfill cursor. A complete saved-body map provides an exact count and extent; a partial or rebuilding map shows only an observed lower bound and does not establish an end. External Core/archive/cache availability remains a separate source layer. The row never substitutes the worker checkpoint for physical body possession.
+
 Blocks records processing and availability for requested ranges. A block can also be fetched on demand without downloading every earlier body. Header height, committed index coverage, the current job's batch and retained block bytes are separate facts. Completing a batch does not imply whole-chain coverage.
 
-The schema and explorer work with a known block's transactions, inputs, outputs and output-relative offsets. A transaction-ID lookup can use evidence already available from Blocks; an unknown ID may need a containing-block hint. An offset is not proof of global sat identity, ownership or movement history.
+The schema and explorer work with a known block's transactions, inputs, outputs and output-relative offsets. A transaction-ID lookup can use explicit Transaction Locator coverage or existing legacy/location evidence; an unknown ID may need a containing-block hint. New Raw block storage alone does not supply that reverse lookup. An offset is not proof of global sat identity, ownership or movement history.
 
-Sats adds genesis-first ordinal identity and local Satline is available automatically as an explicit on-demand tracing tool. Bitmap, parcel and Terrain Claim Chains features remain gated, as do Gateway peerhood and index sharing. Fetching or viewing a block, address or sat does not start a Sat build or history trace. Transaction and Inscription indexing as you browse remain independent opt-in choices.
+Sats adds genesis-first ordinal identity. Satline history tracing is deferred in this version; saved Sat locations and output ranges remain available. Canonical Bitmap Districts and Parcels and their optional independent development chains are described above. Terrain Claim Chains, Gateway peerhood and index sharing remain gated. Fetching or viewing a block, address or sat does not start a Sat build or history trace. Transaction Locator and Inscriptions remain separately opt-in through their timeline Arm controls; their sparse viewed-block capture does not start a historical scan.
 
 TXIO keeps one committed set of spend relationships with automatic lookup in both directions. A supplied BPS needs no transaction-hash locator. Construction still needs verified creation evidence; sparse missing predecessors remain unresolved. Relationships survive source-body eviction, while navigation may need to fetch the target's bytes. See [the canonical format and measured overhead](TXIO-INDEX.md).
 
@@ -20,17 +44,17 @@ The timeline groups Blocks into Headers/raw bodies and TXIO into Positional link
 
 ## Sats and Satline
 
-Sats processes a continuous prefix from genesis, preferring local verified blocks and fetching missing evidence. Reviewed Build, Pause, Resume and Live keep a readable committed checkpoint; raw bodies may be pruned independently of mandatory live and recovery facts. Ordered ranges identify which sats an output holds. Full ranges for spent outputs are optional and start off; a Satline query can instead reconstruct and cache one visited route, including fee transfers, from available evidence.
+Sats processes a continuous prefix from genesis, preferring local verified blocks and fetching missing evidence. Start, Pause, Resume and Live keep a readable committed checkpoint; raw bodies may be pruned independently of mandatory live and recovery facts. Ordered ranges identify which sats an output holds. Full ranges for spent outputs are optional and start off. Satline history tracing remains deferred and cannot start a background scan from the explorer.
 
 Recovery retains the newest two savepoints at heights divisible by 12 and the newest two divisible by 144, deduplicating matching heights and sharing unchanged pages. A reorg restores an eligible selected-chain state and replays forward. This is separate from UTXO's 288 reversible transitions and does not promise 288-block Sat recovery at every height. Incompatible experimental Sat profiles and deeper recovery require an explicitly reviewed rebuild with prior evidence preserved.
 
-Sat locations, output ranges and known address inscription holdings require compatible saved checkpoints and disclose missing coverage. See [the complete feature breakdown](SATS-FEATURES-0.7.7.md) and [Sat guide](SATS-INDEX.md). Timeline transport, track arming and broader index-management controls are deferred until after Bitmap.
+Sat locations, output ranges and known address inscription holdings require compatible saved checkpoints and disclose missing coverage. See [the complete feature breakdown](SATS-FEATURES-0.7.7.md) and [Sat guide](SATS-INDEX.md). The development timeline provides Arm, Live, shared Start/Pause and index management; inspecting a resource does not start a prefix build.
 
 ## UTXO state
 
 UTXO builds one complete prefix from genesis in block/transaction order. It saves live membership, exact amount/script facts, creation positions/anchors and the native-outpoint bridge together under an atomic head. It can reuse local blocks and fetch missing bodies through existing providers. Pause and restart preserve the last committed head; isolated arbitrary ranges cannot establish complete UTXO state.
 
-The fixed policy retains 288 complete reversible transitions, with shared facts pinned even when a spent Coin originated years earlier. Raw bodies can be evicted after commit because local undo is self-contained. Existing raw retention remains a separate setting; replacement-branch processing and old-block serving still need bodies. The UTXO Pruned choice does not delete preexisting retained or external files.
+The fixed policy retains 288 complete reversible transitions, with shared facts pinned even when a spent Coin originated years earlier. Raw bodies can be evicted after commit because local undo is self-contained. Raw Blocks remains the separate source-body control; replacement-branch processing and old-block serving still need bodies. The UTXO Pruned choice does not delete preexisting retained or external files.
 
 A selected-chain disagreement rewinds to a common ancestor within the retained boundary. Deeper recovery stops with Rebuild required. A reviewed explicit rebuild archives the prior engine data and starts from genesis; normal Resume never resets it. Archives and their fact dependencies are preserved, so rebuild has an additional storage cost.
 
@@ -72,9 +96,9 @@ An unknown location, temporarily unavailable block bytes and unverified relation
 
 ## Plans, jobs and Live
 
-Selecting a track or range does not start a scan. Historical builds select an explicit range, mode and source-retention choice; UTXO uses its genesis-only state workflow and fixed Pruned policy. Current addresses build from saved UTXO state without starting that dependency. Historical addresses allow sparse creation ranges and reuse complete retained output facts before fetching raw fallback blocks. Requests containing locked outputs fail before fetching or writing data. One index writer runs at a time; accepted additional requests enter a durable queue. Pause and cancellation preserve committed work.
+Selecting a track or range does not start a scan. Historical builds use the global In/Out range and staged track choices; Raw Blocks controls newly fetched source bodies. UTXO uses its genesis-only state workflow and fixed recovery policy. Current addresses build from saved UTXO state without starting that dependency. Historical addresses allow sparse creation ranges and reuse complete retained output facts before fetching raw fallback blocks. Requests containing locked outputs fail before fetching or writing data. One coordinated run admits compatible consumers at safe block boundaries. Arming during an active run does not silently backfill earlier history; missing prior state remains blocked until an explicit Stop and a valid new Start. Pause and cancellation preserve committed work.
 
-**On** permits an available index to run. **Live** authorizes catch-up and following the selected chain in batches. It starts work immediately from the saved/default start, which may be genesis. Review a small bounded range first. Header pause and outbound-network disable remain effective controls.
+**Arm** selects an available track; **Live** chooses continued following after catch-up. Start begins the selected work. Arming during an active run requests admission at its current safe boundary; consumers needing an earlier prefix show that requirement instead of silently backfilling. A stopped run can start from the validated saved/default origin, including genesis where required. Header pause and outbound-network disable remain effective controls.
 
 Core is optional. Sources include Gateway's local block data, optional read-only Core sources and ordinary Bitcoin peers. Peers may not have a requested historical block. Source unavailability is not evidence that data does not exist.
 
@@ -82,13 +106,12 @@ Gateway checks header hash, proof of work, transaction Merkle root, witness comm
 
 ## Source retention
 
-- **Ephemeral:** does not add newly fetched raw source blocks to the cache; existing cached, retained and external data is not deleted.
-- **Cache:** keeps new source blocks in the bounded Gateway cache, respecting privacy classifications.
-- **Retain:** keeps sources outside cache eviction under the profile's index sources. Existing external Core/archive data is read in place rather than copied merely because it was used.
+- **Raw Blocks Off:** newly fetched bodies are temporary, whether requested by Explorer or an index. Existing retained/cache/external data stays available.
+- **Raw Blocks On:** newly fetched bodies are retained with block-level metadata. This does not start a bulk scan or create transaction-hash lookup coverage.
 
-Changing retention does not refill or delete earlier bytes automatically. Committed processing coverage does not promise that ephemeral source bodies remain available indefinitely. Turning Private cache off does not change older objects from private to public.
+Older profiles, stored receipts and API parameters remain readable for compatibility. They do not add another everyday storage switch. Changing Raw Blocks does not refill or delete earlier bytes automatically. Committed processing coverage does not promise that discarded bodies remain available. Privacy and serving choices do not change older objects from private to public.
 
-Bitcoin Blocks is durable body storage: new records keep compact ordered transaction IDs and a verified Bitcoin serialized raw body rather than permanent decoded input/output arrays. Shared readers decode that body temporarily for queries, JSON inspection, builders and inscriptions. Blocks bodies are independent of ordinary cache eviction and pruneable Core files. Automatic legacy migration stages a versioned root before switching readers; old immutable batches, decoded cache JSON and hex files remain available and are not deleted automatically. Existing disk savings therefore require a later explicit cleanup decision.
+Bitcoin Blocks is durable body storage: new development records keep block-level metadata and a verified Bitcoin serialized raw body rather than permanent decoded input/output arrays or a new per-transaction reverse index. Older raw-backed formats may retain ordered transaction IDs and legacy locators; those remain compatibility evidence. Shared readers decode that body temporarily for queries, JSON inspection, builders and inscriptions. Blocks bodies are independent of ordinary cache eviction and pruneable Core files. Legacy decoded (v0) and per-block raw-backed (v2) receipts remain readable in place. Opening, querying or appending does not automatically convert them or backfill Raw transaction locators; new Raw appends use v3 body segments. Old immutable batches, cache JSON and hex files remain unless explicitly cleaned up.
 
 ## Checkpoints and recovery
 

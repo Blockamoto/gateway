@@ -153,6 +153,10 @@ func (a *app) addressViewContext(ctx context.Context, input, mode, cursor string
 }
 func (a *app) addressSelectedHashes(ctx context.Context, authority chainAuthorityView) func(int64) (string, error) {
 	return func(height int64) (string, error) {
+		current := a.currentChainAuthority()
+		if current.Source != authority.Source || current.Height < authority.Height {
+			return "", selectedAuthorityRetry(fmt.Errorf("selected chain provider or height changed; retry against its current authority"))
+		}
 		if _, err := a.utxoSelectedTarget(ctx, authority, authority.Height); err != nil {
 			return "", err
 		}
@@ -402,6 +406,10 @@ func (a *app) runAddressIndexBuild(ctx context.Context, j indexJob) {
 		}
 	}
 	if j.Index == "address-state" {
+		if !indexRunOptionalWorkAllowed(a.dataDir, j.Index) {
+			finish("paused", nil)
+			return
+		}
 		authority := a.currentChainAuthority()
 		u, err := utxoStoreHead(a.dataDir)
 		if err != nil {
@@ -477,6 +485,10 @@ func (a *app) runAddressIndexBuild(ctx context.Context, j indexJob) {
 	processed := int64(0)
 	for _, gap := range missing {
 		for height := gap.From; height <= gap.To; height++ {
+			if !indexRunOptionalWorkAllowed(a.dataDir, j.Index) {
+				finish("paused", nil)
+				return
+			}
 			if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
 				finish("paused", nil)
 				return

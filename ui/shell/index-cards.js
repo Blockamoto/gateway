@@ -91,9 +91,7 @@ window.GatewayIndexCards = (() => {
         e.meta.textContent = m.retained ? (m.instance.coverage?.length ? 'Coverage '+m.instance.coverage.map(r=>format(r.from)+'–'+format(r.to)).join(', ') : 'Saved through block ' + format(height)) : definition.buildable ? 'No committed local records' : m.providers.length + ' local provider' + (m.providers.length === 1 ? '' : 's');
         if (m.retained && m.policy?.lag_known && m.policy.tip_fresh) e.meta.textContent += ' · ' + format(m.policy.lag) + ' blocks behind';
         else if (m.live && m.retained) e.meta.textContent += ' · lag unknown';
-        const retention = m.policy?.retention || m.instance?.retention || m.job?.retention || 'ephemeral';
-        const retentionText = {ephemeral:'Discard new source blocks',cache:'Bounded source cache',retain:'Retain source blocks'}[retention] || 'Retention unknown';
-        e.detail.textContent = definition.buildable ? retentionText + ' · private local data; sharing locked' : (m.providers.some(x => x.queryable) ? 'Use existing providers; no whole-history build is implied.' : 'No usable local provider. Inspect details rather than starting unsupported work.');
+        e.detail.textContent = definition.buildable ? 'New source bodies follow the Raw Blocks track · private local data; sharing locked' : (m.providers.some(x => x.queryable) ? 'Use existing providers; no whole-history build is implied.' : 'No usable local provider. Inspect details rather than starting unsupported work.');
         e.on.checked = m.on; e.onText.textContent=m.on?'On':'Off'; e.live.checked = m.live;
         const j=m.job, known=j && Number.isSafeInteger(j.to) && j.to>=j.from;
         e.progress.hidden=!known;if(known){e.progress.max=j.to-j.from+1;e.progress.value=Math.max(0,Math.min(j.to,j.height)-j.from+1)}
@@ -104,7 +102,7 @@ window.GatewayIndexCards = (() => {
         }
         e.on.disabled = !healthy || busy || !definition.buildable;
         e.live.disabled = !healthy || busy || !definition.buildable;
-        e.help.textContent = !definition.buildable ? 'Provider-managed capability' : !m.retained ? 'Live catches up all applicable history from block ' + format(m.initialFrom) + '. Source blocks are discarded by default; results stay private.' : !m.on ? 'Saved records remain readable. Switch On to allow new work.' : m.live ? 'Live continues from saved progress and follows new blocks. Results stay private.' : 'On, with Live off: build only the ranges you choose.';
+        e.help.textContent = !definition.buildable ? 'Provider-managed capability' : !m.retained ? 'Live catches up all applicable history from block ' + format(m.initialFrom) + '. New source bodies follow the Raw Blocks track; results stay private.' : !m.on ? 'Saved records remain readable. Switch On to allow new work.' : m.live ? 'Live continues from saved progress and follows new blocks. Results stay private.' : 'On, with Live off: build only the ranges you choose.';
         e.error.textContent = m.policy?.error || m.job?.error || ''; e.error.hidden=false;
         e.open.textContent = expanded ? 'Close details' : definition.buildable ? m.retained ? 'Details & records' : 'Review a build' : 'Inspect capability';
         e.open.disabled = busy;

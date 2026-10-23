@@ -36,6 +36,8 @@ type indexTimelineView struct {
 }
 
 type indexTimelineTrack struct {
+	RetainedCoverage *rawCoverageView      `json:"retained_coverage,omitempty"`
+	Backfill         *rawBackfillView      `json:"backfill,omitempty"`
 	PotentialFrom    int64                 `json:"potential_from"`
 	ID               string                `json:"id"`
 	Locked           bool                  `json:"locked"`
@@ -160,6 +162,17 @@ func (a *app) indexTimeline(defs []indexDefinition, providers []indexProviderVie
 			}
 			track.Sources = append(track.Sources, indexTimelineSource{ID: "gateway_headers", Kind: "local_headers", Ranges: track.Coverage, Complete: out.TipKnown, Verification: "selected_chain", Note: track.Note})
 		case "blocks":
+			retained := a.rawCoverageSnapshot(h, nil, nil)
+			track.RetainedCoverage = &retained
+			if run := a.indexRunSnapshot().Run; run != nil {
+				if progress, ok := indexRunProgressFor(run, "blocks"); ok {
+					next := progress.Height + 1
+					if progress.NextRequiredHeight != nil {
+						next = *progress.NextRequiredHeight
+					}
+					track.Backfill = &rawBackfillView{From: progress.From, Height: progress.Height, Next: next, Target: progress.To, State: progress.State}
+				}
+			}
 			track.Note = "Present raw block files anchored to the selected local headers. File headers and extents are checked here; full block integrity is checked when opened. Committed decoded records and Core claims are separate."
 			track.Sources = append(track.Sources, localSources...)
 			for _, source := range localSources {

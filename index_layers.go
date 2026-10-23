@@ -180,6 +180,9 @@ func (s *indexStore) recordTXIOEnrichmentCoverage(height int64, hash string, val
 		return err
 	}
 	head.TXIOLayersHash = txioLayerCoverageHash(head)
+	if err := checkIndexConsumerPublication(s.locatorContext, s.profileRoot, s.definition.ID); err != nil {
+		return err
+	}
 	if err := atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); err != nil {
 		return err
 	}

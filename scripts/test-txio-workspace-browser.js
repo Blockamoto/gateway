@@ -50,6 +50,7 @@ const link=(input,output)=>{const height=Number(input.split('.')[2]),creation=Nu
    }
    throw Error('Unexpected request '+url.pathname);
   });
+  await page.route('**/api/v1/index/layout',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({schema:1,order:{},revision:0})}));
   await page.goto(origin+'/test');
   const tx=async(height=840000,index=1)=>{await page.evaluate(value=>helper.entity({kind:'transaction',height:value.height,txIndex:value.index}),{height,index});await page.waitForFunction(value=>document.querySelector('#timeline-explorer-tx-detail')?.dataset.txIndex===String(value.index)&&helper.state().height===value.height&&document.querySelector('.transaction-flow-svg'),{height,index});};
   const waitAddress=address=>page.waitForFunction(address=>entities.at(-1)?.address===address,address);

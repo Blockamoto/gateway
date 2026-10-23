@@ -41,6 +41,9 @@ func (a *app) cacheIndexPath() string { return filepath.Join(a.dataDir, "cache-i
 // Availability permits an explicit index build. It must not turn ordinary
 // navigation into legacy transaction/spend indexing when a gate opens.
 func (a *app) legacyKnowledgeEnabled() bool {
+	if !indexRunOptionalWorkAllowed(a.dataDir, "tx-locator") || !indexRunOptionalWorkAllowed(a.dataDir, "txo-spender") {
+		return false
+	}
 	if !releaseFeatureAvailable("tx-locator") || !releaseFeatureAvailable("txo-spender") {
 		return false
 	}

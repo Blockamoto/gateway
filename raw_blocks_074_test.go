@@ -34,6 +34,7 @@ func legacyBlocks074(t *testing.T, a *app, raws ...[]byte) *indexStore {
 			t.Fatal(err)
 		}
 	}
+	installLegacyRawLocators(t, s)
 	return s
 }
 
@@ -134,7 +135,7 @@ func Test074RawBlocksDefaultColdRestartEvictionAndRefetch(t *testing.T) {
 		t.Fatal(err)
 	}
 	encoded, _ := json.Marshal(batch)
-	if batch.Bitcoin.BodySchema != 2 || len(batch.Bitcoin.Transactions) != 0 || strings.Contains(string(encoded), `"script_sig"`) {
+	if batch.Bitcoin.BodySchema != 3 || len(batch.Bitcoin.TxIDs) != 0 || len(batch.Bitcoin.Transactions) != 0 || strings.Contains(string(encoded), `"script_sig"`) {
 		t.Fatal("default persisted full decoded body")
 	}
 	stored, _, err := readIndexedRawBody(a.dataDir, blockTarget{Height: 0, HashDisplay: genesisHashDisplay, ExpectedHeader: raw[:80]}, batch.Bitcoin.RawBody)
@@ -151,42 +152,52 @@ func Test074RawBlocksDefaultColdRestartEvictionAndRefetch(t *testing.T) {
 		t.Fatal(err)
 	}
 	decoded, err := cold.indexSourceBlock(context.Background(), target, "ephemeral")
-	if err != nil || decoded.Transactions[0].TxID != view.Transactions[0].TxID || decoded.SourceNetwork != "local_index" {
+	if err != nil || decoded.Transactions[0].TxID != view.Transactions[0].TxID || decoded.SourceNetwork != "index_retained" {
 		t.Fatal("offline cold Blocks reader", err)
 	}
 	id := view.Transactions[0].TxID
+	if _, found, err := cold.indexedTransaction(id); err != nil || found {
+		t.Fatal("Raw alone manufactured a transaction reverse lookup", found, err)
+	}
+	locator, err := openIndexStore(a.dataDir, "tx-locator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = locator.appendBlock(view, 0, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
 	resolved, found, err := cold.indexedTransaction(id)
-	if err != nil || !found || !resolved.TransactionVerified || resolved.TxIndex != 0 {
-		t.Fatal("Blocks lost independent zero-based txid lookup", resolved, err)
+	if err != nil || !found || !resolved.TransactionVerified {
+		t.Fatal("explicit Locator cannot use Raw bytes", resolved, err)
 	}
 	if _, err = cold.storageBlockForServing(context.Background(), genesisHashDisplay); err == nil {
 		t.Fatal("private durable body became publicly served")
-	}
-	path, _ := indexedRawBodyPath(a.dataDir, genesisHashDisplay)
-	if err = os.Remove(path); err != nil {
-		t.Fatal(err)
-	}
-	resolved, found, err = cold.indexedTransaction(id)
-	if err != nil || !found || resolved.ResolutionState != "located_bytes_unavailable" || resolved.TransactionVerified {
-		t.Fatal("eviction lost locator or invented transaction bytes", resolved, err)
-	}
-	cold.settings.NetworkDisabled, cold.settings.CacheBlocks = false, false
-	cold.preferred = []string{indexBitcoinSource(t, raw)}
-	resolved, found, err = cold.indexedTransaction(id)
-	if err != nil || !found || !resolved.TransactionVerified {
-		t.Fatal("verified refetch", resolved, err)
-	}
-	if restored, _, err := readIndexedRawBody(a.dataDir, target, batch.Bitcoin.RawBody); err != nil || !bytes.Equal(restored, raw) {
-		t.Fatal("reacquisition did not restore durable indexed evidence", err)
 	}
 	query, err := cold.indexQuery("blocks", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	jsonView, _ := json.Marshal(query)
-	if !bytes.Contains(jsonView, []byte(`"script_sig"`)) || !bytes.Contains(jsonView, []byte(`"body_state":"verified_raw_decoded_on_demand"`)) {
-		t.Fatal("on-demand decoded JSON query missing", string(jsonView))
+	if bytes.Contains(jsonView, []byte(`"script_sig"`)) || !bytes.Contains(jsonView, []byte(`raw_metadata_only; body_verified_on_explicit_detail`)) {
+		t.Fatal("storage overview decoded bodies implicitly", string(jsonView))
 	}
+	path := rawSegmentPath(a.dataDir, batch.Bitcoin.RawBody.Segment.File)
+	if err = os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	resolved, found, err = cold.indexedTransaction(id)
+	if err != nil || !found || resolved.ResolutionState != "located_bytes_unavailable" || resolved.TransactionVerified {
+		t.Fatal("missing bytes invented a transaction", resolved, err)
+	}
+	cold.settings.NetworkDisabled, cold.settings.CacheBlocks = false, false
+	cold.blockBaseAcquire = func(ctx context.Context, target blockTarget, settings appSettings) (blockView, error) {
+		return parseBlockDetailed(target.Height, target.HashDisplay, target.ExpectedHeader, raw, "controlled verified reacquisition", false)
+	}
+	resolved, found, err = cold.indexedTransaction(id)
+	if err != nil || !found || !resolved.TransactionVerified {
+		t.Fatal("verified refetch", resolved, err)
+	}
+
 }
 
 type migrationInterrupt074 struct {
@@ -570,6 +581,12 @@ func Test074RawBlocksInventoryDoesNotClaimEvictedOrForkedCoverage(t *testing.T) 
 	if err := migrateBlockBodiesContext(context.Background(), a.dataDir); err != nil {
 		t.Fatal(err)
 	}
+	// Legacy receipts are projected by bounded background metadata recovery.
+	// Wait for a completed mapping before making a possession assertion.
+	if saved := waitRawCoverage(t, a); saved.Total == nil || *saved.Total != 1 {
+		t.Fatal("legacy raw mapping did not complete", saved)
+	}
+	waitRawCoverageStopped(a.dataDir)
 	projection := a.indexTimeline(indexDefinitions(), nil, nil)
 	var ranges []heightInterval
 	for _, track := range projection.Tracks {
@@ -590,25 +607,55 @@ func Test074RawBlocksInventoryDoesNotClaimEvictedOrForkedCoverage(t *testing.T) 
 	// selected header, even while its receipt and size remain intact.
 	fork := append([]byte(nil), raw[:80]...)
 	fork[76] ^= 1
-	if err := os.WriteFile(a.headersPath, fork, 0600); err != nil {
+	a.headerChainMu.Lock()
+	err := os.WriteFile(a.headersPath, fork, 0600)
+	a.headerChainMu.Unlock()
+	if err != nil {
 		t.Fatal(err)
 	}
+	a.headerChainMu.RLock()
 	f, err := os.Open(a.headersPath)
 	if err != nil {
+		a.headerChainMu.RUnlock()
 		t.Fatal(err)
 	}
 	reader := &timelineLocalReader{file: f, count: 1, hashes: map[int64]string{}}
 	problems := []string{}
 	if source := a.timelineIndexedBodiesSource(reader, &problems); len(source.Ranges) != 0 {
+		f.Close()
+		a.headerChainMu.RUnlock()
 		t.Fatal("forked body advertised as selected-chain possession")
 	}
 	f.Close()
-	if err := os.WriteFile(a.headersPath, raw[:80], 0600); err != nil {
+	a.headerChainMu.RUnlock()
+	if forked := waitRawCoverage(t, a); forked.Total == nil || *forked.Total != 0 {
+		t.Fatal("completed fork mapping retained the wrong body", forked)
+	}
+	waitRawCoverageStopped(a.dataDir)
+	a.headerChainMu.Lock()
+	err = os.WriteFile(a.headersPath, raw[:80], 0600)
+	a.headerChainMu.Unlock()
+	if err != nil {
 		t.Fatal(err)
 	}
+	if restored := waitRawCoverage(t, a); restored.Total == nil || *restored.Total != 1 {
+		t.Fatal("restored selected branch lost its retained body", restored)
+	}
+	waitRawCoverageStopped(a.dataDir)
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
+	// This test deliberately removes bytes outside the managed deletion API.
+	// A fresh manager must validate the saved manifest against actual files.
+	key, err := filepath.Abs(a.dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawCoverageStates.Delete(key)
+	if missing := waitRawCoverage(t, a); missing.Total == nil || *missing.Total != 0 {
+		t.Fatal("startup validation counted removed raw bytes", missing)
+	}
+	waitRawCoverageStopped(a.dataDir)
 	projection = a.indexTimeline(indexDefinitions(), nil, nil)
 	for _, track := range projection.Tracks {
 		if track.ID != "blocks" {

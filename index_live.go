@@ -546,6 +546,11 @@ func (a *app) liveIndexTick() {
 	if a.drainIndexQueueLocked() {
 		return
 	}
+	// New staged transport intent never becomes an automatic legacy Live job.
+	// Existing accepted queue requests keep their own reviewed ranges.
+	if state := a.indexRunSnapshot(); state.Configured || state.Error != "" {
+		return
+	}
 	policies, err := a.indexLivePolicies()
 	if err != nil {
 		return

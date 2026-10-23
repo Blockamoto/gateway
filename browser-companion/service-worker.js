@@ -1,7 +1,7 @@
 'use strict';
 importScripts('search.js');
 const HOST = 'com.gateway.client';
-const VERSION = '0.7.7';
+const VERSION = '0.7.8';
 async function native(action,address='') {
   try {
     const result = await chrome.runtime.sendNativeMessage(HOST,{action,address,version:VERSION});

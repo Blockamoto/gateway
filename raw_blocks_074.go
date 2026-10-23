@@ -1,8 +1,7 @@
 package main
 
-// Blocks bodies have one durable serialized representation. Compact commit
-// records retain ordered IDs (and therefore absolute transaction positions),
-// while decoded JSON is a query/export view, never a second default body copy.
+// New Blocks bodies retain block-level segment receipts. Older ordered-ID and
+// decoded records remain readable; only the explicit Locator creates tx lookup.
 import (
 	"bytes"
 	"context"
@@ -19,10 +18,12 @@ import (
 )
 
 type indexedRawBody struct {
-	Format string `json:"format"`
-	SHA256 string `json:"sha256"`
-	Bytes  int    `json:"bytes"`
-	Header string `json:"header"`
+	transactionCount uint64
+	Segment          *rawSegmentLocation `json:"segment,omitempty"`
+	Format           string              `json:"format"`
+	SHA256           string              `json:"sha256"`
+	Bytes            int                 `json:"bytes"`
+	Header           string              `json:"header"`
 }
 type indexedRawInventory struct {
 	Schema int             `json:"schema"`
@@ -69,7 +70,7 @@ func indexedRawBodyPath(root, hash string) (string, error) {
 	return filepath.Join(root, "indexes", "blocks", "bodies-v2", hash[:2], hash+".block"), nil
 }
 func validateBitcoinBodyRecord(b *bitcoinIndexBlock) error {
-	if b == nil || len(b.TxIDs) == 0 {
+	if b == nil || b.BodySchema != 3 && len(b.TxIDs) == 0 {
 		return fmt.Errorf("incomplete Bitcoin records")
 	}
 	if b.BodySchema == 0 {
@@ -78,10 +79,20 @@ func validateBitcoinBodyRecord(b *bitcoinIndexBlock) error {
 		}
 		return nil
 	}
-	if b.BodySchema != 2 || b.RawBody == nil || len(b.Transactions) != 0 {
+	if (b.BodySchema != 2 && b.BodySchema != 3) || b.RawBody == nil || len(b.Transactions) != 0 {
 		return fmt.Errorf("invalid raw-backed Blocks schema")
 	}
 	r := b.RawBody
+	if b.BodySchema == 3 {
+		if len(b.TxIDs) != 0 || b.TransactionCount == 0 || b.TransactionCount > 100000 || r.Segment == nil || r.Segment.Offset < 0 || r.Segment.Offset > rawSegmentBytes-int64(r.Bytes)-rawSegmentFrameBytes || r.Format != "gateway-segment-v3" || !validHash(r.SHA256) || r.Bytes < 81 || r.Bytes > rawSegmentBlockBytes {
+			return fmt.Errorf("invalid block-only segment receipt")
+		}
+		header, err := hex.DecodeString(r.Header)
+		if err != nil || len(header) != 80 {
+			return fmt.Errorf("invalid segment header receipt")
+		}
+		return nil
+	}
 	header, err := hex.DecodeString(r.Header)
 	if err != nil || len(header) != 80 || r.Format != "bitcoin-serialized-block" || !validHash(r.SHA256) || r.Bytes < 81 || r.Bytes > maxMessageSize {
 		return fmt.Errorf("invalid raw Blocks receipt")
@@ -103,6 +114,9 @@ func validateBitcoinBodyAnchor(batch indexBatch) error {
 	hash := hash256(header)
 	if reverseHex(hash[:]) != batch.Checkpoint.BlockHash || reverseHex(header[4:36]) != batch.PreviousBlockHash {
 		return fmt.Errorf("raw body header differs from committed block")
+	}
+	if batch.Bitcoin.BodySchema == 3 {
+		return nil
 	}
 	hashes := make([][32]byte, len(batch.Bitcoin.TxIDs))
 	for i, id := range batch.Bitcoin.TxIDs {
@@ -277,6 +291,9 @@ func exactBlockViewHeader(v blockView) ([]byte, error) {
 	return header, nil
 }
 func (s *indexStore) prepareRawBitcoinRecord(v blockView) (*bitcoinIndexBlock, error) {
+	if !s.stagedMigration {
+		return retainVerifiedRawBlock(s.ordinalContext(), s.profileRoot, v, func() error { return checkIndexConsumerPublication(s.locatorContext, s.profileRoot, "blocks") })
+	}
 	header, err := exactBlockViewHeader(v)
 	if err != nil {
 		return nil, fmt.Errorf("raw Blocks header: %w", err)
@@ -314,12 +331,25 @@ func storeIndexedRawBody(root string, height int64, hash string, header, raw []b
 	}
 	// A small rebuildable inventory receipt lets the timeline observe actual
 	// durable body possession without decoding or traversing every index batch.
+	rawSegmentMu.Lock()
+	defer rawSegmentMu.Unlock()
 	if err := atomicWriteJSON(path+".receipt.json", indexedRawInventory{Schema: 2, Height: height, Hash: hash, Body: record.RawBody}); err != nil {
 		return nil, err
 	}
+	rawCoverageMembershipPublished(root, height, hash, nil)
 	return record, nil
 }
 func readIndexedRawBody(root string, target blockTarget, receipt *indexedRawBody) ([]byte, blockView, error) {
+	if receipt == nil {
+		var e error
+		receipt, e = rawSegmentReceiptAt(context.Background(), root, target)
+		if e != nil {
+			receipt = nil
+		} // Independently verified legacy bytes remain usable.
+	}
+	if receipt != nil && receipt.Segment != nil {
+		return readRawSegment(root, target, receipt)
+	}
 	path, err := indexedRawBodyPath(root, target.HashDisplay)
 	if err != nil {
 		return nil, blockView{}, err
@@ -364,10 +394,17 @@ func (a *app) decodedIndexBlockContext(ctx context.Context, s *indexStore, batch
 	if err != nil {
 		return blockView{}, err
 	}
-	if len(view.Transactions) != len(batch.Bitcoin.TxIDs) {
+	if batch.Bitcoin.BodySchema == 3 {
+		if view.TransactionCount != batch.Bitcoin.TransactionCount {
+			return blockView{}, fmt.Errorf("segment transaction count mismatch")
+		}
+	} else if len(view.Transactions) != len(batch.Bitcoin.TxIDs) {
 		return blockView{}, fmt.Errorf("raw Blocks transaction count mismatch")
 	}
 	for i, tx := range view.Transactions {
+		if batch.Bitcoin.BodySchema == 3 {
+			break
+		}
 		if tx.TxID != batch.Bitcoin.TxIDs[i] {
 			return blockView{}, fmt.Errorf("raw Blocks transaction order mismatch")
 		}

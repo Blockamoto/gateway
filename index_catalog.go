@@ -10,22 +10,33 @@ import (
 
 // Definitions describe recipes. They never assert that this node holds their data.
 type indexDefinition struct {
-	Locked            bool     `json:"locked,omitempty"`
-	LockReason        string   `json:"lock_reason,omitempty"`
-	ID                string   `json:"id"`
-	Name              string   `json:"name"`
-	Version           int      `json:"version"`
-	Network           string   `json:"network"`
-	Theory            string   `json:"theory"`
-	Rules             []string `json:"rules"`
-	RuleHash          string   `json:"rule_hash"`
-	Dependencies      []string `json:"dependencies"`
-	StartHeight       int64    `json:"start_height"`
-	ArbitraryStart    bool     `json:"arbitrary_start"`
-	Buildable         bool     `json:"buildable"`
-	CheckpointSchema  int      `json:"checkpoint_schema"`
-	OutputSchema      int      `json:"output_schema"`
-	CanonicalEncoding string   `json:"canonical_encoding"`
+	SourceURL             string   `json:"source_url,omitempty"`
+	SourceRevision        string   `json:"source_revision,omitempty"`
+	Metadata              any      `json:"metadata,omitempty"`
+	ConfigurationRevision uint64   `json:"configuration_revision,omitempty"`
+	Classification        string   `json:"classification,omitempty"`
+	Kind                  string   `json:"kind,omitempty"`
+	ProfileHash           string   `json:"profile_hash,omitempty"`
+	RecipeHash            string   `json:"recipe_hash,omitempty"`
+	DistrictInstance      string   `json:"district_instance,omitempty"`
+	DistrictProfileHash   string   `json:"district_profile_hash,omitempty"`
+	ChainInstance         string   `json:"chain_instance,omitempty"`
+	Locked                bool     `json:"locked,omitempty"`
+	LockReason            string   `json:"lock_reason,omitempty"`
+	ID                    string   `json:"id"`
+	Name                  string   `json:"name"`
+	Version               int      `json:"version"`
+	Network               string   `json:"network"`
+	Theory                string   `json:"theory"`
+	Rules                 []string `json:"rules"`
+	RuleHash              string   `json:"rule_hash"`
+	Dependencies          []string `json:"dependencies"`
+	StartHeight           int64    `json:"start_height"`
+	ArbitraryStart        bool     `json:"arbitrary_start"`
+	Buildable             bool     `json:"buildable"`
+	CheckpointSchema      int      `json:"checkpoint_schema"`
+	OutputSchema          int      `json:"output_schema"`
+	CanonicalEncoding     string   `json:"canonical_encoding"`
 }
 
 type indexInstance struct {
@@ -120,6 +131,9 @@ func indexDefinitions() []indexDefinition {
 		{ID: "sat-state", Name: "Sat index", Buildable: true, Dependencies: []string{"blocks"}, Theory: "Continuous ordinal FIFO state from genesis: sat identity, issuance and placement at an explicit header-anchored snapshot. Historical output ranges and raw block retention are independent.", Rules: []string{satIndexProfile, "Process all blocks from genesis in order; missing input identities fail closed.", "Allocate subsidy then transaction fees in Bitcoin transaction order; input sats move FIFO.", "Preserve lost sats, unspendable outputs and historical BIP30 destruction explicitly.", "Current placement belongs to the committed selected-chain snapshot, never an unresolved frontier.", "Keep the newest two savepoints at heights divisible by 12 and the newest two at heights divisible by 144, sharing reachable pages and facts.", "Restore an authenticated selected-chain savepoint then replay forward; recovery beyond saved points requires reviewed genesis rebuild.", "BPS output range records share amount and exact script facts; complete historical ranges are optional and off by default."}},
 		{ID: "satline", Name: "Satline", Dependencies: []string{"tx-locator", "txo-spender", "blocks"}, Theory: "On-demand verified lineage; deeper retained history is optional."},
 		{ID: "inscriptions", Name: "Inscriptions", Dependencies: []string{"blocks"}, Theory: "Bounded witness-envelope occurrences and content; canonical numbers remain unknown.", ArbitraryStart: true, Buildable: true},
+		{ID: "bitmap-districts", Name: "Bitmap Districts", Dependencies: []string{"blocks"}, StartHeight: bitmapDevelopmentStart, Buildable: true, Theory: "First eligible District claims under an explicit Gateway development profile; canonical standard profile serialization is unfinished.", Rules: []string{"Use the declared development semantic profile, exact source identity and continuous reveal history from 792435.", "Share authenticated inscription extraction without requiring a separately retained Inscriptions index.", "Persist candidates and deterministic first-eligible selections. Unresolved interpretation never advances complete evaluation.", "Current ownership and canonical Ord numbering are separate, optional evidence."}},
+		{ID: "bitmap-parcels", Name: "Bitmap Parcels", Dependencies: []string{"bitmap-districts", "blocks"}, StartHeight: bitmapDevelopmentStart, Buildable: true, Theory: "Parcel coordinates and checked District-parent provenance under an explicit experimental profile; declared parents alone are not proof.", Rules: []string{"Bind the exact District development profile and same-height selected source evaluation.", "Check referenced transaction counts and valid parent input provenance; missing evidence stays unresolved.", "A matching pre-block Sat snapshot can provide parent proof, but no Sat build or historical trace is started implicitly.", "Retain independent candidate/winner state and dependency-bound recovery; current ownership is not inferred."}},
+		{ID: "bitmap-chain", Name: "Bitmap Chain", Dependencies: []string{"bitmap-districts"}, StartHeight: bitmapDevelopmentStart, Buildable: true, Theory: "Separated per-block and cumulative commitments to completed District winner outcomes under the declared development profile; no claim of consensus or independent correctness.", Rules: []string{"Use the pinned bitmap-chain-v2 byte encodings, with District outcomes in physical reveal order.", "Fully evaluated empty blocks advance; missing or unresolved evaluation does not.", "Keep Bitcoin source, isolated outcome, cumulative outcome, semantic profile and outer scoped commitment distinct.", "Parcel outcomes and richer audit evidence do not silently enter the District outcome stream."}},
 		{ID: "bitmap", Name: "Bitmap districts", Dependencies: []string{"inscriptions"}, StartHeight: 792435, Buildable: true, Theory: "First valid district claim in Bitcoin reveal order. Ownership is a separate optional dependency.", Rules: []string{"Mainnet; start at block 792435 or a locally validated prior checkpoint.", "Apply blocks, transactions, inputs and recognized envelopes in Bitcoin order.", "Gateway district profile: direct raw body must be canonical ASCII decimal followed by .bitmap, with no leading zero except 0; no decompression or delegate lookup.", "MIME and parser flags do not exclude a recognized occurrence; global curse, boundness and numbering are not assumed. This is not an OPI-equivalence claim.", "The target Bitcoin block must exist at the reveal height.", "First valid claim wins; preserve subsequent candidates with rejection reasons.", "Do not use canonical inscription numbering to reorder claims.", "Ownership is unknown without separately resolved sat/inscription evidence.", "Compatibility results never mutate the base index."}},
 		{ID: "bitmap-compatibility", Name: "Bitmap: Terrain Claim Chains", Dependencies: []string{"bitmap"}, Theory: "Named evidence-backed interpretations alongside immutable base results; unsupported profiles are not guessed."},
 	}
@@ -162,6 +176,15 @@ func indexDefinitions() []indexDefinition {
 		if d.ID == "tx-locator" {
 			d.Name = "Transaction Index"
 		}
+		if d.ID == "bitmap-districts" {
+			d.Name = "Legacy Experimental Districts"
+		}
+		if d.ID == "bitmap-parcels" {
+			d.Name = "Legacy Experimental Parcels"
+		}
+		if d.ID == "bitmap-chain" {
+			d.Name = "Legacy Experimental District Chain"
+		}
 		if d.ID == "txo-spender" {
 			// Preserve the legacy recipe identity and readable immutable batches.
 			// TXIO payloads carry their own additive version and private layout.
@@ -174,7 +197,40 @@ func indexDefinitions() []indexDefinition {
 			d.LockReason = releaseLockReason(d.ID)
 		}
 	}
+	for _, id := range []string{bitmapCanonicalDistrictID, bitmapCanonicalParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1"} {
+		if d, ok := bitmapFixedIndexDefinition(id); ok {
+			defs = append(defs, d)
+		}
+	}
 	return defs
+}
+
+func bitmapFixedIndexDefinition(id string) (indexDefinition, bool) {
+	i, ok := bitmapCanonicalInstance(id)
+	if !ok {
+		i, ok = bitmapCanonicalChainInstance(id)
+	}
+	if !ok {
+		return indexDefinition{}, false
+	}
+	d := indexDefinition{ID: id, Name: i.Label, Kind: i.Kind, Version: 1,
+		Network: "bitcoin-mainnet", Buildable: true, CheckpointSchema: 1, OutputSchema: 1,
+		ConfigurationRevision: bitmapEffectiveConfigurationRevision(i), Classification: bitmapProfileClassification(i),
+		ProfileHash: i.ProfileHash, RuleHash: i.ProfileHash, Rules: append([]string{}, i.Profile.Rules...),
+		StartHeight: i.StartHeight, DistrictInstance: i.DistrictInstance, DistrictProfileHash: i.DistrictProfileHash,
+		ChainInstance: i.ChainInstance, Dependencies: []string{"blocks"},
+		SourceURL: i.Profile.ReferenceURL, SourceRevision: i.Profile.ReferenceRevision,
+		Metadata: i.Profile, CanonicalEncoding: i.Profile.FingerprintSchema,
+		Theory: "Fixed canonical Bitmap " + i.Kind + " rules. Source, implemented rules and authenticated implementation identity are available read-only. Ownership is separate."}
+	if i.Kind == "parcel" {
+		d.Dependencies = []string{i.DistrictInstance, "blocks"}
+	}
+	if i.Kind == "chain" {
+		d.Dependencies = []string{i.DistrictInstance}
+		d.Metadata = bitmapChainMetadata(i)
+		d.Theory = "Optional independent chain over completed saved outcomes. Its replaceable, versioned development codec pins mechanical choices unresolved by the upstream draft."
+	}
+	return d, true
 }
 
 func indexDigest(v any) string {
@@ -186,6 +242,22 @@ func indexDigest(v any) string {
 	return hex.EncodeToString(h[:])
 }
 func findIndexDefinition(id string) (indexDefinition, error) {
+	if d, ok := bitmapFixedIndexDefinition(id); ok {
+		return d, nil
+	}
+	if bitmapConsumerID(id) && id != "bitmap-districts" && id != "bitmap-parcels" && id != "bitmap-chain" {
+		base := "bitmap-districts"
+		if bitmapConsumerKind(id) == "parcel" {
+			base = "bitmap-parcels"
+		}
+		if bitmapConsumerKind(id) == "chain" {
+			base = "bitmap-chain"
+		}
+		d, err := findIndexDefinition(base)
+		d.ID = id
+		d.Locked, d.Buildable, d.LockReason = true, false, releaseLockReason(id)
+		return d, err
+	}
 	if id == inscriptionLocatorIndex {
 		d, err := findIndexDefinition("tx-locator")
 		if err != nil {

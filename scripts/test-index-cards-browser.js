@@ -91,221 +91,36 @@ async function run() {
     const page = await browser.newPage({viewport:{width:1280, height:900}});
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => { if (!request.url().startsWith(endpoint + '/')) external.push(request.url()); });
-    await page.goto(endpoint + '/indexes', {waitUntil:'networkidle'});await page.locator('#timeline-expand').click();
-    await page.locator('.timeline-track[data-index="headers"]').waitFor();
-    assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(node=>node.dataset.index)),['headers','blocks','utxo-state','address-state','address-history'],'A fresh profile has the Blocks layers, separate UTXO state and both Addresses children');
-    assert.equal(await page.locator('.timeline-group[data-group="blocks"]').count(),1,'Headers and raw Blocks share their expandable group');
-    assert.equal(await page.locator('.timeline-track[data-index="utxo-state"][data-group]').count(),0,'UTXO state stays separate from block-body coverage');
-    assert.equal(await page.locator('.timeline-group[data-group="addresses"]').count(),1,'Current UTXOs and Historical outputs share their own expandable group');
-    assert.equal(await page.locator('#timeline-group-addresses').getAttribute('aria-expanded'),'false','Addresses starts collapsed');
-    for(const id of ['address-state','address-history']){
-      assert.equal(await page.locator('.timeline-track[data-index="'+id+'"][data-group="addresses"]').count(),1,'Addresses contains its '+id+' child');
-      assert.equal(await page.locator('.timeline-track[data-index="'+id+'"]').isVisible(),false,'Collapsed Addresses hides its '+id+' child row');
-      assert.equal(await page.locator('.timeline-group-band[data-index="'+id+'"]').isVisible(),true,'Collapsed Addresses retains a distinct '+id+' coverage band');
-      assert.deepEqual(JSON.parse(await page.locator('.timeline-group-band[data-index="'+id+'"]').getAttribute('data-coverage')),[],'Fresh '+id+' has no invented coverage');
-    }
-    const addressColors=await page.locator('.timeline-group[data-group="addresses"] .timeline-group-labels span').evaluateAll(nodes=>nodes.map(node=>getComputedStyle(node).getPropertyValue('--layer-color')));
-    assert.equal(new Set(addressColors).size,2,'Current and historical address coverage have independent colors');
-    await page.locator('#timeline-group-addresses').click();
-    for(const id of ['address-state','address-history'])assert.equal(await page.locator('.timeline-track[data-index="'+id+'"]').isVisible(),true,'Expanded Addresses reveals '+id);
-    await page.locator('.timeline-track[data-index="address-state"] .timeline-track-select').click();
-    assert.equal(await page.locator('#address-current-state').innerText(),'UTXO set required','Fresh current addresses do not imply a saved UTXO checkpoint');
-    assert.equal(await page.locator('#address-current-primary').innerText(),'Open UTXO set');
-    assert.equal(await page.locator('#address-current-primary').getAttribute('data-action'),'dependency','Missing UTXOs require explicit dependency navigation');
-    assert.equal(await page.locator('#build-range-picker').isVisible(),false,'Current addresses have no arbitrary range picker');
-    assert.match(await page.locator('#address-current-metrics').innerText(),/Unavailable/,'Fresh address metrics do not invent a source checkpoint');
-    await page.locator('#address-current-primary').click();
-    assert.equal(await page.locator('#index').inputValue(),'utxo-state','Dependency action opens the separate UTXO build controls');
-    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Opening the address dependency does not start UTXO or address work');
-    await page.locator('.timeline-track[data-index="address-history"] .timeline-track-select').click();
-    await page.locator('#timeline-details').evaluate(el=>el.open=true);
-    assert.equal(await page.locator('#build-range-picker').isVisible(),true,'Historical outputs retain explicit creation ranges');
-    assert.equal(await page.locator('#from').evaluate(el=>el.readOnly),false,'Historical ranges may start at an explicitly chosen height');
-    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Inspecting historical ranges does not start a build');
-    await page.locator('#timeline-group-addresses').click();
-    await page.locator('#timeline-group-blocks').click();
-    for(const id of ['headers','blocks']){
-      assert.equal(await page.locator('.timeline-track[data-index="'+id+'"]').isVisible(),false,'Collapsing Blocks hides its '+id+' child row');
-      assert.equal(await page.locator('.timeline-group-band[data-index="'+id+'"]').count(),1,'Collapsed Blocks retains a distinct '+id+' coverage band');
-    }
-    assert.equal(await page.locator('.timeline-track[data-index="utxo-state"]').isVisible(),true,'Collapsing block layers does not hide UTXO state');
-    await page.locator('#timeline-group-blocks').click();
-    await page.locator('.timeline-track[data-index="utxo-state"] .timeline-track-select').click();
-    await page.locator('#utxo-primary').waitFor();
-    assert.equal(await page.locator('#utxo-primary').innerText(),'Build UTXO set');
-    assert.equal(await page.locator('#utxo-primary').getAttribute('data-action'),'review','Fresh UTXO state requires review before work can start');
-    assert.equal(await page.locator('#build-range-picker').isVisible(),false,'UTXO state cannot begin at an arbitrary range');
-    assert.match(await page.locator('#utxo-metrics').innerText(),/Unavailable/,'Unbuilt UTXO metrics do not invent measurements');
-    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Inspecting UTXO state does not start a build');
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
-    assert.equal(await page.locator('select#index, select#query-index, select#peer-index').count(), 0);
-    await page.screenshot({path:path.join(out, 'timeline-desktop.png'), fullPage:true});
-
-    await page.locator('#timeline-add-index').click();
-    assert.equal(await page.locator('#timeline-index-picker [data-index="inscriptions"]').isDisabled(),false,'The inscription stage permits adding its track');
-    for(const id of ['tx-locator','txo-spender','sat-state'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),false,id+' is available in the Sats stage');for(const id of ['bitmap-compatibility'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').isDisabled(),true,id+' remains gated');
-    for(const id of ['utxo-state','address-state','address-history'])assert.equal(await page.locator('#timeline-index-picker [data-index="'+id+'"]').count(),0,'The existing '+id+' track is not offered as a duplicate addition');
-    assert.equal(await page.locator('.timeline-track[data-index="inscriptions"]').count(),0,'An available index does not occupy a track until added');
-    await page.screenshot({path:path.join(out,'locked-features.png'),fullPage:true});
-    await page.locator('#timeline-add-index').click();
-    const freshBrowse=(await(await fetch(endpoint+'/api/v1/index/status')).json()).browse;for(const id of ['tx-locator','inscriptions']){const policy=freshBrowse.find(row=>row.index===id);assert.equal(policy.available,true);assert.equal(policy.enabled,false,'Fresh '+id+' browsing does not imply indexing consent');}
-    for(const id of ['tx-locator','inscriptions']){
-      await page.locator('#timeline-add-index').click();await page.locator('#timeline-index-picker [data-index="'+id+'"]').click();await page.locator('#timeline-inspector-tab').click();
-      assert.equal(await page.locator('#timeline-browse-index').isChecked(),false);const saved=page.waitForResponse(response=>response.url()===endpoint+'/api/v1/index/browse'&&response.request().method()==='POST');await page.locator('#timeline-browse-index').click();await saved;await page.waitForFunction(()=>document.querySelector('#timeline-browse-index').checked);
-      const policies=JSON.parse(fs.readFileSync(path.join(profile,'indexes','browse-policy.json'),'utf8')).policies;assert.equal(policies[id],true,'Native backend persists '+id+' browse choice');if(id==='tx-locator')assert.notEqual(policies.inscriptions,true,'Transaction consent cannot enable inscription indexing');
-    }
-    await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();for(const id of ['tx-locator','inscriptions']){await page.locator('.timeline-track[data-index="'+id+'"] .timeline-track-select').click();await page.locator('#timeline-inspector-tab').click();assert.equal(await page.locator('#timeline-browse-index').isChecked(),true,'Native saved '+id+' choice restores after UI reload');}
-    await page.locator('.timeline-track[data-index="tx-locator"] .timeline-track-select').click();const disabled=page.waitForResponse(response=>response.url()===endpoint+'/api/v1/index/browse'&&response.request().method()==='POST');await page.locator('#timeline-browse-index').click();await disabled;const policies=JSON.parse(fs.readFileSync(path.join(profile,'indexes','browse-policy.json'),'utf8')).policies;assert.equal(policies['tx-locator'],false);assert.equal(policies.inscriptions,true,'Turning transaction browsing off preserves the separate inscription choice');assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Browse choices never start a range scan');
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
-    await page.locator('.timeline-track[data-index="blocks"]').waitFor();
-    assert.equal(await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').getAttribute('aria-pressed'), 'true', 'Choosing default Blocks opens its track inspector');
-    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Choosing a track never starts indexing');
-    await page.locator('#timeline-details').evaluate(el=>el.open=false);
-    const control = page.getByRole('switch', {name:'blocks On', exact:true});
-    const live = page.getByRole('switch', {name:'blocks Live', exact:true});
-    await page.waitForFunction(()=>!document.querySelector('[aria-label="blocks On"]').disabled&&!document.querySelector('[aria-label="blocks Live"]').disabled,'Both controls leave the earlier explicit browse-save pending state');
-    await page.evaluate(()=>window.GatewayTheme.ready);assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'light');
-    for(const id of ['blocks']){
-      const on=page.getByRole('switch',{name:id+' On',exact:true}),follow=page.getByRole('switch',{name:id+' Live',exact:true});
-      assert.equal(await follow.isDisabled(),false);await on.click();await page.waitForFunction(id=>document.querySelector('[aria-label="'+id+' On"]').checked,id);
-      assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Fresh On does not scan '+id);await on.click();await page.waitForFunction(id=>!document.querySelector('[aria-label="'+id+' On"]').checked,id);
-    }
-    assert.equal(await live.isDisabled(),false,'Live is selectable before an initial checkpoint');
-    await page.locator('#timeline-inspector').getByText(/all applicable history from block 0/).waitFor();
-    await control.focus();
-    await page.keyboard.press('Space');
-    await page.waitForFunction(()=>document.querySelector('[aria-label="blocks On"]').checked);
-    assert.equal(await page.locator('#timeline-details').evaluate(el=>el.open),false,'On persists permission without opening advanced settings');
-    assert.equal(fs.existsSync(path.join(profile,'indexes','live.json')),true,'Fresh On must persist before any index exists');
-    assert.equal(fs.existsSync(path.join(profile, 'indexes', 'job.json')), false, 'On alone began unbounded work');
-    await control.focus();await page.keyboard.press('Space');await page.waitForFunction(()=>!document.querySelector('[aria-label="blocks On"]').checked);
-    await live.focus();await page.keyboard.press('Space');await page.waitForFunction(()=>document.querySelector('[aria-label="blocks Live"]').checked&&document.querySelector('[aria-label="blocks On"]').checked);
-    assert.equal((await (await fetch(endpoint+'/api/v1/index/status')).json()).live.find(x=>x.index==='blocks').enabled,true,'Live persisted through the real backend');
-    await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();await page.waitForFunction(()=>document.querySelector('[aria-label="blocks Live"]')?.checked&&document.querySelector('[aria-label="blocks On"]')?.checked);
-    await control.focus();await page.keyboard.press('Space');await page.waitForFunction(()=>!document.querySelector('[aria-label="blocks On"]').checked&&document.querySelector('[aria-label="blocks Live"]').checked);
-    await live.focus();await page.keyboard.press('Space');await page.waitForFunction(()=>!document.querySelector('[aria-label="blocks Live"]').checked);
-    await page.locator('#timeline-details').evaluate(el=>el.open=true);
-    assert.equal(await page.locator('#plan-form').isVisible(), true);assert.equal(await page.locator('#index').inputValue(),'blocks','Expanded settings belong to the selected Blocks track');
-    assert.equal(await page.locator('#selected-index-label').innerText(), 'Bitcoin blocks');
-    assert.equal(await page.locator('#build').isDisabled(), true);
-    assert.equal(fs.existsSync(path.join(profile, 'indexes', 'job.json')), false, 'Offline Live attempted a network scan');
-    await page.setViewportSize({width:390, height:844});
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'Narrow Indexes overflow');
-    await page.screenshot({path:path.join(out, 'timeline-narrow.png'), fullPage:true});
-    // Exercise the real shell, embedded workspace, address entry and history.
     await page.goto(endpoint + '/', {waitUntil:'networkidle'});
-    assert.equal(await page.locator('.sidebar').count(),0);
-    assert.deepEqual(await page.locator('.topbar .nav-item').evaluateAll(nodes=>nodes.map(x=>x.dataset.route)),['.gateway','indexes.gateway','peers.gateway','settings.gateway']);
-    assert.equal(await page.locator('#footer-status').innerText(), 'Gateway ' + expectedVersion + ' · early access');
-    await page.locator('#home-state').getByText('Nothing is being maintained yet.', {exact:true}).waitFor();
-    await page.setViewportSize({width:1280,height:900});await page.screenshot({path:path.join(out,'home-desktop.png'),fullPage:true});
-    await page.locator('#settings-button').click();await page.locator('.settings-sections').getByRole('button',{name:'Updates',exact:true}).click();
-    await page.locator('#update-config').waitFor();await page.locator('#update-title').getByText('Updates paused while offline',{exact:true}).waitFor();assert.equal(await page.locator('#update-check').isDisabled(),true,'Configured updater still respects offline networking');
-    assert.equal(await page.locator('#update-key-confirm').isChecked(),false);
-    assert.equal(await page.locator('#update-publisher').inputValue(),expectedChannel.publisher_url);assert.equal(await page.locator('#update-key').inputValue(),expectedChannel.trusted_key.public_key);
-    assert.equal(await page.locator('#update-channel').inputValue(),expectedChannel.id);assert.equal(await page.locator('#update-mode').inputValue(),'notify');
-    assert.equal(await page.locator('#update-trust').innerText(),'Trusted public key configured');
-    await page.screenshot({path:path.join(out,'updates-settings.png'),fullPage:true});
-    await page.locator('.brand').click();await page.locator('#home-state').waitFor();
-    await page.locator('.nav-item[data-route="indexes.gateway"]').click();
-    assert.equal(await page.locator('.topbar [data-route="indexes.gateway"]').getAttribute('aria-current'),'page');
-    const indexes = page.frameLocator('#indexes-module');
-    async function waitForIndexesWorkspace() {
-      // A new iframe may not have mounted its controls when navigation returns.
-      // Child tracks can also stay hidden inside a legitimately collapsed group.
-      await indexes.locator('#timeline-expand').waitFor({state:'attached'});
-      await indexes.locator('#timeline-group-blocks').waitFor({state:'attached'});
-      if(await indexes.locator('#timeline-expand').isVisible())await indexes.locator('#timeline-expand').click();
-      await indexes.locator('.timeline-group[data-group="blocks"]').waitFor();
-      assert.equal(await indexes.locator('#index-timeline').getAttribute('data-timeline-collapsed'),'false');
-    }
-    await waitForIndexesWorkspace();
-    assert.equal(await page.locator('#address').inputValue(), 'indexes.gateway');
-    const layoutChecks = [];
-    async function workspaceGeometry(animationFrame = false) {
-      return page.locator('#indexes-module').evaluate(async (frame, animationFrame) => {
-        if(animationFrame)await new Promise(requestAnimationFrame);
-        const child=frame.contentWindow,doc=frame.contentDocument,root=doc.querySelector('#index-timeline');
-        const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom};};
-        return {parent:{width:innerWidth,height:innerHeight,pageHeight:document.documentElement.scrollHeight},
-          frame:rect(frame),child:{width:child.innerWidth,height:child.innerHeight,pageHeight:doc.documentElement.scrollHeight},
-          root:rect(root),editor:rect(doc.querySelector('.timeline-editor')),
-          gridRows:child.getComputedStyle(root).gridTemplateRows,panelHeight:root.style.getPropertyValue('--timeline-panel-height')};
-      }, animationFrame);
-    }
-    async function assertDocked() {
-      const check={requestedViewport:page.viewportSize(),before:[],after:[]};layoutChecks.push(check);
-      const save=()=>fs.writeFileSync(path.join(out,'layout-geometry.json'),JSON.stringify(layoutChecks,null,2));
-      try {
-        // setViewportSize can return before the iframe's ResizeObserver has
-        // recomputed its pixel panel height. Establish one settled viewport
-        // before comparing the separate effect of opening inspector details.
-        check.before.push(await workspaceGeometry());
-        let previous='',identical=0,geometry;
-        for(let i=0;i<60;i++){
-          geometry=await workspaceGeometry(true);check.before.push(geometry);
-          const viewportAgrees=geometry.parent.width===check.requestedViewport.width&&geometry.parent.height===check.requestedViewport.height&&
-            Math.abs(geometry.child.width-geometry.frame.width)<=1&&Math.abs(geometry.child.height-geometry.frame.height)<=1;
-          const key=JSON.stringify(geometry);identical=viewportAgrees&&key===previous?identical+1:viewportAgrees?1:0;previous=key;
-          if(identical>=3)break;
-        }
-        assert(identical>=3,'Parent and embedded workspace geometry must settle before the inspector comparison');
-        const assertFits=value=>{
-          assert(value.frame.y>=0&&value.frame.bottom<=value.parent.height+1&&value.frame.height>100,'Embedded workspace fits below app navigation');
-          assert(value.parent.pageHeight<=value.parent.height+1,'Timeline cannot require outer page scrolling');
-          const top=value.frame.y+value.editor.y;
-          assert(top>=value.frame.y&&top+value.editor.height<=value.parent.height+1,'Timeline remains visible within the window');
-        };
-        assertFits(geometry);
-        const before=geometry.frame.y+geometry.editor.y;
-        await indexes.locator('#timeline-details').evaluate(el=>el.open=!el.open);
-        for(let i=0;i<4;i++){
-          const after=await workspaceGeometry(i>0);check.after.push(after);assertFits(after);
-          assert(Math.abs(before-(after.frame.y+after.editor.y))<=1,'Expanding inspector details cannot displace the timeline');
-        }
-      } catch(error) {
-        await page.screenshot({path:path.join(out,'layout-failure.png'),fullPage:true}).catch(()=>{});
-        throw error;
-      } finally {save();}
-    }
-    await assertDocked();
-    await page.screenshot({path:path.join(out,'shell-indexes-desktop.png'),fullPage:true});
-    await page.setViewportSize({width:390,height:844});
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'Narrow shell overflow');
-    await assertDocked();
-    await page.screenshot({path:path.join(out, 'shell-indexes-narrow.png'), fullPage:true});
-    await page.locator('.nav-item[data-route="peers.gateway"]').click();
-    await page.locator('#peer-data .panel').waitFor();
-    await page.locator('.brand').click();
-    await page.locator('#home-state').waitFor();
-    await page.locator('#address').fill('indexes.gateway');
-    await page.locator('#address-form').evaluate(form => form.requestSubmit());
-    await waitForIndexesWorkspace();
-    await page.goBack();
-    await page.locator('#home-state').waitFor();
-    assert.equal(await page.locator('#address').inputValue(), '.gateway');
-    await page.goForward();
-    await waitForIndexesWorkspace();
-    assert.equal(await page.locator('#address').inputValue(), 'indexes.gateway');
-
-    await page.goto(endpoint+'/?resolve=settings.gateway',{waitUntil:'networkidle'});
-    await page.locator('#theme-select').selectOption('dark');
-    await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
-    await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();
-    await page.evaluate(()=>window.GatewayTheme.ready);
-    assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'dark');
-    await page.screenshot({path:path.join(out,'settings-dark.png'),fullPage:true});
-    await page.locator('.settings-sections').getByRole('button',{name:'Updates',exact:true}).click();await page.screenshot({path:path.join(out,'updates-settings-dark.png'),fullPage:true});
-    await page.evaluate(()=>localStorage.clear());await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();await page.evaluate(()=>window.GatewayTheme.ready);assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'dark','Profile choice survives loss of per-origin browser storage');
-    await page.locator('.nav-item[data-route="indexes.gateway"]').click();await waitForIndexesWorkspace();assert.equal(await indexes.locator('html').getAttribute('data-theme'),'dark');await page.screenshot({path:path.join(out,'indexes-dark.png'),fullPage:true});
-    await page.locator('.nav-item[data-route="peers.gateway"]').click();await page.locator('#peer-data .panel').waitFor();await page.screenshot({path:path.join(out,'peers-dark.png'),fullPage:true});
+    const indexes=page.frameLocator('#indexes-module');await indexes.locator('#timeline-collapse').waitFor();
+    if(await indexes.locator('#timeline-collapse:not([aria-expanded=true])').isVisible())await indexes.locator('#timeline-collapse').click();
+    const status=await(await fetch(endpoint+'/api/v1/index/status')).json();
+    const available=status.definitions.filter(d=>!d.locked&&d.id!=='satline'&&!/^bitmap-chain(?:-|$)/.test(d.id)).flatMap(d=>d.id==='txo-spender'?['txio-links','txio-values','txio-scripts']:d.id==='sat-state'?['txio-sat-ranges']:[d.id]);
+    assert.deepEqual((await indexes.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index))).sort(),available.sort(),'All available built-ins appear on a fresh actual app');
+    for(const chain of status.definitions.filter(d=>!d.locked&&/^bitmap-chain(?:-|$)/.test(d.id))){const parent=chain.district_instance||'bitmap-districts';assert.equal(await indexes.locator('.timeline-track[data-index="'+parent+'"] [data-control=chain]').count(),1,'Each available Chain has its sole Arm control on its District');assert.equal(await indexes.locator('.timeline-track[data-index="'+chain.id+'"]').count(),0,'Chain does not duplicate a named row');}assert.equal(await indexes.locator('#timeline-add-index').isDisabled(),false);assert.equal(await indexes.locator('#timeline-expand').count(),0);
+    for(const id of ['txio','addresses','bitmap'])if(await indexes.locator('#timeline-group-'+id).count())if(await indexes.locator('#timeline-group-'+id).getAttribute('aria-expanded')==='false')await indexes.locator('#timeline-group-'+id).click();
+    await indexes.locator('.timeline-track[data-index=address-state] .timeline-track-select').click();await indexes.getByRole('heading',{name:'Requirements',exact:true}).first().waitFor();
+    assert.match(await indexes.locator('#index-requirements').innerText(),/UTXO/);assert.equal(await indexes.locator('#build-range-picker').isVisible(),false);
+    const arm=indexes.locator('.timeline-track[data-index=blocks] [data-control=arm]'),live=indexes.locator('.timeline-track[data-index=blocks] [data-control=live]');
+    const stage=page.waitForResponse(r=>r.url()===endpoint+'/api/v1/index/run/prepare'&&r.request().method()==='POST');await arm.click();await stage;
+    assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Arming creates no index job');
+    let prepared=await(await fetch(endpoint+'/api/v1/index/run')).json();assert.equal(prepared.prepared.consumers.find(c=>c.index==='blocks').armed,true);
+    const liveSaved=page.waitForResponse(r=>r.url()===endpoint+'/api/v1/index/run/prepare');await live.click();await liveSaved;
+    prepared=await(await fetch(endpoint+'/api/v1/index/run')).json();assert.equal(prepared.prepared.consumers.find(c=>c.index==='blocks').live,true);assert.equal(prepared.run,undefined,'Live is staged, not dispatched');
+    await page.reload({waitUntil:'networkidle'});await indexes.locator('.timeline-track[data-index=blocks] [data-control=arm]').waitFor();assert.equal((await arm.getAttribute('aria-pressed')==='true'),true);assert.equal((await live.getAttribute('aria-pressed')==='true'),true);
+    const startReply=page.waitForResponse(r=>r.url()===endpoint+'/api/v1/index/run/start'&&r.request().method()==='POST');await indexes.locator('#timeline-run-start').click();const started=await startReply;assert.equal(started.ok(),true,await started.text());assert.equal(Object.hasOwn(started.request().postDataJSON(),'plan_id'),false,'Start needs no separate review token');assert.equal(await indexes.locator('#timeline-run-review').count(),0,'No indexing review overlay');await indexes.locator('#timeline-run-panel').waitFor();assert.equal(fs.existsSync(path.join(profile,'indexes','job.json')),false,'Coordinated Start creates no separate legacy job');assert.ok((await(await fetch(endpoint+'/api/v1/index/run')).json()).run,'One Start admits the run');const stopReply=page.waitForResponse(r=>r.url()===endpoint+'/api/v1/index/run/control'&&r.request().method()==='POST');await indexes.locator('#timeline-run-stop').click();assert.equal((await stopReply).ok(),true);await page.waitForFunction(async()=>(await fetch('/api/v1/index/run').then(r=>r.json())).run?.state==='cancelled');
+    const stopped=page.waitForResponse(r=>r.url()===endpoint+'/api/v1/index/run/prepare');await arm.click();await stopped;
+    await page.screenshot({path:path.join(out,'timeline-desktop.png'),fullPage:true});
+    const frameNode=await page.locator('#indexes-module').elementHandle();await indexes.locator('#index-timeline').evaluate(n=>n.dataset.nativeIdentity='kept');
     await page.locator('#settings-button').click();await page.locator('#theme-select').waitFor();
-    await page.locator('#theme-select').selectOption('light');
-    await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');
-    await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();
-    await page.evaluate(()=>window.GatewayTheme.ready);
-    assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),'light');
-    await page.screenshot({path:path.join(out,'settings-light.png'),fullPage:true});
+    await page.locator('.settings-sections').getByRole('button',{name:'Updates',exact:true}).click();await page.locator('#update-config').waitFor();
+    assert.equal(await page.locator('#update-check').isDisabled(),true);assert.equal(await page.locator('#update-publisher').inputValue(),expectedChannel.publisher_url);assert.equal(await page.locator('#update-key').inputValue(),expectedChannel.trusted_key.public_key);assert.equal(await page.locator('#update-mode').inputValue(),'notify');
+    await page.locator('.nav-item[data-route="indexes.gateway"]').click();await indexes.locator('#timeline-run-start').waitFor();assert.equal(await indexes.locator('#index-timeline').getAttribute('data-native-identity'),'kept');assert.equal(await page.locator('#indexes-module').evaluate((n,old)=>n===old,frameNode),true,'Settings return preserves actual frame document');
+    for(const width of [1280,390]){await page.setViewportSize({width,height:width===390?844:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&document.documentElement.scrollHeight<=innerHeight+1),true);await page.screenshot({path:path.join(out,'workspace-'+width+'.png'),fullPage:true});}
+    await page.locator('.nav-item[data-route="peers.gateway"]').click();await page.locator('#peer-data .panel').waitFor();await page.locator('.nav-item[data-route="indexes.gateway"]').click();await indexes.locator('#timeline-run-start').waitFor();assert.equal(await indexes.locator('#index-timeline').getAttribute('data-native-identity'),'kept','Peers preserves timeline state');
+    await page.locator('#settings-button').click();await page.locator('#theme-select').selectOption('dark');await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
+    await page.reload({waitUntil:'networkidle'});await page.locator('#theme-select').waitFor();assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+    await page.evaluate(()=>localStorage.clear());await page.reload({waitUntil:'networkidle'});await page.locator('#theme-select').waitFor();assert.equal(await page.locator('html').getAttribute('data-theme'),'dark','Theme is preserved in actual profile, independently of browser storage');
     const setupTitles=['Your Bitcoin connection','Browser access','Network & local data'];
     const setupCalls=[];page.on('request',request=>{if(request.method()==='POST')setupCalls.push(new URL(request.url()).pathname)});
     for(const theme of ['light','dark']){
@@ -327,7 +142,7 @@ async function run() {
     assert.deepEqual(errors, [], 'Uncaught browser errors');
     assert.deepEqual(external, [], 'Fresh offline workspace requested an external origin');
     const finalUpdate = await (await fetch(endpoint+'/api/v1/updates/status')).json();assert.equal(finalUpdate.state,'disabled_offline');assert.equal(finalUpdate.last_checked,undefined,'UI traversal did not start a hosted update check');
-    const result = {result:'PASS', scope:'Native offline runtime; actual Chromium DOM/CSP, independent fresh Addresses children with empty coverage and distinct collapsed bands, explicit current UTXO dependency and historical ranges without autobuild, independent browse defaults/persistence/reload/off consent, Sats stage available and later stages gated, all available fresh persisted On controls, initial Live enabling On/reload/stop, honest offline no-scan, reviewed bundled updater trust and notification defaults persisted before UI interaction with offline checks paused, top-bar Home/Indexes/Peers/Settings, profile-saved light/dark theme and embedded theme, all three setup stages in both themes at desktop/narrow with pending browser/native readiness preserved, address entry and history; no external-origin requests', version:ping.version, binary:path.resolve(options.binary), binary_sha256:createHash('sha256').update(fs.readFileSync(path.resolve(options.binary))).digest('hex'), update_channel:expectedChannel.id, update_publisher:expectedChannel.publisher_url, browser:executablePath, browser_version:browser.version(), platform:process.platform, page_errors:errors, external_requests:external};
+    const result = {result:'PASS', scope:'Native offline runtime; actual Chromium DOM/CSP, default available tracks, no duplicate controls, staged Arm/Live and reload persistence, single-action shared Start and panel status without a separate legacy job, persistent frame through Settings/Peers, desktop/narrow layout, reviewed updater trust/offline behavior, profile theme persistence and setup stages; no external-origin requests', version:ping.version, binary:path.resolve(options.binary), binary_sha256:createHash('sha256').update(fs.readFileSync(path.resolve(options.binary))).digest('hex'), update_channel:expectedChannel.id, update_publisher:expectedChannel.publisher_url, browser:executablePath, browser_version:browser.version(), platform:process.platform, page_errors:errors, external_requests:external};
     fs.writeFileSync(path.join(out, 'result.json'), JSON.stringify(result, null, 2));
     console.log('Index timeline runtime browser: PASS (' + result.scope + ').');
   } catch (error) {

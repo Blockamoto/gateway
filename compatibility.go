@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	appVersion              = "0.7.7"
+	appVersion              = "0.7.8"
 	bodWireVersion          = 1
 	minBODWireVersion       = 1
 	overlayProtocolVersion  = bodWireVersion
@@ -74,7 +74,7 @@ func currentCompatibility() compatibilityView {
 		RawBlockRedownload:     false,
 		IndexSchema:            indexSchemaVersion,
 		IndexRebuild:           false,
-		BlockBodySchema:        2,
+		BlockBodySchema:        3,
 		TXIOSchema:             3,
 		UTXOSchema:             utxoCheckpointSchema,
 		CacheMetadataSchema:    cacheMetadataSchema,
@@ -92,7 +92,7 @@ func currentCompatibility() compatibilityView {
 		MinimumOverlayProtocol: minBODWireVersion,
 		StorageIndexRebuild:    false,
 		BlockVerifier:          blockVerifierVersion, DerivedRecheck: true, OrdStorage: 1, ArchiveStorage: 1,
-		Note: "UTXO state is a sequential genesis-first projection with 288 self-contained recovery transitions; full consensus validation is deferred. Positional TXIO version 3 shares optional output facts and uses separate transaction-locator translation. Earlier immutable TXIO and raw-backed Blocks records remain readable without destructive conversion. Headers, Blocks, Inscriptions, Transaction Index, TXIO, UTXO and Addresses are available. Current addresses project the saved UTXO checkpoint; historical addresses cover explicitly indexed creation ranges. Inscription holdings, Gateway peerhood and later indexes remain locked. Application updates preserve headers and use the separate signed header feed. Hosted update readiness is recorded separately in release acceptance.",
+		Note: "New Raw Blocks records retain serialized Bitcoin bytes in segmented body schema 3 with block-level metadata; general transaction lookup remains an explicit Locator choice. Legacy decoded and schema 2 Raw records remain readable without automatic conversion. Schema 3 bodies require this development build; an older executable may not read new records. UTXO and Sats retain their independent genesis-first state and recovery rules; positional TXIO and Addresses remain independently selected. Full consensus validation and Gateway peerhood remain deferred. This local development build is not a published release or updater promotion.",
 	}
 }
 

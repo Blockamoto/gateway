@@ -13,11 +13,20 @@ import (
 func Test074IndexReleaseAvailability(t *testing.T) {
 	a := independentTestApp(t)
 	for _, d := range indexDefinitions() {
-		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender" || d.ID == "utxo-state" || d.ID == "address-state" || d.ID == "address-history" || d.ID == "sat-state"
+		// The development consumers have their own profiles and stores. Their
+		// availability must not unlock or reinterpret the legacy Bitmap index.
+		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender" || d.ID == "utxo-state" || d.ID == "address-state" || d.ID == "address-history" || d.ID == "sat-state" || d.ID == "bitmap-districts" || d.ID == "bitmap-parcels" || d.ID == "bitmap-chain"
 		if d.Locked == available || releaseFeatureAvailable(d.ID) != available {
 			t.Fatalf("wrong release availability: %+v", d)
 		}
 		if available {
+			if d.ID == "bitmap-districts" || d.ID == "bitmap-parcels" || d.ID == "bitmap-chain" {
+				for _, start := range []func(indexBuildRequest) (indexJob, error){a.startIndexBuild, func(req indexBuildRequest) (indexJob, error) { return a.startIndexBuildID(req, false, "") }} {
+					if _, err := start(indexBuildRequest{Index: d.ID}); err == nil || !strings.Contains(err.Error(), "coordinated timeline run") {
+						t.Fatal("development Bitmap consumer entered the legacy executor", d.ID, err)
+					}
+				}
+			}
 			continue
 		}
 		if d.LockReason == "" {

@@ -304,6 +304,38 @@ func readAddressStateContext(ctx context.Context, root string) (*addressStateChe
 	return &c, nil
 }
 
+// A stopped projection owns its facts independently: its source UTXO may move
+// beyond the undo window while the frozen address head is still retained.
+func visitCurrentAddressFactPagesContext(ctx context.Context, root string, visit func(string) error) error {
+	c, err := readAddressStateContext(ctx, root)
+	if errors.Is(err, ErrAddressStateMissing) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	dir := addressStatePages(root, c.PageGeneration)
+	return newOrdinalTree(dir, c.Root).withContext(ctx).walk(func(kv ordinalKV) error {
+		var bucket addressStateBucket
+		if err := json.Unmarshal(kv.Value, &bucket); err != nil {
+			return err
+		}
+		if err := validateAddressBucket(bucket); err != nil {
+			return err
+		}
+		return addressWalkBucketAfter(newOrdinalTree(dir, bucket.Root).withContext(ctx), bucket, "", func(memberKV ordinalKV) error {
+			var member utxoMember
+			if err := json.Unmarshal(memberKV.Value, &member); err != nil {
+				return err
+			}
+			if _, err := addressMemberKey(member); err != nil {
+				return err
+			}
+			return visit(member.FactRef.Page)
+		})
+	})
+}
+
 func addressStateMatches(c *addressStateCheckpoint, u *utxoHead) bool {
 	return c != nil && u != nil && c.UTXOCommitment == u.Checkpoint.Commitment && c.Height == u.Checkpoint.Height && c.BlockHash == u.Checkpoint.BlockHash
 }
@@ -518,6 +550,12 @@ func publishAddressStateContext(ctx context.Context, root string, c addressState
 		}
 	}
 	dir := addressStateDirectory(root)
+	if err := checkIndexConsumerPublication(ctx, root, "address-state"); err != nil {
+		return err
+	}
+	if automatic, _ := ctx.Value(indexRunAddressProjectionKey{}).(bool); automatic && !indexRunProjectionAllowed(root, c.Height) {
+		return errIndexRunConsumerStopped
+	}
 	if err := atomicWriteJSON(filepath.Join(dir, "head.json"), c); err != nil {
 		return err
 	}
@@ -712,6 +750,10 @@ func buildAddressStateWithHookContext(ctx context.Context, root string, progress
 // optional address error can turn an already published UTXO head into an older
 // state. A failed projection remains unavailable until repaired/rebuilt.
 func syncAddressStateContext(ctx context.Context, u *utxoStore, hook func(string) error) (err error) {
+	if u.head != nil && !indexRunProjectionAllowed(u.root, u.head.Checkpoint.Height) {
+		return nil
+	}
+	ctx = context.WithValue(ctx, indexRunAddressProjectionKey{}, true)
 	defer func() {
 		if err != nil && ctx.Err() == nil && !errors.Is(err, ErrUTXOStateCorrupt) && !errors.Is(err, ErrUTXORebuildRequired) && !errors.Is(err, ErrAddressStateCorrupt) && !errors.Is(err, ErrAddressStateStale) {
 			err = fmt.Errorf("%w: %w", ErrAddressStateStale, err)

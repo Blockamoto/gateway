@@ -255,9 +255,12 @@ func (s *indexStore) deriveTXIOBlock(block blockView) (*indexSpenderBlock, error
 		r := &out.Rows[i]
 		in := block.Transactions[r.TxIndex].Inputs[r.Vin]
 		creation := txioCreation{}
+		if coin, known := runPrevout(ctx, r.TxIndex, r.Vin); known && coin.TxID == in.PrevTxID && coin.Vout == in.PrevVout {
+			creation = txioCreation{coin.Position, coin.BlockHash}
+		}
 		// Transaction order is authoritative for same-block spends, including
 		// duplicate txid incarnations. Never use a later transaction in this block.
-		for j := r.TxIndex - 1; j >= 0; j-- {
+		for j := r.TxIndex - 1; creation.Position == "" && j >= 0; j-- {
 			tx := block.Transactions[j]
 			if tx.TxID == in.PrevTxID {
 				if int(in.PrevVout) >= len(tx.Outputs) {

@@ -214,6 +214,9 @@ func (s *indexStore) appendSat077Block(block blockView, from int64, retention st
 			return err
 		}
 	}
+	if err := checkIndexConsumerPublication(ctx, s.profileRoot, "sat-state"); err != nil {
+		return err
+	}
 	if err = atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); err != nil {
 		return err
 	}
@@ -318,6 +321,9 @@ func (s *indexStore) reconcileSatStateSelected(ctx context.Context, selectedTipH
 		if err := s.satCommitHook("before_recovery_head"); err != nil {
 			return err
 		}
+	}
+	if err := checkIndexConsumerPublication(ctx, s.profileRoot, "sat-state"); err != nil {
+		return err
 	}
 	if err := atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); err != nil {
 		return err
@@ -424,6 +430,9 @@ func resetSatStateForRebuildContext(ctx context.Context, root, jobID string) err
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := checkIndexConsumerPublication(ctx, root, "sat-state"); err != nil {
+		return err
+	}
 	base := filepath.Join(root, "indexes")
 	dir := filepath.Join(base, "sat-state")
 	archive := filepath.Join(base, "sat-state-archives", indexDigest(jobID))
@@ -451,6 +460,9 @@ func resetSatStateForRebuildContext(ctx context.Context, root, jobID string) err
 				return e
 			}
 			if err = os.MkdirAll(filepath.Dir(archive), 0700); err != nil {
+				return err
+			}
+			if err = checkIndexConsumerPublication(ctx, root, "sat-state"); err != nil {
 				return err
 			}
 			if err = os.Rename(dir, archive); err != nil {

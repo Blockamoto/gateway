@@ -1,0 +1,246 @@
+{
+  "schema": 1,
+  "kind": "local-development-acceptance",
+  "runtime_source": "8592db50830eb56ad0716453550100685220d6b3",
+  "engine_source": "6f1f3c79e1331ae781ddaa535c25c6ef172a2927",
+  "client_sha256": "1aec5e436ce924ae61623ee45df56e23cbeb138558c64c1fd689d826922f87a9",
+  "artifact_name": "Gateway-Bitmap-Rulesets-Development-8592db5.zip",
+  "artifact_directory": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\Gateway-Bitmap-Rulesets-Development-8592db5",
+  "archive_sha256": "ba18607211d7230f863d12fb079cbf19eb79d0cc1acc05780fabf861979d6270",
+  "archive_bytes": 80519665,
+  "application_compatibility_version": "0.7.7 development",
+  "published": false,
+  "main_or_updater_changed": false,
+  "preview_url": "http://127.0.0.1:58618",
+  "preview_profile": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\preview-profile-8592db5",
+  "preview_state_note": "Initial readiness only. Earlier user-controlled previews, saved indexes and jobs remain untouched.",
+  "implemented": [
+    "Single-action Start and persistent top-left status, exact prerequisites and required-origin/resume rules.",
+    "Current-boundary Arm/Live admission with no hidden earlier backfill; durable Pause/Stop/Off publication fences.",
+    "Benign chain-tip extension no longer invalidates a still-selected captured block source.",
+    "One upcoming ephemeral block overlaps current processing; aligned consumers share verified read/decode/extraction and ordered publication.",
+    "Peer failure cooldown, actual dispatch timing, adapter/authority-scoped reconciliation and one progress save per cohort.",
+    "Shift sibling selection and explicit batch/range deletion, custom definition removal with explicit dependency closure, and retained shared evidence.",
+    "Always-accessible attached Chain management and persistent visible deletion receipts after async settings load."
+  ],
+  "receipts": {
+    "packaging": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\package-8592db5.json",
+      "sha256": "c40bee30d54885d0272d776f154e2d5a585c66fe3146e11ec57bb709066a41c7",
+      "result": "PASS"
+    },
+    "independent_package_audit": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\package-independent-8592db5.json",
+      "sha256": "cd00b983a1372b1ef4e4ff49c31e14552de3e9c4ab1301197f4f858b8f670b0e",
+      "result": "PASS"
+    },
+    "compiled_profile_api": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-profile-api-8592db5\\result.json",
+      "sha256": "9ec4eb09fd56fdc96660193284f45a7e2e84af32713017096791ab35870a1023",
+      "result": "PASS",
+      "checks": [
+        "compiled profile routes and both embedded workspace assets",
+        "atomic linked District, Chain and Parcel creation",
+        "real status exposes all unbuilt custom tracks and their exact dependencies without work",
+        "instance/profile-bound unknown reads without jobs",
+        "rename preserves executable rules identity",
+        "unindexed rules edit preserves IDs, atomically rebinds children and refuses stale edits, views and deletion reviews",
+        "Standard classification follows rule values independently of the custom display name",
+        "distinct alternative profile and honest unavailable comparison with Chain Off",
+        "automatic names follow rule classification until explicit rename, including a deliberately chosen matching name",
+        "stale batch deletion refused with every explicitly selected dependency preserved",
+        "confirmed whole custom deletion removes only the selected District/Parcel/Chain definitions and owned data",
+        "management and inspection never launched an index job",
+        "compiled restart preserves profiles and parent-bound layout across local ports without work"
+      ]
+    },
+    "native_ui": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final8592db5-ui-acceptance.json",
+      "sha256": "430bb140b20387f4c95ea41fc9ccbbdf8254d283bbb3b4525f13336f23957dfc",
+      "result": "PASS",
+      "suites": [
+        {
+          "suite": "Bitmap",
+          "result": "PASS",
+          "exit_code": 0,
+          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-bitmap-8592db5\\result.json",
+          "receipt_sha256": "7f998589b43502a61ce1199748f485f226eb06849c98c0246df4ed534722fbf3",
+          "receipt_records_binary_hash": true,
+          "script": "scripts/test-bitmap-native-browser.js",
+          "script_working_sha256": "691fe0a2cad332235589a69a9dfba397e368429b51b942852813c97518483c1c",
+          "script_canonical_sha256": "9439def0a6e5d382940585985b3293df2bf81ca244b549d31fc3b4eb50f0987f",
+          "compiled_source_match": true,
+          "run_by": "timeline_hierarchy_review"
+        },
+        {
+          "suite": "Viewport",
+          "result": "PASS",
+          "exit_code": 0,
+          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-viewport-8592db5\\summary.json",
+          "receipt_sha256": "2cf9647d9e9aceb49e36af293ff6c05c7de5dfca7e7b75001c8c98da1c757bc1",
+          "receipt_records_binary_hash": true,
+          "script": "scripts/test-viewport-native-browser.js",
+          "script_working_sha256": "9e2a6881f03f54aac13fb1e6f79628d88cfc4f83295d9a1a521923ae1dd7e6e7",
+          "script_canonical_sha256": "0a24c6fc05dc976ecb8071ff50f87279e3513620c9444aa64f83122be63235fe",
+          "compiled_source_match": true,
+          "run_by": "timeline_hierarchy_review"
+        },
+        {
+          "suite": "Inscription security",
+          "result": "PASS",
+          "exit_code": 0,
+          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-inscription-8592db5\\summary.json",
+          "receipt_sha256": "a04f20c8510d38bc1f310c326e5c532ef0173d2791b09489b90d50c2df69d2de",
+          "receipt_records_binary_hash": false,
+          "script": "scripts/test-inscription-native-browser.js",
+          "script_working_sha256": "a63390cb237d936e369d7ac3218e74da419a581369924023a4c4cfaec38dec44",
+          "script_canonical_sha256": "a63390cb237d936e369d7ac3218e74da419a581369924023a4c4cfaec38dec44",
+          "compiled_source_match": true,
+          "run_by": "timeline_hierarchy_review"
+        },
+        {
+          "suite": "Sats",
+          "result": "PASS",
+          "exit_code": 0,
+          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-sats-8592db5\\result.json",
+          "receipt_sha256": "a4c76c94213ed1484232d8198378935ef52f297c7b9a5fceb48db8b578f59cc8",
+          "receipt_records_binary_hash": true,
+          "script": "scripts/test-sats-native-077.js",
+          "script_working_sha256": "b06faa8550b2c898f1b7b28c96e15f52d3df33e0ab38b3fe2b6280464b62ac12",
+          "script_canonical_sha256": "fe5a6152080e798256051a4a36d71abd957b4994eb071a7678574797a86dce89",
+          "compiled_source_match": true,
+          "run_by": "root"
+        },
+        {
+          "suite": "General controls",
+          "result": "PASS",
+          "exit_code": 0,
+          "receipt": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-controls-8592db5\\result.json",
+          "receipt_sha256": "664fb44aa1ac6bdcd3ac47ef4304866f01c6572ef6c1bc12765c6be28870924d",
+          "receipt_records_binary_hash": true,
+          "script": "scripts/test-index-cards-browser.js",
+          "script_working_sha256": "f2a6867795b1413df9353b12edb892eab74b35fd103c6520dffc9bc76da26168",
+          "script_canonical_sha256": "20e4b9af4f65fecee68c23f6f62b21178ec30cbef9a53b11a9532a8287d006dd",
+          "compiled_source_match": true,
+          "run_by": "root"
+        }
+      ]
+    },
+    "source_ui": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\current-source-interactions\\source-ui-acceptance.json",
+      "sha256": "ab50ad10e990b95878f4e5abe65fc50a998c1f3de315339a35e796b06130f63f",
+      "result": "PASS"
+    },
+    "full_windows": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\index-run-admission-final-backend-attempt2\\summary.json",
+      "sha256": "72fa0ce07d9bc2b6df59090dbf11ded6d63c84fc1dd8d76ffeb6d15cea29e2e4",
+      "result": "PASS",
+      "test_passes": 1281,
+      "test_failures": 0,
+      "test_skips": 46,
+      "packages": [
+        {
+          "Time": "2026-10-16T17:41:53.3727789+01:00",
+          "Action": "pass",
+          "Package": "Gateway",
+          "Elapsed": 1325.524
+        },
+        {
+          "Time": "2026-10-16T17:41:55.6753813+01:00",
+          "Action": "pass",
+          "Package": "Gateway/internal/cleanup",
+          "Elapsed": 1.46
+        },
+        {
+          "Time": "2026-10-16T17:41:58.4810036+01:00",
+          "Action": "pass",
+          "Package": "Gateway/internal/datadir",
+          "Elapsed": 1.996
+        },
+        {
+          "Time": "2026-10-16T17:42:28.0161115+01:00",
+          "Action": "pass",
+          "Package": "Gateway/internal/updateapply",
+          "Elapsed": 28.389
+        },
+        {
+          "Time": "2026-10-16T17:42:33.3826518+01:00",
+          "Action": "pass",
+          "Package": "Gateway/internal/updatepublisher",
+          "Elapsed": 4.178
+        },
+        {
+          "Time": "2026-10-16T17:42:34.8632204+01:00",
+          "Action": "pass",
+          "Package": "Gateway/internal/updates",
+          "Elapsed": 0.825
+        },
+        {
+          "Time": "2026-10-16T17:42:37.2028156+01:00",
+          "Action": "pass",
+          "Package": "Gateway/packaging/gateway-launcher",
+          "Elapsed": 1.421
+        },
+        {
+          "Time": "2026-10-16T17:42:40.5887717+01:00",
+          "Action": "pass",
+          "Package": "Gateway/packaging/native-host",
+          "Elapsed": 2.092
+        },
+        {
+          "Time": "2026-10-16T17:42:40.6698283+01:00",
+          "Action": "skip",
+          "Package": "Gateway/packaging/update-helper",
+          "Elapsed": 0
+        },
+        {
+          "Time": "2026-10-16T17:42:40.7283546+01:00",
+          "Action": "skip",
+          "Package": "Gateway/packaging/update-publisher",
+          "Elapsed": 0
+        }
+      ],
+      "go_vet": "PASS",
+      "go_source_inventory_count": 357,
+      "race_claimed": false
+    },
+    "engine_source_binding": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\index-run-admission-final-backend-attempt2\\final-source-match.json",
+      "sha256": "7043129c6f2efaaf41c5587c26ac1ce092d14e62760718be6b193bc48340a6f4",
+      "result": "PASS"
+    },
+    "exact_client_cleanup": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\index-run-admission-final-backend-attempt2\\exact-client-cleanup-8592db5-summary.json",
+      "sha256": "fe7cc11f90b61da6497da7c7ec8ff1e0b4bf16791e303c125576c7b6bfa3a95e",
+      "result": "PASS"
+    },
+    "engine_receipt_hashes": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\index-run-admission-final-backend-attempt2\\receipt-hashes.json",
+      "sha256": "84a40a2bad1d3c9a3e6a6c2cb20aac6e331602f0a3c9b9091003ff9e93dd367a"
+    },
+    "initial_preview_readiness": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\preview-8592db5.readiness.json",
+      "sha256": "7d53459cf38455246f48b24b2ecd82d3e20d945f6cea01aafe4313796300af16",
+      "result": "PASS"
+    },
+    "bounded_performance": {
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\performance-6f1f3c7\\paired-summary.json",
+      "sha256": "015662400c8bc702b157795741352443f282c050aca79bc72711fc2460c1a3b9"
+    }
+  },
+  "retained_intermediate_evidence": [
+    "The first full engine attempt is explicitly interrupted for the one-bound Raw review correction, not reported as passing.",
+    "The initial 6f1f3c7 Sats check did not observe the expected resumed checkpoint. A strengthened verifier synchronized Resume/status acknowledgement and checked same-run completion plus the exact saved checkpoint; it passed on unchanged engine bytes. This does not establish the original failure's cause.",
+    "A stronger compiled receipt-geometry check failed on 6f1f3c7; replacement8592db5 waits for actual settings readiness and passes that exact check."
+  ],
+  "limitations": [
+    "Local development acceptance only: no new release, updater promotion, hosted CI or local race result is claimed.",
+    "Whole-mainnet history, storage, complete ownership and full Bitcoin consensus validation are not established by bounded fixtures.",
+    "Benchmark wall times were confounded by concurrent work; fewer deterministic reconciliation/progress writes are established, not a throughput improvement.",
+    "Unsupported rule combinations and missing Parcel provenance remain explicit blockers; Satline is disabled.",
+    "Cumulative state cannot support arbitrary interval holes; unsupported deletion scopes are blocked without widening.",
+    "Browser checks use the compiled Go server and Chromium. Native WebView sharpness and OS registration are separate.",
+    "The older inscription security receipt does not itself record a binary hash; the final native wrapper records its compiled-source binding without inventing a hash in that raw receipt."
+  ],
+  "path_redaction": "Historical Go package path prefix normalized to Gateway; other original acceptance fields retained."
+}

@@ -54,6 +54,9 @@ func contextualTransactionFixture(t *testing.T, from, to int64, counts map[strin
 				t.Fatal(err)
 			}
 		}
+		if index == "blocks" {
+			installLegacyRawLocators(t, store)
+		}
 	}
 	path := filepath.Join(root, "headers.bin")
 	if err := os.WriteFile(path, headers, 0600); err != nil {

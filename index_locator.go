@@ -537,6 +537,9 @@ func (s *indexStore) writeIndexLocatorRows(b indexBatch, repair bool) error {
 }
 
 func (s *indexStore) indexBatchLocatorKeys(b indexBatch) ([]string, error) {
+	if s.definition.ID == "blocks" {
+		return nil, nil
+	}
 	keys := []string{}
 	if b.Bitcoin != nil || b.TransactionLocator != nil {
 		for _, entry := range transactionBatchEntries(b) {
@@ -944,6 +947,9 @@ func (s *indexStore) bitcoinLocatorRecordsWithRepair(ctx context.Context, txid s
 // A translation catalogue may contain many output aliases for one creation;
 // its bounded pointer budget must not count them as transaction incarnations.
 func (s *indexStore) bitcoinLocatorRecordsWithBudget(ctx context.Context, txid string, repair bool, maxMatches int, maxShardBytes int64) ([]indexLocatorRecord, error) {
+	if s.definition.ID == "blocks" {
+		repair = false
+	}
 	path, err := graphShardPath(s.dir, s.locatorKind(), txid)
 	if err != nil {
 		return nil, err

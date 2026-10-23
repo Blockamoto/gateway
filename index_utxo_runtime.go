@@ -13,6 +13,27 @@ func optionalAddressProjectionError(err error) bool {
 	return !errors.Is(err, ErrUTXOStateCorrupt) && !errors.Is(err, ErrUTXORebuildRequired) && (errors.Is(err, ErrAddressStateStale) || errors.Is(err, ErrAddressStateCorrupt))
 }
 
+// A moving/unavailable selected authority is a retry boundary, not evidence
+// that a consumer's retained index is corrupt.
+type selectedAuthorityRetryError struct{ error }
+
+func (e selectedAuthorityRetryError) Unwrap() error { return e.error }
+
+func selectedAuthorityRetry(err error) error {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	var retry selectedAuthorityRetryError
+	if errors.As(err, &retry) {
+		return err
+	}
+	return selectedAuthorityRetryError{err}
+}
+func isSelectedAuthorityRetry(err error) bool {
+	var retry selectedAuthorityRetryError
+	return errors.As(err, &retry)
+}
+
 // The UTXO engine has one atomic state head, not an immutable historical batch
 // for every processed block. This projection lets the existing scheduler share
 // its single writer without interpreting a UTXO checkpoint as a block batch.
@@ -44,33 +65,31 @@ func (a *app) utxoSelectedTarget(ctx context.Context, authority chainAuthorityVi
 		return blockTarget{}, err
 	}
 	if authority.Height < 0 || !validHash(authority.Hash) || height < 0 || height > authority.Height {
-		return blockTarget{}, fmt.Errorf("selected UTXO chain anchor unavailable at %d", height)
+		return blockTarget{}, selectedAuthorityRetry(fmt.Errorf("selected UTXO chain anchor unavailable at %d", height))
 	}
 	var target blockTarget
 	var err error
 	switch authority.Source {
 	case "bitcoin_core":
-		if height == authority.Height {
-			target, err = a.coreTipTargetContext(ctx)
-		} else {
-			target, err = a.coreTargetByHeightContext(ctx, height)
-		}
+		// The captured tip may now be an ancestor of a newer tip. Query this
+		// exact height rather than comparing it with Core's latest tip.
+		target, err = a.coreTargetByHeightContext(ctx, height)
 	case "bod_headers":
 		if height == authority.Height {
 			status := a.getStatus()
-			if status.HeaderHeight != authority.Height || status.HeaderCount <= authority.Height {
-				return blockTarget{}, fmt.Errorf("selected UTXO header tip changed")
+			if status.HeaderHeight < authority.Height || status.HeaderCount <= authority.Height {
+				return blockTarget{}, selectedAuthorityRetry(fmt.Errorf("selected UTXO header tip changed"))
 			}
 		}
 		target, err = a.localBlockTarget(height)
 	default:
-		return blockTarget{}, fmt.Errorf("selected UTXO chain provider unavailable")
+		return blockTarget{}, selectedAuthorityRetry(fmt.Errorf("selected UTXO chain provider unavailable"))
 	}
 	if err != nil {
-		return blockTarget{}, err
+		return blockTarget{}, selectedAuthorityRetry(err)
 	}
 	if height == authority.Height && (target.Height != authority.Height || target.HashDisplay != authority.Hash) {
-		return blockTarget{}, fmt.Errorf("selected UTXO chain tip changed")
+		return blockTarget{}, selectedAuthorityRetry(fmt.Errorf("selected UTXO chain tip changed"))
 	}
 	return target, nil
 }
@@ -356,6 +375,10 @@ func (a *app) runUTXOIndexBuild(ctx context.Context, j indexJob) {
 	}
 	processed := int64(0)
 	for {
+		if !indexRunOptionalWorkAllowed(a.dataDir, j.Index) {
+			finish("paused", nil)
+			return
+		}
 		if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
 			finish("paused", nil)
 			return

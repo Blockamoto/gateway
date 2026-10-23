@@ -57,19 +57,18 @@ async function run() {
     const settle=() => page.evaluate(() => new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const view=() => page.locator('#index-timeline').evaluate(el=>({from:Number(el.dataset.from),to:Number(el.dataset.to),fit:el.dataset.fit==='true'}));
     const span=value=>value.to-value.from+1;
-    const refresh=async()=>{const response=page.waitForResponse(r=>r.url()===origin+'/api/v1/index/status');await page.locator('#timeline-refresh').click();await response;await settle();};
+    const refresh=async()=>{const response=page.waitForResponse(r=>r.url()===origin+'/api/v1/index/status');await page.evaluate(()=>refresh());await response;await settle();};
     const shot=async name=>{if(out)await page.screenshot({path:path.join(out,name+'.png'),fullPage:true});};
-    const drag=async(locator,dx,dy=0)=>{const box=await locator.boundingBox();assert(box,'Drag target is visible');const x=box.x+box.width/2,y=box.y+box.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y+dy,{steps:8});await page.mouse.up();await settle();};
+    const drag=async(locator,dx,dy=0)=>{const box=await locator.boundingBox();assert(box,'Drag target is visible');const x=box.x+box.width*(await locator.getAttribute('id')==='timeline-divider'?.25:.5),y=box.y+box.height/2;await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+dx,y+dy,{steps:8});await page.mouse.up();await settle();};
     const onlyPlans=()=>assert.deepEqual(calls.filter(c=>c.method==='POST'&&!c.path.endsWith('/plan')),[],'UI navigation, adding tracks and preparing ranges never start indexing');
     const rootBox=()=>page.locator('#index-timeline').boundingBox();
     const editorBox=()=>page.locator('.timeline-editor').boundingBox();
     const horizontal='#timeline-scrollbar-horizontal';
-    await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.locator('#timeline-expand').click();
+    await page.route('**/api/v1/index/layout',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({schema:1,order:{},revision:0})}));
+  await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.locator('#timeline-collapse:not([aria-expanded=true])').click();
     await page.locator('#timeline-divider').waitFor();
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks'],'Headers and Blocks are default tracks even without stored blocks');
-    await page.locator('#timeline-add-index').click();
-    assert.equal(await page.locator('#timeline-index-picker button[data-index="inscriptions"]').isDisabled(),true);
-    await page.locator('#timeline-add-index').click();
+    assert.equal(await page.locator('#timeline-add-index').isDisabled(),false,'Built-ins remain present; Plus offers custom Bitmap rulesets');
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await page.locator('#timeline-details').evaluate(el=>el.open=true);
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks']);
@@ -77,7 +76,7 @@ async function run() {
     assert.equal(await page.locator('#timeline-details').evaluate(el=>el.open),true,'Adding an index opens its settings without starting work');
     assert.equal(calls.some(c=>c.method==='POST'),false);
     await refresh();assert.equal(await page.locator('.timeline-track[data-index="blocks"]').count(),1);
-    await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();assert.equal(await page.locator('.timeline-track[data-index="blocks"]').count(),1,'An added index with empty coverage survives reload');
+    await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-collapse:not([aria-expanded=true])').isVisible())await page.locator('#timeline-collapse:not([aria-expanded=true])').click();assert.equal(await page.locator('.timeline-track[data-index="blocks"]').count(),1,'An added index with empty coverage survives reload');
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
 
     // Expanding settings scrolls inside the inspector; workspace stays docked.
@@ -93,10 +92,10 @@ async function run() {
     await drag(divider,0,-70);const grown=await editorBox();assert(grown.height>docked.height+50);
     await divider.focus();await page.keyboard.press('ArrowDown');assert((await editorBox()).height<grown.height);
     const resized=await editorBox();
-    await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();assert(Math.abs((await editorBox()).height-resized.height)<2,'Divider ratio persists across reload');
+    await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-collapse:not([aria-expanded=true])').isVisible())await page.locator('#timeline-collapse:not([aria-expanded=true])').click();assert(Math.abs((await editorBox()).height-resized.height)<2,'Divider ratio persists across reload');
     await divider.focus();await page.keyboard.press('Home');assert.equal(Number(await divider.getAttribute('aria-valuenow')),Number(await divider.getAttribute('aria-valuemin')));
     await page.keyboard.press('End');assert.equal(Number(await divider.getAttribute('aria-valuenow')),Number(await divider.getAttribute('aria-valuemax')));
-    await divider.dblclick();await settle();
+    await divider.dblclick({position:{x:(await divider.boundingBox()).width*.25,y:5}});await settle();
 
     // The two horizontal edges independently anchor the opposite boundary.
     await page.locator('#timeline-fit').click();
@@ -163,7 +162,7 @@ async function run() {
     await page.keyboard.up('Space');await page.waitForTimeout(650);await page.mouse.up();await settle();
     assert.deepEqual(await page.locator('#timeline-inspector').evaluate(el=>({id:el.dataset.index,kind:el.dataset.kind})),selection,'Releasing Space before a delayed mouseup cannot produce a selection');
     assert.equal(await page.locator('#index-timeline').getAttribute('data-hand'),null);
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();await page.locator('#timeline-inspector-tab').click();await page.locator('#timeline-details').evaluate(el=>el.open=true);await page.locator('#to').fill('123');await page.locator('#to').press('Space');assert.equal(await page.locator('#to').inputValue(),'123');assert.equal(await page.locator('#index-timeline').getAttribute('data-hand'),null,'Typing in number inputs never activates grab mode');await page.locator('#timeline-details').evaluate(el=>el.open=false);await page.locator('.timeline-track[data-index="headers"] .timeline-track-select').click();
+    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();await page.locator('#timeline-inspector-tab').click();await page.locator('#timeline-details').evaluate(el=>el.open=true);await page.locator('#timeline-inspector-panel').evaluate(el=>{const input=document.createElement('input');input.type='number';input.id='fixture-typing';el.prepend(input);});await page.locator('#fixture-typing').fill('123');await page.locator('#fixture-typing').press('Space');assert.equal(await page.locator('#fixture-typing').inputValue(),'123');await page.locator('#fixture-typing').evaluate(el=>el.remove());assert.equal(await page.locator('#index-timeline').getAttribute('data-hand'),null,'Typing in number inputs never activates grab mode');await page.locator('#timeline-details').evaluate(el=>el.open=false);await page.locator('.timeline-track[data-index="headers"] .timeline-track-select').click();
     await lane.focus();await page.keyboard.down('Space');await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.keyboard.up('Space');
     assert.equal(await page.locator('#index-timeline').getAttribute('data-hand'),null);
     assert.equal(await page.locator('#index-timeline').getAttribute('data-dragging'),null);
@@ -199,7 +198,7 @@ async function run() {
     // Enough established rows to exercise ordinary scrolling and both vertical
     // handles without enabling additional real application features.
     for(let i=0;i<8;i++){
-      const id='fixture-index-'+i;snapshot.definitions.push({...base,id,name:'Fixture index '+i});
+      const id='bitmap-districts-'+i.toString(16).padStart(32,'0');snapshot.definitions.push({...base,id,name:'Fixture District '+i});
       snapshot.instances.push({definition:id,checkpoint:{from:0,height:10},coverage:[{from:0,to:10}],verification:'selected_chain'});
     }
     snapshot.timeline.tracks[1]={id:'blocks',coverage:[{from:499990,to:500010}],gaps:[{from:500000,to:500000}],coverage_complete:false};
@@ -222,11 +221,11 @@ async function run() {
       assert(await trackViewport.evaluate(el=>el.scrollHeight>el.clientHeight),'Overflow fixture needs a scrollable list at '+width);
       const group=page.locator('.timeline-group[data-group="blocks"] .timeline-group-heading');
       const heading=page.locator('.timeline-track[data-index="headers"] .timeline-track-heading');
-      const cases=[['group heading',group],['nested group control',group.locator('strong')],['ordinary nested label',heading.locator('strong')],['nested remove button',page.locator('.timeline-track[data-index="blocks"] .timeline-track-remove')],['label padding',async()=>heading.evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x+2,y:r.bottom-3};})],['ruler label padding',async()=>page.locator('.timeline-ruler-label').evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.right-2,y:r.y+r.height/2};})]];
+      const cases=[['group heading',group],['nested group control',group.locator('strong')],['ordinary nested label',heading.locator('strong')],['nested Arm control',page.locator('.timeline-track[data-index="blocks"] [data-control=arm]')],['label padding',async()=>heading.evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x+2,y:r.bottom-3};})],['ruler label padding',async()=>page.locator('.timeline-ruler-label').evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.right-2,y:r.y+r.height/2};})]];
       for(const [name,target] of cases)await verticalWheelCase(width+' '+name,target);
       for(const modifier of ['Control','Meta','Alt','Shift']){
         await verticalWheelCase(width+' label '+modifier+' with diagonal drift',heading.locator('strong'),{dx:3,dy:120,modifiers:[modifier]});
-        await verticalWheelCase(width+' left navigation button '+modifier,page.locator('#timeline-pan-right'),{dx:3,dy:120,modifiers:[modifier]});
+        await verticalWheelCase(width+' toolbar Fit button '+modifier,page.locator('#timeline-fit'),{dx:3,dy:120,modifiers:[modifier]});
       }
       const dividerPoint=async offset=>page.locator('.timeline-ruler-label').evaluate((label,offset)=>{const r=label.getBoundingClientRect(),row=document.querySelector('.timeline-track[data-index="headers"]').getBoundingClientRect();return{x:offset<0?Math.floor(r.right+offset):Math.ceil(r.right+offset),y:row.y+row.height/2};},offset);
       await verticalWheelCase(width+' one pixel left of column divider',()=>dividerPoint(-1),{dx:3,modifiers:['Control']});
@@ -236,7 +235,7 @@ async function run() {
       assert(span(await view())<span(rightBefore),width+' one pixel right of the label divider permits intentional Ctrl zoom');
       await verticalWheelCase(width+' data lane vertical with diagonal drift',lane,{dx:3,dy:120});
       await verticalWheelCase(width+' right scrollbar gutter',page.locator('#timeline-scrollbar-vertical'),{modifiers:['Alt']});
-      const add=page.locator('.timeline-add-track-row');await add.scrollIntoViewIfNeeded();await settle();
+      const add=page.locator('.timeline-add-track-row[data-add-kind=district]');await add.scrollIntoViewIfNeeded();await settle();
       const addPoint=await add.evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x+3,y:r.y+r.height/2};});
       const addBefore=await wheelState(),addScroll=await trackViewport.evaluate(el=>el.scrollTop);
       await page.mouse.move(addPoint.x,addPoint.y);await page.keyboard.down('Control');await page.mouse.wheel(3,-120);await page.keyboard.up('Control');await settle();
@@ -247,7 +246,7 @@ async function run() {
       await page.locator('#timeline-collapse').click();await settle();
       const inspectorScroll=page.locator('#timeline-inspector-panel');
       assert(await inspectorScroll.evaluate(el=>el.scrollHeight>el.clientHeight),width+' collapsed inspector has visible overflow for wheel regression');
-      for(const [name,target,modifier] of [['compact text',page.locator('#timeline-current-height'),'Control'],['compact button',page.locator('#timeline-expand'),'Meta'],['compact padding',page.locator('.timeline-compact-label'),'Alt'],['compact text shift',page.locator('#timeline-current-height'),'Shift'],['compact actual lane',page.locator('#timeline-compact-scrubber'),null]]){
+      for(const [name,target,modifier] of [['compact text',page.locator('#timeline-current-height'),'Control'],['compact button',page.locator('#timeline-collapse:not([aria-expanded=true])'),'Meta'],['compact padding',page.locator('.timeline-compact-label'),'Alt'],['compact text shift',page.locator('#timeline-current-height'),'Shift'],['compact actual lane',page.locator('#timeline-compact-scrubber'),null]]){
         await inspectorScroll.evaluate(el=>el.scrollTop=0);const hiddenScroll=await trackViewport.evaluate(el=>el.scrollTop),before=await wheelState(),box=await target.boundingBox();
         await page.mouse.move(box.x+box.width/2,box.y+box.height/2);if(modifier)await page.keyboard.down(modifier);
         try{await page.mouse.wheel(3,120);}finally{if(modifier)await page.keyboard.up(modifier);}await settle();
@@ -257,7 +256,7 @@ async function run() {
         wheelChecks.push({case:width+' '+name,modifier,visibleInspectorScroll:await inspectorScroll.evaluate(el=>el.scrollTop)});
       }
       await anchoredModifiedWheel(page.locator('#timeline-compact-scrubber'),'Control',width+' compact right-side Ctrl zoom');
-      await page.locator('#timeline-expand').click();await page.locator('#timeline-details').evaluate(el=>el.open=false);await settle();
+      await page.locator('#timeline-collapse:not([aria-expanded=true])').click();await page.locator('#timeline-details').evaluate(el=>el.open=false);await settle();
     }
     await page.setViewportSize({width:1440,height:1000});await settle();
     const height=()=>page.locator('#index-timeline').evaluate(el=>Number.parseFloat(el.style.getPropertyValue('--timeline-track-height')));
@@ -266,62 +265,17 @@ async function run() {
     const vertical='#timeline-scrollbar-vertical';
     const beforeEnd=await height();await drag(page.locator(vertical+' .end'),0,18);assert.notEqual(await height(),beforeEnd,'Bottom vertical handle changes track height');
     await trackViewport.evaluate(el=>el.scrollTop=120);await settle();const beforeStart=await height();await drag(page.locator(vertical+' .start'),0,12);assert.notEqual(await height(),beforeStart,'Top vertical handle changes track height');
-    const storedHeight=await height();await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();assert.equal(await height(),storedHeight,'Track height persists');
+    const storedHeight=await height();await page.reload({waitUntil:'networkidle'});if(await page.locator('#timeline-collapse:not([aria-expanded=true])').isVisible())await page.locator('#timeline-collapse:not([aria-expanded=true])').click();assert.equal(await height(),storedHeight,'Track height persists');
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     assert.match(await page.locator('#timeline-selection-note').innerText(),/partial|not been mapped/i);
     assert.deepEqual(await lane.evaluate(el=>JSON.parse(el.dataset.coverage)),[{from:499990,to:499999},{from:500001,to:500010}],'A one-block gap survives partial coverage mapping');
-    await selectHeight(page,500000);assert.match(await page.locator('#timeline-selection-meta').innerText(),/0 \/ 1/);
+    await selectHeight(page,500000);assert.equal(await page.locator('#index-timeline').getAttribute('data-playhead'),'500000');
 
-    // Range handles and numeric fields share one draft; changes invalidate a
-    // reviewed plan, but never submit a build or silently fix invalid text.
-    await page.locator('#timeline-inspector-tab').click();
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
-    await page.locator('#timeline-details').evaluate(el=>el.open=true);
-    await page.locator('#from').fill('200000');await page.locator('#to').fill('700000');
-    await page.locator('.build-range-rail').scrollIntoViewIfNeeded();
-    for(const theme of ['light','dark']){
-      await page.evaluate(mode=>document.documentElement.dataset.theme=mode,theme);
-      assert.deepEqual(await page.locator('.build-range-rail input').evaluateAll(nodes=>nodes.map(node=>getComputedStyle(node).backgroundColor)),['rgba(0, 0, 0, 0)','rgba(0, 0, 0, 0)'],'Overlapping range inputs cannot obscure the other handle or rail in '+theme);
-    }
-    await page.evaluate(()=>document.documentElement.dataset.theme='light');
-    const dragRange=async(id,pixels)=>{
-      const handle=page.locator(id),value=Number(await handle.inputValue()),min=Number(await handle.getAttribute('min')),max=Number(await handle.getAttribute('max')),box=await handle.boundingBox();
-      const x=box.x+8+(box.width-16)*(value-min)/(max-min),y=box.y+box.height/2;
-      await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+pixels,y,{steps:6});await page.mouse.up();await settle();
-    };
-    await dragRange('#range-start',35);assert(Number(await page.locator('#from').inputValue())>200000,'Dragging the first range handle updates the number field');
-    assert.equal(await page.locator('#to').inputValue(),'700000');
-    await dragRange('#range-end',-35);assert(Number(await page.locator('#to').inputValue())<700000,'Dragging the last range handle updates its number field');
-    await shot('workspace-range-handles-light');
-    await page.locator('#from').fill('100');await page.locator('#to').fill('200');
-    assert.equal(await page.locator('#range-start').inputValue(),'100');assert.equal(await page.locator('#range-end').inputValue(),'200');
-    await page.locator('#plan-button').click();await page.waitForFunction(()=>!document.querySelector('#build').disabled);
-    await page.locator('#range-start').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('#from').inputValue(),'101');assert.equal(await page.locator('#build').isDisabled(),true,'Moving a range endpoint invalidates reviewed plan');
-    await page.locator('#range-end').focus();await page.keyboard.press('ArrowLeft');assert.equal(await page.locator('#to').inputValue(),'199');
-    const plans=calls.filter(c=>c.path.endsWith('/plan')).length;
-    await page.locator('#to').fill('99');assert.equal(await page.locator('#to').inputValue(),'99');assert.equal(await page.locator('#to').evaluate(el=>el.checkValidity()),false);
-    await page.locator('#plan-button').click();assert.equal(calls.filter(c=>c.path.endsWith('/plan')).length,plans,'Invalid reversed input cannot request a plan');
-    await page.locator('#to').fill('200');await page.locator('#from').fill('-1');assert.equal(await page.locator('#from').evaluate(el=>el.checkValidity()),false);
-    await page.locator('#from').fill('1.5');assert.equal(await page.locator('#from').evaluate(el=>el.checkValidity()),false);
-    await page.locator('#from').fill('100');await page.locator('#to').fill('');assert.match(await page.locator('#range-summary').innerText(),/tip/i);
-    await page.locator('#initial-live').check();assert.equal(await page.locator('#range-end').isDisabled(),true);await page.locator('#initial-live').uncheck();
-    onlyPlans();
-
-    // Recipes whose first block is fixed retain that origin; slider gestures
-    // and selecting a timeline range cannot replace it with an arbitrary start.
-    snapshot.definitions.push({...base,id:'fixture-fixed',name:'Fixed-start fixture',arbitrary_start:false,start_height:500});
-    await refresh();await page.locator('#timeline-add-index').click();await page.locator('#timeline-index-picker button[data-index="fixture-fixed"]').click();
-    assert.equal(await page.locator('#from').inputValue(),'500');assert.equal(await page.locator('#from').evaluate(el=>el.readOnly),true);assert.equal(await page.locator('#range-start').isDisabled(),true);
-    await page.locator('#to').fill('499');assert.equal(await page.locator('#to').evaluate(el=>el.checkValidity()),false);await page.locator('#to').fill('600');
-    await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();assert.equal(await page.locator('#from').inputValue(),'100','Switching tracks preserves each draft');
-    await page.locator('#timeline-details').evaluate(el=>el.open=true);
-    await page.locator('#to').fill('200');await page.locator('#plan-button').click();await page.waitForFunction(()=>!document.querySelector('#build').disabled);
-    snapshot.instances.push({definition:'blocks',checkpoint:{from:120,height:150,commitment:'new-local-instance'},coverage:[{from:120,to:150}],verification:'selected_chain'});
-    await refresh();
-    assert.equal(await page.locator('#from').inputValue(),'120','A newly established checkpoint constrains the currently selected draft on refresh');
-    assert.equal(await page.locator('#from').evaluate(el=>el.readOnly),true);assert.equal(await page.locator('#range-start').isDisabled(),true);assert.equal(await page.locator('#range-start').inputValue(),'120');
-    assert.equal(await page.locator('#to').inputValue(),'200','New checkpoint preserves the chosen last block');assert.equal(await page.locator('#build').isDisabled(),true,'Changed retained origin invalidates an old reviewed plan');
-    await page.locator('#plan-button').click();await page.waitForFunction(()=>!document.querySelector('#build').disabled);assert.equal(calls.filter(c=>c.path.endsWith('/plan')).at(-1).body.from,120);
+    // Range execution now belongs only to shared transport; its pointer and
+    // keyboard interactions are exercised in the global selection regression.
+    await page.locator('#timeline-inspector-tab').click();await page.locator('#timeline-details').evaluate(el=>el.open=true);
+    assert.equal(await page.locator('#build-range-picker').isVisible(),false,'No duplicate per-index range editor');
+    assert.equal(await page.locator('#timeline-run-start').isVisible(),true);onlyPlans();
 
     // Each theme and small viewport keeps both panes inside the application.
     for(const theme of ['light','dark'])for(const width of [1440,390]){
@@ -333,7 +287,7 @@ async function run() {
     }
     await page.setViewportSize({width:1280,height:900});
     await page.goto(origin+'/embedded-fixture',{waitUntil:'networkidle'});
-    const frame=page.frameLocator('iframe');await frame.locator('#timeline-expand').click();await frame.locator('#timeline-divider').waitFor();
+    const frame=page.frameLocator('iframe');if(await frame.locator('#timeline-collapse:not([aria-expanded=true])').isVisible())await frame.locator('#timeline-collapse:not([aria-expanded=true])').click();await frame.locator('#timeline-divider').waitFor();
     const embeddedBefore=await frame.locator('.timeline-editor').boundingBox();
     await frame.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await frame.locator('#timeline-details').evaluate(el=>el.open=true);await settle();
@@ -348,20 +302,15 @@ async function run() {
     Object.assign(snapshot.definitions.find(d=>d.id==='inscriptions'),{locked:false,lock_reason:''});
     snapshot.live=[{index:'inscriptions',initial_from:0,on:false,enabled:false}];
     await page.goto(origin+'/indexes',{waitUntil:'networkidle'});
-    if(await page.locator('#timeline-expand').isVisible())await page.locator('#timeline-expand').click();
-    await page.locator('#timeline-add-index').click();
-    await page.locator('#timeline-index-picker button[data-index="inscriptions"]').click();
+    if(await page.locator('#timeline-collapse:not([aria-expanded=true])').isVisible())await page.locator('#timeline-collapse:not([aria-expanded=true])').click();
+    await page.locator('.timeline-track[data-index="inscriptions"] .timeline-track-select').click();
     await page.locator('#timeline-fit').click();await settle();
     const inscriptionLane=page.locator('.timeline-lane[data-index="inscriptions"]');
     const potential=()=>inscriptionLane.evaluate(el=>JSON.parse(el.dataset.potential));
     assert.deepEqual(await potential(),[{from:767430,to:999999}],'An empty mainnet inscription track starts at the catalog scan suggestion when projection metadata is absent');
     assert.deepEqual(await inscriptionLane.evaluate(el=>JSON.parse(el.dataset.coverage)),[],'A potential span never creates indexed coverage');
     await page.locator('#timeline-details').evaluate(el=>el.open=true);await settle();
-    assert.equal(await page.locator('#from').inputValue(),'767430','Fresh inscription range defaults agree with the ghost boundary');
-    assert.equal(await page.locator('#range-start').inputValue(),'767430');
-    assert.equal(await page.locator('#from').getAttribute('min'),'0','The suggested presentation origin does not forbid explicit earlier scans');
-    assert.equal(await page.locator('#range-start').getAttribute('min'),'0');
-    assert.equal(await page.locator('#from').evaluate(el=>el.readOnly),false);
+    assert.equal(await page.locator('#build-range-picker').isVisible(),false,'Global range supersedes hidden legacy picker');
     snapshot.timeline.tracks.push({id:'inscriptions',potential_from:767430,coverage:[{from:767450,to:767470}],gaps:[{from:767460,to:767460}],coverage_complete:false});
     await refresh();await page.locator('#timeline-fit').click();await settle();
     assert.deepEqual(await potential(),[{from:767430,to:999999}],'Partial indexed coverage does not move the potential origin');
@@ -392,10 +341,6 @@ async function run() {
     snapshot.timeline.tracks[2].coverage=[{from:0,to:10}];
     await refresh();await page.locator('.timeline-track[data-index="inscriptions"] .timeline-track-select').click();
     await page.locator('#timeline-details').evaluate(el=>el.open=true);await settle();
-    assert.equal(await page.locator('#from').inputValue(),'0','Retained custom inscription history preserves its authenticated origin');
-    assert.equal(await page.locator('#from').evaluate(el=>el.readOnly),true);
-    assert.equal(await page.locator('#range-start').inputValue(),'0');
-    assert.equal(await page.locator('#range-start').isDisabled(),true);
     assert.deepEqual(await inscriptionLane.evaluate(el=>JSON.parse(el.dataset.coverage)),[{from:0,to:10}],'Earlier indexed evidence remains visible independently of the presentation suggestion');
     assert.deepEqual(await potential(),[{from:767430,to:767430}],'Retained genesis history does not shift the potential span');
     await shot('workspace-inscription-ghost');

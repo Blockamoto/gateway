@@ -4,6 +4,7 @@ import (
 	"./internal/cleanup"
 	"./internal/datadir"
 	"./internal/updateapply"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -24,6 +25,12 @@ type app struct {
 	updateAPIWork         sync.WaitGroup
 	updateBackgroundWork  sync.WaitGroup
 	indexMu               sync.Mutex
+	indexRunMu            sync.Mutex
+	indexRunLoaded        bool
+	indexRunState         indexRunDocument
+	indexRunError         error
+	indexRunActiveID      string             // guarded by indexMu
+	indexRunSourceBlock   indexRunSourceFunc // optional injected source; fixed before a run starts
 	indexLiveMu           sync.Mutex
 	indexLiveControlMu    sync.Mutex // policy changes, pause and supervisor decisions
 	indexLiveLast         string
@@ -61,8 +68,7 @@ type app struct {
 	fetchMu           sync.Mutex
 	objectsMu         sync.Mutex
 	objects           map[string]*objectFetch
-	decoded           map[string]blockView
-	decodedOrder      []string
+	blockBaseAcquire  func(context.Context, blockTarget, appSettings) (blockView, error) // explicit test/source injection
 	knowledgeMu       sync.Mutex
 	knowledgeClosing  bool
 	knowledgeSeen     map[string]bool
@@ -402,7 +408,7 @@ func main() {
 	a.registerIndexRoutes(mux)
 	a.registerTXIORoutes(mux)
 	executable, exeErr := os.Executable()
-	if exeErr == nil {
+	if exeErr == nil && portablePreviewBuild == "" {
 		restartArgs, restartErr := desktopUpdateRestartArgs(os.Args[1:], dataDir, url)
 		if restartErr != nil {
 			restartArgs = os.Args[1:]

@@ -17,8 +17,8 @@ window.GatewayTimelineExplorer = (() => {
     const inspector = element('div',undefined,'timeline-inspector-panel'); inspector.id='timeline-inspector-panel'; inspector.setAttribute('role','tabpanel'); inspector.setAttribute('aria-labelledby','timeline-inspector-tab'); inspector.tabIndex=0;
     while(root.firstChild)inspector.append(root.firstChild);
     const explorer = element('div',undefined,'timeline-explorer-panel'); explorer.id='timeline-explorer-panel'; explorer.setAttribute('role','tabpanel'); explorer.setAttribute('aria-labelledby','timeline-explorer-tab'); explorer.tabIndex=0; explorer.hidden=true;
-    const inspectorTab = element('button','Inspector'); inspectorTab.id='timeline-inspector-tab'; inspectorTab.type='button'; inspectorTab.setAttribute('role','tab'); inspectorTab.setAttribute('aria-controls',inspector.id);
-    const explorerTab = element('button','Details'); explorerTab.id='timeline-explorer-tab'; explorerTab.type='button'; explorerTab.setAttribute('role','tab'); explorerTab.setAttribute('aria-controls',explorer.id);
+    const inspectorTab = element('button','Index settings'); inspectorTab.id='timeline-inspector-tab'; inspectorTab.type='button'; inspectorTab.setAttribute('role','tab'); inspectorTab.setAttribute('aria-controls',inspector.id);
+    const explorerTab = element('button','Resource'); explorerTab.id='timeline-explorer-tab'; explorerTab.type='button'; explorerTab.setAttribute('role','tab'); explorerTab.setAttribute('aria-controls',explorer.id);
     tabs.append(explorerTab,inspectorTab); root.append(tabs,inspector,explorer); root.classList.add('timeline-tabbed-inspector');
     const panes=new Map([['explorer',{panel:explorer,tab:explorerTab}],['inspector',{panel:inspector,tab:inspectorTab}]]), resourcePanels=new Map(), viewHandlers=new Map();
     let resource='block', viewKind='block';
@@ -44,7 +44,7 @@ window.GatewayTimelineExplorer = (() => {
       explorer.hidden=active!=='explorer'||resource!=='block';
       for(const [key,panel]of resourcePanels)panel.hidden=active!=='explorer'||resource!==key;
       explorerTab.setAttribute('aria-controls',resourcePanels.get(resource)?.id||explorer.id);
-      root.dataset.activePane=active;root.dataset.resource=resource;
+      root.dataset.activePane=active;root.dataset.resource=resource;const workspaceRoot=root.closest('.index-timeline');if(workspaceRoot)workspaceRoot.dataset.activePane=active;
     };
     inspectorTab.addEventListener('click',()=>setTab('inspector'));
     explorerTab.addEventListener('click',()=>setTab('explorer'));
@@ -171,7 +171,7 @@ window.GatewayTimelineExplorer = (() => {
         return;
       }
       cancel();focused=next;loaded=null;pending=next;
-      if(!explicitTab)setTab('explorer',false);
+      if(!explicitTab||value.immediate!==false)setTab('explorer',false);
       blank(value.immediate===false?'Move along the timeline; this block will load once the playhead settles.':'Loading from local sources first. Missing block data may be fetched from a connected Bitcoin provider.',value.immediate===false?'settling':'loading');
       if(value.immediate===false) {
         const ticket=generation;
@@ -262,7 +262,7 @@ window.GatewayTimelineExplorer = (() => {
       detail.querySelector('#timeline-explorer-close-tx').onclick=()=>{onNavigateIntent?.({kind:'block',height:block.height});txGeneration++;for(const request of txRequests)request.abort();txRequests.clear();if(!Number.isSafeInteger(block.transaction_count))return focus({...focused,immediate:true,refresh:true});detail.hidden=true;detail.replaceChildren();viewKind='block';explorer.dataset.resource='block';if(loaded?.map)painter?.block(loaded.map);else if(loaded?.block)loadMap(loaded.block,generation);onEntity?.({kind:'block',height:block.height,address:block.height+'.bitcoin',resolved:true,metadata:metadata({kind:'block',height:block.height},block)});};
       if(pendingEntity?.height===block.height&&pendingEntity.txIndex===tx.index){const value=pendingEntity;detail.dataset.focusKind=value.kind||'transaction';if(validHeight(value.inputIndex)){const articles=[...detail.querySelectorAll('.io-grid>section:first-child .io')];articles.find((item,index)=>tx.inputs[index]?.n===value.inputIndex)?.classList.add('focused');}if(validHeight(value.outputIndex)){const articles=[...detail.querySelectorAll('.io-grid>section:last-child .io')],output=articles.find((item,index)=>tx.outputs[index]?.n===value.outputIndex);output?.classList.add('focused');if(validHeight(value.satOffset))output?.append(element('p','Output-local sat offset: '+number(value.satOffset),'sat-focus'));}pendingEntity=null;}
       detail.querySelectorAll('[data-explorer-copy]').forEach(button=>button.onclick=async()=>{try{await win.navigator.clipboard.writeText(button.dataset.explorerCopy);notify?.('Copied to clipboard.');}catch{notify?.('Clipboard access is unavailable. Select the displayed text to copy it.',true);}});
-      detail.querySelectorAll('[data-explorer-address]').forEach(button=>button.onclick=()=>{const address=button.dataset.explorerAddress;if(win.parent!==win)win.parent.postMessage({type:'gateway:navigate',address},win.location.origin);else win.location.href='/?resolve='+encodeURIComponent(address);});
+      detail.querySelectorAll('[data-explorer-address]').forEach(button=>button.onclick=()=>{const address=button.dataset.explorerAddress;if(onNavigate)onNavigate(address);else if(win.parent!==win)win.parent.postMessage({type:'gateway:navigate',address},win.location.origin);else win.location.href='/?resolve='+encodeURIComponent(address);});
       const flowButton=detail.querySelector('#timeline-explorer-flow'),flow=detail.querySelector('#timeline-explorer-flow-result'),flowNote=detail.querySelector('#timeline-explorer-flow-note');
       flowButton.onclick=async()=>{
         flowButton.disabled=true;flowButton.textContent='Resolving input values…';
@@ -299,7 +299,7 @@ window.GatewayTimelineExplorer = (() => {
     }
     function addPane(name,label,panel) {
       if(dead||resourcePanels.has(name))throw Error('Duplicate resource details.');
-      panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby',explorerTab.id);panel.hidden=true;resourcePanels.set(name,panel);root.append(panel);return explorerTab;
+      panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby',explorerTab.id);panel.classList.add('timeline-explorer-panel');panel.hidden=true;resourcePanels.set(name,panel);root.append(panel);return explorerTab;
     }
     function activateResource(name) {
       if(resource!==name){if(resource==='block')cancel();viewHandlers.get(resource)?.deactivate?.();resource=name;}
@@ -316,6 +316,11 @@ window.GatewayTimelineExplorer = (() => {
         if(viewKind==='block')painter.block(map);
         const failures=(map.indexing||[]).filter(item=>item.error);if(failures.length)notify?.('Browsing index: '+failures.map(item=>item.error).join('; '),true);
       }catch(error){if(current(ticket)&&error.name!=='AbortError'&&viewKind==='block')painter.message(error.message,'error');}
+    }
+    function explainHashLookup(query){
+      if(!/^[0-9a-f]{64}(?:\.bitcoin)?$/i.test(query))return;
+      const box=element('section',undefined,'panel timeline-hash-requirements');box.append(element('h3','Transaction hash lookup'),element('p','If this is a transaction ID, its block location must be known. Raw block storage does not create new transaction-hash lookup entries. Existing saved location evidence or a capable Bitcoin Core txindex provider may resolve it.','small'),element('p','When you know the containing block, use a transaction/block position or txid.<block-height>.bitcoin. Otherwise, the optional Transaction Locator track can build lookup coverage over an explicitly chosen range. Opening its settings does not arm or build it.','small'));
+      const inspect=element('button','Inspect Transaction Locator');inspect.type='button';inspect.onclick=()=>doc.dispatchEvent(new win.CustomEvent('gateway:timeline-inspect-index',{detail:{id:'tx-locator'}}));box.append(inspect);explorer.append(box);
     }
     async function navigate(address,{blockHint}={}) {
       const query=String(address||'').trim();if(!query||dead)return;
@@ -341,7 +346,7 @@ window.GatewayTimelineExplorer = (() => {
           else loadTransaction(index,block,ticket);
           if(block.hash)loadMap(block,ticket);
         }else throw Error('This address did not resolve to a block, transaction or inscription.');
-      }catch(error){if(current(ticket)&&error.name!=='AbortError')blank(error.message,'error',Boolean(focused));}
+      }catch(error){if(current(ticket)&&error.name!=='AbortError'){blank(error.message,'error',Boolean(focused));explainHashLookup(query);}}
     }
     async function loadHierarchy(value,{signal}={}){
       if(dead||!validHeight(value?.height))throw Error('Choose a known block before zooming into its contents.');
@@ -358,12 +363,13 @@ window.GatewayTimelineExplorer = (() => {
       if(signal?.aborted)throw new DOMException('Superseded zoom','AbortError');const result=metadata(value,record);if(result.count===null)throw Error('The output does not exist in this transaction.');return result;
     }
     const fullscreenHost=viewport?.closest('#workspace-viewport'),fullscreenButton=doc.getElementById('workspace-viewport-fullscreen');
-    const isFullscreen=()=>doc.fullscreenElement===fullscreenHost||fullscreenHost?.classList.contains('fullscreen-fallback');
-    const fullscreenState=()=>{if(fullscreenButton){fullscreenButton.setAttribute('aria-label',isFullscreen()?'Exit fullscreen':'Open viewport fullscreen');fullscreenButton.setAttribute('aria-pressed',String(Boolean(isFullscreen())));fullscreenButton.title=isFullscreen()?'Exit fullscreen (Escape)':'Fullscreen viewport';}};
-    const exitFullscreen=()=>{fullscreenHost?.classList.remove('fullscreen-fallback');if(doc.fullscreenElement===fullscreenHost)doc.exitFullscreen?.().catch(()=>{});fullscreenState();};
-    const fullscreenKey=event=>{if(event.key==='Escape'&&isFullscreen()){event.preventDefault();exitFullscreen();}};
-    if(fullscreenButton&&fullscreenHost){fullscreenButton.onclick=async()=>{if(isFullscreen())return exitFullscreen();try{if(!fullscreenHost.requestFullscreen)throw Error('Unavailable');await fullscreenHost.requestFullscreen();}catch{fullscreenHost.classList.add('fullscreen-fallback');}fullscreenState();};doc.addEventListener('keydown',fullscreenKey);doc.addEventListener('fullscreenchange',fullscreenState);fullscreenState();}
-    function cleanupFullscreen(){exitFullscreen();doc.removeEventListener('keydown',fullscreenKey);doc.removeEventListener('fullscreenchange',fullscreenState);if(fullscreenButton)fullscreenButton.onclick=null;}
+    const panelLayout=()=>fullscreenHost?.closest('.index-timeline')?.gatewayPanelLayout;
+    const isFullscreen=()=>panelLayout()?.state()==='viewport'||doc.fullscreenElement===fullscreenHost||fullscreenHost?.classList.contains('fullscreen-fallback');
+    const fullscreenState=()=>{if(fullscreenButton){fullscreenButton.setAttribute('aria-label',panelLayout()?(isFullscreen()?'Restore layout':'Maximize visualization'):(isFullscreen()?'Exit fullscreen':'Open viewport fullscreen'));fullscreenButton.setAttribute('aria-pressed',String(Boolean(isFullscreen())));fullscreenButton.title=panelLayout()?(isFullscreen()?'Restore layout (Backtick / Escape)':'Maximize visualization (Backtick)'):(isFullscreen()?'Exit fullscreen (Escape)':'Fullscreen viewport');}};
+    const exitFullscreen=()=>{if(panelLayout()?.state()==='viewport')panelLayout().restore();fullscreenHost?.classList.remove('fullscreen-fallback');if(doc.fullscreenElement===fullscreenHost)doc.exitFullscreen?.().catch(()=>{});fullscreenState();};
+    const fullscreenKey=event=>{if(panelLayout()||event.defaultPrevented||event.target?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))return;if(event.key==='Escape'&&isFullscreen()){event.preventDefault();exitFullscreen();}};
+    if(fullscreenButton&&fullscreenHost){fullscreenButton.onclick=async()=>{if(isFullscreen())return exitFullscreen();if(panelLayout()){panelLayout().toggle('viewport');fullscreenState();return;}try{if(!fullscreenHost.requestFullscreen)throw Error('Unavailable');await fullscreenHost.requestFullscreen();}catch{fullscreenHost.classList.add('fullscreen-fallback');}fullscreenState();};doc.addEventListener('keydown',fullscreenKey);doc.addEventListener('fullscreenchange',fullscreenState);win.addEventListener('gateway:panel-layout',fullscreenState);fullscreenState();}
+    function cleanupFullscreen(){exitFullscreen();doc.removeEventListener('keydown',fullscreenKey);doc.removeEventListener('fullscreenchange',fullscreenState);win.removeEventListener('gateway:panel-layout',fullscreenState);if(fullscreenButton)fullscreenButton.onclick=null;}
     async function openSatPoint(value){
       const output=value.outputIndex+'.'+value.txIndex+'.'+value.height,anchor=loaded?.block.height===value.height?loaded.block.hash:blockRecords.get(value.height)?.hash;
       cancel();const ticket=generation;focused={...value,index:'sat-state',savedSatPoint:true,locationOnly:true};resource='block';viewKind='satpoint';pendingEntity=null;setTab('explorer');blank('Reading Sat identity from saved output ranges…','loading');explorer.querySelector('h2').textContent='Sat at '+output+' · offset '+number(value.satOffset);explorer.dataset.resource='satpoint';
@@ -377,7 +383,7 @@ window.GatewayTimelineExplorer = (() => {
       }catch(error){if(current(ticket)&&error.name!=='AbortError')blank(error.message,'error');}
     }
     function entity(value){if(!validHeight(value?.height))return;onNavigateIntent?.(value);if(value.kind==='satpoint'&&validHeight(value.txIndex)&&validHeight(value.outputIndex)&&validHeight(value.satOffset)){openSatPoint(value);return;}const saved=value;focus({...value,immediate:true,preserveEntity:true});pendingEntity=saved;setTab('explorer');if(loaded?.block.height===saved.height&&validHeight(saved.txIndex))loadTransaction(saved.txIndex,loaded.block,generation);}
-    return {focus,entity,navigate,loadHierarchy,health,teardown,addPane,activateResource,registerView:(name,handler)=>viewHandlers.set(name,handler),viewport:painter,setTab:name=>setTab(name),state:()=>({active,height:focused?.height,index:focused?.index,healthy:available,loading:explorer.dataset.state,loadedHeight:loaded?.block.height})};
+    return {focus,entity,navigate,loadHierarchy,health,teardown,addPane,activateResource,showResource:name=>{activateResource(name);setTab('explorer');},cancelResource:()=>{cancel();viewHandlers.get(resource)?.deactivate?.();},registerView:(name,handler)=>viewHandlers.set(name,handler),viewport:painter,setTab:name=>setTab(name),state:()=>({active,resource,height:focused?.height,index:focused?.index,healthy:available,loading:explorer.dataset.state,loadedHeight:loaded?.block.height})};
   }
   return {mount};
 })();

@@ -18,19 +18,20 @@ window.GatewayIndexWorkspace = (() => {
     divider.setAttribute('aria-label', 'Resize details and timeline'); divider.setAttribute('aria-controls', 'timeline-inspector timeline-editor');
     divider.title = 'Drag to resize. Arrow keys adjust height; Home and End choose the limits. Double-click resets.';
     root.insertBefore(divider, editor);
-    let ratio = .56, drag = null, paneDrag = null, paneRatios = {block:.38, inscription:.38, transaction:.56};
+    let ratio = .56, drag = null, paneDrag = null, maximized = null, paneRatios = {block:.38, inscription:.38, transaction:.56};
     try { const saved = Number(win.localStorage.getItem('gateway.timeline.panel-ratio')); if (saved > 0 && saved < 1) ratio = saved; } catch {}
     try { const saved=JSON.parse(win.localStorage.getItem('gateway.workspace.viewport-ratios')||'{}');for(const kind of Object.keys(paneRatios))if(Number.isFinite(saved[kind])&&saved[kind]>.1&&saved[kind]<.9)paneRatios[kind]=saved[kind]; } catch {}
     const paneDivider=doc.createElement('div');paneDivider.id='workspace-viewport-divider';paneDivider.className='workspace-viewport-divider';paneDivider.tabIndex=0;paneDivider.setAttribute('role','separator');paneDivider.setAttribute('aria-orientation','vertical');paneDivider.setAttribute('aria-label','Resize Details and visualization');paneDivider.setAttribute('aria-controls','timeline-inspector workspace-viewport');paneDivider.title='Drag to resize Details and visualization. Arrow keys adjust width; double-click resets.';
     if(upper&&viewport)upper.insertBefore(paneDivider,viewport);
     function paneBounds(){const width=Math.max(0,(upper?.clientWidth||root.clientWidth)-10),available=Math.max(0,upper?.clientHeight||0),kind=viewport?.dataset.resource||'block';const minimum=Math.min(150,width*.32,available),maximum=Math.max(minimum,Math.min(width-Math.min(250,width*.45),kind==='transaction'?width*.72:available));return {width,minimum,maximum,kind};}
-    function paintPane(value,save=false){if(!viewport)return;const b=paneBounds(),size=clamp(value??b.width*(paneRatios[b.kind]??.38),b.minimum,b.maximum);root.style.setProperty('--workspace-viewport-size',size+'px');paneDivider.setAttribute('aria-valuemin',String(Math.round(b.minimum)));paneDivider.setAttribute('aria-valuemax',String(Math.round(b.maximum)));paneDivider.setAttribute('aria-valuenow',String(Math.round(size)));paneDivider.setAttribute('aria-valuetext','Visualization '+Math.round(size)+' pixels wide');if(save&&b.width){paneRatios[b.kind]=size/b.width;try{win.localStorage.setItem('gateway.workspace.viewport-ratios',JSON.stringify(paneRatios));}catch{}}}
+    function paintPane(value,save=false){if(!viewport||maximized)return;const b=paneBounds(),size=clamp(value??b.width*(paneRatios[b.kind]??.38),b.minimum,b.maximum);root.style.setProperty('--workspace-viewport-size',size+'px');paneDivider.setAttribute('aria-valuemin',String(Math.round(b.minimum)));paneDivider.setAttribute('aria-valuemax',String(Math.round(b.maximum)));paneDivider.setAttribute('aria-valuenow',String(Math.round(size)));paneDivider.setAttribute('aria-valuetext','Visualization '+Math.round(size)+' pixels wide');if(save&&b.width){paneRatios[b.kind]=size/b.width;try{win.localStorage.setItem('gateway.workspace.viewport-ratios',JSON.stringify(paneRatios));}catch{}}}
     function bounds() {
       const available = Math.max(0, root.clientHeight - divider.offsetHeight);
       const minimum = Math.min(220, available * .52);
       return {available, minimum, maximum:Math.max(minimum, available - Math.min(130, available * .3))};
     }
     function paint(value, save = false) {
+      if(maximized)return;
       const compact = root.dataset.timelineCollapsed === 'true';
       divider.hidden = compact;
       const b = bounds(), size = clamp(value ?? b.available * ratio, b.minimum, b.maximum);
@@ -67,8 +68,32 @@ window.GatewayIndexWorkspace = (() => {
     if(win.ResizeObserver&&upper)new win.ResizeObserver(()=>paintPane()).observe(upper);
     if(win.MutationObserver&&viewport)new win.MutationObserver(()=>paintPane()).observe(viewport,{attributes:true,attributeFilter:['data-resource']});
     win.addEventListener('gateway:timeline-layout', () => paint());
+    const panels=new Map([['inspector',inspector],['viewport',viewport],['timeline',editor]]);
+    let hovered=null,activePanel='inspector',previous=null,restoredScroll=null;
+    const restore=doc.createElement('button');restore.type='button';restore.className='workspace-restore-layout';restore.textContent='Restore layout';restore.title='Restore layout (Backtick / Escape)';restore.hidden=true;root.append(restore);
+    const announce=doc.createElement('span');announce.className='timeline-reorder-status';announce.setAttribute('role','status');root.append(announce);
+    function publish(){win.dispatchEvent(new win.CustomEvent('gateway:panel-layout',{detail:{panel:maximized}}));if(win.parent!==win)win.parent.postMessage({type:'gateway:workspace-panel-mode',panel:maximized},win.location.origin);}
+    function toggleMaximize(panel=hovered||activePanel){
+      if(maximized){restoreLayout();return;}
+      if(!panels.has(panel)||!panels.get(panel))return;
+      if(doc.fullscreenElement){doc.exitFullscreen?.().then(()=>toggleMaximize(panel)).catch(()=>{});return;}
+      viewport?.classList.remove('fullscreen-fallback');
+      restoredScroll=null;previous={focus:doc.activeElement,scroll:[root,...root.querySelectorAll('*')].filter(n=>n.scrollTop||n.scrollLeft).map(n=>[n,n.scrollTop,n.scrollLeft]),inert:[...panels.values(),divider,paneDivider].filter(Boolean).map(n=>[n,n.inert])};
+      maximized=panel;activePanel=panel;root.dataset.maximizedPanel=panel;panels.get(panel).classList.add('workspace-panel-maximized');for(const [name,node]of panels)if(node&&name!==panel)node.inert=true;divider.inert=paneDivider.inert=true;restore.hidden=false;announce.textContent=(panel==='inspector'?'Details':panel==='viewport'?'Visualization':'Timeline')+' maximized. Backtick or Escape restores the layout.';publish();
+    }
+    function settleRestoredScroll(){const saved=restoredScroll;if(!saved||maximized)return;win.requestAnimationFrame(()=>win.requestAnimationFrame(()=>{if(restoredScroll!==saved||maximized)return;paint();for(const[node,top,left]of saved)if(node.isConnected){node.scrollTop=top;node.scrollLeft=left;}}));}
+    function restoreLayout(){
+      if(!maximized)return;panels.get(maximized)?.classList.remove('workspace-panel-maximized');maximized=null;restoredScroll=previous?.scroll||[];delete root.dataset.maximizedPanel;restore.hidden=true;for(const [node,value]of previous?.inert||[])node.inert=value;paint();for(const [node,top,left]of previous?.scroll||[])if(node.isConnected){node.scrollTop=top;node.scrollLeft=left;}const focus=previous?.focus;previous=null;if(focus?.isConnected)focus.focus?.({preventScroll:true});announce.textContent='Previous layout restored.';publish();settleRestoredScroll();
+    }
+    function blockedOverlay(){return Boolean(doc.querySelector('dialog[open],[aria-modal="true"],[role="dialog"]:not([hidden]),[role="menu"]:not([hidden]),.timeline-help[open],.timeline-index-picker:not([hidden]),.timeline-reveal-picker'));}
+    const editable=target=>target?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])');
+    function shortcut(event){if(event.defaultPrevented||event.isComposing||event.repeat||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||blockedOverlay()||editable(event.target))return;if(event.key==='Escape'&&maximized){event.preventDefault();event.stopImmediatePropagation?.();restoreLayout();return;}if(event.code!=='Backquote')return;event.preventDefault();event.stopImmediatePropagation?.();toggleMaximize();}
+    for(const [name,panel]of panels)if(panel){panel.addEventListener('pointerenter',()=>hovered=name);panel.addEventListener('pointerleave',()=>{if(hovered===name)hovered=null;});panel.addEventListener('focusin',()=>activePanel=name);panel.addEventListener('pointerdown',()=>activePanel=name);}
+    restore.onclick=restoreLayout;doc.addEventListener('keydown',shortcut,true);
+    win.addEventListener('message',event=>{if(event.source!==win.parent||event.origin!==win.location.origin)return;if(event.data?.type==='gateway:workspace-panel-host-state'&&!event.data.panel)settleRestoredScroll();if(event.data?.type==='gateway:workspace-panel-shortcut')shortcut({code:event.data.code,key:event.data.key,target:doc.body,preventDefault(){},stopImmediatePropagation(){}});if(event.data?.type==='gateway:workspace-visibility'&&event.data.visible===false)restoreLayout();});
+    root.gatewayPanelLayout={toggle:toggleMaximize,restore:restoreLayout,state:()=>maximized};
     paint();
-    return {resize:() => paint()};
+    return {resize:() => paint(),...root.gatewayPanelLayout};
   }
 
   function mountRange({root, from, to, live}) {

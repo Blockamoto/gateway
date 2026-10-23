@@ -10,7 +10,7 @@ const sandbox = {window:{}};
 for (const file of ['index-cards.js','index-timeline.js']) {
   vm.runInNewContext(fs.readFileSync(path.join(root,'ui/shell',file),'utf8'),sandbox,{filename:file});
 }
-const {normalizeRanges,subtractRanges,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,established,rulerMarks} = sandbox.window.GatewayIndexTimeline;
+const {normalizeRanges,subtractRanges,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,indexBounds,established,rulerMarks,rulerNotch} = sandbox.window.GatewayIndexTimeline;
 const plain = value => JSON.parse(JSON.stringify(value));
 const valid = range => range && Number.isSafeInteger(range.from) && Number.isSafeInteger(range.to) && range.from >= 0 && range.to >= range.from;
 function asSet(ranges) {
@@ -129,4 +129,22 @@ assert(closeMarks.some(m=>m.kind==='halving'&&m.height===840000));
 assert.deepEqual(closeMarks.filter(m=>m.kind==='difficulty').map(m=>m.height),[840672,842688,844704],'Difficulty periods are independently anchored to genesis, never restarted at a halving');
 for(const m of closeMarks) assert(m.height>=839990&&m.height<=846100&&Number.isSafeInteger(m.height),'Landmarks stay in the visible block range');
 
+const halvingView={from:203000,to:217999};
+assert.equal(rulerNotch(halvingView,800,210000,-1,999999),207648,'Skip continues past a difficulty label hidden by halving text');
+assert.equal(rulerNotch(halvingView,800,210000,1,999999),213696,'Forward skip reaches the next actually visible difficulty notch');
+for(const [v,w] of [[halvingView,800],[{from:0,to:999999},1000],[{from:839990,to:846100},1000]]){const ticks=[...new Set(plain(rulerMarks(v,w)).map(m=>m.height))].sort((a,b)=>a-b);for(let i=1;i<ticks.length-1;i++){assert.equal(rulerNotch(v,w,ticks[i],-1,999999),ticks[i-1]);assert.equal(rulerNotch(v,w,ticks[i],1,999999),ticks[i+1]);}}
+
 console.log('Index timeline helpers PASS: exact coverage and discontiguous selections with 300 independent set-oracle cases, sparse pixel occupancy, evidence-only track membership, and independently anchored Bitcoin ruler landmarks.');
+
+// Contextual Skip bounds use local evidence, never provider advertisements.
+const startDef={id:'range-index',start_height:10};
+assert.deepEqual(plain(indexBounds(startDef,{instances:[{definition:'range-index',checkpoint:{from:120,height:160},coverage:[{from:120,to:125},{from:150,to:160}],verification:'selected_chain',queryable:true}],providers:[{index:'range-index',coverage:[{from:1,to:999999}]}]})),{from:120,to:160,source:'saved index origin',ranges:[{from:120,to:125},{from:150,to:160}]});
+assert.deepEqual(plain(indexBounds(startDef,{instances:[],timeline:{tracks:[{id:'range-index',coverage:[{from:215,to:220},{from:300,to:310}],gaps:[]}]},providers:[{index:'range-index',coverage:[{from:1,to:999999}]}]})),{from:215,to:310,source:'saved local coverage',ranges:[{from:215,to:220},{from:300,to:310}]});
+assert.deepEqual(plain(indexBounds(startDef,{instances:[],providers:[{index:'range-index',coverage:[{from:1,to:999999}]}]})),{from:10,to:null,source:'definition start',ranges:[]});
+assert.equal(indexBounds({id:'unknown'},{}).from,null);
+assert.equal(indexBounds({...startDef,locked:true},{}),null);
+assert.equal(indexBounds(startDef,{instances:[{definition:'range-index',checkpoint:{from:0,height:160},coverage:[{from:150,to:160}],verification:'selected_chain',queryable:true}]}).from,0,'Current retained data does not change a saved genesis processing origin');
+assert.equal(indexBounds({...startDef,id:'txio-values',owner:'range-index'},{instances:[{definition:'range-index',checkpoint:{from:70,height:90},verification:'selected_chain'}]}).from,70,'Visual sublayers use their exact owner');
+console.log('Contextual index bounds PASS: saved origins, sparse local coverage, provider exclusion, declared fallback, genesis and exact owner.');
+
+for(const state of [{queryable:false,verification:'selected_chain'},{queryable:true,verification:'unavailable'},{queryable:true,verification:'stale_reorg'},{queryable:true,verification:'anchor_unavailable'}])for(const projected of [false,true])assert.deepEqual(plain(indexBounds(startDef,{instances:[{definition:'range-index',coverage:[{from:900000,to:900100}],checkpoint:{from:900000,height:900100},...state}],...(projected?{timeline:{tracks:[{id:'range-index',coverage:[{from:900000,to:900100}]}]}}:{})})),{from:10,to:null,source:'definition start',ranges:[]},'Unavailable instance coverage cannot establish local boundaries');

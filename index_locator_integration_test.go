@@ -73,6 +73,9 @@ func olderExplorerFixture064(t *testing.T, id string, count int) (*app, *indexSt
 		}
 		previous = b.Hash
 	}
+	if id == "blocks" {
+		installLegacyRawLocators(t, s)
+	}
 	a.status.HeaderCount = int64(count)
 	a.status.HeaderHeight = int64(count - 1)
 	if id == "inscriptions" {
@@ -236,7 +239,26 @@ func TestIntegrationTransactionPositionIsNotAlwaysZero(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec, found, err := a.indexedTransaction(tx.TxID)
-	if err != nil || !found || rec.TxIndex != 1 || !rec.TransactionVerified {
-		t.Fatal("committed position lost", rec, found, err)
+	if err != nil || found {
+		t.Fatal("Raw-only store invented general hash lookup", rec, found, err)
+	}
+	position, ok := parseBODCoordinate("1.792435")
+	if !ok {
+		t.Fatal("known transaction coordinate")
+	}
+	positioned, err := a.resolveCoordinate(position)
+	if err != nil || positioned.Resolution.TxIndex != 1 || positioned.Resolution.Transaction.TxID != tx.TxID {
+		t.Fatal("known block position lost", positioned, err)
+	}
+	locators, err := openIndexStore(a.dataDir, "tx-locator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = locators.appendBlock(b, height, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	rec, found, err = a.indexedTransaction(tx.TxID)
+	if err != nil || !found || rec.TxIndex != 1 || !rec.TransactionVerified || rec.Transaction.TxID != tx.TxID {
+		t.Fatal("explicit Locator failed to recover transaction from retained Raw body", rec, found, err)
 	}
 }

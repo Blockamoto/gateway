@@ -15,7 +15,12 @@ import (
 	"time"
 )
 
-const bitcoinConnectionLimit = 3
+// Core v31.1 net.h uses eight full-relay and two block-relay outbound
+// connections. Gateway has no transaction relay: its corresponding roles are
+// general header/block transports and two block-focused transports.
+const bitcoinGeneralConnections = 8
+const bitcoinBlockConnections = 2
+const bitcoinConnectionLimit = bitcoinGeneralConnections + bitcoinBlockConnections
 const bitcoinAddressFile = "bitcoin-peers-v2.json"
 
 type bitcoinNetworkEvent struct {
@@ -195,7 +200,20 @@ func (n *bitcoinNetwork) needsArchivalPeerLocked() bool {
 }
 
 func (n *bitcoinNetwork) canKeepBitcoinPeerLocked(services uint64) bool {
-	return services&nodeNetworkService != 0 || len(n.sessions) < bitcoinConnectionLimit-1 || !n.needsArchivalPeerLocked()
+	return services&nodeNetworkService != 0 || n.bitcoinOutboundCountLocked(false) < bitcoinConnectionLimit-1 || !n.needsArchivalPeerLocked()
+}
+
+func (n *bitcoinNetwork) bitcoinOutboundCountLocked(includeDialing bool) int {
+	count := 0
+	for _, s := range n.sessions {
+		if s.view.Direction != "inbound" {
+			count++
+		}
+	}
+	if includeDialing {
+		count += len(n.dialing)
+	}
+	return count
 }
 
 func (n *bitcoinNetwork) maintainBitcoin() {
@@ -249,7 +267,7 @@ func (n *bitcoinNetwork) maintainBitcoin() {
 		n.bootstrapAt, n.bootstrapBusy = now, true
 		go n.bootstrap()
 	}
-	if len(n.sessions)+len(n.dialing) >= bitcoinConnectionLimit || now.Before(n.nextDial) {
+	if n.bitcoinOutboundCountLocked(true) >= bitcoinConnectionLimit || now.Before(n.nextDial) {
 		n.mu.Unlock()
 		return
 	}
@@ -258,7 +276,7 @@ func (n *bitcoinNetwork) maintainBitcoin() {
 		if n.sessions[row.Address] != nil || n.dialing[row.Address].Address != "" || row.RetryAfter.After(now) {
 			continue
 		}
-		if needArchive && len(n.sessions) >= bitcoinConnectionLimit-1 && row.Services&nodeNetworkService == 0 && row.Services&nodeNetworkLimitedService != 0 {
+		if needArchive && n.bitcoinOutboundCountLocked(false) >= bitcoinConnectionLimit-1 && row.Services&nodeNetworkService == 0 && row.Services&nodeNetworkLimitedService != 0 {
 			continue
 		}
 		rows = append(rows, row)
@@ -309,7 +327,22 @@ func (n *bitcoinNetwork) maintainBitcoin() {
 	}
 	chosen.LastAttempt = now
 	x := *chosen
-	n.dialing[x.Address] = networkPeerView{ID: x.Address, Address: x.Address, Source: x.Source, Owner: "Gateway", Direction: "outbound", Transport: "Bitcoin P2P v1", Role: "bitcoin_transport", State: "connecting", Protocols: []string{"Bitcoin P2P"}, Updated: now}
+	general := 0
+	for _, session := range n.sessions {
+		if session.view.Direction != "inbound" && session.view.Role != "bitcoin_block_transport" {
+			general++
+		}
+	}
+	for _, pending := range n.dialing {
+		if pending.Role != "bitcoin_block_transport" {
+			general++
+		}
+	}
+	role := "bitcoin_transport"
+	if general >= bitcoinGeneralConnections {
+		role = "bitcoin_block_transport"
+	}
+	n.dialing[x.Address] = networkPeerView{ID: x.Address, Address: x.Address, Source: x.Source, Owner: "Gateway", Direction: "outbound", Transport: "Bitcoin P2P v1", Role: role, State: "connecting", Protocols: []string{"Bitcoin P2P"}, Updated: now}
 	n.nextDial = now.Add(time.Second)
 	n.mu.Unlock()
 	go n.dialBitcoinPeer(x)
@@ -373,16 +406,30 @@ func (n *bitcoinNetwork) dialBitcoinPeer(x bitcoinAddress) {
 	n.mu.Unlock()
 	go s.readLoop()
 	go s.serviceLoop()
-	_ = s.send("getaddr", nil)
+	if v.Role != "bitcoin_block_transport" {
+		_ = s.send("getaddr", nil)
+	}
 }
 
 func (n *bitcoinNetwork) bitcoinSnapshot() map[string]any {
 	enabled := n.enabled()
 	n.mu.Lock()
+	downloads := n.blockDownloads
+	n.mu.Unlock()
+	var downloadState map[string]any
+	if downloads != nil {
+		downloadState = downloads.snapshot()
+	}
+	n.mu.Lock()
 	defer n.mu.Unlock()
 	rows := []networkPeerView{}
 	for _, s := range n.sessions {
 		v := s.view
+		v.BlockInFlight = s.blockWork.active
+		v.BlockResponses = s.blockWork.successes
+		v.BlockFailures = s.blockWork.failuresTotal
+		v.BlockBytes = s.blockWork.bytes
+		v.BlockTransferMilliseconds = s.blockWork.transfer.Milliseconds()
 		v.Protocols = append([]string(nil), v.Protocols...)
 		rows = append(rows, v)
 	}
@@ -390,7 +437,7 @@ func (n *bitcoinNetwork) bitcoinSnapshot() map[string]any {
 		rows = append(rows, v)
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Address < rows[j].Address })
-	return map[string]any{"connections": rows, "connected": len(n.sessions), "stable_connections": len(n.sessions), "search_connections": 0, "gateway_connected": 0, "gateway_locked": true, "gateway_lock_reason": "Gateway peerhood is unavailable in this testing build.", "address_count": len(n.addresses), "enabled": enabled, "bootstrap_running": n.bootstrapBusy, "bootstrap_error": n.bootstrapError, "persistence_error": n.persistenceError, "recent": append([]networkPeerView(nil), n.recent...), "events": append([]bitcoinNetworkEvent(nil), n.events...), "transport_note": "Bitcoin P2P supplies headers and requested blocks. Connections are not anonymous or encrypted."}
+	return map[string]any{"block_download": downloadState, "connections": rows, "connected": len(n.sessions), "stable_connections": len(n.sessions), "search_connections": 0, "gateway_connected": 0, "gateway_locked": true, "gateway_lock_reason": "Gateway peerhood is unavailable in this testing build.", "address_count": len(n.addresses), "enabled": enabled, "bootstrap_running": n.bootstrapBusy, "bootstrap_error": n.bootstrapError, "persistence_error": n.persistenceError, "recent": append([]networkPeerView(nil), n.recent...), "events": append([]bitcoinNetworkEvent(nil), n.events...), "transport_note": "Bitcoin P2P supplies headers and requested blocks. Connections are not anonymous or encrypted."}
 }
 
 func (n *bitcoinNetwork) addressReplyRows() []advertisedPeer { return nil }

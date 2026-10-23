@@ -135,6 +135,20 @@ func storeBlockOutputFactsContext(ctx context.Context, root string, block blockV
 	return storeBlockOutputFactLayersContext(ctx, root, block, true, true)
 }
 func storeBlockOutputFactLayersContext(ctx context.Context, root string, block blockView, values, scripts bool) (map[string]outputFactRef, error) {
+	if p := runPrepared(ctx); p != nil && p.block.Hash == block.Hash {
+		key := fmt.Sprintf("%t:%t", values, scripts)
+		if refs, ok := p.refs[key]; ok {
+			return refs, nil
+		}
+		refs, err := storeBlockOutputFactLayersUncachedContext(ctx, root, block, values, scripts)
+		if err == nil {
+			p.refs[key] = refs
+		}
+		return refs, err
+	}
+	return storeBlockOutputFactLayersUncachedContext(ctx, root, block, values, scripts)
+}
+func storeBlockOutputFactLayersUncachedContext(ctx context.Context, root string, block blockView, values, scripts bool) (map[string]outputFactRef, error) {
 	refs := map[string]outputFactRef{}
 	if !values && !scripts {
 		return refs, nil

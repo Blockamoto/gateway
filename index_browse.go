@@ -36,10 +36,6 @@ type indexBrowseResult struct {
 	State string `json:"state"`
 	Error string `json:"error,omitempty"`
 }
-type indexBrowseState struct {
-	Schema   int             `json:"schema"`
-	Policies map[string]bool `json:"policies"`
-}
 type indexBrowseHead struct {
 	Schema int               `json:"schema"`
 	Blocks map[string]string `json:"blocks"` // actual height -> immutable singleton commit
@@ -86,40 +82,22 @@ func boundedBrowseJSON(path string, value any) error {
 	}
 	return json.Unmarshal(data, value)
 }
-func (a *app) readIndexBrowseState() (indexBrowseState, error) {
-	s := indexBrowseState{Schema: 1, Policies: map[string]bool{}}
-	err := boundedBrowseJSON(filepath.Join(a.dataDir, "indexes", "browse-policy.json"), &s)
-	if os.IsNotExist(err) {
-		return s, nil
-	}
-	if err != nil {
-		return s, err
-	}
-	if s.Schema != 1 || s.Policies == nil {
-		return s, fmt.Errorf("unsupported browsed index policy")
-	}
-	for id := range s.Policies {
-		if id != "tx-locator" && id != "inscriptions" {
-			return s, fmt.Errorf("invalid browsed index policy")
-		}
-	}
-	return s, nil
-}
 func (a *app) indexBrowsePolicies() ([]indexBrowsePolicy, error) {
 	return a.indexBrowsePoliciesContext(context.Background())
 }
 func (a *app) indexBrowsePoliciesContext(ctx context.Context) ([]indexBrowsePolicy, error) {
-	if err := lockIndexBrowse(ctx); err != nil {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	defer indexBrowseMu.Unlock()
-	s, err := a.readIndexBrowseState()
+	doc, err := readIndexRunDocument(a.dataDir)
 	if err != nil {
 		return nil, err
 	}
 	rows := []indexBrowsePolicy{}
 	for _, d := range indexDefinitions() {
-		rows = append(rows, indexBrowsePolicy{d.ID, s.Policies[d.ID], indexBrowseAvailable(d.ID)})
+		choice, exists := runSelection(doc.Prepared, d.ID)
+		available := indexBrowseAvailable(d.ID)
+		rows = append(rows, indexBrowsePolicy{d.ID, available && doc.Configured && exists && choice.Armed, available})
 	}
 	return rows, nil
 }
@@ -129,25 +107,39 @@ func (a *app) setIndexBrowsePolicy(ctx context.Context, req indexBrowseRequest) 
 		return indexBrowsePolicy{}, fmt.Errorf("explicit enabled choice required")
 	}
 	if !indexBrowseAvailable(req.Index) {
-		return indexBrowsePolicy{}, fmt.Errorf("Index as you browse is not available for this index")
+		return indexBrowsePolicy{}, fmt.Errorf("optional facts from viewed blocks are not available for this index")
 	}
 	if err := lockIndexBrowse(ctx); err != nil {
 		return indexBrowsePolicy{}, err
 	}
 	defer indexBrowseMu.Unlock()
-	s, err := a.readIndexBrowseState()
+	// Compatibility API: an explicit old browse choice now changes the same
+	// timeline Arm control. No second policy file or hidden prefix build exists.
+	// Serialize with Start while choosing idle preparation versus active admission.
+	a.indexLiveControlMu.Lock()
+	doc := a.indexRunSnapshot()
+	if doc.Error != "" {
+		a.indexLiveControlMu.Unlock()
+		return indexBrowsePolicy{}, fmt.Errorf("%s", doc.Error)
+	}
+	choice, exists := runSelection(doc.Prepared, req.Index)
+	if !exists {
+		choice = indexRunSelection{Index: req.Index}
+	}
+	choice.Armed = *req.Enabled
+	var err error
+	if r := doc.Run; r != nil && (r.State == "running" || r.State == "waiting" || r.State == "paused") {
+		// The amendment carries its own admission fence and acquires this lock.
+		a.indexLiveControlMu.Unlock()
+		_, err = a.amendIndexRun(ctx, indexRunAmendment{RunID: r.ID, AdmissionRevision: effectiveIndexRunAdmissionRevision(r), Consumers: []indexRunSelection{choice}})
+	} else {
+		replaceIndexRunSelection(&doc.Prepared, choice)
+		if err = ctx.Err(); err == nil {
+			_, err = a.prepareIndexRun(doc.Prepared)
+		}
+		a.indexLiveControlMu.Unlock()
+	}
 	if err != nil {
-		return indexBrowsePolicy{}, err
-	}
-	s.Policies[req.Index] = *req.Enabled
-	path := filepath.Join(a.dataDir, "indexes", "browse-policy.json")
-	if err = updateapply.CheckPath(path); err != nil {
-		return indexBrowsePolicy{}, err
-	}
-	if err = atomicWriteJSON(path, s); err != nil {
-		return indexBrowsePolicy{}, err
-	}
-	if err = syncDirectory(filepath.Dir(path)); err != nil {
 		return indexBrowsePolicy{}, err
 	}
 	return indexBrowsePolicy{req.Index, *req.Enabled, true}, nil
@@ -226,6 +218,9 @@ func singletonBrowseBatch(id string, block blockView, extracted *inscriptionBloc
 	return b, err
 }
 func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (bool, error) {
+	if err := checkTimelineTrackArmed(ctx, a.dataDir, id); err != nil {
+		return false, err
+	}
 	s, head, err := a.browseStore(id)
 	if err != nil {
 		return false, err
@@ -311,6 +306,9 @@ func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (
 	if int64(len(data)) > indexBrowseBudget {
 		return false, fmt.Errorf("browsed index coverage exceeds budget")
 	}
+	if err = checkTimelineTrackArmed(ctx, a.dataDir, id); err != nil {
+		return false, err
+	}
 	if err = atomicWriteBytes(filepath.Join(s.dir, "head.json"), data); err != nil {
 		return false, err
 	}
@@ -324,13 +322,20 @@ func (a *app) indexBrowsedBlock(ctx context.Context, block blockView, extracted 
 		return []indexBrowseResult{{Index: "browse", State: "error", Error: err.Error()}}
 	}
 	defer indexBrowseMu.Unlock()
-	s, err := a.readIndexBrowseState()
-	if err != nil {
-		return []indexBrowseResult{{Index: "browse", State: "error", Error: err.Error()}}
-	}
 	out := []indexBrowseResult{}
 	for _, id := range []string{"tx-locator", "inscriptions"} {
-		if !s.Policies[id] || !indexBrowseAvailable(id) {
+		on, err := timelineTrackArmed(a.dataDir, id)
+		if err != nil {
+			return append(out, indexBrowseResult{Index: id, State: "error", Error: err.Error()})
+		}
+		if !on || !indexBrowseAvailable(id) {
+			continue
+		}
+		if complete, e := a.completeIndexedBrowseBlock(ctx, id, block); e != nil {
+			out = append(out, indexBrowseResult{Index: id, State: "error", Error: e.Error()})
+			continue
+		} else if complete {
+			out = append(out, indexBrowseResult{Index: id, State: "already_indexed"})
 			continue
 		}
 		b, e := singletonBrowseBatch(id, block, extracted)
@@ -348,6 +353,34 @@ func (a *app) indexBrowsedBlock(ctx context.Context, block blockView, extracted 
 		out = append(out, r)
 	}
 	return out
+}
+
+// Consult only authenticated point membership. A navigation must not repair an
+// old locator, walk an index prefix, or duplicate a complete saved block.
+func (a *app) completeIndexedBrowseBlock(ctx context.Context, id string, block blockView) (bool, error) {
+	s, err := indexStoreHead(a.dataDir, id)
+	if err != nil {
+		return false, err
+	}
+	if s.checkpoint == nil || block.Height < s.checkpoint.From || block.Height > s.checkpoint.Height {
+		return false, nil
+	}
+	commit, ready, err := s.activeLocatorCommitContext(ctx, block.Height)
+	if err != nil || !ready || commit == "" {
+		return false, err
+	}
+	b, err := s.readBatch(commit)
+	if err != nil || b.Checkpoint.BlockHash != block.Hash {
+		return false, err
+	}
+	canonical, err := a.canonicalHashAtHeight(block.Height)
+	if err != nil || canonical != block.Hash {
+		return false, err
+	}
+	if id == "tx-locator" {
+		return b.TransactionLocator != nil && b.TransactionLocator.Selection == "all" || b.Bitcoin != nil && block.TransactionCount > 0 && uint64(len(b.Bitcoin.TxIDs)) == block.TransactionCount, nil
+	}
+	return id == "inscriptions" && inscriptionBatchCount(b) != nil, nil
 }
 func (a *app) browsedBatchContext(ctx context.Context, id string, height int64, hash string) (indexBatch, bool, error) {
 	if err := ctx.Err(); err != nil {

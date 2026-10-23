@@ -13,6 +13,7 @@ import (
 
 func Test065QueuedRangesMergeAndFailedHeadDoesNotStrandCLI(t *testing.T) {
 	a, _ := testAppWithGenesis(t)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	a.settings.CoreDisabled, a.settings.CoreMountDisabled, a.settings.NetworkDisabled = true, true, true
 	a.indexJob = indexJob{ID: "held", Index: "bitmap", State: "running"}
 	a.indexCancel = func() {}
@@ -53,6 +54,7 @@ func Test065QueuedRangesMergeAndFailedHeadDoesNotStrandCLI(t *testing.T) {
 
 func Test065QueueResumeRetiresPersistentPauseMarker(t *testing.T) {
 	a, _ := testAppWithGenesis(t)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	a.settings.CoreDisabled, a.settings.CoreMountDisabled, a.settings.NetworkDisabled = true, true, true
 	zero := int64(0)
 	req := indexBuildRequest{Index: "blocks", From: &zero, To: &zero, Mode: "lean", Retention: "ephemeral"}
@@ -304,6 +306,7 @@ func Test065CombinedHistoricalPrerequisitesAndMissingDerivations(t *testing.T) {
 
 func Test065QueueDurabilityOrderingDeduplicationAndCardPause(t *testing.T) {
 	a, _ := testAppWithGenesis(t)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	a.settings.CoreDisabled, a.settings.CoreMountDisabled, a.settings.NetworkDisabled = true, true, true
 	a.indexJob = indexJob{ID: "held", Index: "bitmap", State: "running"}
 	cancelled := false
@@ -341,7 +344,9 @@ func Test065QueueDurabilityOrderingDeduplicationAndCardPause(t *testing.T) {
 	// A restarted scheduler retains the order and explicit pause, and runs
 	// only the already approved queued request. No active process is restarted.
 	restarted := &app{dataDir: a.dataDir, headersPath: a.headersPath, settings: a.settings, status: a.getStatus(), cacheIndex: a.cacheIndex}
-	restarted.liveIndexTick()
+	restarted.indexLiveControlMu.Lock()
+	restarted.drainIndexQueueLocked()
+	restarted.indexLiveControlMu.Unlock()
 	if done := waitIndexJob065(t, restarted, second.ID); done.State != "complete" {
 		t.Fatal(done)
 	}

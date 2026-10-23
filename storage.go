@@ -8,6 +8,7 @@ import (
 )
 
 type storageHit struct {
+	Decoded   *blockView
 	Raw       []byte
 	Source    string // human-readable source
 	Network   string // core|core_mount|cache
@@ -32,8 +33,8 @@ func (a *app) localStorageBlockProvidersContext(ctx context.Context, target bloc
 		return storageHit{}, err
 	}
 	if privateIndex {
-		if raw, _, err := readIndexedRawBody(a.dataDir, target, nil); err == nil {
-			return storageHit{Raw: raw, Source: "Gateway durable raw Blocks body", Network: "index_retained", Height: target.Height}, nil
+		if raw, decoded, err := readIndexedRawBody(a.dataDir, target, nil); err == nil {
+			return storageHit{Raw: raw, Decoded: &decoded, Source: "Gateway durable raw Blocks body", Network: "index_retained", Height: target.Height}, nil
 		}
 	}
 	// 0.4.0 presents one logical local Bitcoin data space. Existing BOD-owned

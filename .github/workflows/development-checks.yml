@@ -2,7 +2,7 @@ name: Gateway development checks
 
 on:
   push:
-    branches: [main, v0.7.6, v0.7.7]
+    branches: [main, v0.7.6, v0.7.7, v0.7.8]
     paths-ignore:
       - 'docs/**'
       - '*.md'
@@ -81,6 +81,8 @@ jobs:
           node scripts/test-sats-077-browser.js
           node scripts/test-sat-point-browser-077.js
           node scripts/test-sats-native-077.js --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/browser-sats"
+          node scripts/test-bitmap-standard-browser.js
+          python3 scripts/test-bitmap-standard-native-api.py --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/bitmap-canonical-api"
           node scripts/test-p2pk-destinations-browser.js
           { node scripts/test-updates-ui.js; node scripts/test-theme-ui.js; node scripts/test-shell-navigation.js; node scripts/test-setup-browser.js; node scripts/test-peer-aliases-browser.js; node scripts/test-legacy-serving-browser.js; node scripts/test-index-workspace-browser.js; node scripts/test-index-timeline-browser.js; node scripts/test-index-timeline-workspace-browser.js; node scripts/test-index-timeline-selection-browser.js; node scripts/test-timeline-hierarchy-browser.js; node scripts/test-hierarchy-resolved-echo-browser.js; node scripts/test-timeline-explorer-browser.js; node scripts/test-block-viewport-browser.js; node scripts/test-transaction-flow-browser.js; node scripts/test-transaction-workspace-browser.js; node scripts/test-txio-workspace-browser.js; node scripts/test-inscription-workspace-browser.js; node scripts/test-inscription-native-browser.js --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/browser-inscriptions"; node scripts/test-utxo-build-browser.js; node scripts/test-index-cards-browser.js --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/browser-indexes"; node scripts/test-viewport-native-browser.js --binary "$RUNNER_TEMP/gateway-checks/gateway-client" --out "$RUNNER_TEMP/gateway-checks/browser-viewport"; } 2>&1 | tee "$RUNNER_TEMP/gateway-checks/browser-ui.txt"
       - name: Preserve test evidence and source snapshot

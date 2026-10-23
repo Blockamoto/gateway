@@ -107,6 +107,7 @@ func Test065IndexJobQueueAdmissionDeduplicationAndControlReturnOwnedViews(t *tes
 	t.Cleanup(func() { a.indexMu.Lock(); a.indexCancel = nil; a.indexMu.Unlock() })
 	zero := int64(0)
 	request := indexBuildRequest{Index: "blocks", From: &zero, To: &zero, Outputs: []string{"blocks"}}
+	armLegacyBuildTracks(t, a, request)
 	created, e := a.startIndexBuild(request)
 	if e != nil {
 		t.Fatal(e)

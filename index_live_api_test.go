@@ -19,6 +19,7 @@ func Test064IndexLiveInterfaceExplicitlyAuthorizesInitialHistory(t *testing.T) {
 		t.Fatalf("explicit fresh Live was not accepted: %d %s", empty.Code, empty.Body.String())
 	}
 	zero := int64(0)
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	if _, err := a.startIndexBuild(indexBuildRequest{Index: "blocks", From: &zero, To: &zero, Retention: "ephemeral"}); err != nil {
 		t.Fatal(err)
 	}

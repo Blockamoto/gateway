@@ -235,6 +235,9 @@ func (s *addressHistoryStore) requireCurrent(ctx context.Context) error {
 	return nil
 }
 func (s *addressHistoryStore) publish(ctx context.Context, h addressHistoryHead) error {
+	if err := checkIndexRunPublication(ctx); err != nil {
+		return err
+	}
 	if e := ctx.Err(); e != nil {
 		return e
 	}
@@ -266,6 +269,9 @@ func (s *addressHistoryStore) publish(ctx context.Context, h addressHistoryHead)
 		return e
 	}
 	if e = updateapply.CheckPath(filepath.Join(s.dir, "head.json")); e != nil {
+		return e
+	}
+	if e = checkIndexConsumerPublication(ctx, s.root, "address-history"); e != nil {
 		return e
 	}
 	if e = atomicWriteJSON(filepath.Join(s.dir, "head.json"), struct {

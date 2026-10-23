@@ -507,6 +507,8 @@ func readMessageBounded(r io.Reader, limit uint32) (message, error) {
 	n := binary.LittleEndian.Uint32(h[16:20])
 	commandLimit := uint32(maxMessageSize)
 	switch cmd {
+	case "block":
+		commandLimit = coreBlockMessageBytes
 	case "version":
 		commandLimit = 1024
 	case "verack", "sendaddrv2", "getaddr", "sendheaders":

@@ -103,6 +103,7 @@ func (a *app) indexSatStatus077() *indexSatStatusView077 {
 type satViewLocation077 struct {
 	State       string `json:"state"`
 	Output      string `json:"output_coordinate,omitempty"`
+	BlockHash   string `json:"block_hash,omitempty"`
 	Offset      uint64 `json:"offset"`
 	Address     string `json:"address,omitempty"`
 	Destination string `json:"destination,omitempty"`
@@ -158,6 +159,9 @@ func (a *app) satViewContext077(ctx context.Context, number uint64) (satViewResu
 		return out, nil
 	}
 	location := &satViewLocation077{State: r.State, Output: r.Output, Offset: r.Offset}
+	if r.Output != "" && r.Point != nil {
+		location.BlockHash = r.Point.BlockHash
+	}
 	if r.ScriptPubKey != "" {
 		kind, address, destination, err := satScriptDestinations077(r.ScriptPubKey)
 		if err != nil {

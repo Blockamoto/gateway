@@ -57,6 +57,8 @@ func cloneIndexJob(j indexJob) indexJob {
 }
 
 type indexStatusView struct {
+	BitmapCapabilities bitmapCapabilitiesView  `json:"bitmap_capabilities"`
+	Run                indexRunDocument        `json:"run"`
 	Sats               *indexSatStatusView077  `json:"sats,omitempty"`
 	Addresses          *indexAddressStatusView `json:"addresses,omitempty"`
 	UTXO               *indexUTXOStatusView    `json:"utxo,omitempty"`
@@ -126,6 +128,13 @@ func (a *app) saveIndexJob(j indexJob) error {
 }
 func (a *app) indexStatus() indexStatusView {
 	out := indexStatusView{Definitions: indexDefinitions(), Providers: a.indexProviderViews(), Instances: []indexInstance{}, Live: []indexLiveView{}, Job: a.indexJobSnapshot()}
+	out.BitmapCapabilities = bitmapCapabilities()
+	if custom, err := bitmapRuntimeDefinitions(context.Background(), a.dataDir); err != nil {
+		out.Errors = append(out.Errors, "Bitmap profiles: "+err.Error())
+	} else {
+		out.Definitions = append(out.Definitions, custom...)
+	}
+	out.Run = a.indexRunSnapshot()
 	if state, err := readBlocksBodyMigration(a.dataDir); err != nil {
 		out.Errors = append(out.Errors, "Blocks migration: "+err.Error())
 	} else {
@@ -180,6 +189,9 @@ func (a *app) indexStatus() indexStatusView {
 	out.UTXO = a.indexUTXOStatus(out.Jobs)
 	out.Addresses, out.Instances = a.indexAddressStatus(out.Instances)
 	out.Sats = a.indexSatStatus077()
+	if instances, err := a.bitmapDevelopmentInstancesContext(context.Background()); err == nil {
+		out.Instances = append(out.Instances, instances...)
+	}
 	for i := range out.Instances {
 		instance := &out.Instances[i]
 		if instance.Definition != "sat-state" {
@@ -196,9 +208,62 @@ func (a *app) indexStatus() indexStatusView {
 	out.Timeline = a.indexTimeline(out.Definitions, out.Providers, out.Instances, out.Errors...)
 	return out
 }
+
+// Custom recipes exist before their first checkpoint. Project the authenticated
+// executable registry into status rather than inferring available tracks from
+// built instances. This read never creates a job or a derived store.
+func bitmapRuntimeDefinitions(ctx context.Context, root string) ([]indexDefinition, error) {
+	registry, err := bitmapReadProfileDocument(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]indexDefinition, 0, len(registry.Instances))
+	for _, instance := range registry.Instances {
+		d, err := findIndexDefinition(instance.ID)
+		if err != nil {
+			return nil, err
+		}
+		d.Name, d.Kind = instance.Label, instance.Kind
+		d.ConfigurationRevision, d.Classification = bitmapEffectiveConfigurationRevision(instance), "legacy"
+		d.ProfileHash, d.RecipeHash, d.RuleHash = instance.ProfileHash, d.RuleHash, instance.ProfileHash
+		d.DistrictInstance, d.DistrictProfileHash, d.ChainInstance = instance.DistrictInstance, instance.DistrictProfileHash, instance.ChainInstance
+		d.StartHeight = instance.StartHeight
+		d.Dependencies = append([]string{}, d.Dependencies...)
+		for n, dependency := range d.Dependencies {
+			if dependency == "bitmap-districts" {
+				d.Dependencies[n] = instance.DistrictInstance
+			}
+		}
+		d.Theory = "Preserved legacy experimental " + instance.Kind + " definition and saved results. Inspection and data management remain available; this interpretation cannot execute or be called canonical."
+		d.Rules = append([]string{}, instance.Profile.Rules...)
+		if instance.Kind == "chain" {
+			base, _ := findIndexDefinition("bitmap-chain")
+			d.Rules = append(append([]string{}, base.Rules...), d.Rules...)
+			d.Rules = append(d.Rules, "Use only completed outcomes from District instance "+instance.DistrictInstance+" with semantic profile "+instance.DistrictProfileHash+".")
+		}
+		for _, rule := range bitmapRuleRegistryFor(instance.Profile.FingerprintSchema, instance.Profile.Kind) {
+			d.Rules = append(d.Rules, fmt.Sprintf("%s=%d: %s", rule.ID, instance.Profile.Answers[rule.ID], rule.Question))
+		}
+		d.Rules = append(d.Rules, "Body decoder: "+instance.Profile.DecoderPolicy, "Activation: "+instance.Profile.ActivationPolicy, "Prior context: "+instance.Profile.ContextPolicy)
+		if instance.Profile.ParentPolicy != "" {
+			d.Rules = append(d.Rules, "Parent evidence: "+instance.Profile.ParentPolicy)
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
 func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {
+	if bitmapConsumerID(req.Index) {
+		return indexJob{}, fmt.Errorf("Bitmap development consumers require a reviewed coordinated timeline run")
+	}
 	if err := requireReleaseIndexRequest(req); err != nil {
 		return indexJob{}, err
+	}
+	if err := requireTimelineRawBuild(context.Background(), a.dataDir, req); err != nil {
+		return indexJob{}, err
+	}
+	if !indexRunOptionalWorkAllowed(a.dataDir, req.Index) {
+		return indexJob{}, fmt.Errorf("%s is Off in the timeline; arm it before requesting new work", req.Index)
 	}
 	a.indexLiveControlMu.Lock()
 	defer a.indexLiveControlMu.Unlock()
@@ -221,7 +286,13 @@ func (a *app) startIndexBuildInternal(req indexBuildRequest, live bool) (indexJo
 	return a.startIndexBuildID(req, live, "")
 }
 func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (indexJob, error) {
+	if bitmapConsumerID(req.Index) {
+		return indexJob{}, fmt.Errorf("Bitmap development consumers require a coordinated timeline run")
+	}
 	if err := requireReleaseIndexRequest(req); err != nil {
+		return indexJob{}, err
+	}
+	if err := requireTimelineRawBuild(context.Background(), a.dataDir, req); err != nil {
 		return indexJob{}, err
 	}
 	req = cloneIndexBuildRequest(req)
@@ -460,6 +531,11 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		finish("paused", err)
 		return
 	}
+	if err := requireTimelineRawBuild(ctx, a.dataDir, indexBuildRequest{Index: j.Index, Outputs: j.Outputs}); err != nil {
+		finish("paused", err)
+		return
+	}
+	ctx = legacyRawPublicationContext(ctx, a.dataDir, j.Index)
 	// Validate persisted dependency history off the request goroutine. A large
 	// resume must not freeze the GUI's start request.
 	checked, e := openIndexStoreContext(ctx, a.dataDir, j.Index)
@@ -508,6 +584,10 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		}
 	}
 	for {
+		if !indexRunOptionalWorkAllowed(a.dataDir, j.Index) {
+			finish("paused", nil)
+			return
+		}
 		if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
 			finish("paused", nil)
 			return
@@ -661,13 +741,10 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 		} else if b.Bitcoin != nil {
 			data := b.Bitcoin
 			bodyState := "legacy_decoded"
-			if b.Bitcoin.BodySchema == 2 {
-				bodyState = "unavailable"
-				if decoded, err := a.decodedIndexBlockContext(context.Background(), s, b); err == nil {
-					copy := *b.Bitcoin
-					copy.Transactions = decoded.Transactions
-					data, bodyState = &copy, "verified_raw_decoded_on_demand"
-				}
+			if b.Bitcoin.BodySchema == 2 || b.Bitcoin.BodySchema == 3 {
+				// A storage overview never decodes every body on the page.
+				// Known block/transaction detail routes explicitly request bytes.
+				bodyState = "raw_metadata_only; body_verified_on_explicit_detail"
 			}
 			rows = append(rows, struct {
 				Height    int64              `json:"block_height"`

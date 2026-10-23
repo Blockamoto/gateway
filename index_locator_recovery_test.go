@@ -37,9 +37,13 @@ func nextLocatorBlock064(t *testing.T, a *app, s *indexStore) blockView {
 	return v
 }
 
-// These recovery fixtures deliberately stress legacy locator publication with
-// synthetic identities, not new Bitcoin-body ingestion/consensus verification.
+// Recovery exercises the explicit Transaction Locator publisher with synthetic
+// already-verified identities. The Raw branch below only constructs old decoded
+// payload fixtures used by separate migration tests; it creates no reverse rows.
 func appendLegacyLocatorBlock064(s *indexStore, v blockView) error {
+	if s.definition.ID == "tx-locator" {
+		return s.appendBlock(v, 0, "ephemeral")
+	}
 	ids := make([]string, len(v.Transactions))
 	for i, tx := range v.Transactions {
 		ids[i] = tx.TxID
@@ -50,7 +54,7 @@ func appendLegacyLocatorBlock064(s *indexStore, v blockView) error {
 func TestIndexLocatorPartialFirstRecordWithExistingHeadRecovers(t *testing.T) {
 	for _, acknowledged := range []bool{false, true} {
 		t.Run(map[bool]string{false: "missing_receipt", true: "empty_receipt"}[acknowledged], func(t *testing.T) {
-			a, s, oldID := olderExplorerFixture064(t, "blocks", 1)
+			a, s, oldID := olderExplorerFixture064(t, "tx-locator", 1)
 			oldHead, err := os.ReadFile(filepath.Join(s.dir, "head.json"))
 			if err != nil {
 				t.Fatal(err)
@@ -98,8 +102,14 @@ func TestIndexLocatorPartialFirstRecordWithExistingHeadRecovers(t *testing.T) {
 			if err != nil || info.Size() != indexLocatorRecordBytes {
 				t.Fatal("partial tail survived", info, err)
 			}
-			r, found, err := a.indexedTransaction(oldID)
-			if err != nil || !found || r.Height != 0 || r.Transaction.OutputSats != 5000000000 {
+			for _, file := range []struct{ dir, ext string }{{"raw", ".block"}, {"json", ".json"}, {"hex", ".hex"}} {
+				if err = os.Remove(filepath.Join(a.dataDir, "blocks", file.dir, "0-"+genesisHashDisplay+file.ext)); err != nil && !os.IsNotExist(err) {
+					t.Fatal(err)
+				}
+			}
+			restarted := restartExplorerFixture064(t, a)
+			r, found, err := restarted.indexedTransaction(oldID)
+			if err != nil || !found || r.Height != 0 || r.TransactionVerified || r.ResolutionState != "located_bytes_unavailable" {
 				t.Fatal("older approved coverage was lost", r, found, err)
 			}
 		})
@@ -107,7 +117,7 @@ func TestIndexLocatorPartialFirstRecordWithExistingHeadRecovers(t *testing.T) {
 }
 
 func TestIndexLocatorReceiptDirectoryFailureKeepsPriorHead(t *testing.T) {
-	a, s, oldID := olderExplorerFixture064(t, "blocks", 1)
+	a, s, oldID := olderExplorerFixture064(t, "tx-locator", 1)
 	before, err := os.ReadFile(filepath.Join(s.dir, "head.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +158,7 @@ func TestIndexLocatorParentFlushFailureIsRetried(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := indexStoreHead(a.dataDir, "blocks")
+	s, err := indexStoreHead(a.dataDir, "tx-locator")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +195,7 @@ func TestIndexLocatorParentFlushFailureIsRetried(t *testing.T) {
 }
 
 func TestIndexLocatorMissingReceiptRebuildKeepsOriginalOnValidationFailure(t *testing.T) {
-	_, s, key := olderExplorerFixture064(t, "blocks", 1)
+	_, s, key := olderExplorerFixture064(t, "tx-locator", 1)
 	path, _ := graphShardPath(s.dir, s.locatorKind(), key)
 	original, err := os.ReadFile(path)
 	if err != nil {
@@ -212,7 +222,7 @@ func TestIndexLocatorMissingReceiptRebuildKeepsOriginalOnValidationFailure(t *te
 func TestIndexLocatorExistingEmptyShardWithoutReceiptRestoresOlderRows(t *testing.T) {
 	for _, entry := range []string{"lookup", "append"} {
 		t.Run(entry, func(t *testing.T) {
-			_, s, key := olderExplorerFixture064(t, "blocks", 1)
+			_, s, key := olderExplorerFixture064(t, "tx-locator", 1)
 			prior := s.head.Commitment
 			path, _ := graphShardPath(s.dir, s.locatorKind(), key)
 			if err := os.Truncate(path, 0); err != nil {
@@ -242,8 +252,8 @@ func TestIndexLocatorExistingEmptyShardWithoutReceiptRestoresOlderRows(t *testin
 func TestIndexLocatorStaleRepairCannotDropNewCommittedRows(t *testing.T) {
 	for _, kind := range []string{"shard", "active_table"} {
 		t.Run(kind, func(t *testing.T) {
-			a, s, _ := olderExplorerFixture064(t, "blocks", 1)
-			stale, err := indexStoreHead(a.dataDir, "blocks")
+			a, s, _ := olderExplorerFixture064(t, "tx-locator", 1)
+			stale, err := indexStoreHead(a.dataDir, "tx-locator")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -274,7 +284,7 @@ func TestIndexLocatorStaleRepairCannotDropNewCommittedRows(t *testing.T) {
 			if string(before) != string(after) {
 				t.Fatal("stale repair dropped newer rows")
 			}
-			current, err := indexStoreHead(a.dataDir, "blocks")
+			current, err := indexStoreHead(a.dataDir, "tx-locator")
 			if err != nil {
 				t.Fatal(err)
 			}

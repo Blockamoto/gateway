@@ -1,0 +1,773 @@
+package main
+
+// Named Gateway profiles are deliberately distinct from the preserved preview
+// profiles and from an unfinished upstream canonical bit-field serialization.
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"unicode/utf8"
+)
+
+const bitmapNamedProfileSchema = "gateway-bitmap-named-semantics-v2"
+const bitmapNamedReferenceRevision = "1751e0d37073ab920cbd8b5548c61b74c37716d1"
+
+var bitmapProfilesMu sync.Mutex
+
+type bitmapRuleDefinition struct {
+	ID                string            `json:"id"`
+	Question          string            `json:"question"`
+	ReferenceValue    int               `json:"reference_value"`
+	Core              bool              `json:"core"`
+	SupportedValues   []int             `json:"supported_values"`
+	UnsupportedReason string            `json:"unsupported_reason,omitempty"`
+	Evidence          []string          `json:"evidence"`
+	ValueMeanings     map[string]string `json:"value_meanings"`
+	ConflictsOnOne    []string          `json:"conflicts_on_one,omitempty"`
+}
+type bitmapProfileIssue struct {
+	Rule   string `json:"rule,omitempty"`
+	Code   string `json:"code"`
+	Reason string `json:"reason"`
+}
+type bitmapRuleAudit struct {
+	ID       string   `json:"id"`
+	Value    int      `json:"value"`
+	Result   string   `json:"result"`
+	Reason   string   `json:"reason"`
+	Evidence []string `json:"evidence"`
+}
+
+// These explanations summarize predicates actually reached by the evaluator.
+// They do not upgrade an extraction flag into historical Ord evidence.
+func bitmapRuleAudits(p bitmapDevelopmentProfile, c bitmapDevelopmentCandidate) []bitmapRuleAudit {
+	if !bitmapNamedSchema(p.FingerprintSchema) {
+		return nil
+	}
+	decodeFailed := c.DecodeState == "fail" || bitmapDecoderFailureReason(c.Reason)
+	decodeUnknown := c.DecodeState == "unknown" || c.Reason == "unresolved_charset"
+	decodeSucceeded := c.DecodeState == "pass"
+	out := []bitmapRuleAudit{}
+	for _, r := range bitmapRuleRegistryFor(p.FingerprintSchema, p.Kind) {
+		a := bitmapRuleAudit{ID: r.ID, Value: p.Answers[r.ID], Result: "not_applied", Reason: "No additional restriction is enabled by this answer.", Evidence: []string{}}
+		if r.ID == "delegate_exclusion" && a.Value == 1 {
+			a.Result, a.Reason = "unknown", "Delegate-field declaration evidence is not retained; replay authenticated occurrences to evaluate this rule."
+			if validHash(c.DelegateFieldEvidence) && (c.DelegateFieldState == "absent" || c.DelegateFieldState == "present" || c.DelegateFieldState == "dangling") {
+				a.Result, a.Reason = "pass", "No exact delegate tag was declared in the own envelope's pre-body field section."
+				if c.DelegateFieldState == "present" || c.DelegateFieldState == "dangling" {
+					a.Result, a.Reason = "fail", "An exact tag-11 delegate is declared, including a dangling declaration; target resolution is irrelevant."
+				}
+				a.Evidence = []string{c.DelegateFieldEvidence}
+			}
+			out = append(out, a)
+			continue
+		}
+		if r.ID == "raw_utf8_body" && a.Value == 1 {
+			a.Result, a.Reason = "unknown", "A strict raw UTF-8 decoding outcome is not retained."
+			if decodeFailed {
+				a.Result, a.Reason = "fail", "The exact own bytes are not valid UTF-8."
+			} else if decodeSucceeded {
+				a.Result, a.Reason = "pass", "The exact own body is valid UTF-8; MIME and charset were not interpreted. Whole claim grammar is checked separately."
+			}
+			out = append(out, a)
+			continue
+		}
+		if !r.Core {
+			out = append(out, a)
+			continue
+		}
+		a.Reason = "An earlier predicate prevented this check."
+		switch r.ID {
+		case "content":
+			if validHash(c.ContentHash) {
+				a.Result = "pass"
+				a.Reason = "Claim bytes came from the authenticated own-body occurrence."
+				a.Evidence = []string{c.ContentHash}
+			}
+		case "text":
+			if a.Value == 0 {
+				a.Reason = "Gateway comparison uses strict own-body ASCII and ignores media metadata."
+				if p.Answers["raw_utf8_body"] == 1 {
+					a.Reason = "Media/charset interpretation is disabled; raw_utf8_body supplies the strict byte decoder."
+				}
+			} else if decodeUnknown {
+				a.Result = "unknown"
+				a.Reason = "Declared charset interpretation is unavailable."
+			} else if decodeFailed {
+				a.Result = "fail"
+				a.Reason = c.Reason
+			} else if decodeSucceeded {
+				a.Result = "pass"
+				a.Reason = "The declared media/charset decoder accepted the body."
+			} else {
+				a.Result = "unknown"
+				a.Reason = "A successful decoder outcome is not retained."
+			}
+		case "regex":
+			if c.Reason == "delegate_declaration_excluded" || c.Reason == "delegate_field_evidence_required" {
+				break
+			}
+			if decodeUnknown {
+				a.Result = "unknown"
+				a.Reason = "The body could not yet be decoded."
+			} else if decodeSucceeded && !decodeFailed {
+				if c.District != nil && (p.Kind != "parcel" || c.Transaction != nil) && c.Reason != "noncanonical_claim" && c.Reason != "noncanonical_district" && c.Reason != "noncanonical_transaction" {
+					a.Result = "pass"
+					a.Reason = "Whole text has canonical numeric components and lowercase suffix."
+				} else {
+					a.Result = "fail"
+					a.Reason = c.Reason
+				}
+			} else if !decodeFailed {
+				a.Result = "unknown"
+				a.Reason = "The body decoder outcome is not retained."
+			}
+		case "height":
+			if c.District != nil {
+				a.Result = "pass"
+				a.Reason = "Target exists no later than the reveal height."
+				if c.Reason == "future_block" {
+					a.Result = "fail"
+					a.Reason = c.Reason
+				}
+			}
+		case "range":
+			switch c.Reason {
+			case "transaction_out_of_range", "future_block":
+				a.Result = "fail"
+				a.Reason = c.Reason
+			case "recognized_district_not_declared_parent", "checked_parent_provenance_required", "saved_sat_dependency_unavailable", "parent_input_not_consumed", "parent_not_consumed_by_reveal", "checked_parent_invalid", "first_eligible_under_development_profile", "already_claimed":
+				a.Result = "pass"
+				a.Reason = "Authenticated target-block transaction-count check completed."
+			}
+			if strings.Contains(c.Reason, "transaction_count") && c.Eligibility == "unresolved" {
+				a.Result = "unknown"
+				a.Reason = c.Reason
+			}
+		case "parent":
+			if c.Provenance != nil && c.Provenance.Verified {
+				a.Result = "pass"
+				a.Reason = "Checked creation-time input provenance is retained."
+				a.Evidence = []string{c.Provenance.EvidenceHash}
+			} else {
+				switch c.Reason {
+				case "no_recognized_district_at_reveal", "district_parent_not_yet_recognized", "recognized_district_not_declared_parent", "parent_input_not_consumed", "parent_not_consumed_by_reveal", "checked_parent_invalid":
+					a.Result = "fail"
+					a.Reason = c.Reason
+				case "checked_parent_provenance_required", "saved_sat_dependency_unavailable":
+					a.Result = "unknown"
+					a.Reason = c.Reason
+				}
+			}
+		case "fiftxi":
+			if c.Selection == "selected" {
+				a.Result = "pass"
+				a.Reason = "This is the first eligible claim in physical reveal order."
+			} else if c.Eligibility == "eligible" {
+				a.Reason = "Eligible losing claim; the coordinate already has a recognized winner. Selection is separate from eligibility."
+			} else if c.Eligibility == "unresolved" {
+				a.Result = "unknown"
+				a.Reason = "Winner-affecting evidence is unresolved."
+			}
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+func bitmapDecoderFailureReason(reason string) bool {
+	switch reason {
+	case "text_plain_required", "invalid_ascii", "invalid_utf8", "contrary_bom", "bom_required", "invalid_unicode_length", "invalid_unicode_scalar", "invalid_surrogate":
+		return true
+	}
+	return false
+}
+
+// Return an offset into the original bytes. Unicode case conversion can change
+// prefix byte lengths (including replacing invalid UTF-8) and is not suitable
+// for an offset later used to slice the original candidate.
+func bitmapClaimMarker(text string) int {
+	for n := 0; n+len(".bitmap") <= len(text); n++ {
+		if text[n] == '.' && strings.EqualFold(text[n:n+len(".bitmap")], ".bitmap") {
+			return n
+		}
+	}
+	return -1
+}
+
+type bitmapProfileValidation struct {
+	State       string                    `json:"state"`
+	Issues      []bitmapProfileIssue      `json:"issues"`
+	Profile     *bitmapDevelopmentProfile `json:"profile,omitempty"`
+	ProfileHash string                    `json:"profile_hash,omitempty"`
+	Note        string                    `json:"note"`
+}
+type bitmapProfileInstance struct {
+	ExecutionAvailable         *bool                    `json:"execution_available,omitempty"`
+	ExecutionUnavailableReason string                   `json:"execution_unavailable_reason,omitempty"`
+	LegacyRuleAnswers          *bitmapLegacyRuleAnswers `json:"legacy_rule_answers,omitempty"`
+	AutoLabel                  bool                     `json:"auto_label,omitempty"`
+	ConfigurationRevision      uint64                   `json:"configuration_revision,omitempty"`
+	RulesLocked                bool                     `json:"rules_locked,omitempty"`
+	RulesEditable              bool                     `json:"rules_editable,omitempty"`
+	RulesLockReason            string                   `json:"rules_lock_reason,omitempty"`
+	Classification             string                   `json:"classification,omitempty"`
+	ID                         string                   `json:"id"`
+	Kind                       string                   `json:"kind"`
+	Label                      string                   `json:"label"`
+	Profile                    bitmapDevelopmentProfile `json:"profile"`
+	ProfileHash                string                   `json:"profile_hash"`
+	Rules                      map[string]int           `json:"rules,omitempty"`
+	StartHeight                int64                    `json:"start_height"`
+	DistrictInstance           string                   `json:"district_instance,omitempty"`
+	DistrictProfileHash        string                   `json:"district_profile_hash,omitempty"`
+	ChainInstance              string                   `json:"chain_instance,omitempty"`
+	State                      string                   `json:"state"`
+	Legacy                     bool                     `json:"legacy,omitempty"`
+	Draft                      bool                     `json:"draft,omitempty"`
+	Note                       string                   `json:"note"`
+}
+type bitmapProfileDocument struct {
+	Schema    int                     `json:"schema"`
+	Revision  uint64                  `json:"revision"`
+	Instances []bitmapProfileInstance `json:"instances"`
+	Drafts    []bitmapProfileInstance `json:"drafts"`
+	Checksum  string                  `json:"checksum"`
+}
+type bitmapProfileRequest struct {
+	ProfileSchema                 string         `json:"profile_schema,omitempty"`
+	AutoLabel                     bool           `json:"auto_label,omitempty"`
+	ExpectedProfile               string         `json:"expected_profile,omitempty"`
+	ExpectedConfigurationRevision uint64         `json:"expected_configuration_revision,omitempty"`
+	Action                        string         `json:"action"`
+	ID                            string         `json:"id,omitempty"`
+	Kind                          string         `json:"kind"`
+	Label                         string         `json:"label"`
+	Rules                         map[string]int `json:"rules"`
+	DistrictInstance              string         `json:"district_instance,omitempty"`
+	LinkedParcel                  bool           `json:"linked_parcel,omitempty"`
+	ParcelLabel                   string         `json:"parcel_label,omitempty"`
+	ParcelRules                   map[string]int `json:"parcel_rules,omitempty"`
+}
+
+func bitmapCustomConsumerID(id string) bool {
+	for _, prefix := range []string{"bitmap-districts-", "bitmap-parcels-", "bitmap-chain-"} {
+		if strings.HasPrefix(id, prefix) {
+			s := strings.TrimPrefix(id, prefix)
+			if len(s) != 32 {
+				return false
+			}
+			for _, c := range s {
+				if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+func bitmapRuleRegistry(kind string) []bitmapRuleDefinition {
+	core := []string{"content", "text", "regex", "height", "fiftxi"}
+	if kind == "parcel" {
+		core = []string{"content", "text", "regex", "range", "parent", "fiftxi"}
+	}
+	questions := map[string]string{
+		"content": "Require the inscription's own undelegated claim body?", "text": "Require text/plain with strict declared-charset decoding?", "regex": "Require the whole canonical Bitmap claim pattern?", "height": "Require the target height not to exceed reveal height?", "range": "Require an existing target block and real transaction index?", "parent": "Require a checked child relationship to the selected District?", "fiftxi": "Select the first eligible claim in physical reveal order?", "single": "Require exactly one valid Ord parent?", "brotli": "Allow eligibility solely through Brotli decompression?", "fifin": "Use global inscription-number precedence?", "cursed_exclusion": "Exclude solely for cursed or negative-number status?", "reinscription_exclusion": "Exclude solely for prior inscription on the sat?", "unbound_exclusion": "Exclude solely for unbound status?", "district_child_exclusion": "Exclude a District solely for valid Ord parenthood?", "burns": "Does burning the winner revoke its claim?",
+	}
+	optional := []string{"brotli", "fifin", "cursed_exclusion", "reinscription_exclusion", "unbound_exclusion", "district_child_exclusion", "burns"}
+	if kind == "parcel" {
+		optional = []string{"single", "brotli", "fifin", "cursed_exclusion", "reinscription_exclusion", "unbound_exclusion", "burns"}
+	}
+	out := []bitmapRuleDefinition{}
+	for _, id := range append(core, optional...) {
+		r := bitmapRuleDefinition{ID: id, Question: questions[id], SupportedValues: []int{0}, Evidence: []string{"authenticated reveal body and ordered occurrence extraction"}, UnsupportedReason: "The alternative needs a separately specified and implemented interpretation/evidence validator."}
+		for _, c := range core {
+			if c == id {
+				r.Core = true
+				r.ReferenceValue = 1
+				r.SupportedValues = []int{1}
+			}
+		}
+		if id == "text" {
+			r.SupportedValues = []int{0, 1}
+			r.UnsupportedReason = ""
+		}
+		if id == "parent" {
+			r.Evidence = []string{"exact selected District profile and completed context", "checked creation-time parent provenance; no implicit historical scan"}
+		}
+		if id == "range" {
+			r.Evidence = []string{"authenticated target-block transaction count"}
+		}
+		if id == "fifin" || id == "cursed_exclusion" {
+			r.Evidence = []string{"complete pinned historical Ord numbering/status evidence"}
+		}
+		if id == "burns" {
+			r.UnsupportedReason = "burns=1 needs a burn predicate, temporal activation and renewed-winner policy; missing or spent is not burned."
+		}
+		if id == "fiftxi" {
+			r.UnsupportedReason = "No supported alternative winner policy is implemented; fiftxi=1 conflicts with fifin=1."
+		}
+		r.ValueMeanings = map[string]string{"0": "Reference optional answer: do not add this eligibility route or exclusion.", "1": r.UnsupportedReason}
+		if r.Core {
+			r.ValueMeanings = map[string]string{"1": "Apply the declared reference constraint.", "0": r.UnsupportedReason}
+		}
+		if id == "text" {
+			r.ValueMeanings = map[string]string{"1": "Reference media/charset interpretation: text/plain with strict declared decoding.", "0": "Gateway comparison only: strict own-body ASCII bytes, ignoring media/charset metadata; no delegates or decompression."}
+		}
+		zeroMeanings := map[string]string{"brotli": "Decompression alone cannot create eligibility.", "fifin": "Keep physical reveal-order precedence.", "cursed_exclusion": "Cursed or negative-number status alone adds no exclusion.", "reinscription_exclusion": "Previous inscription on the sat alone adds no exclusion.", "unbound_exclusion": "Unbound status alone adds no exclusion.", "district_child_exclusion": "Valid Ord parenthood alone adds no District exclusion.", "single": "Allow multiple Ord parents; a qualifying recognized District parent is still required.", "burns": "Later burning preserves the recognized winner and does not reopen its coordinate."}
+		if meaning := zeroMeanings[id]; meaning != "" {
+			r.ValueMeanings["0"] = meaning
+		}
+		if id == "fiftxi" {
+			r.ConflictsOnOne = []string{"fifin"}
+		}
+		if id == "fifin" {
+			r.ConflictsOnOne = []string{"fiftxi"}
+		}
+		out = append(out, r)
+	}
+	return out
+}
+func bitmapReferenceAnswers(kind string) map[string]int {
+	out := map[string]int{}
+	for _, r := range bitmapRuleRegistry(kind) {
+		out[r.ID] = r.ReferenceValue
+	}
+	return out
+}
+func bitmapCopyAnswers(in map[string]int) map[string]int {
+	out := map[string]int{}
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+func bitmapProfilePath(root string) string {
+	return filepath.Join(root, "indexes", "bitmap-profiles-v2", "registry.json")
+}
+func bitmapProfileDocumentDigest(d bitmapProfileDocument) string {
+	d.Checksum = ""
+	return indexDigest(d)
+}
+func bitmapReadProfileDocument(ctx context.Context, root string) (bitmapProfileDocument, error) {
+	bitmapProfileFileMu.RLock()
+	defer bitmapProfileFileMu.RUnlock()
+	d := bitmapProfileDocument{Schema: 2, Instances: []bitmapProfileInstance{}, Drafts: []bitmapProfileInstance{}}
+	err := readBitmapJSON(ctx, bitmapProfilePath(root), &d)
+	if os.IsNotExist(err) {
+		return d, nil
+	}
+	if err != nil {
+		return d, err
+	}
+	if d.Schema != 2 || len(d.Instances) > 192 || len(d.Drafts) > 64 || d.Checksum != bitmapProfileDocumentDigest(d) {
+		return d, fmt.Errorf("Bitmap profile registry authentication mismatch")
+	}
+	seen := map[string]bitmapProfileInstance{}
+	for _, i := range d.Instances {
+		if !bitmapCustomConsumerID(i.ID) || seen[i.ID].ID != "" || i.Draft || i.LegacyRuleAnswers != nil || i.ProfileHash != bitmapProfileHash(i.Profile) || i.StartHeight != bitmapDevelopmentStart || i.Kind != bitmapConsumerKind(i.ID) || !bitmapNamedSchema(i.Profile.FingerprintSchema) || i.Profile.CanonicalStandard || !bitmapValidLabel(i.Label) {
+			return d, fmt.Errorf("Bitmap profile instance authentication mismatch")
+		}
+		seen[i.ID] = i
+	}
+	// Validate dependencies only after collecting all immutable records. Calling
+	// the public resolver here would recursively reread the same registry.
+	for _, i := range d.Instances {
+		kind := i.Kind
+		if kind == "chain" {
+			kind = "district"
+		}
+		if i.State != "ready" || i.Legacy || i.Kind == "district" && (i.DistrictInstance != "" || i.DistrictProfileHash != "" || i.ChainInstance != strings.Replace(i.ID, "bitmap-districts-", "bitmap-chain-", 1)) || i.Kind != "district" && i.ChainInstance != "" {
+			return d, fmt.Errorf("Bitmap instance metadata/binding mismatch")
+		}
+		if i.Kind == "district" {
+			chain := seen[i.ChainInstance]
+			if chain.Kind != "chain" || chain.DistrictInstance != i.ID || chain.ProfileHash != i.ProfileHash {
+				return d, fmt.Errorf("Bitmap attached Chain descriptor is missing or mismatched")
+			}
+		}
+		registry := bitmapRuleRegistryFor(i.Profile.FingerprintSchema, kind)
+		if len(i.Rules) != len(registry) || indexDigest(i.Rules) != indexDigest(i.Profile.Answers) {
+			return d, fmt.Errorf("Bitmap named answers mismatch")
+		}
+		for _, r := range registry {
+			value, ok := i.Rules[r.ID]
+			supported := false
+			for _, x := range r.SupportedValues {
+				supported = supported || x == value
+			}
+			if !ok || !supported {
+				return d, fmt.Errorf("Bitmap saved interpretation is unsupported")
+			}
+		}
+		if i.Rules["fiftxi"] == 1 && i.Rules["fifin"] == 1 || i.Rules["text"] == 1 && i.Rules["raw_utf8_body"] == 1 || i.Rules["brotli"] == 1 && i.Rules["raw_utf8_body"] == 1 {
+			return d, fmt.Errorf("Bitmap saved interpretation contains conflicting rules")
+		}
+		districtR := ""
+		if i.Kind != "district" {
+			dep := seen[i.DistrictInstance]
+			if i.DistrictInstance == "bitmap-districts" {
+				dep = bitmapLegacyInstance(i.DistrictInstance)
+			}
+			if dep.ID == "" || dep.Kind != "district" || dep.ProfileHash != i.DistrictProfileHash {
+				return d, fmt.Errorf("Bitmap District dependency binding mismatch")
+			}
+			if i.Kind == "parcel" {
+				districtR = dep.ProfileHash
+			} else if i.DistrictInstance != strings.Replace(i.ID, "bitmap-chain-", "bitmap-districts-", 1) || i.ProfileHash != dep.ProfileHash {
+				return d, fmt.Errorf("Bitmap Chain producer binding mismatch")
+			}
+		}
+		expected := bitmapNamedSemanticProfileFor(i.Profile.FingerprintSchema, kind, i.Rules, districtR)
+		if bitmapProfileHash(expected) != i.ProfileHash || indexDigest(expected.Rules) != indexDigest(i.Profile.Rules) || i.Profile.DelegatePolicy != expected.DelegatePolicy || i.Profile.ReferenceRevision != expected.ReferenceRevision {
+			return d, fmt.Errorf("Bitmap saved semantic policy mismatch")
+		}
+	}
+	bitmapProjectAutomaticLabels(d.Instances)
+	for n := range d.Drafts {
+		if d.Drafts[n].Profile.FingerprintSchema == "" {
+			d.Drafts[n].Profile.FingerprintSchema = bitmapRulesSchema(d.Drafts[n].Rules)
+		}
+	}
+	// The on-disk checksum was authenticated above. Return a self-consistent
+	// projected document; only an explicit later mutation persists display edits.
+	d.Checksum = bitmapProfileDocumentDigest(d)
+	return d, nil
+}
+func bitmapLegacyInstance(id string) bitmapProfileInstance {
+	kind := bitmapConsumerKind(id)
+	p := bitmapProfile(kind)
+	i := bitmapProfileInstance{ID: id, Kind: kind, Label: map[string]string{"district": "Legacy Experimental Districts", "parcel": "Legacy Experimental Parcels", "chain": "Legacy Experimental District Chain"}[kind], Profile: p, ProfileHash: bitmapProfileHash(p), StartHeight: bitmapDevelopmentStart, State: "ready", Legacy: true, Note: "Preserved older experimental profile for inspection and data management. It cannot execute or be reinterpreted as canonical. Earlier claims before its declared segment were not evaluated."}
+	i.LegacyRuleAnswers = bitmapLegacyAnswers(kind)
+	if kind != "district" {
+		i.DistrictInstance = "bitmap-districts"
+		i.DistrictProfileHash = bitmapProfileHash(bitmapProfile("district"))
+	} else {
+		i.ChainInstance = "bitmap-chain"
+	}
+	return i
+}
+func bitmapResolvedInstance(ctx context.Context, root, id string) (bitmapProfileInstance, error) {
+	if i, ok := bitmapCanonicalInstance(id); ok {
+		return i, nil
+	}
+	if i, ok := bitmapCanonicalChainInstance(id); ok {
+		return i, nil
+	}
+	if id == "bitmap-districts" || id == "bitmap-parcels" || id == "bitmap-chain" {
+		i := bitmapLegacyInstance(id)
+		i.ConfigurationRevision = bitmapEffectiveConfigurationRevision(i)
+		return i, nil
+	}
+	if !bitmapCustomConsumerID(id) {
+		return bitmapProfileInstance{}, fmt.Errorf("invalid Bitmap instance identity")
+	}
+	d, err := bitmapReadProfileDocument(ctx, root)
+	if err != nil {
+		return bitmapProfileInstance{}, err
+	}
+	for _, i := range d.Instances {
+		if i.ID == id {
+			i.ConfigurationRevision = bitmapEffectiveConfigurationRevision(i)
+			return i, nil
+		}
+	}
+	return bitmapProfileInstance{}, fmt.Errorf("Bitmap instance is not registered")
+}
+func bitmapProfileInstances(ctx context.Context, root string) ([]bitmapProfileInstance, error) {
+	d, err := bitmapReadProfileDocument(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	out := []bitmapProfileInstance{}
+	for _, id := range []string{bitmapCanonicalDistrictID, bitmapCanonicalParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1"} {
+		i, e := bitmapResolvedInstance(ctx, root, id)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, i)
+	}
+	out = append(out, bitmapLegacyInstance("bitmap-districts"), bitmapLegacyInstance("bitmap-parcels"), bitmapLegacyInstance("bitmap-chain"))
+	out = append(out, d.Instances...)
+	for n := range out {
+		out[n].ConfigurationRevision = bitmapEffectiveConfigurationRevision(out[n])
+	}
+	return out, nil
+}
+func bitmapNamedSemanticProfile(kind string, answers map[string]int, districtR string) bitmapDevelopmentProfile {
+	p := bitmapDevelopmentProfile{ID: "gateway-bitmap-" + kind + "-named-development-v2", FingerprintSchema: bitmapNamedProfileSchema, ReferenceRevision: bitmapNamedReferenceRevision, ParserProfile: inscriptionParserProfile, ParserReference: inscriptionReferenceCommit, Kind: kind, Answers: bitmapCopyAnswers(answers), DecoderPolicy: "declared-charset-strict-gateway-v1", ActivationPolicy: "gateway-declared-segment-begin-v1", ActivationHeight: bitmapDevelopmentStart, ContextPolicy: "earlier-claims-not-evaluated; recognition is segment-scoped; no canonical-first-winner claim", Rules: []string{"Named answers under an explicit Gateway development interpretation; not canonical profile bytes.", "Whole own-body canonical claim grammar; first eligible physical reveal order.", "burns=0 preserves recognized claims after later burning; ownership is separate."}}
+	if answers["text"] == 0 {
+		p.DecoderPolicy = "own-body-ascii-ignore-media-v1"
+	}
+	if kind == "parcel" {
+		p.ParentPolicy = "checked-preblock-sat-input-edge-gateway-v1"
+		p.DistrictProfileHash = districtR
+	}
+	return p
+}
+func bitmapValidLabel(s string) bool {
+	return utf8.ValidString(s) && len(s) <= 160 && strings.TrimSpace(s) != "" && !strings.ContainsAny(s, "\x00\r\n")
+}
+func bitmapDerivedLabel(s, suffix string) string {
+	for len(s)+len(suffix) > 160 {
+		_, n := utf8.DecodeLastRuneInString(s)
+		s = s[:len(s)-n]
+	}
+	return s + suffix
+}
+func bitmapValidateProfile(ctx context.Context, root string, q bitmapProfileRequest) bitmapProfileValidation {
+	return bitmapValidateProfileWithDistrict(ctx, root, q, nil)
+}
+func bitmapValidateProfileWithDistrict(ctx context.Context, root string, q bitmapProfileRequest, pendingDistrict *bitmapProfileInstance) bitmapProfileValidation {
+	if q.AutoLabel && q.Label == "" {
+		q.Label = bitmapAutomaticCustomLabel(q.Kind, 1)
+	}
+	v := bitmapProfileValidation{State: "ready", Issues: []bitmapProfileIssue{}, Note: "Gateway development interpretation of pinned new-main reference values. The segment begins at 792435; earlier claim context is not evaluated. No build is started."}
+	add := func(rule, code, reason string) {
+		v.Issues = append(v.Issues, bitmapProfileIssue{rule, code, reason})
+		if code == "invalid" {
+			v.State = "invalid"
+		} else if v.State != "invalid" {
+			v.State = "unsupported"
+		}
+	}
+	if q.Kind != "district" && q.Kind != "parcel" {
+		add("", "invalid", "Choose Districts or Parcels.")
+		return v
+	}
+	if q.Kind == "district" && q.DistrictInstance != "" {
+		add("parent", "invalid", "A District interpretation cannot have a District-parent dependency.")
+	}
+	if !bitmapValidLabel(q.Label) {
+		add("", "invalid", "A display name must be nonempty, valid UTF-8 and at most 160 bytes, without line breaks.")
+	}
+	schema := bitmapRequestSchema(q)
+	registry := bitmapRuleRegistryFor(schema, q.Kind)
+	if !bitmapNamedSchema(schema) {
+		add("profile_schema", "invalid", "Choose a supported versioned Bitmap rules schema.")
+	}
+	known := map[string]bool{}
+	for _, r := range registry {
+		known[r.ID] = true
+		answer, have := q.Rules[r.ID]
+		if !have || answer != 0 && answer != 1 {
+			add(r.ID, "invalid", "Every named question requires exactly 0 or 1.")
+			continue
+		}
+		supported := false
+		for _, x := range r.SupportedValues {
+			supported = supported || x == answer
+		}
+		if !supported {
+			add(r.ID, "unsupported", r.UnsupportedReason)
+		}
+	}
+	for k := range q.Rules {
+		if !known[k] {
+			add(k, "invalid", "Unknown rule ID for this kind.")
+		}
+	}
+	if q.Rules["fiftxi"] == 1 && q.Rules["fifin"] == 1 {
+		add("fiftxi,fifin", "invalid", "Physical-order and global-number winner precedence cannot both be selected.")
+	}
+	if q.Rules["raw_utf8_body"] == 1 && q.Rules["text"] == 1 {
+		add("text,raw_utf8_body", "invalid", "Raw UTF-8 bypasses media/charset interpretation and requires text=0; choose the answers explicitly.")
+	}
+	if q.Rules["raw_utf8_body"] == 1 && q.Rules["brotli"] == 1 {
+		add("brotli,raw_utf8_body", "invalid", "Raw UTF-8 matches original bytes and cannot admit eligibility solely through Brotli decompression.")
+	}
+	p := bitmapNamedSemanticProfileFor(schema, q.Kind, q.Rules, "")
+	if q.Kind == "parcel" {
+		dep := bitmapProfileInstance{}
+		var err error
+		if pendingDistrict != nil && pendingDistrict.ID == q.DistrictInstance {
+			dep = *pendingDistrict
+		} else {
+			dep, err = bitmapResolvedInstance(ctx, root, q.DistrictInstance)
+		}
+		if err != nil || dep.Kind != "district" {
+			add("parent", "invalid", "Choose an existing immutable District instance.")
+		} else {
+			p.DistrictProfileHash = dep.ProfileHash
+		}
+	}
+	if v.State == "ready" {
+		v.Profile = &p
+		v.ProfileHash = bitmapProfileHash(p)
+	}
+	return v
+}
+func bitmapDecodeProfileBody(p bitmapDevelopmentProfile, body []byte, contentType string) (string, string) {
+	if p.FingerprintSchema == bitmapCanonicalProfileSchema {
+		return bitmapDecodeCanonicalBody(body, contentType)
+	}
+	if p.FingerprintSchema == bitmapExtendedProfileSchema && p.DecoderPolicy == "own-body-utf8-ignore-media-v1" {
+		if !utf8.Valid(body) {
+			return "", "invalid_utf8"
+		}
+		return string(body), ""
+	}
+	if !bitmapNamedSchema(p.FingerprintSchema) || p.DecoderPolicy != "own-body-ascii-ignore-media-v1" {
+		return bitmapDecodeBody(body, contentType)
+	}
+	for _, b := range body {
+		if b >= 128 {
+			return "", "invalid_ascii"
+		}
+	}
+	return string(body), ""
+}
+func bitmapNewSuffix() (string, error) {
+	var b [16]byte
+	_, err := rand.Read(b[:])
+	return hex.EncodeToString(b[:]), err
+}
+func bitmapSaveProfile(ctx context.Context, root string, q bitmapProfileRequest) (map[string]any, error) {
+	return nil, requireBitmapProfileChanges()
+}
+
+// Registry-format operations remain available internally so preserved profile
+// identities and their historical data can still be validated independently
+// of this build's public authoring capability.
+func bitmapSaveStoredProfile(ctx context.Context, root string, q bitmapProfileRequest) (map[string]any, error) {
+	bitmapProfilesMu.Lock()
+	defer bitmapProfilesMu.Unlock()
+	d, err := bitmapReadProfileDocument(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	if q.Action == "rename" {
+		if strings.TrimSpace(q.Label) == "" || len(q.Label) > 160 || !utf8.ValidString(q.Label) || strings.ContainsAny(q.Label, "\x00\r\n") {
+			return nil, fmt.Errorf("invalid display name")
+		}
+		found := false
+		for n := range d.Instances {
+			if d.Instances[n].ID == q.ID {
+				d.Instances[n].Label = strings.TrimSpace(q.Label)
+				d.Instances[n].AutoLabel = false
+				found = true
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("custom instance not found")
+		}
+	} else {
+		if q.AutoLabel && q.Label == "" {
+			q.Label = bitmapAllocateCustomLabel(d, q.Kind)
+		}
+		if (q.Kind != "district" && q.Kind != "parcel") || !bitmapValidLabel(q.Label) || len(q.Rules) > 20 || len(q.ParcelRules) > 20 {
+			return nil, fmt.Errorf("invalid Bitmap draft metadata")
+		}
+		v := bitmapValidateProfile(ctx, root, q)
+		if q.Action != "create" && q.Action != "save_draft" {
+			return nil, fmt.Errorf("choose create, save_draft or rename")
+		}
+		if v.State != "ready" && q.Action != "save_draft" {
+			return map[string]any{"validation": v}, fmt.Errorf("Bitmap profile is %s; review its named rule issues", v.State)
+		}
+		if q.AutoLabel {
+			label, e := bitmapAutomaticLabel(q.Kind, q.Label, q.Rules)
+			if e != nil {
+				return nil, e
+			}
+			q.Label = label
+		}
+		if len(d.Instances) >= 189 || len(d.Drafts) >= 64 {
+			return nil, fmt.Errorf("Bitmap profile limit reached")
+		}
+		suffix, e := bitmapNewSuffix()
+		if e != nil {
+			return nil, e
+		}
+		i := bitmapProfileInstance{AutoLabel: q.AutoLabel, ConfigurationRevision: 1, ID: "bitmap-districts-" + suffix, Kind: q.Kind, Label: strings.TrimSpace(q.Label), Rules: bitmapCopyAnswers(q.Rules), StartHeight: bitmapDevelopmentStart, DistrictInstance: q.DistrictInstance, State: v.State, Note: v.Note}
+		if q.Kind == "parcel" {
+			i.ID = "bitmap-parcels-" + suffix
+		}
+		if q.Action == "save_draft" {
+			i.ID = "bitmap-draft-" + suffix
+			i.Draft = true
+			i.Profile.FingerprintSchema = bitmapRequestSchema(q)
+			d.Drafts = append(d.Drafts, i)
+		} else {
+			i.Profile = *v.Profile
+			i.ProfileHash = v.ProfileHash
+			i.DistrictProfileHash = i.Profile.DistrictProfileHash
+			if i.Kind == "district" {
+				i.ChainInstance = "bitmap-chain-" + suffix
+			}
+			d.Instances = append(d.Instances, i)
+			if i.Kind == "district" {
+				chain := i
+				chain.ID = i.ChainInstance
+				chain.Kind = "chain"
+				chain.Label = bitmapDerivedLabel(i.Label, " Chain")
+				chain.ChainInstance = ""
+				chain.DistrictInstance = i.ID
+				chain.DistrictProfileHash = i.ProfileHash
+				d.Instances = append(d.Instances, chain)
+			}
+			if q.LinkedParcel {
+				if i.Kind != "district" {
+					return nil, fmt.Errorf("linked Parcel creation belongs to a District")
+				}
+				ps, e := bitmapNewSuffix()
+				if e != nil {
+					return nil, e
+				}
+				rules := q.ParcelRules
+				if rules == nil {
+					rules = bitmapReferenceAnswersFor(bitmapRequestSchema(q), "parcel")
+				}
+				label := q.ParcelLabel
+				autoLabel := strings.TrimSpace(label) == ""
+				if strings.TrimSpace(label) == "" {
+					label = bitmapAllocateCustomLabel(d, "parcel")
+				}
+				// Validate the dependency against the pending atomic registry rather
+				// than publishing a half-created District merely to resolve it.
+				pv := bitmapValidateProfileWithDistrict(ctx, root, bitmapProfileRequest{ProfileSchema: bitmapRequestSchema(q), Kind: "parcel", Label: label, Rules: rules, DistrictInstance: i.ID}, &i)
+				if pv.State != "ready" {
+					return nil, fmt.Errorf("linked Parcel profile is %s", pv.State)
+				}
+				pp := *pv.Profile
+				d.Instances = append(d.Instances, bitmapProfileInstance{AutoLabel: autoLabel, ConfigurationRevision: 1, ID: "bitmap-parcels-" + ps, Kind: "parcel", Label: strings.TrimSpace(label), Rules: bitmapCopyAnswers(rules), Profile: pp, ProfileHash: bitmapProfileHash(pp), StartHeight: bitmapDevelopmentStart, DistrictInstance: i.ID, DistrictProfileHash: i.ProfileHash, State: "ready", Note: v.Note})
+			}
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := bitmapWriteProfileDocument(ctx, root, &d); err != nil {
+		return nil, err
+	}
+	out := map[string]any{"ok": true, "revision": d.Revision}
+	if q.Action == "rename" {
+		for _, i := range d.Instances {
+			if i.ID == q.ID {
+				out["instance"] = i
+			}
+		}
+	} else if q.Action == "save_draft" {
+		out["instance"] = d.Drafts[len(d.Drafts)-1]
+	} else {
+		n := len(d.Instances) - 1
+		if q.LinkedParcel {
+			out["linked_parcel"] = d.Instances[n]
+			n--
+		}
+		if q.Kind == "district" {
+			out["chain"] = d.Instances[n]
+			n--
+		}
+		out["instance"] = d.Instances[n]
+		i := d.Instances[n]
+		out["validation"] = bitmapProfileValidation{State: "ready", Issues: []bitmapProfileIssue{}, Profile: &i.Profile, ProfileHash: i.ProfileHash, Note: i.Note}
+	}
+	return out, nil
+}

@@ -82,8 +82,51 @@ fetched content SHA-256 is
 the saved winner. The real check caught an empty legacy-panel collision; that
 was fixed and the real check rerun successfully.
 
-Final separately packaged artifact/profile acceptance is recorded below before
-delivery. The QA process or a previous binary is not substituted for that check.
+## Final portable acceptance
+
+The final implementation source was committed locally as
+`efa8cda0b157a721caf751be92f120cfebb5a414`. A final combined affected-backend
+regression run passes (14.985s), followed by `go vet` and the final canonical,
+approved-explorer and TXIO browser suites. The broad-run failures were corrected
+and rerun; they are not silently treated as broad-suite success.
+
+The separately named executable is
+`build/portable-v0.7.8-reviewed/GatewayClient.exe`, using its own
+`preview-profile`. Its SHA-256 is
+`4b380d1d34a0eb15a39f045b2464f371034b3403d49250d5d20408d7c1e5a363`.
+This exact executable passes the compiled native API check and both actual
+portable browser scripts, with no mocked routes.
+
+Its own fresh profile fetched both Bitcoin blocks792435 and972920 from
+`101.108.106.56:8333`, checking P2P checksum, selected header/hash, proof of work,
+Merkle root, transaction parsing and witness commitment. The recent block is
+`00000000000000000000c4773f6fb7a15cf9d516a0afb95fda1e27adc3ca405f`,
+1,576,260 serialized bytes and3,735 transactions. Core RPC/mounted Core access,
+Raw retention and serving were disabled. The final executable's explicit
+District-only792435 run completed with one source read, one decode and one
+shared inscription extraction (858ms source,7ms apply). Its coverage is exactly
+792435 and its district0 winner is `953i0.792435`. Browsing972920 afterward did
+not advance across the missing Bitmap prefix.
+
+Final actual-browser acceptance checks exact six/seven rules, separate limits,
+sibling tracks/start792435, grey chain controls, updates disabled, transaction
+count in the heading, desktop/narrow rendering and no hidden starts. A separate
+actual check verifies direct0.bitmap and block0's sticky Bitmap tab, exact isolated
+content bytes/hash and district focus0. Jobs, prepared choices and the completed
+shared run remain unchanged by these read-only checks.
+
+Final evidence is saved outside the archive under
+`build/reviewed-qa/final-live`, `final-native-api`, `final-portable-browser`, and
+`final-mapped-browser`. The older executable/profile/ZIP and running preview are
+preserved. The new launcher prints its current loopback URL; restart may change
+the port. Start/Stop operate only on the new profile and preserve its data.
+
+The final ZIP is
+`build/Gateway-v0.7.8-reviewed-portable-preview-windows-amd64.zip`. Its manifest
+records the final local source revision, clean state and each shipped file hash.
+Profile data, logs, screenshots, runtime tokens, installers and update helpers are
+not included. No Gateway remote branch/main push, merge, release or update-feed
+promotion was performed.
 
 ## Scope limits
 

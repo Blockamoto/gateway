@@ -17,7 +17,7 @@
     'group:txio': {
       title: 'Transactions',
       paragraphs: [
-        'These tracks help you find transactions, follow which outputs they spend, inspect amounts and payment conditions, and track unspent outputs or individual sats.',
+        'These tracks help you find transactions, follow which outputs they spend, inspect amounts and payment conditions, and track unspent outputs.',
         'Each track answers a different question. A known amount is not proof that an output is unspent, and a known spending link is not a complete wallet balance. Choose the data useful to you; the group heading does not make the tracks interchangeable.'
       ]
     },
@@ -27,6 +27,14 @@
         'Current Addresses shows unspent outputs for a supported address at a saved block. Historical Outputs shows outputs created for that address in the blocks you have scanned.',
         'Use Current Addresses to inspect a balance at its stated block, and Historical Outputs to investigate payments over a selected range. Historical received amounts are not a current balance.',
         'A supported address can also be read from an individual output’s payment conditions without building either address track.'
+      ]
+    },
+    'group:ordinals': {
+      title: 'Ordinals',
+      paragraphs: [
+        'Sat Ranges follows individual sats through transaction outputs. Inscriptions keeps verified inscription coordinates and the inscription data you choose to retain.',
+        'These are independent tracks. Each keeps its own processing start, saved state, coverage and retention choices. Grouping them starts neither track and changes none of these choices.',
+        'Historical Sat ranges remain a separate retention option. Current saved Sat state does not imply that older output histories have been retained.'
       ]
     },
     'group:bitmap': {
@@ -159,7 +167,11 @@
       dependencies: [{name: 'Bitcoin chain and block sources', requirement: 'input', why: 'Headers identify the chain; complete block sources provide the transactions Raw can save.'}]
     },
     'group:txio': {
-      paragraphs: [sourceParagraph, 'The location, link, value and script tracks can learn from separate complete blocks. UTXO and Sats each maintain their own state in order from the first Bitcoin block; neither is a prerequisite for the other. See an individual dependency card for its exact requirements.'],
+      paragraphs: [sourceParagraph, 'The location, link, value and script tracks can learn from separate complete blocks. UTXO maintains its own state in order from the first Bitcoin block; the other Transaction tracks do not require UTXO. See an individual dependency card for its exact requirements.'],
+      dependencies: bodyInputs
+    },
+    'group:ordinals': {
+      paragraphs: [sourceParagraph, 'Sat Ranges continues its own ordered state from the first Bitcoin block or a checked saved checkpoint. Inscriptions uses its own start and saved coverage. Their processing, retained data and history options remain independent.'],
       dependencies: bodyInputs
     },
     'group:addresses': {
@@ -211,12 +223,13 @@
   };
 
   const aliases = {'group:transactions': 'group:txio', 'txo-spender': 'txio-links', 'sat-state': 'txio-sat-ranges'};
-  const temporarySources = new Set(['group:txio', 'tx-locator', 'txio-links', 'txio-values', 'txio-scripts', 'utxo-state', 'txio-sat-ranges', 'address-history', 'inscriptions', 'bitmap-districts-standard-v1']);
+  const temporarySources = new Set(['group:txio', 'group:ordinals', 'tx-locator', 'txio-links', 'txio-values', 'txio-scripts', 'utxo-state', 'txio-sat-ranges', 'address-history', 'inscriptions', 'bitmap-districts-standard-v1']);
   const ownContext = {
     'group:blocks': ['Headers are managed chain information. Raw can save complete blocks from an available local or remote source; it does not start derived indexing.'],
     headers: ['Gateway manages this checked header chain. Retaining full block bodies is a separate choice.'],
     blocks: ['With Raw Off, Gateway can still read verified blocks temporarily for other tracks. Raw coverage counts only the complete bodies actually retained here.'],
-    'group:txio': ['UTXO and Sats each maintain their own state by processing blocks in order from the first Bitcoin block. Their own earlier state and history choices do not make either track a dependency of the other.'],
+    'group:txio': ['UTXO maintains its own checked state by processing blocks in order from the first Bitcoin block. Transaction locators, links, values and scripts keep their own independent facts.'],
+    'group:ordinals': ['Sat Ranges and Inscriptions keep their existing consumers and stores. Opening this group starts no work and changes no scan, retention or history choice.'],
     'txio-links': ['An unknown creation position remains unresolved. The optional Transaction Locator can help when only a transaction ID is known; a known block-and-position address can be opened directly.'],
     'utxo-state': ['UTXO processes every block in order from the first Bitcoin block, or resumes its own checked saved state. An isolated later block cannot establish the complete unspent set.'],
     'txio-sat-ranges': ['Sats processes every block in order from the first Bitcoin block, or resumes its own checked saved state. This is separate from UTXO and Positional links.', 'Historical output ranges are saved only when their retention option is explicitly enabled. Turning it on later does not recreate older range history.'],

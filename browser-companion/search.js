@@ -39,7 +39,27 @@
         (q === suffix || q.endsWith(suffix));
     });
   }
-  const api = { extractCandidate, oneToken, matchesNamespace };
+  function resourceCandidate(address) {
+    const q = oneToken(address);
+    if (!matchesNamespace(q, ['.bitcoin', '.gateway', '.bitmap', '.sat'])) return '';
+    if (q.endsWith('.bitmap')) {
+      if (!/^(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))?\.bitmap$/.test(q)) return '';
+      if (q.slice(0, -7).split('.').some(n => BigInt(n) > 9007199254740991n)) return '';
+    }
+    if (q.endsWith('.sat') && !/^(?:0|[1-9][0-9]*|[a-z]+)\.sat$/.test(q)) return '';
+    return q;
+  }
+
+  function directCandidate(href) {
+    // Inspect the literal authority as URL normalizes explicit default ports.
+    // Root resource hosts only: no credentials, port, path, query or fragment.
+    if (typeof href !== 'string' || !/^https?:\/\/[^\/?#:@]+\/?$/i.test(href)) return '';
+    let u;
+    try { u = new URL(href); } catch (_) { return ''; }
+    if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || u.port || u.search || u.hash || u.pathname !== '/') return '';
+    return resourceCandidate(u.hostname);
+  }
+  const api = { extractCandidate, oneToken, matchesNamespace, resourceCandidate, directCandidate };
   root.GatewaySearch = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

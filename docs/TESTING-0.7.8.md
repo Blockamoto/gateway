@@ -5,7 +5,7 @@ disabled at build time. It does not install Gateway or publish a release/feed.
 Keep any older preview folder and its profile intact.
 
 Extract this ZIP into a new folder and run `Start-Preview.cmd`. It prints its
-loopback URL, opens Gateway Home, and uses `preview-profile` beside this executable.
+loopback URL, opens Gateway Home, and uses `blocks-on-demand-data` beside this executable.
 `Stop-Preview.cmd` authenticates and stops only that profile's process, retaining
 data. Start resumes the same profile. A separate disposable profile is also
 supported:
@@ -14,6 +14,11 @@ supported:
 .\Preview.ps1 -ProfilePath C:\GatewayTests\bitmap-078-reviewed
 .\Preview.ps1 -ProfilePath C:\GatewayTests\bitmap-078-reviewed -Stop
 ```
+
+The bundled preview Companion uses the default `blocks-on-demand-data` profile.
+The custom-profile option above is for standalone tests and does not rebind its
+native host. Follow `browser-companion/TESTING-PREVIEW.md` for the separate,
+explicit opt-in browser trial; the main setup routing action is not required.
 
 Use `-Offline` for an offline profile or `-NoOpen` to skip opening a browser.
 Ordinary Bitcoin networking is enabled by default; Core RPC/mounted Core access,
@@ -88,3 +93,10 @@ The fixed-height collapsed parent overviews, Inscriptions data-lane surface,
 Bitmap Arm-all and Chain-icon removal, block-map caption, and continuous
 playhead are covered by `VISUAL-POLISH-0.7.8.md`. Earlier backend evidence is
 reused because production Go code is unchanged.
+
+## Ordinals and entrance follow-up
+
+`ORDINALS-ENTRANCE-0.7.8.md` records the Ordinals navigation grouping, fixed
+header stations, independent Headers beacon and short Home entrance trial.
+Only the Go layout-parent map and read-only saved-layout projection change;
+index storage, processing, consumers and protocols retain their prior evidence.

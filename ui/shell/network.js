@@ -24,7 +24,8 @@
   $('header-progress').textContent=`${speed}${h.header_source?'Source '+h.header_source:'No header source yet'} 路 ${h.header_target_height>0?'peer target estimate '+num(h.header_target_height):'target estimate unavailable'}${h.header_bootstrap_state?' 路 bundled baseline '+h.header_bootstrap_state:''}${h.header_last_progress?' 路 last progress '+new Date(h.header_last_progress).toLocaleTimeString():''}`;
  }
  async function refreshReadiness(){if(readinessBusy||working||!snapshot||!$('gateway-setup').open||stage!==1)return;readinessBusy=true;try{const fresh=await api('/api/v1/setup');if(stage!==1||!$('gateway-setup').open)return;snapshot={...snapshot,browser:fresh.browser,system:fresh.system,native_host_registered:fresh.native_host_registered,progress:{...snapshot.progress,navigation_at:fresh.progress.navigation_at,navigation_address:fresh.progress.navigation_address}};renderBrowserState()}catch(e){if($('setup-browser-state'))$('setup-browser-state').textContent='Readiness unavailable: '+e.message}finally{readinessBusy=false}}
- async function poll(){try{renderNetwork(await api('/api/v1/network'));await refreshReadiness()}catch(e){$('network-summary').textContent='Connection status unavailable';$('header-progress').textContent=e.message}finally{setTimeout(poll,2500)}}
+ function observeNetwork(n){window.GatewayNetworkSnapshot={value:n,observedAt:Date.now()};window.dispatchEvent(new Event('gateway:network-status'));renderNetwork(n);}
+ async function poll(){try{observeNetwork(await api('/api/v1/network'));await refreshReadiness()}catch(e){$('network-summary').textContent='Connection status unavailable';$('header-progress').textContent=e.message}finally{setTimeout(poll,2500)}}
  function routingReady(){const sys=snapshot.system||{},installed=(snapshot.browser?.browsers||[]).filter(x=>x.installed);return !!sys.god_protocol&&!!sys.bitcoin_domain_rule&&installed.length>0&&installed.every(x=>x.native_registered)}
  function renderBrowserState(){
   if(!snapshot||!$('setup-browser-state'))return;const b=snapshot.browser||{},sys=snapshot.system||{},selected=$('setup-browser')?.value||snapshot.progress.browser,registration=(b.browsers||[]).find(x=>x.id===selected);
@@ -34,6 +35,12 @@
   $('setup-browser-list').innerHTML=(b.browsers||[]).map(x=>`<li><strong>${esc(x.name)}</strong> 路 ${!x.installed?'not detected':x.native_registered?'native host registered':'native host needs registration'}</li>`).join('');
   const p=snapshot.progress,delivered=p.navigation_at&&!p.navigation_at.startsWith('0001');
   $('setup-browser-state').textContent=b.native_active?`Authenticated native exchange observed${b.companion_browser?' ('+b.companion_browser+')':''}. ${delivered?'Latest companion delivery: '+p.navigation_address+'.':'Next: open 0.bitcoin from the companion and check its displayed resource.'}`:registration?.native_registered?'Next: load the companion in the selected browser profile, then open its toolbar panel and choose Open Gateway. Waiting for an authenticated native exchange.':'Next: enable browser routing to register the native host, then install the companion below.';
+  if(snapshot.portable_preview===true){
+   const button=$('setup-routing'),section=button.closest('section');button.disabled=true;button.textContent='Production routing is unavailable in this preview';$('setup-disable-routing').hidden=true;$('setup-disable-routing').disabled=true;
+   const guidance=snapshot.browser_routing_note||'For the isolated Companion trial, follow browser-companion/TESTING-PREVIEW.md beside this preview. Installed routing is unchanged.';
+   $('setup-routing-state').textContent=guidance;$('setup-browser-state').textContent='Use this preview抯 separate Companion instructions and default profile. A real authenticated connection and displayed resource establish readiness.';
+   if(section){section.querySelector('h3').textContent='1. Isolated preview Companion';section.querySelector('p').textContent=guidance;}
+  }
   $('setup-browser-fallback').textContent=({edge:'edge',brave:'brave',chrome:'chrome',chromium:'chrome'}[selected]||'chrome')+'://extensions/';
  }
  async function saveSettings(extra){const fresh=await api('/api/v1/settings');await api('/api/v1/settings',{...fresh.settings,...extra});snapshot.settings={...fresh.settings,...extra}}
@@ -71,8 +78,8 @@
  $('setup-close').onclick=()=>{if(!working)close()};$('gateway-setup').addEventListener('cancel',e=>{if(working)e.preventDefault();else previousFocus?.focus({preventScroll:true})});
  $('setup-back').onclick=()=>task(async()=>{await saveStage();stage=Math.max(0,stage-1);snapshot=await api('/api/v1/setup',{action:'save',flow_stage:stage});render();$('setup-title').focus()});
  $('setup-next').onclick=()=>task(async()=>{if(routingFailure)return;await saveStage();if(stage===2){snapshot=await api('/api/v1/setup',{action:'complete'});close();document.body.classList.add('gateway-entering');setTimeout(()=>document.body.classList.remove('gateway-entering'),350);window.dispatchEvent(new MessageEvent('message',{origin:location.origin,data:{type:'gateway:navigate',address:'.gateway'}}));return}stage++;snapshot=await api('/api/v1/setup',{action:'save',flow_stage:stage});render();$('setup-title').focus()});
- $('headers-pause').onclick=async()=>{try{await api('/api/v1/headers',{action:$('headers-pause').dataset.action||'pause'});renderNetwork(await api('/api/v1/network'))}catch(e){$('header-progress').textContent=e.message}};
- $('headers-retry').onclick=async()=>{try{await api('/api/v1/headers',{action:'retry'});renderNetwork(await api('/api/v1/network'))}catch(e){$('header-progress').textContent=e.message}};
+ $('headers-pause').onclick=async()=>{try{await api('/api/v1/headers',{action:$('headers-pause').dataset.action||'pause'});observeNetwork(await api('/api/v1/network'))}catch(e){$('header-progress').textContent=e.message}};
+ $('headers-retry').onclick=async()=>{try{await api('/api/v1/headers',{action:'retry'});observeNetwork(await api('/api/v1/network'))}catch(e){$('header-progress').textContent=e.message}};
  document.addEventListener('gateway:dev-mode',()=>{if(network)renderNetwork(network)});
  document.addEventListener('gateway:index-status',event=>{indexStatus=event.detail;if(network)renderNetwork(network)});
  poll();api('/api/v1/setup').then(s=>{snapshot=s;if(s.show_automatically||new URLSearchParams(location.search).get('setup')==='1')open()}).catch(()=>{});

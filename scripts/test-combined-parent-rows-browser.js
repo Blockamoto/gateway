@@ -4,15 +4,29 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const root=path.resolve(__dirname,'..'),pw=(()=>{try{return require('playwright');}catch{return require(path.join(os.homedir(),'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));}})();
 const executablePath=[process.env.GATEWAY_TEST_BROWSER,pw.chromium.executablePath(),...['ProgramFiles(x86)','ProgramFiles','LOCALAPPDATA'].flatMap(k=>process.env[k]?[path.join(process.env[k],'Microsoft/Edge/Application/msedge.exe'),path.join(process.env[k],'Google/Chrome/Application/chrome.exe')]:[])].find(p=>p&&fs.existsSync(p));
 const html=`<!doctype html><html data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/shell/style.css"><link rel="stylesheet" href="/shell/index-timeline.css"><link rel="stylesheet" href="/shell/bitmap-workspace.css"><link rel="stylesheet" href="/shell/index-help.css"></head><body class="indexes-workspace embedded"><main><section id="index-timeline"></section></main><script src="/shell/index-cards.js"></script><script src="/shell/index-help-content.js"></script><script src="/shell/index-help.js"></script><script src="/shell/index-transport.js"></script><script src="/shell/index-scrollbar-geometry.js"></script><script src="/shell/index-timeline.js"></script><script src="/shell/index-workspace.js"></script><script>
-window.calls=[];const ids=['headers','blocks','tx-locator','txo-spender','utxo-state','sat-state','address-state','address-history','inscriptions','bitmap-districts-standard-v1','bitmap-parcels-standard-v1'];window.snapshot={definitions:ids.map(id=>({id,name:({'headers':'Headers','blocks':'Raw blocks','tx-locator':'Transaction locators','txo-spender':'Positional links','utxo-state':'UTXO set','address-state':'Current Addresses','address-history':'Historical Outputs','inscriptions':'Inscriptions','bitmap-districts-standard-v1':'Bitmap Districts Standard V1','bitmap-parcels-standard-v1':'Bitmap Parcels Standard V1'})[id]||id,buildable:id!=='headers',start_height:id.startsWith('bitmap-')?792435:0,version:1,rules:[],dependencies:[]})),instances:[],providers:[],jobs:[],job:{},live:[],run:{schema:1,configured:true,prepared:{consumers:ids.map(index=>({index,armed:false,live:false}))},run:null},timeline:{tip_height:999999,tracks:ids.map(id=>({id,coverage:id==='headers'?[{from:0,to:999999}]:[],coverage_complete:true}))}};window.layout={schema:2,revision:0,order:{}};window.timeline=GatewayIndexTimeline.mount({document,root:document.querySelector('#index-timeline'),select:id=>timeline.select(id),loadHierarchy:async p=>({...p,count:p.kind==='block'?3:2,block_hash:'a'.repeat(64)}),api:async(action,body)=>{calls.push({action,body});if(action==='layout'){if(body)layout={schema:2,revision:layout.revision+1,order:body.order};return layout;}if(action==='run/prepare'){snapshot.run.prepared=body;return snapshot.run;}throw Error('Unexpected action '+action)},refresh:async()=>timeline.render(snapshot)});timeline.render(snapshot);GatewayIndexWorkspace.mountLayout(document.querySelector('#index-timeline'));
+window.GatewayNetworkSnapshot={observedAt:Date.now(),value:{enabled:true,headers_user_paused:false,headers:{header_state:'waiting',message:'Waiting for a Bitcoin peer.'}}};window.calls=[];const ids=['headers','blocks','tx-locator','txo-spender','utxo-state','sat-state','address-state','address-history','inscriptions','bitmap-districts-standard-v1','bitmap-parcels-standard-v1'];window.snapshot={definitions:ids.map(id=>({id,name:({'headers':'Headers','blocks':'Raw blocks','tx-locator':'Transaction locators','txo-spender':'Positional links','utxo-state':'UTXO set','address-state':'Current Addresses','address-history':'Historical Outputs','inscriptions':'Inscriptions','bitmap-districts-standard-v1':'Bitmap Districts Standard V1','bitmap-parcels-standard-v1':'Bitmap Parcels Standard V1'})[id]||id,buildable:id!=='headers',start_height:id.startsWith('bitmap-')?792435:0,version:1,rules:[],dependencies:[]})),instances:[],providers:[],jobs:[],job:{},live:[],run:{schema:1,configured:true,prepared:{consumers:ids.map(index=>({index,armed:false,live:false}))},run:null},timeline:{tip_height:999999,tracks:ids.map(id=>({id,coverage:id==='headers'?[{from:0,to:999999}]:[],coverage_complete:true}))}};window.layout={schema:2,revision:0,order:{}};window.timeline=GatewayIndexTimeline.mount({document,root:document.querySelector('#index-timeline'),select:id=>timeline.select(id),loadHierarchy:async p=>({...p,count:p.kind==='block'?3:2,block_hash:'a'.repeat(64)}),api:async(action,body)=>{calls.push({action,body});if(action==='layout'){if(body)layout={schema:2,revision:layout.revision+1,order:body.order};return layout;}if(action==='run/prepare'){snapshot.run.prepared=body;return snapshot.run;}throw Error('Unexpected action '+action)},refresh:async()=>timeline.render(snapshot)});timeline.render(snapshot);GatewayIndexWorkspace.mountLayout(document.querySelector('#index-timeline'));
 </script></body></html>`;
-const transactions=['tx-locator','txio-links','txio-values','txio-scripts','utxo-state','txio-sat-ranges'];
-const allTracks=['headers','blocks',...transactions,'address-state','address-history','inscriptions','bitmap-districts-standard-v1','bitmap-parcels-standard-v1'];
-const groups=['blocks','txio','addresses','bitmap'];
+const transactions=['tx-locator','txio-links','txio-values','txio-scripts','utxo-state'];
+const ordinals=['txio-sat-ranges','inscriptions'];
+const allTracks=['headers','blocks',...transactions,...ordinals,'address-state','address-history','bitmap-districts-standard-v1','bitmap-parcels-standard-v1'];
+const groups=['blocks','txio','addresses','ordinals','bitmap'];
+async function verifyNetworkCacheFreshness(){
+  const vm=require('node:vm'),listeners=new Map(),timers=[],nodes=new Map();let now=1000,fail=false,events=0;
+  const doc={getElementById:id=>{if(!nodes.has(id))nodes.set(id,{dataset:{},classList:{add(){},remove(){}},addEventListener(){}});return nodes.get(id);},addEventListener:(type,handler)=>listeners.set(type,handler)};
+  const win={dispatchEvent(){events++;}},context={document:doc,window:win,sessionStorage:{getItem:()=>null},location:{search:''},URLSearchParams,AbortController,Event,Date:class extends Date{static now(){return now;}},setTimeout:(fn,ms)=>{timers.push({fn,ms});return timers.length;},clearTimeout(){},fetch:async path=>{if(path==='/api/v1/network'&&fail)throw Error('fixture status failure');return{ok:true,json:async()=>path==='/api/v1/network'?{enabled:true,headers_user_paused:false,headers:{header_state:'waiting'}}:{}};}};
+  vm.runInNewContext(fs.readFileSync(path.join(root,'ui/shell/network.js'),'utf8'),context);await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(win.GatewayNetworkSnapshot.observedAt,1000);const beforeEvents=events;now=15000;fail=true;await timers.find(timer=>timer.ms===2500).fn();
+  for(let n=0;n<4;n++)listeners.get('gateway:index-status')({detail:{localIndexes:n,following:0}});listeners.get('gateway:dev-mode')();
+  assert.equal(win.GatewayNetworkSnapshot.observedAt,1000,'Failed network read plus continued index/dev repaints cannot refresh cached policy age');assert.equal(events,beforeEvents,'Repaints never publish a fresh network observation');
+}
 (async()=>{
+  await verifyNetworkCacheFreshness();
+  const headerRequests=[];let headerNetwork={enabled:true,headers_user_paused:false,headers:{header_state:'waiting',message:'Waiting for a Bitcoin peer.'}};
   const server=http.createServer((req,res)=>{
     const u=new URL(req.url,'http://fixture');
     if(u.pathname==='/'){res.setHeader('Content-Type','text/html');return res.end(html);}
+    if(u.pathname==='/api/v1/network'){headerRequests.push({method:req.method,path:u.pathname});res.setHeader('Content-Type','application/json');return res.end(JSON.stringify(headerNetwork));}
+    if(u.pathname==='/api/v1/headers'&&req.method==='POST'){let body='';req.on('data',part=>body+=part);req.on('end',()=>{const input=JSON.parse(body);headerRequests.push({method:req.method,path:u.pathname,...input});headerNetwork={enabled:true,headers_user_paused:input.action==='pause',headers:{header_state:input.action==='pause'?'paused':'connecting',message:input.action==='pause'?'Paused by you.':'Connecting to Bitcoin peers.'}};res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,status:headerNetwork.headers}));});return;}
     if(u.pathname==='/api/v1/bitmap/target-coverage'){
       const from=Number(u.searchParams.get('from')),to=Number(u.searchParams.get('to'));
       res.setHeader('Content-Type','application/json');
@@ -31,7 +45,7 @@ const groups=['blocks','txio','addresses','bitmap'];
     await page.addInitScript(()=>{
       if(!localStorage.getItem('independent-parent-probe')){
         localStorage.setItem('independent-parent-probe','1');
-        localStorage.setItem('gateway.timeline.workspace.v1',JSON.stringify({collapsed:false,groups:{blocks:true,txio:true,addresses:true,bitmap:true},expandedTracks:{'tx-locator':true}}));
+        localStorage.setItem('gateway.timeline.workspace.v1',JSON.stringify({collapsed:false,groups:{blocks:true,txio:true,addresses:true,ordinals:true,bitmap:true},expandedTracks:{'tx-locator':true}}));
       }
     });
     await page.goto(origin);
@@ -56,17 +70,17 @@ const groups=['blocks','txio','addresses','bitmap'];
     async function rightBounds(width){
       const data=await page.evaluate(()=>[...document.querySelectorAll('.timeline-track')].filter(el=>el.getClientRects().length&&getComputedStyle(el).display!=='none').map(el=>{
         const heading=el.querySelector('.timeline-track-heading'),row=el.getBoundingClientRect(),h=heading.getBoundingClientRect(),name=heading.querySelector('.timeline-track-select strong'),n=name.getBoundingClientRect(),lane=el.querySelector('.timeline-lane').getBoundingClientRect(),actions=heading.querySelector('.timeline-track-actions'),a=actions?.getBoundingClientRect();
-        return{id:el.dataset.index,rowHeight:row.height,headingHeight:h.height,headingWidth:h.width,laneHeight:lane.height,label:name.textContent,labelClipped:name.scrollWidth>name.clientWidth+1,labelRight:n.right,title:name.title,aria:heading.querySelector('.timeline-track-select').getAttribute('aria-label'),actions:a&&{left:a.left,right:a.right,top:a.top,bottom:a.bottom},heading:{left:h.left,right:h.right,top:h.top,bottom:h.bottom},buttons:[...actions?.querySelectorAll('button')||[]].map(button=>{const b=button.getBoundingClientRect();return{control:button.dataset.control||button.className,width:b.width,height:b.height,left:b.left,right:b.right,top:b.top,bottom:b.bottom}}).filter(b=>b.width&&b.height)};
+        return{id:el.dataset.index,rowHeight:row.height,headingHeight:h.height,headingWidth:h.width,laneHeight:lane.height,label:name.textContent,labelClipped:name.scrollWidth>name.clientWidth+1,labelRight:n.right,title:name.title,aria:heading.querySelector('.timeline-track-select').getAttribute('aria-label'),actions:a&&{left:a.left,right:a.right,top:a.top,bottom:a.bottom,width:a.width},heading:{left:h.left,right:h.right,top:h.top,bottom:h.bottom},buttons:[...actions?.querySelectorAll('button')||[]].map(button=>{const b=button.getBoundingClientRect();return{control:button.dataset.control||button.className,slot:button.classList.contains('index-help-purpose')?0:button.classList.contains('index-help-dependencies')?1:button.dataset.control==='live'?2:button.dataset.control==='arm'?3:null,width:b.width,height:b.height,left:b.left,right:b.right,top:b.top,bottom:b.bottom}}).filter(b=>b.width&&b.height).sort((a,b)=>a.left-b.left)};
       }));
       for(const item of data){
-        assert.equal(item.headingWidth,202,'202px label column '+item.id+' at'+width);
-        assert(item.actions,'Stable right action region '+item.id);
+        assert.equal(item.headingWidth,width<=700?244:260,'Protected label column '+item.id+' at'+width);
+        assert(item.actions,'Stable right action region '+item.id);assert.equal(item.actions.width,94,'Four reserved action stations '+item.id);
         assert(item.actions.right<=item.heading.right+.01&&item.actions.bottom<=item.heading.bottom+1,'Actions inside header '+item.id);
         assert(item.labelRight<=item.actions.left+1&&!item.labelClipped,'Label does not overlap actions or clip '+item.id+' at'+width+' '+JSON.stringify(item));
         assert(Math.abs(item.laneHeight-item.headingHeight)<=1,'Label and lane heights align '+item.id);
         assert(item.aria?.startsWith('Select '),'Full accessible name preserved '+item.id);
         for(let i=0;i<item.buttons.length;i++){
-          const button=item.buttons[i];assert(button.width>=16&&button.height>=20,'Right action usable '+item.id+' '+button.control);
+          const button=item.buttons[i];if(button.slot!==null)assert.equal(button.left-item.actions.left,button.slot*24,'Fixed help/deps/beacon/Arm station '+item.id+' '+button.control);assert(button.width>=16&&button.height>=20,'Right action usable '+item.id+' '+button.control);
           assert(button.left>=item.actions.left-1&&button.right<=item.actions.right+1&&button.top>=item.heading.top-1&&button.bottom<=item.heading.bottom+1,'Whole action stays in header '+item.id+' '+button.control);
           if(i)assert(item.buttons[i-1].right<=button.left+1,'Right action boxes do not overlap '+item.id);
         }
@@ -75,7 +89,7 @@ const groups=['blocks','txio','addresses','bitmap'];
         const heading=group(id).locator(':scope > .timeline-group-heading'),actions=heading.locator('.timeline-group-actions');await heading.scrollIntoViewIfNeeded();
         const h=await heading.boundingBox(),a=await actions.boundingBox(),name=await heading.locator('.timeline-group-name strong').boundingBox();
         assert(a&&a.x+a.width<=h.x+h.width+1&&name.x+name.width<=a.x+1,'Parent actions stay right of title '+id+' at'+width);
-        const arm=heading.locator('.timeline-group-arm');if(await arm.count()){const b=await arm.boundingBox();assert(b.x>=a.x&&b.x+b.width<=a.x+a.width+1,'Parent ArmAll belongs to right action region');await hit(arm,'parent '+id+' ArmAll at'+width);}
+        const arm=heading.locator('.timeline-group-arm');if(await arm.count()){const b=await arm.boundingBox();assert.equal(b.x-a.x,72,'Parent ArmAll occupies the far-right station');await hit(arm,'parent '+id+' ArmAll at'+width);}
         await hit(disclosure(id),'parent '+id+' disclosure at'+width);
         await hit(heading.locator('.timeline-reorder-handle'),'parent '+id+' grip at'+width);
       }
@@ -93,14 +107,14 @@ const groups=['blocks','txio','addresses','bitmap'];
     assert.equal(await page.locator('.timeline-track-expand').count(),0,'No child expansion disclosure');
     assert.equal(await page.locator('.timeline-group-labels:visible').count(),0,'No inline child legend');
     assert.equal(await page.locator('.timeline-tracks > .timeline-track[data-group]').count(),0,'Every grouped child stays inside parent');
-    assert.equal(await track('inscriptions').isVisible(),true,'Inscriptions stays standalone');
+    assert.equal(await track('inscriptions').isVisible(),false,'Inscriptions hides inside collapsed Ordinals');
     assert.equal(await track('inscriptions').locator('.timeline-group-toggle,.timeline-track-expand').count(),0,'Inscriptions has no expander/children');
-    assert.deepEqual(await layout(),['group:blocks','group:txio','group:addresses','inscriptions','group:bitmap'],'Root hierarchy order preserved');
+    assert.deepEqual(await layout(),['group:blocks','group:txio','group:addresses','group:ordinals','group:bitmap'],'Root hierarchy order preserved');
     for(const id of allTracks)assert.equal(await track(id).count(),1,'Exactly one DOM owner '+id);
     const target=group('bitmap').locator('.timeline-bitmap-target-band');await target.scrollIntoViewIfNeeded();assert.equal(await target.isVisible(),true,'Collapsed Bitmap keeps parent target band');
     await screenshot('collapsed-defaults-1440',page.locator('.timeline-tracks'));
     for(const id of groups)await parentOpen(id,true);
-    assert.deepEqual(await minis('txio'),transactions,'Transactions child order preserved');
+    assert.deepEqual(await minis('txio'),transactions,'Transactions has five child tracks');assert.deepEqual(await minis('ordinals'),ordinals,'Ordinals contains separate Sat Ranges and Inscriptions');
     await rightBounds(1440);await screenshot('open-transactions-1440',group('txio'));
     await page.setViewportSize({width:390,height:844});await settle();await rightBounds(390);await screenshot('open-transactions-390',group('txio'));
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Narrow layout does not overflow document');
@@ -117,6 +131,21 @@ const groups=['blocks','txio','addresses','bitmap'];
     assert.deepEqual(await minis('txio'),transactions,'Reopen restores same original order');
     await track('headers').locator('.index-help-purpose').focus();assert.equal(await page.locator('.index-help-popover').isVisible(),true,'Headers help available');await closeHelp();
     const deps=track('address-state').locator('.index-help-dependencies');await deps.hover();assert.equal(await page.locator('.index-help-popover').isVisible(),true,'Dependency hover works at actual right icon');await closeHelp();
+    const headerBeacon=track('headers').locator('[data-header-sync]'),masterGlyph=await page.locator('#timeline-run-start').innerHTML();
+    assert.equal(await track('headers').locator('[data-control=arm]').count(),0,'Headers has a reserved blank Arm station');
+    assert.equal(await headerBeacon.locator('svg').evaluate(e=>e.innerHTML),await track('tx-locator').locator('[data-control=live] svg').evaluate(e=>e.innerHTML),'Headers uses the exact same radiating Live glyph');
+    const applyNetwork=network=>page.evaluate(network=>{window.GatewayNetworkSnapshot={value:network,observedAt:Date.now()+1};window.dispatchEvent(new Event('gateway:network-status'));},network);
+    await applyNetwork({enabled:false,headers_user_paused:false,headers:{header_state:'paused',message:'Outbound networking is disabled.'}});assert.equal(await headerBeacon.isDisabled(),true);assert.equal(await headerBeacon.getAttribute('aria-pressed'),'false');assert.match(await headerBeacon.getAttribute('title'),/networking is disabled/i);
+    await applyNetwork({enabled:true,headers_user_paused:false,headers:{header_state:'paused',message:'The healthy Core provider supplies this range; independent mirroring is optional.'}});assert.equal(await headerBeacon.isDisabled(),false);assert.equal(await headerBeacon.getAttribute('aria-label'),'Resume header synchronization');assert.match(await headerBeacon.getAttribute('title'),/optional.*Core|Core.*optional/i);assert.equal(await headerBeacon.getAttribute('aria-pressed'),'false');
+    await applyNetwork({enabled:true,headers_user_paused:false,headers:{header_state:'waiting',message:'Waiting for a Bitcoin peer.',error:'Fixture connection timeout'}});assert.equal(await headerBeacon.getAttribute('aria-pressed'),'true','Enabled waiting/error remains a Live choice, not a caught-up claim');assert.match(await headerBeacon.getAttribute('title'),/Fixture connection timeout/);assert.match(await headerBeacon.getAttribute('title'),/freshness.*separately/);
+    for(const theme of ['light','dark']){await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);assert.equal(await headerBeacon.evaluate(e=>getComputedStyle(e).backgroundColor),theme==='dark'?'rgb(0, 183, 255)':'rgb(0, 98, 255)','Header enabled beacon shares exact Live color');}
+    await page.evaluate(()=>{window.GatewayNetworkSnapshot.observedAt=Date.now()-11000;window.dispatchEvent(new Event('gateway:network-status'));for(let n=0;n<4;n++){timeline.render(snapshot);document.dispatchEvent(new CustomEvent('gateway:index-status',{detail:{localIndexes:n,following:0}}));}});assert.equal(await headerBeacon.getAttribute('aria-pressed'),'false');assert.match(await headerBeacon.getAttribute('title'),/current Header Live policy is unavailable/i);
+    assert.equal(await page.evaluate(()=>{window.GatewayNetworkSnapshot.observedAt=Date.now()-9900;window.dispatchEvent(new Event('gateway:network-status'));return document.querySelector('[data-header-sync]').getAttribute('aria-pressed');}),'true','A still-fresh cached policy remains enabled until its deadline');await page.waitForFunction(()=>document.querySelector('[data-header-sync]').getAttribute('aria-pressed')==='false');
+    assert.equal(headerRequests.length,0,'Status reuse and automatic cache expiry introduce no background network polling');
+    await applyNetwork({enabled:true,headers_user_paused:true,headers:{header_state:'paused',message:'Paused by you.'}});await headerBeacon.click();await page.waitForFunction(()=>document.querySelector('[data-header-sync]').getAttribute('aria-pressed')==='true');await headerBeacon.click();await page.waitForFunction(()=>document.querySelector('[data-header-sync]').getAttribute('aria-pressed')==='false');
+    assert.deepEqual(headerRequests.filter(r=>r.method==='POST').map(r=>r.action),['resume','pause'],'Headers immediately uses only its direct pause/resume API');assert.equal(headerRequests.filter(r=>r.method==='GET').length,2,'One network status read follows each explicit header action');assert.equal(await page.locator('#timeline-run-start').innerHTML(),masterGlyph,'Header beacon never changes master Play/Pause glyph');
+    assert.equal((await draft()).consumers.some(c=>c.index==='headers'),false,'Headers never becomes an Arm/run consumer');
+    await applyNetwork({enabled:true,headers_user_paused:false,headers:{header_state:'waiting',message:'Waiting for a Bitcoin peer.'}});
     assert.equal(await page.locator('[data-control=chain],.timeline-chain-switch').count(),0,'Chain mini controls are absent');
     await page.evaluate(()=>timeline.focus(42));await settle();
     assert.deepEqual(await draft(),unchanged.draft,'Disclosure, selection, hover and navigation preserve all indexing consent');assert.equal(await mutations(),unchanged.mutations,'Read-only interactions send no settings mutations');
@@ -127,11 +156,11 @@ const groups=['blocks','txio','addresses','bitmap'];
     const beforeZoom=await heights();await heightHandle.focus();await page.keyboard.press('ArrowRight');await settle();const keyboardZoom=await heights();
     assert(keyboardZoom.row>beforeZoom.row&&keyboardZoom.canvas>beforeZoom.canvas,'Keyboard track zoom changes actual row and canvas backing heights');
     await rightBounds(1440);
-    // Recheck actual scaling with categories closed: only standalone Inscriptions remains.
-    for(const id of groups)await parentOpen(id,false);
+    // Keep only Ordinals open: its two visible leaves still scale independently of fixed parent headings.
+    for(const id of groups)await parentOpen(id,false);await heightHandle.focus();await page.keyboard.press('ArrowRight');await settle();assert.deepEqual(await page.locator('.timeline-group > .timeline-group-heading').evaluateAll(es=>es.map(e=>e.getBoundingClientRect().height)),[32,32,32,32,32],'Closed categories keep fixed32px parents during configured leaf zoom');const configuredClosedHeight=Number(await page.locator('#index-timeline').getAttribute('data-track-height'));await parentOpen('ordinals',true);assert.equal((await track('inscriptions').boundingBox()).height,configuredClosedHeight,'Opening Ordinals applies configured closed-category zoom to its real child');
     const inscriptionBefore=await track('inscriptions').evaluate(el=>({row:el.getBoundingClientRect().height,canvas:el.querySelector('canvas.timeline-lane').height}));
     await heightHandle.focus();await page.keyboard.press('ArrowRight');await settle();const inscriptionAfter=await track('inscriptions').evaluate(el=>({row:el.getBoundingClientRect().height,canvas:el.querySelector('canvas.timeline-lane').height}));
-    assert(inscriptionAfter.row>inscriptionBefore.row&&inscriptionAfter.canvas>inscriptionBefore.canvas,'Closed-category keyboard zoom changes visible standalone row and backing canvas');
+    assert(inscriptionAfter.row>inscriptionBefore.row&&inscriptionAfter.canvas>inscriptionBefore.canvas,'Ordinals-only keyboard zoom changes actual child row and backing canvas');
     for(const id of groups)await parentOpen(id,true);
     // Move into the middle of the list, then preserve the visible top anchor while resizing from the end.
     await viewport.evaluate(el=>el.scrollTop=Math.min(130,el.scrollHeight-el.clientHeight));await settle();
@@ -171,6 +200,13 @@ const groups=['blocks','txio','addresses','bitmap'];
     assert.equal(await page.locator('[data-bitmap-scope-guard] [data-control=arm]').evaluateAll(buttons=>buttons.every(button=>button.checked===true)),true,'Bulk On/Off leaves restored legacy/Chain controls untouched');
     assert.equal((await draft()).consumers.some(c=>['bitmap-districts-canonical-v2','bitmap-district-chain-dev-v1'].includes(c.index)),false,'Frozen/Chain definitions never enter execution requests');
     await page.evaluate(()=>{for(const row of document.querySelectorAll('[data-bitmap-scope-guard]'))row.remove();snapshot.definitions=snapshot.definitions.filter(d=>!['bitmap-districts-canonical-v2','bitmap-district-chain-dev-v1'].includes(d.id));timeline.update(snapshot);});
+    const ordinalBulk=group('ordinals').locator('.timeline-group-arm'),satArm=track('txio-sat-ranges').locator('[data-control=arm]'),satLive=track('txio-sat-ranges').locator('[data-control=live]');
+    await satLive.click();const ordinalBefore={draft:await draft(),marks:await page.evaluate(()=>timeline.getGlobalMarks())};
+    await satArm.click();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'mixed','Independent Sat Arm gives Ordinals mixed state');assert.equal((await draft()).consumers.find(c=>c.index==='inscriptions').armed,false,'Sat Arm never arms Inscriptions');
+    await ordinalBulk.click();let ordinalOn=await draft();assert.deepEqual(ordinalOn.consumers.filter(c=>['sat-state','inscriptions'].includes(c.index)).map(c=>c.armed),[true,true],'Ordinals ArmAll selects exactly its two distinct consumers');
+    assert.deepEqual(ordinalOn.consumers.filter(c=>!['sat-state','inscriptions'].includes(c.index)),ordinalBefore.draft.consumers.filter(c=>!['sat-state','inscriptions'].includes(c.index)),'Ordinals ArmAll adds no hidden companions');
+    assert.deepEqual(ordinalOn.consumers.map(c=>[c.index,c.live]),ordinalBefore.draft.consumers.map(c=>[c.index,c.live]),'Ordinals ArmAll preserves independent Live choices');assert.deepEqual(await page.evaluate(()=>timeline.getGlobalMarks()),ordinalBefore.marks);
+    await track('inscriptions').locator('[data-control=arm]').click();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'mixed');await ordinalBulk.click();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'true');await ordinalBulk.click();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'false');await satLive.click();
     const valueArm=track('txio-values').locator('[data-control=arm]');await valueArm.click();
     const valueDraft=await draft(),valueOwner=valueDraft.consumers.find(c=>c.index==='txo-spender');
     assert.equal(valueOwner.retain_output_values,true,'Values own Arm stages retained facts');assert.equal(valueOwner.armed,false,'Values own Arm does not arm parent Links');
@@ -187,7 +223,7 @@ const groups=['blocks','txio','addresses','bitmap'];
     assert.deepEqual(await page.evaluate(()=>timeline.getSelectedTracks()),['txio-values'],'Arm icon is isolated from label selection');
     const selectedBeforeGroup=await page.evaluate(()=>timeline.getSelectedTracks());await group('txio').locator('.timeline-group-arm').click();
     for(const id of transactions)assert.equal(await track(id).locator('[data-control=arm]').getAttribute('aria-pressed'),'true','Explicit ArmAll scopes Transactions child '+id);
-    const allDraft=await draft();for(const id of ['blocks','address-state','address-history','inscriptions','bitmap-districts-standard-v1','bitmap-parcels-standard-v1'])assert.equal(allDraft.consumers.find(c=>c.index===id).armed,false,'ArmAll does not reach other category '+id);
+    const allDraft=await draft();for(const id of ['blocks','address-state','address-history','sat-state','inscriptions','bitmap-districts-standard-v1','bitmap-parcels-standard-v1'])assert.equal(allDraft.consumers.find(c=>c.index===id).armed,false,'ArmAll does not reach other category '+id);
     assert.deepEqual(await page.evaluate(()=>timeline.getSelectedTracks()),selectedBeforeGroup,'Parent ArmAll never changes selection');assert.equal(await disclosure('txio').getAttribute('aria-expanded'),'true','Parent ArmAll never collapses category');
     assert.equal(await target.isVisible(),true,'Bitmap parent target band survives open/closed/zoom');
     for(const id of allTracks)assert.equal(await track(id).count(),1,'No interaction duplicates track '+id);

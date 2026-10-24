@@ -1,6 +1,6 @@
 'use strict';
 (() => {
- const boot=JSON.parse(document.getElementById('gateway-bootstrap').textContent),$=id=>document.getElementById(id);let root=$('content');
+ const boot=JSON.parse(document.getElementById('gateway-bootstrap').textContent),$=id=>document.getElementById(id);let root=$('content'),dismissArrival=()=>{};
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const num=v=>typeof v==='number'?v.toLocaleString('en-GB'):String(v??'unknown');
  const short=v=>v&&v.length>23?v.slice(0,12)+'…'+v.slice(-9):String(v??'');
@@ -33,6 +33,7 @@
  function actionError(p){Promise.resolve(p).catch(e=>notice(e.message,true));}
  function activateNav(module){document.body.classList.toggle('indexes-workspace',module==='indexes');document.querySelectorAll('.nav-item').forEach(b=>{const route=b.dataset.route||'';const key=route==='.gateway'?'home':route.split('.')[0];const active=key===module;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});root.classList.remove('embed-host');}
  async function navigate(address,history=true){
+  dismissArrival();
   address=String(address||'.gateway').trim();const ticket=++sequence;
   if(!['bitcoin','tip','latest'].includes(address)&&window.GatewaySatView.nameNumber(address)!==null)address+='.sat';
   if(/^[0-9]+$/.test(address)&&address.length!==64&&!((address.length===66||address.length===130)&&window.GatewayAddressView.destination(address).isPublicKey)){
@@ -72,7 +73,7 @@
   root.querySelectorAll('[data-spender]').forEach(button=>button.onclick=async()=>{const vout=+button.dataset.spender;button.disabled=true;try{const value=await api('/api/v1/graph/spender',{txid:txr.txid,vout});$('spend-'+vout).innerHTML=`<p>${badge(value.confirmed_state,value.confirmed_state==='unknown')}</p>${value.spending_txid?btn('i'+value.spending_vin+'.'+(value.transaction?.index??0)+'.'+value.height+'.bitcoin','Open consuming input →'):esc(value.note||'')}${value.snapshot?'<p>Through '+num(value.snapshot.height)+' · '+esc(short(value.snapshot.hash))+'</p>':''}`;}catch(e){$('spend-'+vout).textContent=e.message}finally{button.disabled=false}});
   requestAnimationFrame(()=>{const e=root.querySelector('.io.focused');if(e)e.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'})});}
  function flowSVG(data){const ins=data.inputs||[],outs=data.outputs||[],count=Math.max(ins.length,outs.length,1),height=Math.min(1800,Math.max(230,count*45+60)),max=Math.max(1,...ins.map(i=>i.value||0),...outs.map(o=>o.value_sats||0));const row=(height-70)/count,thick=v=>v===null?0:Math.max(v>0?2:0,Math.min(row*.75,50)*(v/max));let shapes='';ins.forEach((i,n)=>{let y=45+n*row;shapes+=`<text x="8" y="${y-8}">vin ${i.index} · ${i.value===null?'unknown':num(i.value)+' sats'}</text>`;if(i.value!==null)shapes+=`<path class="band" d="M 150 ${y} C 235 ${y}, 235 ${height/2}, 320 ${height/2}" stroke-width="${thick(i.value)}"><title>${esc(i.outpoint)}: ${num(i.value)} sats</title></path>`;});outs.forEach((o,n)=>{let y=45+n*row;shapes+=`<path class="band out-band" d="M 340 ${height/2} C 420 ${height/2}, 420 ${y}, 500 ${y}" stroke-width="${thick(o.value_sats)}"><title>Output ${o.n}: ${num(o.value_sats)} sats</title></path><text x="505" y="${y-8}">vout ${o.n} · ${num(o.value_sats)}</text>`;});return `<svg viewBox="0 0 720 ${height}" role="img" aria-label="Transaction input and output values, in original order"><rect x="318" y="${height/2-35}" width="24" height="70" rx="8" fill="#c4ef9a"/>${shapes}<text x="245" y="${height-10}">Fee: ${data.fee===null?'not yet established':num(data.fee)+' sats'}</text></svg>`;}
- function openSatline(input){satView?.teardown();satView=null;window.history.pushState({address:'satline.gateway'},'',location.pathname+'?resolve=satline.gateway&input='+encodeURIComponent(input));showSatline(input);}
+ function openSatline(input){dismissArrival();satView?.teardown();satView=null;window.history.pushState({address:'satline.gateway'},'',location.pathname+'?resolve=satline.gateway&input='+encodeURIComponent(input));showSatline(input);}
  function showSatline(input=''){if(featureLocked('satline'))return showLockedFeature('Satline');activateNav('satline');current='satline.gateway';$('address').value=current;root.classList.add('embed-host');root.innerHTML=`<iframe id="satline-module" class="module-frame" title="Satline module" src="/satline?embedded=1${input?'&input='+encodeURIComponent(input):''}"></iframe>`;}
  function showIndexWorkspace(focus='',viewer=false,options={}){
   root=$('content');$('workspace-exception')?.remove();activateNav('indexes');root.classList.add('embed-host');const address=focus||(viewer?'ord.gateway':'.gateway');
@@ -125,7 +126,7 @@ $('rpc-mode').value=settings.rpc_auth_mode||'auto';$('settings-form').onsubmit=a
   if(e.data?.type==='gateway:workspace-focused'){
    const frame=$('indexes-module'),address=e.data.address;
    if(!frame||e.source!==frame.contentWindow||typeof address!=='string'||!address||address.length>1024||/[\x00-\x1f]/.test(address))return;
-   if(Number.isSafeInteger(e.data.navigationId)&&e.data.navigationId!==sequence)return;const changed=current!==address;current=address;$('address').value=address;if(locationHint)locationHint.hidden=true;const method=e.data.historyMode==='push'&&changed?'pushState':'replaceState';window.history[method]({address},'',location.pathname+'?resolve='+encodeURIComponent(address));if(e.data.resolved===true&&boot.activation){const activation=boot.activation;boot.activation='';api('/api/v1/activation',{id:activation,stage:'displayed',error:''}).catch(()=>{});}return;
+   if(Number.isSafeInteger(e.data.navigationId)&&e.data.navigationId!==sequence)return;const changed=current!==address;if(changed)dismissArrival();current=address;$('address').value=address;if(locationHint)locationHint.hidden=true;const method=e.data.historyMode==='push'&&changed?'pushState':'replaceState';window.history[method]({address},'',location.pathname+'?resolve='+encodeURIComponent(address));if(e.data.resolved===true&&boot.activation){const activation=boot.activation;boot.activation='';api('/api/v1/activation',{id:activation,stage:'displayed',error:''}).catch(()=>{});}return;
   }
   if(e.data?.type==='gateway:index-status'){
    const frame=$('indexes-module'),value=e.data;
@@ -137,8 +138,35 @@ $('rpc-mode').value=settings.rpc_auth_mode||'auto';$('settings-form').onsubmit=a
   if(e.data?.type==='gateway:satline'&&e.source===$('indexes-module')?.contentWindow&&typeof e.data.input==='string'&&/^(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*)){3}$/.test(e.data.input)&&e.data.input.split('.').every(n=>Number.isSafeInteger(Number(n)))){openSatline(e.data.input);return;}
   if(e.data?.type==='gateway:navigate'&&e.source===$('indexes-module')?.contentWindow&&typeof e.data.address==='string'){boot.from_satline=e.data.from||'';actionError(navigate(e.data.address));}
  });
+ // Decoration has no relationship to workspace, provider or index readiness.
+ // Startup has already dispatched navigation before this optional first paint.
+ function showArrival(){
+  const node=$('gateway-arrival');if(!node)return;
+  let timer=0,paint=0,observer=null,closed=false;const release=[];
+  const dismiss=()=>{if(closed)return;closed=true;node.hidden=true;delete node.dataset.active;clearTimeout(timer);cancelAnimationFrame(paint);observer?.disconnect();for(const remove of release)remove();dismissArrival=()=>{};};
+  dismissArrival=dismiss;
+  const visible=()=>document.visibilityState==='visible'&&!document.hidden;
+  const obstructed=()=>document.body.classList.contains('gateway-entering')||document.querySelector('dialog[open],[aria-modal="true"],#global-status-popover:not([hidden])');
+  const listen=(target,type,fn=dismiss)=>{target.addEventListener(type,fn,{capture:true,passive:true});release.push(()=>target.removeEventListener(type,fn,true));};
+  const watchInput=target=>{for(const type of ['pointerdown','pointermove','pointerup','click','keydown','beforeinput','input','wheel'])listen(target,type);};
+  try{
+   const entry=performance.getEntriesByType('navigation')[0],style=getComputedStyle(node),key='gateway.arrival.shown.v1';
+   if(String(boot.address||'.gateway').trim()!=='.gateway'||boot.activation||entry?.type!=='navigate'||!visible()||new URLSearchParams(location.search).has('setup')||obstructed()||style.position!=='fixed'||style.pointerEvents!=='none'||sessionStorage.getItem(key)){dismiss();return;}
+   sessionStorage.setItem(key,'1');
+   if(matchMedia('(prefers-reduced-motion: reduce)').matches){dismiss();return;}
+   watchInput(document);listen(window,'pagehide');listen(window,'popstate');listen(window,'hashchange');listen(window,'resize');listen(document,'visibilitychange',()=>{if(!visible())dismiss();});
+   const frame=$('indexes-module');let frameDocument=null;
+   const bindFrame=()=>{try{const next=frame?.contentDocument;if(next&&next!==frameDocument){frameDocument=next;watchInput(next);}}catch{dismiss();}};
+   if(frame){listen(frame,'load',bindFrame);bindFrame();}
+   observer=new MutationObserver(()=>{if(obstructed())dismiss();});observer.observe(document.body,{subtree:true,attributes:true,attributeFilter:['open','aria-modal','class']});
+   listen(node,'animationend',event=>{if(event.target===node)dismiss();});
+   timer=setTimeout(dismiss,1150);
+   paint=requestAnimationFrame(()=>{try{if(!visible()||obstructed())return dismiss();const rect=$('content').getBoundingClientRect();if(rect.width<100||rect.height<100)return dismiss();Object.assign(node.style,{left:(rect.left+8)+'px',top:(rect.top+6)+'px',width:Math.max(0,rect.width-16)+'px',height:Math.max(0,Math.min(rect.height,innerHeight-rect.top)-12)+'px'});node.hidden=false;node.dataset.active='true';clearTimeout(timer);timer=setTimeout(dismiss,1100);}catch{dismiss();}});
+  }catch{dismiss();}
+ }
  if(boot.activation)api('/api/v1/activation',{id:boot.activation,stage:'ready',error:''}).catch(()=>{});
  actionError(navigate(boot.address,false));
+ showArrival();
 })();
 
 async function showSyncCoverage(){const root=document.getElementById('content');root.innerHTML='<section class="panel"><h1>Data coverage</h1><p>Headers identify the selected chain. Blocks are retrieved when requested and retained according to your cache settings.</p><p><a href="/?resolve=indexes.gateway">Open index coverage and settings</a></p></section>';}

@@ -59,9 +59,9 @@ async function run(){
   await frame.locator('#timeline-divider').focus();await page.keyboard.press('End');
   for(const theme of ['light','dark']){
     await workspace.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);await sharedPlayhead('collapsed-'+theme);
-    for(const id of ['blocks','txio','addresses','bitmap']){const toggle=frame.locator('#timeline-group-'+id);if(await toggle.getAttribute('aria-expanded')==='false')await toggle.click();}
+    for(const id of ['blocks','txio','addresses','ordinals','bitmap']){const toggle=frame.locator('#timeline-group-'+id);if(await toggle.getAttribute('aria-expanded')==='false')await toggle.click();}
     await sharedPlayhead('open-'+theme);
-    for(const id of ['blocks','txio','addresses','bitmap']){const toggle=frame.locator('#timeline-group-'+id);if(await toggle.getAttribute('aria-expanded')==='true')await toggle.click();}
+    for(const id of ['blocks','txio','addresses','ordinals','bitmap']){const toggle=frame.locator('#timeline-group-'+id);if(await toggle.getAttribute('aria-expanded')==='true')await toggle.click();}
   }
   await workspace.evaluate(()=>document.documentElement.dataset.theme='light');
   await frame.locator('#timeline-divider').focus();await page.keyboard.press('Home');await delay(100);

@@ -33,6 +33,30 @@ def main():
     subprocess.run([args.go, 'build', '-trimpath', '-ldflags',
                     '-s -w -X main.portablePreviewBuild=' + version,
                     '-o', str(out / 'GatewayClient.exe'), '.'], cwd=ROOT, env=env, check=True)
+    identity = json.loads((ROOT / 'browser-companion' / 'PREVIEW-IDENTITY.json').read_text())
+    subprocess.run([args.go, 'build', '-trimpath', '-ldflags',
+                    '-s -w -X main.extensionID=' + identity['extension_id'],
+                    '-o', str(out / 'GatewayPreviewNativeHost.exe'), '.'],
+                   cwd=ROOT / 'packaging' / 'native-host', env=env, check=True)
+    (out / 'portable.marker').write_bytes(b'')
+    companion = out / 'browser-companion'
+    companion.mkdir(exist_ok=True)
+    companion_names = ('manifest.json', 'service-worker.js', 'search.js', 'content.js',
+                       'popup.js', 'popup.html', 'PREVIEW-IDENTITY.json',
+                       'Register-PreviewNativeHost.ps1', 'TESTING-PREVIEW.md')
+    for name in companion_names:
+        shutil.copy2(ROOT / 'browser-companion' / name, companion / name)
+    preview_manifest = json.loads((companion / 'manifest.json').read_text())
+    preview_manifest['key'] = identity['key']
+    preview_manifest['name'] += ' - Local Preview'
+    (companion / 'manifest.json').write_text(json.dumps(preview_manifest, indent=2) + '\n')
+    worker = (companion / 'service-worker.js').read_text()
+    production_host = "const HOST = 'com.gateway.client';"
+    if worker.count(production_host) != 1:
+        raise RuntimeError('Companion host binding changed; review preview packaging')
+    (companion / 'service-worker.js').write_text(worker.replace(
+        production_host, "const HOST = '" + identity['host'] + "';"))
+    shutil.copy2(ROOT / 'browser-companion' / 'Test-PreviewCompanion.js', out / 'Test-PreviewCompanion.js')
     for name in ('LICENSE', 'THIRD-PARTY-NOTICES.txt', 'GO-LICENSE.txt', 'COMPATIBILITY.json'):
         shutil.copy2(ROOT / name, out / name)
     shutil.copy2(ROOT / 'docs' / 'TESTING-0.7.8.md', out / 'TESTING-0.7.8.md')
@@ -43,7 +67,7 @@ def main():
                         'TRANSACTION-LOCATOR-BATCHING.md', 'VERIFICATION-PERFORMANCE-0.7.8.md',
                         'APPROVED-DESIGN-BRIEF-0.7.8.md', 'VERIFICATION-DESIGN-0.7.8.md',
                         'COMBINED-TRACKS-0.7.8.md', 'PARENT-CATEGORIES-0.7.8.md',
-                        'VISUAL-POLISH-0.7.8.md')
+                        'VISUAL-POLISH-0.7.8.md', 'ORDINALS-ENTRANCE-0.7.8.md')
     for name in performance_docs:
         shutil.copy2(ROOT / 'docs' / name, out / name)
     shutil.copy2(ROOT / 'scripts' / 'portable-preview.ps1', out / 'Preview.ps1')
@@ -54,6 +78,8 @@ def main():
     names = ['GatewayClient.exe', 'LICENSE', 'THIRD-PARTY-NOTICES.txt', 'GO-LICENSE.txt',
              'COMPATIBILITY.json', 'TESTING-0.7.8.md', 'APPROVED-BRIEF-0.7.8.md', 'SPARSE-INDEXING-0.7.8.md', 'VERIFICATION-0.7.8.md', 'Preview.ps1', 'Start-Preview.cmd', 'Stop-Preview.cmd']
     names.extend(performance_docs)
+    names.extend(['GatewayPreviewNativeHost.exe', 'portable.marker', 'Test-PreviewCompanion.js'])
+    names.extend('browser-companion/' + name for name in companion_names)
     manifest = dict(version=version, kind='local-portable-development-preview', source_revision=revision,
                     source_dirty=dirty, updates='disabled at build time', installers=False,
                     files={name: hashlib.sha256((out / name).read_bytes()).hexdigest() for name in names})

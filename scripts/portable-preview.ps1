@@ -1,6 +1,6 @@
 param([string]$ProfilePath = '', [switch]$Stop, [switch]$NoOpen, [switch]$Offline)
 $ErrorActionPreference = 'Stop'
-if (-not $ProfilePath) { $ProfilePath = Join-Path $PSScriptRoot 'preview-profile' }
+if (-not $ProfilePath) { $ProfilePath = Join-Path $PSScriptRoot 'blocks-on-demand-data' }
 $ProfilePath = [IO.Path]::GetFullPath($ProfilePath)
 $runtimePath = Join-Path $ProfilePath 'runtime.json'
 $running = $null

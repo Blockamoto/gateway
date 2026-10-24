@@ -29,9 +29,9 @@ func indexLayoutDigest(d indexLayoutDocument) string { d.Checksum = ""; return i
 func indexLayoutPath(root string) string             { return filepath.Join(root, "timeline-layout.json") }
 func indexLayoutParents(ctx context.Context, root string) (map[string]string, error) {
 	parents := map[string]string{
-		"group:blocks": "root", "group:txio": "root", "group:addresses": "root", "group:bitmap": "root",
-		"headers": "group:blocks", "blocks": "group:blocks", "tx-locator": "group:txio", "utxo-state": "group:txio", "inscriptions": "root",
-		"txio-links": "group:txio", "txio-values": "group:txio", "txio-scripts": "group:txio", "txio-sat-ranges": "group:txio",
+		"group:blocks": "root", "group:txio": "root", "group:addresses": "root", "group:ordinals": "root", "group:bitmap": "root",
+		"headers": "group:blocks", "blocks": "group:blocks", "tx-locator": "group:txio", "utxo-state": "group:txio", "inscriptions": "group:ordinals",
+		"txio-links": "group:txio", "txio-values": "group:txio", "txio-scripts": "group:txio", "txio-sat-ranges": "group:ordinals",
 		"address-state": "group:addresses", "address-history": "group:addresses",
 	}
 	instances, err := bitmapProfileInstances(ctx, root)
@@ -52,11 +52,87 @@ func normalizeIndexLayout(ctx context.Context, root string, order map[string][]s
 	return normalizeIndexLayoutVersion(ctx, root, order, false)
 }
 
-// Saved nested layouts project Parcels into the Bitmap sibling group without
-// writing during a read. New requests must use the sibling layout directly.
+// Project former Ordinals placements without changing stored files or consumer
+// identities. An explicit new Ordinals order takes precedence over old positions.
+func projectSavedOrdinalsLayout(order map[string][]string) map[string][]string {
+	projected := make(map[string][]string, len(order)+1)
+	for parent, ids := range order {
+		projected[parent] = append([]string{}, ids...)
+	}
+	moved := map[string]bool{}
+	hasGroup := false
+	for _, id := range order["root"] {
+		if id == "group:ordinals" {
+			hasGroup = true
+		}
+	}
+	root := []string{}
+	for _, id := range order["root"] {
+		if id == "inscriptions" {
+			moved[id] = true
+			if !hasGroup {
+				root = append(root, "group:ordinals")
+				hasGroup = true
+			}
+			continue
+		}
+		root = append(root, id)
+	}
+	txio := []string{}
+	for _, id := range order["group:txio"] {
+		if id == "txio-sat-ranges" {
+			moved[id] = true
+			continue
+		}
+		txio = append(txio, id)
+	}
+	if len(moved) == 0 {
+		return projected
+	}
+	if !hasGroup && len(root) > 0 {
+		// Layouts listing only the old Sat child have no former root position.
+		// Keep other saved positions and insert its house before Bitmap. An
+		// empty root order stays empty so the UI retains its complete default.
+		insert := len(root)
+		for i, id := range root {
+			if id == "group:bitmap" {
+				insert = i
+				break
+			}
+		}
+		root = append(root, "")
+		copy(root[insert+1:], root[insert:])
+		root[insert] = "group:ordinals"
+	}
+	projected["root"] = root
+	if _, exists := order["group:txio"]; exists {
+		projected["group:txio"] = txio
+	}
+	children := projected["group:ordinals"]
+	for _, id := range []string{"txio-sat-ranges", "inscriptions"} {
+		if !moved[id] {
+			continue
+		}
+		found := false
+		for _, existing := range children {
+			found = found || existing == id
+		}
+		if !found {
+			children = append(children, id)
+		}
+	}
+	projected["group:ordinals"] = children
+	return projected
+}
+
+// Saved layouts project former Ordinals positions and nested Parcels without
+// writing during a read. New requests must use the current parents directly.
 func normalizeIndexLayoutVersion(ctx context.Context, root string, order map[string][]string, legacy bool) (map[string][]string, error) {
 	if len(order) > 256 {
 		return nil, fmt.Errorf("too many timeline layout groups")
+	}
+	if legacy {
+		order = projectSavedOrdinalsLayout(order)
 	}
 	parents, err := indexLayoutParents(ctx, root)
 	if err != nil {

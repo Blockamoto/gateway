@@ -1,14 +1,87 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestIndexLayoutProjectsSavedOrdinalsReadOnly(t *testing.T) {
+	for _, schema := range []int{1, 2} {
+		t.Run(fmt.Sprint(schema), func(t *testing.T) {
+			ctx, root := context.Background(), t.TempDir()
+			stored := indexLayoutDocument{Schema: schema, Revision: 11, Order: map[string][]string{
+				"root":       {"group:blocks", "group:txio", "group:addresses", "inscriptions", "group:bitmap"},
+				"group:txio": {"txio-values", "txio-sat-ranges", "txio-links", "utxo-state"},
+			}}
+			stored.Checksum = indexLayoutDigest(stored)
+			if err := atomicWriteJSON(indexLayoutPath(root), stored); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(indexLayoutPath(root))
+			if err != nil {
+				t.Fatal(err)
+			}
+			view, err := readIndexLayout(ctx, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if view.Schema != 2 || view.Revision != 11 || strings.Join(view.Order["root"], ",") != "group:blocks,group:txio,group:addresses,group:ordinals,group:bitmap" || strings.Join(view.Order["group:ordinals"], ",") != "txio-sat-ranges,inscriptions" || strings.Join(view.Order["group:txio"], ",") != "txio-values,txio-links,utxo-state" {
+				t.Fatal("Ordinals projection changed saved identities/order", view)
+			}
+			after, err := os.ReadFile(indexLayoutPath(root))
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("read projection rewrote saved layout", err)
+			}
+			normalized, err := normalizeIndexLayout(ctx, root, view.Order)
+			if err != nil || !reflect.DeepEqual(normalized, view.Order) {
+				t.Fatal("projected layout cannot be saved", normalized, err)
+			}
+			for _, wrong := range []map[string][]string{{"root": {"inscriptions"}}, {"group:txio": {"txio-sat-ranges"}}, {"group:ordinals": {"utxo-state"}}} {
+				if _, err := normalizeIndexLayout(ctx, root, wrong); err == nil {
+					t.Fatal("new request accepted obsolete/foreign parent", wrong)
+				}
+			}
+			for _, path := range []string{"run.json", "live.json", "job.json", "queue.json"} {
+				if _, err := os.Stat(filepath.Join(root, "indexes", path)); !os.IsNotExist(err) {
+					t.Fatal("layout touched execution state", path, err)
+				}
+			}
+		})
+	}
+}
+
+func TestIndexLayoutOrdinalsProjectionPreservesExplicitOrder(t *testing.T) {
+	order := map[string][]string{
+		"root":           {"inscriptions", "group:bitmap", "group:ordinals", "group:txio"},
+		"group:ordinals": {"inscriptions", "txio-sat-ranges"},
+		"group:txio":     {"txio-sat-ranges", "txio-links"},
+	}
+	before, _ := json.Marshal(order)
+	view, err := normalizeIndexLayoutVersion(context.Background(), t.TempDir(), order, true)
+	if err != nil || strings.Join(view["root"], ",") != "group:bitmap,group:ordinals,group:txio" || strings.Join(view["group:ordinals"], ",") != "inscriptions,txio-sat-ranges" || strings.Join(view["group:txio"], ",") != "txio-links" {
+		t.Fatal(view, err)
+	}
+	after, _ := json.Marshal(order)
+	if !bytes.Equal(before, after) {
+		t.Fatal("projection mutated input map")
+	}
+	satOnly, err := normalizeIndexLayoutVersion(context.Background(), t.TempDir(), map[string][]string{"root": {"group:addresses", "group:bitmap"}, "group:txio": {"txio-sat-ranges"}}, true)
+	if err != nil || strings.Join(satOnly["root"], ",") != "group:addresses,group:ordinals,group:bitmap" || strings.Join(satOnly["group:ordinals"], ",") != "txio-sat-ranges" {
+		t.Fatal(satOnly, err)
+	}
+	defaultRoot, err := normalizeIndexLayoutVersion(context.Background(), t.TempDir(), map[string][]string{"group:txio": {"txio-sat-ranges"}}, true)
+	if err != nil || len(defaultRoot["root"]) != 0 || strings.Join(defaultRoot["group:ordinals"], ",") != "txio-sat-ranges" {
+		t.Fatal("child-only saved order displaced the default root order", defaultRoot, err)
+	}
+}
 
 func TestIndexLayoutPersistsAcrossPortsWithoutChangingIndexing(t *testing.T) {
 	root := t.TempDir()
@@ -29,14 +102,14 @@ func TestIndexLayoutPersistsAcrossPortsWithoutChangingIndexing(t *testing.T) {
 	if _, err := os.Stat(indexLayoutPath(root)); !os.IsNotExist(err) {
 		t.Fatal("reading layout wrote a file")
 	}
-	w := request(a, "50101", "POST", `{"order":{"root":["inscriptions","group:bitmap","group:txio"],"group:txio":["txio-sat-ranges","txio-links","txio-values","txio-scripts"],"group:bitmap":["bitmap-districts","bitmap-parcels"]}}`)
+	w := request(a, "50101", "POST", `{"order":{"root":["group:ordinals","group:bitmap","group:txio"],"group:ordinals":["txio-sat-ranges","inscriptions"],"group:txio":["txio-links","txio-values","txio-scripts"],"group:bitmap":["bitmap-districts","bitmap-parcels"]}}`)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	restarted := &app{dataDir: root}
 	w = request(restarted, "50999", "GET", "")
 	var got indexLayoutDocument
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Schema != 2 || got.Revision != 1 || got.Order["root"][0] != "inscriptions" || got.Order["group:txio"][0] != "txio-sat-ranges" || got.Order["group:bitmap"][1] != "bitmap-parcels" {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Schema != 2 || got.Revision != 1 || got.Order["root"][0] != "group:ordinals" || got.Order["group:ordinals"][0] != "txio-sat-ranges" || got.Order["group:bitmap"][1] != "bitmap-parcels" {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	if got.Checksum != "" {
@@ -53,7 +126,7 @@ func TestIndexLayoutPersistsAcrossPortsWithoutChangingIndexing(t *testing.T) {
 	}
 	w = request(restarted, "50999", "GET", "")
 	json.Unmarshal(w.Body.Bytes(), &got)
-	if got.Revision != 1 || got.Order["root"][0] != "inscriptions" {
+	if got.Revision != 1 || got.Order["root"][0] != "group:ordinals" {
 		t.Fatal("invalid layout overwrote saved order")
 	}
 	w = request(restarted, "50999", "POST", `{"order":{"group:bitmap":["unknown-old-track","bitmap-districts","bitmap-districts"]}}`)
@@ -165,7 +238,7 @@ func TestIndexLayoutMovesSavedTransactionIndexIntoTransactionsReadOnly(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(view.Order["root"], ",") != "inscriptions,group:txio,group:blocks" || strings.Join(view.Order["group:txio"], ",") != "txio-scripts,txio-links,txio-values,txio-sat-ranges,tx-locator,utxo-state" || view.Revision != 4 {
+	if strings.Join(view.Order["root"], ",") != "group:ordinals,group:txio,group:blocks" || strings.Join(view.Order["group:txio"], ",") != "txio-scripts,txio-links,txio-values,tx-locator,utxo-state" || view.Revision != 4 {
 		t.Fatal("Transaction Index migration changed identities or sibling order", view)
 	}
 	after, err := os.ReadFile(indexLayoutPath(root))

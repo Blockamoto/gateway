@@ -204,12 +204,25 @@ func parseResourceAddress(raw string) (resolverTarget, error) {
 		return resolverTarget{Namespace: "sat", Kind: "sat", Input: raw, SearchQuery: strconv.FormatUint(number, 10) + ".sat", Friendly: low, CanonicalURI: godURI(low)}, nil
 	}
 	if strings.HasSuffix(low, ".bitmap") {
-		district := strings.TrimSuffix(low, ".bitmap")
-		n, err := strconv.ParseUint(district, 10, 64)
-		if err != nil || strconv.FormatUint(n, 10) != district {
-			return resolverTarget{}, fmt.Errorf("expected district.bitmap; parcel resolution is not implemented")
+		stem := strings.TrimSuffix(low, ".bitmap")
+		parts := strings.Split(stem, ".")
+		if len(parts) != 1 && len(parts) != 2 {
+			return resolverTarget{}, fmt.Errorf("expected district.bitmap or parcel.district.bitmap")
 		}
-		return resolverTarget{Namespace: "bitmap", Kind: "district", Input: raw, SearchQuery: district, Friendly: low, CanonicalURI: godURI(low)}, nil
+		for _, part := range parts {
+			n, err := strconv.ParseUint(part, 10, 64)
+			if err != nil || strconv.FormatUint(n, 10) != part {
+				return resolverTarget{}, fmt.Errorf("expected canonical district.bitmap or parcel.district.bitmap")
+			}
+			if n > 1<<53-1 {
+				return resolverTarget{}, fmt.Errorf("Bitmap address exceeds the workspace's supported exact coordinate range")
+			}
+		}
+		kind := "district"
+		if len(parts) == 2 {
+			kind = "parcel"
+		}
+		return resolverTarget{Namespace: "bitmap", Kind: kind, Input: raw, SearchQuery: stem, Friendly: low, CanonicalURI: godURI(low)}, nil
 	}
 	if low == ".gateway" || low == "home.gateway" || low == "gateway.gateway" {
 		return resolverTarget{Namespace: "gateway", Kind: "home", Input: raw, Friendly: ".gateway", CanonicalURI: "god://.gateway"}, nil
@@ -308,6 +321,9 @@ func (a *app) resolveLocalTargetContext(ctx context.Context, input string) (loca
 	case t.Namespace == "gateway":
 		result = searchResponse{Kind: "module", Module: t.Kind, Query: t.Friendly}
 	case t.Namespace == "bitmap":
+		if t.Kind == "parcel" {
+			return localResolveResponse{}, fmt.Errorf("open %s in the Bitmap Standard workspace to inspect its parcel mapping", t.Friendly)
+		}
 		value, err := a.indexLookup("bitmap", t.SearchQuery)
 		if err != nil {
 			return localResolveResponse{}, err

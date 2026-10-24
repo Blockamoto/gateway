@@ -65,6 +65,18 @@ window.GatewayIndexTransport = (() => {
     const text=mode==='complete_prefix'?'Requires continuous state from '+(origin===0?'genesis (block 0)':integer(origin)?'declared origin block '+origin:'its declared origin')+'. '+(integer(next)?'Next required block '+next+'. ':'')+'An arbitrary In cannot replace the required prefix; no earlier history is fetched automatically.':mode==='snapshot_projection'?'Projects one complete saved UTXO checkpoint. In/Out do not select output-creation history.':mode==='sparse'?'Supports independent saved creation ranges. Unscanned gaps remain unknown.':'A fresh store may begin at an allowed In. An existing contiguous store resumes its exact next block; it cannot silently jump a gap or prepend history.';
     return {mode,origin,next,text};
   }
+  function headerControlState(network,timeline={}) {
+    const known=typeof network?.enabled==='boolean',headers=network?.headers||{},state=headers.header_state||timeline.header_state||'unknown';
+    if(!known)return {enabled:false,disabled:false,action:'resume',state:'unknown',label:'Enable independent header synchronization',description:'The current Header Live policy is unavailable in this view. Activate to request the independent header mirror. Outbound networking must be enabled separately. Saved headers remain available.'};
+    const offline=network.enabled===false,paused=network.headers_user_paused===true||state==='paused',enabled=!offline&&!paused,optional=paused&&network.headers_user_paused!==true&&/Core|optional mirroring|mirroring is optional/i.test(headers.message||'');
+    const label=offline?'Header synchronization unavailable: outbound networking disabled':paused?'Resume header synchronization':'Pause header synchronization';
+    let description=offline?'Outbound networking is disabled. Enable it in Settings to use Header Live. Saved headers remain available.':optional?'Independent header mirroring is optional while Core supplies chain authority. Resume enables the independent mirror.':paused?'Independent header synchronization is paused. Saved headers remain available.':'Independent header synchronization is enabled. Progress and peer freshness are reported separately.';
+    if(enabled&&state==='waiting')description+=' Waiting for an available Bitcoin peer or a stronger checked chain.';
+    else if(enabled&&['connecting','bootstrap','syncing'].includes(state))description+=' Current activity: '+state+'.';
+    if(headers.message)description+=' '+headers.message;
+    if(headers.error)description+=' Synchronization error: '+headers.error;
+    return {enabled,disabled:offline,action:paused||offline?'resume':'pause',state:offline?'offline':state,label,description};
+  }
   function mount({document:doc,root,timeline,api,refresh,notify,getSnapshot,inspect}) {
     const win=doc.defaultView, el=(tag,text,cls)=>{const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
     const toolbar=el('section',undefined,'timeline-transport');toolbar.id='timeline-transport';toolbar.setAttribute('aria-label','Indexing transport');
@@ -74,7 +86,21 @@ window.GatewayIndexTransport = (() => {
     const svg=symbol=>'<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+symbols[symbol]+'</svg>';
     function iconButton(symbol,label,title,action){const b=button('',label,action);b.className='timeline-transport-icon';b.title=title;b.innerHTML=svg(symbol);return b;}
     function trackSwitch(type,name){const input=button('',name,()=>{input.indeterminate=false;input.checked=!input.checked;input.dispatchEvent(new win.Event('change',{bubbles:true}));});input.className='timeline-track-switch';input.dataset.switch=type;input.setAttribute('aria-pressed','false');input.innerHTML=svg(type==='arm'?'record':'live');let checked=false,mixed=false;const paint=()=>{input.setAttribute('aria-pressed',mixed?'mixed':String(checked));input.dataset.active=String(checked);};Object.defineProperty(input,'checked',{get:()=>checked,set:value=>{checked=!!value;paint();}});Object.defineProperty(input,'indeterminate',{get:()=>mixed,set:value=>{mixed=!!value;paint();}});return {label:input,input};}
-    let bindingSignature='',consumers=new Map(),marks={in:null,out:null},lastPoint=null,hasResource=false,snapshot={},runState=null,initialized=false,dirty=false,busy=false,review=null,feedback='',handles=true,saveVersion=0,savedVersion=0,saveTail=Promise.resolve(),dead=false,lastPlan=null,lastMarksSignature='';const admissionTargets=new Map(),admissionFeedback=new Map();
+    let bindingSignature='',consumers=new Map(),marks={in:null,out:null},lastPoint=null,hasResource=false,snapshot={},runState=null,initialized=false,dirty=false,busy=false,review=null,feedback='',handles=true,saveVersion=0,savedVersion=0,saveTail=Promise.resolve(),dead=false,lastPlan=null,lastMarksSignature='',headerBusy=false,headerFailure='',localHeaderSnapshot=null,headerExpiryTimer=null,headerExpiryAt=0;const admissionTargets=new Map(),admissionFeedback=new Map();
+    let headerHost=win;try{if(win.parent!==win&&win.parent.location.origin===win.location.origin)headerHost=win.parent;}catch{}
+    function knownHeaderNetwork(){let saved=localHeaderSnapshot;try{const current=headerHost.GatewayNetworkSnapshot;if(current&&(!saved||current.observedAt>=saved.observedAt))saved=current;}catch{}if(saved&&Number.isFinite(saved.observedAt)&&Date.now()-saved.observedAt<10000&&saved.observedAt<=Date.now()+1000){const expires=saved.observedAt+10000;if(headerExpiryAt!==expires){win.clearTimeout(headerExpiryTimer);headerExpiryAt=expires;headerExpiryTimer=win.setTimeout(()=>{headerExpiryTimer=null;headerExpiryAt=0;if(!dead)decorate();},Math.max(1,expires-Date.now()+1));}return saved.value;}return null;}
+    function headerView(){return headerControlState(knownHeaderNetwork(),snapshot.timeline);}
+    function repaintHeaders(){if(!dead){if(knownHeaderNetwork())headerFailure='';decorate();}}
+    headerHost.addEventListener('gateway:network-status',repaintHeaders);
+    async function changeHeaders(){
+      const view=headerView();if(headerBusy||view.disabled)return;headerBusy=true;headerFailure='';decorate();
+      try{
+        const response=await win.fetch('/api/v1/headers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:view.action})}),result=await response.json();if(!response.ok)throw Error(result.error||'Header synchronization could not be changed.');
+        localHeaderSnapshot=null;
+        try{const observed=await win.fetch('/api/v1/network',{cache:'no-store'}),network=await observed.json();if(!observed.ok)throw Error(network.error||'Header policy could not be read.');localHeaderSnapshot={value:network,observedAt:Date.now()};}catch(error){headerFailure='Header action applied. Current policy is unavailable: '+error.message;}
+        await refresh?.();
+      }catch(error){headerFailure=error.message;if(!dead)notify?.(error.message,true);}finally{headerBusy=false;if(!dead)decorate();}
+    }
     const start=iconButton('play','Start indexing','Start the selected tracks using their saved settings. Requirements are checked internally. A marked Out remains a hard limit.',()=>act('play')),
       pause=iconButton('pause','Pause indexing','Pause the active indexing run after its current safe transition.',()=>act('pause')),
       resume=iconButton('play','Resume indexing','Resume the saved indexing run with its admitted range and Live choices unchanged.',()=>act('resume')),
@@ -115,7 +141,8 @@ window.GatewayIndexTransport = (() => {
       toolbar.querySelector('.bitmap-companion-offer')?.remove();const box=el('section',undefined,'bitmap-companion-offer'),text=el('span','Also select Transaction Locators to retain inscription-ID lookup evidence? ','small'),add=button('Also select Transaction Locators','Also select Transaction Locators',()=>{setConsumerOptions('tx-locator',{armed:true});box.remove();notify?.('Transaction Locators selected through the shared run. Existing scope and admission checks apply; no earlier history starts automatically.');}),skip=button('Keep current selection','Keep current selection',()=>box.remove());box.append(text,add,skip);toolbar.append(box);
     }
     function groupArmRows(id){
-      return [...root.querySelectorAll('.timeline-track')].filter(row=>row.dataset.group===id&&row.querySelector('[data-control=arm]')&&(id!=='bitmap'||['bitmap-districts-standard-v1','bitmap-parcels-standard-v1'].includes(row.dataset.index)));
+      const exact=id==='bitmap'?['bitmap-districts-standard-v1','bitmap-parcels-standard-v1']:id==='ordinals'?['txio-sat-ranges','inscriptions']:null;
+      return [...root.querySelectorAll('.timeline-track')].filter(row=>row.dataset.group===id&&row.querySelector('[data-control=arm]')&&(!exact||exact.includes(row.dataset.index)));
     }
     function decorate(){
       for(const row of root.querySelectorAll('.timeline-track')){
@@ -126,23 +153,23 @@ window.GatewayIndexTransport = (() => {
         if(!group){
           group=el('div',undefined,'timeline-track-controls');row.querySelector('.timeline-track-actions').prepend(group);
           if(id==='headers'){
-            const sync=iconButton('pause','Pause header synchronization','Pause or resume header synchronization.',async()=>{if(busy)return;busy=true;try{const response=await win.fetch('/api/v1/headers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:snapshot.timeline?.header_state==='paused'?'resume':'pause'})}),result=await response.json();if(!response.ok)throw Error(result.error||'Header synchronization could not be changed.');await refresh?.();}catch(error){notify?.(error.message,true);}finally{busy=false;update(snapshot);}});sync.dataset.headerSync='true';group.append(sync);
+            const sync=trackSwitch('live','Header Live synchronization').input;sync.dataset.headerSync='true';sync.dataset.control='live';sync.onchange=()=>changeHeaders();group.append(sync);
           }else{
             for(const type of ['arm','live']){const {label,input}=trackSwitch(type,name(id)+' '+(type==='arm'?'Arm':'Live'));input.dataset.control=type;group.append(label);input.onchange=()=>{const c=draftConsumer(id);if(type==='live')c.live=input.checked;else if(id==='txio-values'||id==='txio-scripts'){c[id==='txio-values'?'retain_output_values':'retain_output_scripts']=input.checked;}else c.armed=input.checked;changed([id]);if(type==='arm'&&input.checked)offerBitmapCompanion(id);showStatus();};}
           }
         }
         const c=draftConsumer(id),arm=group.querySelector('[data-control=arm]'),live=group.querySelector('[data-control=live]');
-        const sync=group.querySelector('[data-header-sync]');if(sync){const paused=snapshot.timeline?.header_state==='paused';sync.innerHTML=svg(paused?'play':'pause');sync.disabled=busy;sync.title=paused?'Resume header synchronization':'Pause header synchronization';sync.setAttribute('aria-label',sync.title);}
+        const sync=group.querySelector('[data-header-sync]');if(sync){const view=headerView();sync.checked=view.enabled;sync.disabled=headerBusy||view.disabled;sync.dataset.headerState=view.state;sync.title=view.label+'. '+view.description+(headerFailure?' '+headerFailure:'');sync.setAttribute('aria-label',view.label);sync.setAttribute('aria-description',view.description+(headerFailure?' '+headerFailure:''));}
         if(arm){arm.checked=id==='txio-values'?!!c.retain_output_values:id==='txio-scripts'?!!c.retain_output_scripts:!!c.armed;arm.disabled=busy;}
-        if(live){live.checked=!!c.live;live.disabled=busy||definition.live_supported===false||id==='txio-values'||id==='txio-scripts';live.title=id==='txio-values'||id==='txio-scripts'?'Live follows the shared TXIO consumer':definition.live_supported===false?'This index does not support Live following':'Follow new blocks after catch-up; a marked Out caps following';}
+        if(live&&!sync){live.checked=!!c.live;live.disabled=busy||definition.live_supported===false||id==='txio-values'||id==='txio-scripts';live.title=id==='txio-values'||id==='txio-scripts'?'Live follows the shared TXIO consumer':definition.live_supported===false?'This index does not support Live following':'Follow new blocks after catch-up; a marked Out caps following';}
         if(live&&/^bitmap-(?:district|parcel)-chain-dev-v1$|^bitmap-chain(?:-|$)/.test(id))live.title='Follow newly completed outcomes from this exact outcome producer. Chain waits at its producer checkpoint; a marked Out remains a hard cap.';
-        const view=consumerStatus(owner(id)),browse=Array.isArray(snapshot.browse)?snapshot.browse.find(row=>row.index===id):null;group.setAttribute('aria-label',name(id)+' · '+view.label+'. '+(browse?.reason||view.reason||''));if(browse){group.title=browse.reason||'';if(id==='txio-sat-ranges'&&arm)arm.title=browse.reason||'';}
+        const view=sync?{label:headerView().label,reason:headerView().description}:consumerStatus(owner(id)),browse=Array.isArray(snapshot.browse)?snapshot.browse.find(row=>row.index===id):null;group.setAttribute('aria-label',name(id)+' · '+view.label+'. '+(browse?.reason||view.reason||''));if(browse){group.title=browse.reason||'';if(id==='txio-sat-ranges'&&arm)arm.title=browse.reason||'';}
         if(id==='blocks')group.title='Raw Blocks is the storage control for Explorer and index requests: Off uses newly fetched bodies temporarily; On retains them with block metadata. Existing data stays. New transaction-hash lookup is the optional Transaction Locator track.';if(id==='tx-locator')group.title='Arm saves sparse verified transaction locations from blocks you explicitly view. Start indexes the chosen scope. Known block positions open without this optional index.';if(id==='inscriptions')group.title='Arm saves lean verified inscription coordinates from explicitly viewed blocks. It does not start a historical scan; use Start for the chosen scope.';
       }
       for(const group of root.querySelectorAll('.timeline-group')){
         const rows=groupArmRows(group.dataset.group);
         if(!rows.length){group.querySelector('.timeline-group-arm')?.remove();continue;}let label=group.querySelector('.timeline-group-arm');
-        if(!label){const control=trackSwitch('arm','Arm all '+(group.dataset.group==='txio'?'Transactions':group.dataset.group==='bitmap'?'Bitmap':group.dataset.group)+' layers');label=control.label;label.classList.add('timeline-group-arm');const input=control.input;group.querySelector('.timeline-group-actions').prepend(label);input.onchange=()=>{const currentRows=groupArmRows(group.dataset.group);for(const row of currentRows){const id=row.dataset.index,c=draftConsumer(id);c.armed=input.checked;if(id==='txio-values')c.retain_output_values=input.checked;if(id==='txio-scripts')c.retain_output_scripts=input.checked;}changed(currentRows.map(row=>owner(row.dataset.index)));showStatus();};}
+        if(!label){const control=trackSwitch('arm','Arm all '+(group.dataset.group==='txio'?'Transactions':group.dataset.group==='bitmap'?'Bitmap':group.dataset.group==='ordinals'?'Ordinals':group.dataset.group)+' layers');label=control.label;label.classList.add('timeline-group-arm');const input=control.input;group.querySelector('.timeline-group-actions').prepend(label);input.onchange=()=>{const currentRows=groupArmRows(group.dataset.group);for(const row of currentRows){const id=row.dataset.index,c=draftConsumer(id);c.armed=input.checked;if(id==='txio-values')c.retain_output_values=input.checked;if(id==='txio-scripts')c.retain_output_scripts=input.checked;}changed(currentRows.map(row=>owner(row.dataset.index)));showStatus();};}
         const input=label,selected=rows.filter(row=>row.querySelector('[data-control=arm]').checked).length;input.checked=selected===rows.length;input.indeterminate=selected>0&&selected<rows.length;input.setAttribute('aria-description',input.indeterminate?'Some layers are armed. Activate to arm all layers.':'Toggle arming for every layer in this group.');input.disabled=busy;
       }
     }
@@ -184,8 +211,8 @@ window.GatewayIndexTransport = (() => {
     function shortcut(event){if(event.defaultPrevented||event.isComposing||event.repeat||event.ctrlKey||event.metaKey||event.altKey)return;const target=event.target;if(target?.closest?.('.index-help-trigger,.index-help-popover,input,textarea,select,[contenteditable]:not([contenteditable="false"]),dialog,[role="dialog"],[role="menu"]'))return;if(!root.contains(target)&&target!==doc.body)return;const key=String(event.key).toLowerCase();if(key!=='i'&&key!=='o')return;event.preventDefault();event.stopPropagation();setMark(key==='i'?'in':'out');}
     doc.addEventListener('keydown',shortcut,true);
     doc.addEventListener('gateway:timeline-options',event=>{if(event.detail?.index)setConsumerOptions(event.detail.index,event.detail.options||{});});
-    const result={update,paint,getRunDraft:()=>copy(request()),showRunStatus:showStatus,setConsumerOptions,acceptGlobalResource,setGlobalRange,setMark,getGlobalMarks:()=>copy(marks),getGlobalRanges:()=>{const r=project(marks);return r.valid&&integer(r.in)&&integer(r.out)?[{from:r.in,to:r.out}]:[];},inspectIndex:(id,options)=>inspect?.(id,options),teardown(){dead=true;doc.removeEventListener('keydown',shortcut,true);toolbar.remove();for(const layer of layers.values())layer.remove();}};
+    const result={update,paint,getRunDraft:()=>copy(request()),showRunStatus:showStatus,setConsumerOptions,acceptGlobalResource,setGlobalRange,setMark,getGlobalMarks:()=>copy(marks),getGlobalRanges:()=>{const r=project(marks);return r.valid&&integer(r.in)&&integer(r.out)?[{from:r.in,to:r.out}]:[];},inspectIndex:(id,options)=>inspect?.(id,options),teardown(){dead=true;win.clearTimeout(headerExpiryTimer);headerHost.removeEventListener('gateway:network-status',repaintHeaders);doc.removeEventListener('keydown',shortcut,true);toolbar.remove();for(const layer of layers.values())layer.remove();}};
     update(getSnapshot?.()||{});return result;
   }
-  return {point,compare,project,owner,executionRequest,rangePolicy,stagedProgressText,mount};
+  return {point,compare,project,owner,executionRequest,rangePolicy,stagedProgressText,headerControlState,mount};
 })();

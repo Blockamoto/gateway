@@ -123,7 +123,11 @@ func (a *app) setupSnapshot() map[string]any {
 	if progress.NavigationAt.IsZero() {
 		pending = append(pending, "Companion navigation test")
 	}
-	return map[string]any{"progress": progress, "mode": mode, "version": appVersion, "data_directory": a.dataDir, "show_automatically": !settings.Onboarded && !progress.Completed, "settings": settings.public(), "core": inspectCore(settings), "core_store": a.coreStoreStatusView(), "mounted_preparation": mountedPreparationInfo(settings), "browser": browser, "native_host_registered": a.nativeHostReady(progress.Browser), "system": a.systemStatus(), "headers": a.getStatus(), "network": network, "pending": pending, "note": "Completing setup records your choices. Connectivity, browser approval and data readiness remain separate live states."}
+	previewRoutingNote := ""
+	if portablePreviewBuild != "" {
+		previewRoutingNote = portablePreviewRoutingReason
+	}
+	return map[string]any{"portable_preview": portablePreviewBuild != "", "browser_routing_note": previewRoutingNote, "progress": progress, "mode": mode, "version": appVersion, "data_directory": a.dataDir, "show_automatically": !settings.Onboarded && !progress.Completed, "settings": settings.public(), "core": inspectCore(settings), "core_store": a.coreStoreStatusView(), "mounted_preparation": mountedPreparationInfo(settings), "browser": browser, "native_host_registered": a.nativeHostReady(progress.Browser), "system": a.systemStatus(), "headers": a.getStatus(), "network": network, "pending": pending, "note": "Completing setup records your choices. Connectivity, browser approval and data readiness remain separate live states."}
 }
 func (a *app) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
@@ -141,6 +145,10 @@ func (a *app) handleSetup(w http.ResponseWriter, r *http.Request) {
 		IntegrationReviewed bool   `json:"integration_reviewed"`
 	}
 	if !satlineBody(w, r, &q) {
+		return
+	}
+	if portablePreviewBuild != "" && (q.Action == "browser-routing" || q.Action == "register-native") {
+		jsonError(w, http.StatusForbidden, fmt.Errorf("%s", portablePreviewRoutingReason))
 		return
 	}
 	switch q.Action {

@@ -24,6 +24,23 @@ CHROME / EDGE / BRAVE / CHROMIUM SETUP
    or bare-word web searches and phrases such as "what is 0.sat" remain ordinary searches.
    Gateway's own address bar separately interprets a bare number against its
    selected chain tip; the companion does not apply that rule to web searches.
+8. Bitmap Standard addresses include district 0.bitmap and parcel
+   0.792435.bitmap. Leading-zero or malformed Bitmap tokens remain untouched.
+   Native/browser coordinates are limited to JavaScript's exact integer range;
+   this implementation bound is separate from the published Bitmap rules.
+
+DIRECT RESOURCE URLS
+The companion also recognizes exact http/https root resource hosts, including
+https://0.792435.bitmap/. It never redirects a URL with a port, credentials,
+path, query, or fragment. Only the main frame is eligible. A new navigation or
+closed tab cancels a pending handoff. Namespace metadata comes from a fresh
+authenticated native status handshake; an old cached list is not blindly used.
+The webNavigation permission supports this handoff; no broad host permission,
+browser policy, DNS rule, or default search setting is added by the extension.
+
+ISOLATED REVIEW PACKAGES
+If this folder contains the separate preview extension identity, follow
+TESTING-PREVIEW.md instead of the production registration steps above.
 
 The companion is supplied as an unpacked extension, not through a browser store.
 Approval in each browser profile is required. No browser policy or default search

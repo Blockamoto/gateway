@@ -133,6 +133,9 @@ func configureInstalledNativeHosts(exe string, enabled bool) []browserRoutingSte
 }
 
 func (a *app) configureBrowserRouting(enabled bool) browserRoutingResult {
+	if portablePreviewBuild != "" {
+		return browserRoutingResult{Enabled: enabled, Complete: false, Steps: []browserRoutingStep{{ID: "portable-preview", Name: "Production browser routing", Error: portablePreviewRoutingReason}}}
+	}
 	exe, _ := os.Executable()
 	return runBrowserRouting(enabled, func() []browserRoutingStep { return configureInstalledNativeHosts(exe, enabled) },
 		func(on bool) error {

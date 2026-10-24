@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const help = require('../ui/shell/index-help-content.js');
 const file = path.resolve(__dirname, '../ui/shell/index-help-content.js');
-const ids = ['group:blocks', 'group:txio', 'group:addresses', 'group:bitmap', 'headers', 'blocks', 'tx-locator', 'txio-links', 'txio-values', 'txio-scripts', 'utxo-state', 'txio-sat-ranges', 'address-state', 'address-history', 'inscriptions', 'bitmap-districts-standard-v1', 'bitmap-parcels-standard-v1', 'bitmap-chain', 'bitmap-district-chain-dev-v1', 'bitmap-parcel-chain-dev-v1'];
+const ids = ['group:blocks', 'group:txio', 'group:addresses', 'group:ordinals', 'group:bitmap', 'headers', 'blocks', 'tx-locator', 'txio-links', 'txio-values', 'txio-scripts', 'utxo-state', 'txio-sat-ranges', 'address-state', 'address-history', 'inscriptions', 'bitmap-districts-standard-v1', 'bitmap-parcels-standard-v1', 'bitmap-chain', 'bitmap-district-chain-dev-v1', 'bitmap-parcel-chain-dev-v1'];
 const text = card => card.paragraphs.join(' ');
 const rows = id => help.dependencies(id).dependencies;
 const by = (id, name) => rows(id).find(row => row.name === name);
@@ -49,6 +49,11 @@ for(const id of ['tx-locator','txio-links','txio-values','txio-scripts','utxo-st
 
 assert.deepEqual(help.get('group:transactions'), help.get('group:txio'));
 assert.deepEqual(help.dependencies('group:transactions'), help.dependencies('group:txio'));
+assert.equal(help.get('group:ordinals').title, 'Ordinals');
+assert.match(text(help.get('group:ordinals')), /Sat Ranges.*Inscriptions/);
+assert.match(text(help.get('group:ordinals')), /own processing start, saved state, coverage and retention choices/);
+assert.match(text(help.get('group:ordinals')), /Historical Sat ranges remain a separate retention option/);
+assert(!/individual sats|Sat Ranges|Inscriptions/.test(text(help.get('group:txio'))), 'Transaction purpose excludes the independent Ordinals tracks');
 assert.deepEqual(help.get('txo-spender'), help.get('txio-links'));
 assert.deepEqual(help.get('sat-state'), help.get('txio-sat-ranges'));
 assert.match(text(help.get('group:addresses')), /Historical received amounts are not a current balance/);

@@ -67,7 +67,7 @@ async function run() {
     const horizontal='#timeline-scrollbar-horizontal';
     await page.route('**/api/v1/index/layout',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({schema:1,order:{},revision:0})}));
   await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.locator('#timeline-collapse:not([aria-expanded=true])').click();
-    await page.locator('#timeline-divider').waitFor();
+    await page.locator('#timeline-divider').waitFor();if(await page.locator('#timeline-group-blocks').getAttribute('aria-expanded')==='false')await page.locator('#timeline-group-blocks').click();
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks'],'Headers and Blocks are default tracks even without stored blocks');
     assert.equal(await page.locator('#timeline-add-index').isDisabled(),true,'Canonical built-ins remain fixed; custom Bitmap creation is unavailable');
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
@@ -203,7 +203,7 @@ async function run() {
       snapshot.instances.push({definition:id,checkpoint:{from:0,height:10},coverage:[{from:0,to:10}],verification:'selected_chain'});
     }
     snapshot.timeline.tracks[1]={id:'blocks',coverage:[{from:499990,to:500010}],gaps:[{from:500000,to:500000}],coverage_complete:false};
-    await refresh();
+    await refresh();await page.locator('#timeline-group-bitmap').click();const sizeControl=page.locator('#timeline-scrollbar-vertical .timeline-scroll-handle.end');await sizeControl.focus();await page.keyboard.press('Home');for(let n=0;n<4;n++)await page.keyboard.press('ArrowDown');
     const trackViewport=page.locator('#timeline-track-viewport');
     await lane.scrollIntoViewIfNeeded();
     async function verticalWheelCase(name,target,{dx=0,dy=120,modifiers=[],expectScroll=true}={}){
@@ -288,7 +288,7 @@ async function run() {
     }
     await page.setViewportSize({width:1280,height:900});
     await page.goto(origin+'/embedded-fixture',{waitUntil:'networkidle'});
-    const frame=page.frameLocator('iframe');if(await frame.locator('#timeline-collapse:not([aria-expanded=true])').isVisible())await frame.locator('#timeline-collapse:not([aria-expanded=true])').click();await frame.locator('#timeline-divider').waitFor();
+    const frame=page.frameLocator('iframe');if(await frame.locator('#timeline-collapse:not([aria-expanded=true])').isVisible())await frame.locator('#timeline-collapse:not([aria-expanded=true])').click();await frame.locator('#timeline-divider').waitFor();if(await frame.locator('#timeline-group-blocks').getAttribute('aria-expanded')==='false')await frame.locator('#timeline-group-blocks').click();
     const embeddedBefore=await frame.locator('.timeline-editor').boundingBox();
     await frame.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await frame.locator('#timeline-details').evaluate(el=>el.open=true);await settle();

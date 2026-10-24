@@ -39,6 +39,12 @@ Compact children are stacked inside one parent row; only an individual child's
 label/disclosure expands it. There is no parent expand-all action. Live ON is
 vivid electric blue and remains independent from the red Arm state.
 
+The later parent-category correction in `PARENT-CATEGORIES-0.7.8.md` supersedes
+that expansion model: parents default closed and reveal mini children; selecting
+a child shows upper details rather than expanding it. Controls are on the right,
+and the existing track zoom enlarges lanes. Inscriptions matches parent styling
+with a reserved blank disclosure slot and no expander.
+
 The fixed canonical District and Parcel tracks both start at **792435** and are
 siblings. Review a bounded range, arm the chosen normal tracks, then Start.
 Bitmap arming offers the existing Transaction Locators track as a companion.

@@ -156,7 +156,7 @@ $('rpc-mode').value=settings.rpc_auth_mode||'auto';$('settings-form').onsubmit=a
    if(matchMedia('(prefers-reduced-motion: reduce)').matches){dismiss();return;}
    watchInput(document);listen(window,'pagehide');listen(window,'popstate');listen(window,'hashchange');listen(window,'resize');listen(document,'visibilitychange',()=>{if(!visible())dismiss();});
    const frame=$('indexes-module');let frameDocument=null;
-   const bindFrame=()=>{try{const next=frame?.contentDocument;if(next&&next!==frameDocument){frameDocument=next;watchInput(next);}}catch{dismiss();}};
+   const bindFrame=()=>{try{const next=frame?.contentDocument;if(next?.defaultView&&next!==frameDocument){frameDocument=next;watchInput(next.defaultView);}}catch{dismiss();}};
    if(frame){listen(frame,'load',bindFrame);bindFrame();}
    observer=new MutationObserver(()=>{if(obstructed())dismiss();});observer.observe(document.body,{subtree:true,attributes:true,attributeFilter:['open','aria-modal','class']});
    listen(node,'animationend',event=>{if(event.target===node)dismiss();});

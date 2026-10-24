@@ -89,7 +89,7 @@ for canonical Bitmap addresses. They do not migrate or rebuild index data.
 
 ## Completed checks
 
-Exact client SHA-256:
+Full five-article baseline client SHA-256:
 `69d4810be27796b60314f0e8c69137abbf9bf63321f94cbb2fc1b7874ee9e8bb`.
 Exact preview native-host SHA-256:
 `005da0fbf1da64d9886cd75200efcff536d2572255433e11455675eb5054fb23`.
@@ -122,11 +122,40 @@ Evidence is under `build/qa-078/ordinals-entrance`, summarized by
 `build/ordinals-stations-qa/result.json`; the entrance source matrix is in
 `build/qa-078/arrival/source-browser/summary.json`.
 
+### R2: first iframe shortcut dismissal
+
+Current client SHA-256:
+`8b6ce3d3c13ae2bc4dd025dad2b02c479d2d5e97042bfd22816d3161a4fc2c18`.
+The narrow correction captures iframe input on its window before document-level
+shortcuts can stop propagation. Cleanup removes those same window listeners.
+It changes no shortcut action, timing, index choice, layout or browser route.
+
+The source arrival matrix passes 29 cases, including a first Backquote after
+programmatic iframe focus: the entrance dismisses and the existing document
+shortcut still executes exactly once. The current compiled Home check also
+passes that real shortcut (Timeline maximizes and Escape restores), plus normal
+entrance timing at 1035.2ms, reload/reduced-motion skips and unchanged controls,
+assets and run state. No index POST occurs in this bounded R2 check. Evidence:
+`build/qa-078/ordinals-entrance-r2/compiled-home/result.json` and
+`build/qa-078/arrival/r2-first-shortcut/summary.json`.
+
+The unchanged overview, map, storage, resolver and Companion behavior retains
+the five-article evidence above. The courier is rebound to the current exact
+application/profile in the R2 verification folder; Windows native registration
+remains an explicit untested opt-in step.
+That R2 courier check passed real framed messages and the isolated MV3 bridge
+on the current client. The test now waits for its extension listeners and
+authenticated namespace handshake before navigating, and waits for the exact
+compiled bootstrap rather than unrelated full-window readiness. A prior test
+timeout is retained as historical evidence; its exact cause was not established.
+These are test-harness changes, not production routing changes. The current
+summary is `build/qa-078/ordinals-entrance-r2/focused-verification-summary.json`.
+
 ## Portable delivery
 
-Directory: `build/portable-v0.7.8-ordinals-entrance`.
-ZIP: `build/Gateway-v0.7.8-ordinals-entrance-portable-preview-windows-amd64.zip`.
-Verification: `build/qa-078/ordinals-entrance`.
+Directory: `build/portable-v0.7.8-ordinals-entrance-r2`.
+ZIP: `build/Gateway-v0.7.8-ordinals-entrance-r2-portable-preview-windows-amd64.zip`.
+Verification: `build/qa-078/ordinals-entrance-r2`.
 The exact tested executable, revision and all ZIP hashes are bound by the
 artifact manifest. Runtime profiles, logs and tokens are excluded. The new
 profile starts unarmed, with updates disabled; its owned start/stop/restart

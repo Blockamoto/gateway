@@ -54,6 +54,9 @@ func (a *app) ingestArmedBitmapBlock(ctx context.Context, block blockView, prepa
 		if err != nil {
 			return err
 		}
+		if resolvedOwnedByCoordinator(ctx, doc, id, block) {
+			continue
+		}
 		if err := resolvedAdmissionAllowed(doc, id, block.Height); err != nil {
 			continue
 		}

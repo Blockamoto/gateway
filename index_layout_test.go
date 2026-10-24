@@ -147,6 +147,44 @@ func TestIndexLayoutRejectsForeignOriginAndNonJSON(t *testing.T) {
 	}
 }
 
+func TestIndexLayoutMovesSavedTransactionIndexIntoTransactionsReadOnly(t *testing.T) {
+	ctx, root := context.Background(), t.TempDir()
+	stored := indexLayoutDocument{Schema: 2, Revision: 4, Order: map[string][]string{
+		"root":       {"inscriptions", "tx-locator", "utxo-state", "group:txio", "group:blocks"},
+		"group:txio": {"txio-scripts", "txio-links", "txio-values", "txio-sat-ranges"},
+	}}
+	stored.Checksum = indexLayoutDigest(stored)
+	if err := atomicWriteJSON(indexLayoutPath(root), stored); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(indexLayoutPath(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := readIndexLayout(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(view.Order["root"], ",") != "inscriptions,group:txio,group:blocks" || strings.Join(view.Order["group:txio"], ",") != "txio-scripts,txio-links,txio-values,txio-sat-ranges,tx-locator,utxo-state" || view.Revision != 4 {
+		t.Fatal("Transaction Index migration changed identities or sibling order", view)
+	}
+	after, err := os.ReadFile(indexLayoutPath(root))
+	if err != nil || string(after) != string(before) {
+		t.Fatal("read migration wrote saved layout", err)
+	}
+	if _, err := normalizeIndexLayout(ctx, root, map[string][]string{"root": {"tx-locator"}}); err == nil {
+		t.Fatal("new layout accepted standalone Transaction Index")
+	}
+	if _, err := normalizeIndexLayout(ctx, root, view.Order); err != nil {
+		t.Fatal("projected Transactions layout refused", err)
+	}
+	for _, path := range []string{"run.json", "live.json", "job.json"} {
+		if _, err := os.Stat(filepath.Join(root, "indexes", path)); !os.IsNotExist(err) {
+			t.Fatal("layout migration touched indexing state", path, err)
+		}
+	}
+}
+
 func TestIndexLayoutProjectsSavedNestedParcelsIntoBitmapSiblings(t *testing.T) {
 	ctx, root := context.Background(), t.TempDir()
 	stored := indexLayoutDocument{Schema: 2, Revision: 4, Order: map[string][]string{"group:bitmap": {bitmapCanonicalV1DistrictID}, "district:" + bitmapCanonicalV1DistrictID: {bitmapCanonicalV1ParcelID}}}

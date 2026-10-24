@@ -18,7 +18,7 @@ await page.route('**/*',async route=>{const req=route.request(),url=new URL(req.
 if(url.pathname==='/indexes')return reply(fs.readFileSync(path.join(root,'ui/shell/indexes.html'),'utf8').replaceAll('__INDEX_NONCE__','fixture').replace('__INDEX_BOOTSTRAP__','{}'),'text/html');
 if(url.pathname.startsWith('/shell/')){const file=path.join(root,'ui',url.pathname);return reply(fs.readFileSync(file),file.endsWith('.js')?'application/javascript':'text/css');}if(url.pathname==='/favicon.ico')return reply('','image/x-icon');
 calls.push({path:url.pathname,search:url.search,method:req.method(),body:req.postDataJSON()});
-if(url.pathname==='/api/v1/index/status')return reply(state);
+if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname))return reply(state);
 if(url.pathname==='/api/v1/index/layout'){if(req.method()==='POST')layout={schema:1,order:req.postDataJSON().order,revision:layout.revision+1};return reply(layout);}
 if(url.pathname==='/api/v1/index/run/prepare'){state.run.prepared=req.postDataJSON();return reply(state.run);}
 if(url.pathname==='/api/v1/index/run/plan'){const body=req.postDataJSON();return reply({ready:true,plan_id:'review-only',request:body,consumers:body.consumers.filter(c=>c.armed).map(c=>({index:c.index,state:'ready',dependencies:[]})),notes:['Source-aligned fixture outcomes.']});}

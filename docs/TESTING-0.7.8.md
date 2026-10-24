@@ -5,7 +5,7 @@ disabled at build time. It does not install Gateway or publish a release/feed.
 Keep any older preview folder and its profile intact.
 
 Extract this ZIP into a new folder and run `Start-Preview.cmd`. It prints its
-loopback URL, opens Bitmap, and uses `preview-profile` beside this executable.
+loopback URL, opens Gateway Home, and uses `preview-profile` beside this executable.
 `Stop-Preview.cmd` authenticates and stops only that profile's process, retaining
 data. Start resumes the same profile. A separate disposable profile is also
 supported:
@@ -19,6 +19,11 @@ Use `-Offline` for an offline profile or `-NoOpen` to skip opening a browser.
 Ordinary Bitcoin networking is enabled by default; Core RPC/mounted Core access,
 data serving, optional indexes, and raw retention begin disabled. Merely opening
 an index view does not arm or start an index.
+
+The separate performance preview includes its approved scope and validation in
+`APPROVED-PERFORMANCE-BRIEF-0.7.8.md` and `VERIFICATION-PERFORMANCE-0.7.8.md`.
+Home's feature checklist describes available sources and saved evidence; its
+indicators are distinct from the optional tracks' Arm and Live-follow switches.
 
 The fixed canonical District and Parcel tracks both start at **792435** and are
 siblings. Review a bounded range, arm the chosen normal tracks, then Start.

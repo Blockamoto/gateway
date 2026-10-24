@@ -26,6 +26,7 @@ type app struct {
 	updateBackgroundWork  sync.WaitGroup
 	indexMu               sync.Mutex
 	indexRunMu            sync.Mutex
+	indexStatusPoll       indexStatusPollCache
 	indexRunLoaded        bool
 	indexRunState         indexRunDocument
 	indexRunError         error

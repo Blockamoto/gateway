@@ -26,20 +26,28 @@ type indexRunOutcomeConsumer interface {
 type indexRunRetentionConsumer interface{ ConfigureRetention(string) }
 type indexRunSourceFunc func(context.Context, blockTarget, string) (blockView, error)
 type indexRunConsumer struct {
-	selection  indexRunSelection
-	progress   indexRunProgress
-	store      *indexStore
-	utxo       *utxoStore
-	history    *addressHistoryStore
-	external   indexRunExternalConsumer
-	enrich     bool
-	retryAfter time.Time
-	reconciled bool
-	authority  chainAuthorityView
+	selection            indexRunSelection
+	progress             indexRunProgress
+	store                *indexStore
+	utxo                 *utxoStore
+	history              *addressHistoryStore
+	external             indexRunExternalConsumer
+	enrich               bool
+	retryAfter           time.Time
+	reconciled           bool
+	authority            chainAuthorityView
+	locatorStats         indexLocatorWriteStats
+	locatorGuardReleases []func()
 }
 type indexRunPreparedKey struct{}
 type indexRunPublicationKey struct{}
 type indexRunAddressProjectionKey struct{}
+type indexRunSourceOwnershipKey struct{}
+type indexRunSourceOwnership struct {
+	RunID  string
+	Height int64
+	Hash   string
+}
 
 var errIndexRunConsumerStopped = errors.New("consumer is Off in the prepared timeline")
 var errIndexRunAdmissionChanged = errors.New("the track's active admission changed before publication")
@@ -114,9 +122,11 @@ type indexRunPrepared struct {
 	extractionCounted bool
 	refs              map[string]map[string]outputFactRef
 	prevouts          map[string]utxoCoin
+	owner             indexRunSourceOwnership
 }
 
 func (a *app) ensurePreparedRawProducer(ctx context.Context, p *indexRunPrepared) error {
+	ctx = preparedSourceContext(ctx, p)
 	// A reused prepared body is another complete-source operation. New armed
 	// tracks must see it even when Raw already owns its receipt or is now Off.
 	if p.rawProduced {
@@ -130,6 +140,12 @@ func (a *app) ensurePreparedRawProducer(ctx context.Context, p *indexRunPrepared
 	}
 	return err
 }
+func preparedSourceContext(ctx context.Context, p *indexRunPrepared) context.Context {
+	if parent := runPrepared(ctx); p.owner.RunID != "" && (parent == nil || parent.block.Hash == p.block.Hash) {
+		return context.WithValue(ctx, indexRunSourceOwnershipKey{}, p.owner)
+	}
+	return ctx
+}
 func countPreparedExtraction(p *indexRunPrepared, counts *indexRunCounts) {
 	if p.extraction != nil && !p.extractionCounted {
 		counts.InscriptionExtractions++
@@ -137,13 +153,67 @@ func countPreparedExtraction(p *indexRunPrepared, counts *indexRunCounts) {
 	}
 }
 func (a *app) checkPreparedRawProducer(ctx context.Context, p *indexRunPrepared) error {
+	return a.checkPreparedRawReceipt(ctx, p.rawProduced)
+}
+func (a *app) checkPreparedRawReceipt(ctx context.Context, produced bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !p.rawProduced && timelineRawBlocksOn(a.dataDir) {
+	if !produced && timelineRawBlocksOn(a.dataDir) {
 		return blockUnavailableError{fmt.Errorf("Raw was turned On during this cohort; waiting for its durable body receipt before derived publication")}
 	}
 	return nil
+}
+
+func (a *app) indexRunLocatorBatchGuard(ctx context.Context, runID string, selection indexRunSelection, progress indexRunProgress, height int64, hash string, rawProduced bool) (context.Context, func()) {
+	// This guard outlives Apply until a physical flush. Its context and closure
+	// contain only run intent and anchor scalars, never prepared body/queue data.
+	lean, cancel := context.WithCancel(context.Background())
+	stop := context.AfterFunc(ctx, cancel)
+	index, selectionHash := selection.Index, indexDigest(selection)
+	hasBoundary, boundary := progress.EffectiveFrom != nil, int64(0)
+	if hasBoundary {
+		boundary = *progress.EffectiveFrom
+	}
+	guard := context.WithValue(lean, indexRunPublicationKey{}, func() error {
+		if err := lean.Err(); err != nil {
+			return err
+		}
+		d, err := readIndexRunDocument(a.dataDir)
+		if err != nil {
+			return err
+		}
+		if !d.Configured || d.Run == nil || d.Run.ID != runID || (d.Run.State != "running" && d.Run.State != "waiting") {
+			return errIndexRunConsumerStopped
+		}
+		prepared, ok := runSelection(d.Prepared, index)
+		if !ok || !prepared.Armed || indexDigest(prepared) != selectionHash {
+			return errIndexRunAdmissionChanged
+		}
+		requested, ok := runSelection(d.Run.Request, index)
+		if !ok || indexDigest(requested) != selectionHash {
+			return errIndexRunAdmissionChanged
+		}
+		current, ok := indexRunProgressFor(d.Run, index)
+		if !ok || current.AdmissionState == "blocked" || current.AdmissionState == "off" || (current.EffectiveFrom != nil) != hasBoundary || hasBoundary && *current.EffectiveFrom != boundary {
+			return errIndexRunAdmissionChanged
+		}
+		if d.Run.Request.Out != nil && height > *d.Run.Request.Out {
+			return errIndexRunAdmissionChanged
+		}
+		if raw, on := runSelection(d.Prepared, "blocks"); !rawProduced && on && raw.Armed {
+			return blockUnavailableError{fmt.Errorf("Raw was turned On during locator staging; durable body receipts are required before derived publication")}
+		}
+		target, err := a.utxoSelectedTarget(lean, a.currentChainAuthority(), height)
+		if err != nil {
+			return err
+		}
+		if target.HashDisplay != hash {
+			return satPublicationAnchorError077{fmt.Errorf("selected block changed before locator batch publication")}
+		}
+		return nil
+	})
+	return guard, func() { stop(); cancel() }
 }
 
 func runPrepared(ctx context.Context) *indexRunPrepared {
@@ -253,6 +323,12 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 	return v, err
 }
 func (c *indexRunConsumer) checkpoint() *indexCheckpoint {
+	if c.store != nil {
+		return c.store.DurableCheckpoint()
+	}
+	return c.logicalCheckpoint()
+}
+func (c *indexRunConsumer) logicalCheckpoint() *indexCheckpoint {
 	if c.external != nil {
 		return c.external.Checkpoint()
 	}
@@ -291,7 +367,7 @@ func (c *indexRunConsumer) next(target int64) int64 {
 			return gaps[0].From
 		}
 	}
-	if cp := c.checkpoint(); cp != nil {
+	if cp := c.logicalCheckpoint(); cp != nil {
 		return cp.Height + 1
 	}
 	return c.progress.From
@@ -310,11 +386,90 @@ func (a *app) reconcileRunConsumer(ctx context.Context, c *indexRunConsumer, aut
 	if c.reconciled && c.authority.Source == authority.Source && c.authority.Height == authority.Height && c.authority.Hash == authority.Hash {
 		return nil
 	}
+	if c.store != nil && c.selection.Index == "tx-locator" {
+		if pending, _, _ := c.store.LocatorBatchStats(); pending > 0 {
+			cp := c.logicalCheckpoint()
+			selected, err := a.addressSelectedHashes(ctx, authority)(cp.Height)
+			if err == nil && selected == cp.BlockHash {
+				// An extending authority does not require walking unflushed files.
+				// Every staged anchor is checked again by the flush publication fence.
+				c.reconciled, c.authority = true, authority
+				return nil
+			}
+			c.abortLocatorBatch()
+		}
+	}
 	err := a.reconcileRunConsumerUncached(ctx, c, authority)
+	if err == nil && c.store != nil && c.selection.Index == "tx-locator" {
+		err = c.store.BeginLocatorBatch(ctx)
+	}
 	if err == nil {
 		c.reconciled, c.authority = true, authority
 	}
 	return err
+}
+func (c *indexRunConsumer) abortLocatorBatch() {
+	if c.store == nil {
+		return
+	}
+	n, _, _ := c.store.LocatorBatchStats()
+	priorHeight := c.progress.From - 1
+	if cp := c.checkpoint(); cp != nil {
+		priorHeight = cp.Height
+	}
+	c.progress.AddedBlocks -= c.stagedAddedBlocks()
+	c.store.AbortLocatorBatch()
+	c.releaseLocatorGuards()
+	if cp := c.checkpoint(); cp != nil {
+		c.progress.AddedBlocks += max(int64(0), cp.Height-priorHeight)
+		c.progress.Height, c.progress.BlockHash, c.progress.Commitment = cp.Height, cp.BlockHash, cp.Commitment
+	} else if n > 0 {
+		c.progress.Height, c.progress.BlockHash, c.progress.Commitment = c.progress.From-1, "", ""
+	}
+}
+func (c *indexRunConsumer) releaseLocatorGuards() {
+	for _, release := range c.locatorGuardReleases {
+		release()
+	}
+	c.locatorGuardReleases = nil
+}
+func (c *indexRunConsumer) stagedAddedBlocks() int64 {
+	if c.store == nil {
+		return 0
+	}
+	n, _, _ := c.store.LocatorBatchStats()
+	durableHeight := c.progress.From - 1
+	if cp := c.checkpoint(); cp != nil {
+		durableHeight = cp.Height
+	}
+	// A failed automatic flush can leave the rejected last block staged.
+	// Only previously successful logical Applies contributed to AddedBlocks.
+	return min(int64(n), max(int64(0), c.progress.Height-durableHeight))
+}
+func indexRunLogicalBatchWindow(from, height int64) (int64, int64) {
+	start := height / indexLocatorBatchBlocks * indexLocatorBatchBlocks
+	return max(from, start), start + indexLocatorBatchBlocks - 1
+}
+func countLocatorWrites(c *indexRunConsumer, counts *indexRunCounts) {
+	if c.store == nil {
+		return
+	}
+	n := c.store.LocatorWriteStats()
+	old := c.locatorStats
+	counts.LocatorBatchFlushes += n.BatchFlushes - old.BatchFlushes
+	counts.LocatorShardAppends += n.ShardAppends - old.ShardAppends
+	counts.LocatorShardSyncs += n.ShardSyncs - old.ShardSyncs
+	counts.LocatorReceiptWrites += n.ReceiptWrites - old.ReceiptWrites
+	counts.LocatorActiveWrites += n.ActiveWrites - old.ActiveWrites
+	counts.LocatorHeadWrites += n.HeadWrites - old.HeadWrites
+	counts.LocatorCommitWrites += n.CommitWrites - old.CommitWrites
+	counts.LocatorRecordsWritten += n.RecordsWritten - old.RecordsWritten
+	counts.LocatorBytesWritten += n.BytesWritten - old.BytesWritten
+	counts.StorageFlushMilliseconds += (n.FlushNanoseconds - old.FlushNanoseconds) / int64(time.Millisecond)
+	c.locatorStats = n
+	if pending, _, _ := c.store.LocatorBatchStats(); pending == 0 {
+		c.releaseLocatorGuards()
+	}
 }
 func (a *app) reconcileRunConsumerUncached(ctx context.Context, c *indexRunConsumer, authority chainAuthorityView) error {
 	hashAt := a.addressSelectedHashes(ctx, authority)
@@ -394,6 +549,10 @@ func (a *app) applyRunConsumer(ctx context.Context, c *indexRunConsumer, prepare
 	}
 	s := c.store
 	s.locatorContext = ctx
+	if c.selection.Index == "tx-locator" {
+		// The staged flush guard is already independent of this active body.
+		defer func() { s.locatorContext = nil }()
+	}
 	if c.enrich {
 		if err := s.enrichTXIOBlockContext(ctx, b, s.retainOutputValues, s.retainOutputScripts); err != nil {
 			return err
@@ -470,6 +629,18 @@ func (a *app) saveRunProgress(id, state, reason string, consumers []*indexRunCon
 	seen := map[string]bool{}
 	for _, c := range consumers {
 		p := c.progress
+		p.StagedHeight, p.LogicalBatchFrom, p.LogicalBatchTo = nil, nil, nil
+		p.StagedBlocks, p.StagedBytes, p.StagedRecords = 0, 0, 0
+		if c.store != nil && c.selection.Index == "tx-locator" {
+			p.StagedBlocks, p.StagedBytes, p.StagedRecords = c.store.LocatorBatchStats()
+			if p.StagedBlocks > 0 {
+				h := c.logicalCheckpoint().Height
+				from, to := indexRunLogicalBatchWindow(p.From, h)
+				p.StagedHeight, p.LogicalBatchFrom, p.LogicalBatchTo = &h, &from, &to
+				p.AddedBlocks -= c.stagedAddedBlocks()
+				p.Height, p.BlockHash, p.Commitment = p.From-1, "", ""
+			}
+		}
 		for _, pending := range saved {
 			if pending.Index == p.Index && (!sameIndexRunAdmission(pending, p) || pending.AdmissionState == "blocked" && p.AdmissionState != "blocked") {
 				p = pending
@@ -535,6 +706,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 	}
 	defer func() {
 		for _, c := range consumers {
+			c.abortLocatorBatch()
 			if c.external != nil {
 				c.external.Close()
 			}
@@ -542,6 +714,21 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 	}()
 	target, targetHash := record.TargetHeight, record.TargetHash
 	finish := func(state, reason string) {
+		for _, c := range consumers {
+			if c.store == nil || c.selection.Index != "tx-locator" {
+				continue
+			}
+			if state == "complete" && ctx.Err() == nil {
+				if err := c.store.FlushLocatorBatch(ctx); err != nil {
+					state, reason = "complete_with_errors", "Locator staging was discarded; durable prefix retained: "+err.Error()
+					c.progress.State, c.progress.Reason = "failed", reason
+					c.abortLocatorBatch()
+				}
+			} else {
+				c.abortLocatorBatch()
+			}
+			countLocatorWrites(c, &counts)
+		}
 		if state == "paused" {
 			memberState := "paused"
 			if current := a.indexRunSnapshot().Run; current != nil && current.ID == id && current.State == "cancelled" {
@@ -593,8 +780,16 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 	if a.indexRunSourceBlock != nil {
 		source = a.indexRunSourceBlock
 	}
+	ownedSource := func(callCtx context.Context, target blockTarget, retention string) (blockView, error) {
+		// Dependency reads carry their parent prepared body. Only the actual
+		// scheduled source is owned by this coordinator's durable adapters.
+		if p := runPrepared(callCtx); p == nil || p.block.Hash == target.HashDisplay {
+			callCtx = context.WithValue(callCtx, indexRunSourceOwnershipKey{}, indexRunSourceOwnership{id, target.Height, target.HashDisplay})
+		}
+		return source(callCtx, target, retention)
+	}
 	prefetch := newIndexRunPrefetch(ctx, func(callCtx context.Context, target blockTarget) (blockView, error) {
-		return source(callCtx, target, "ephemeral")
+		return ownedSource(callCtx, target, "ephemeral")
 	})
 	defer prefetch.Close()
 	peerWindow := &indexRunDownloadWindow{a: a, ctx: ctx}
@@ -608,6 +803,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			return nil, err
 		}
 		if p := cache[t.HashDisplay]; p != nil {
+			if parent := runPrepared(callCtx); parent == nil || parent.block.Hash == p.block.Hash {
+				p.owner = indexRunSourceOwnership{id, p.block.Height, p.block.Hash}
+			}
 			if err := a.ensurePreparedRawProducer(callCtx, p); err != nil {
 				return nil, err
 			}
@@ -625,10 +823,14 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			// A different frontier won the fair scheduling turn. Do not leave
 			// an obsolete request occupying the only speculative source slot.
 			prefetch.Reset()
-			b, err = source(callCtx, t, retention)
+			b, err = ownedSource(callCtx, t, retention)
 			elapsed = time.Since(started)
 		}
 		counts.SourceMilliseconds += elapsed.Milliseconds()
+		counts.SourceAcquireMilliseconds += b.sourceTiming.acquireNanoseconds / int64(time.Millisecond)
+		counts.SourceDecodeMilliseconds += b.sourceTiming.decodeNanoseconds / int64(time.Millisecond)
+		counts.SourceRawRetentionMilliseconds += b.sourceTiming.rawNanoseconds / int64(time.Millisecond)
+		counts.SourceIncidentalMilliseconds += b.sourceTiming.incidentalNanoseconds / int64(time.Millisecond)
 		if err != nil && !integrityVerified(b) {
 			return nil, err
 		}
@@ -638,6 +840,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			return nil, fmt.Errorf("source block does not match the selected target")
 		}
 		p := &indexRunPrepared{block: b, extraction: b.inscriptionExtraction, refs: map[string]map[string]outputFactRef{}, prevouts: map[string]utxoCoin{}}
+		if parent := runPrepared(callCtx); parent == nil || parent.block.Hash == b.Hash {
+			p.owner = indexRunSourceOwnership{id, b.Height, b.Hash}
+		}
 		countPreparedExtraction(p, &counts)
 		// Bound the cache by decoded JSON as well as entry count. An oversized
 		// block still serves its ready consumers without being retained here.
@@ -657,6 +862,13 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		}
 		if err != nil {
 			return nil, err
+		}
+		if parent := runPrepared(callCtx); parent != nil && parent.block.Hash != b.Hash {
+			// A dependency may consume the speculative main-source slot. Replay
+			// its fanout under the dependency context, without coordinator ownership.
+			if err := a.ensurePreparedRawProducer(callCtx, p); err != nil {
+				return nil, err
+			}
 		}
 		return p, nil
 	}
@@ -717,6 +929,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			if existing != nil && existing.external != nil {
 				existing.external.Close()
 			}
+			if existing != nil {
+				existing.abortLocatorBatch()
+				countLocatorWrites(existing, &counts)
+			}
 			c := &indexRunConsumer{selection: selection, progress: p}
 			if p.AdmissionState != "blocked" && indexRunSelectionEnabled(selection) {
 				opened, err := a.openRunConsumer(a.indexRunBoundConsumerContext(ctx, p), record, p)
@@ -767,6 +983,8 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			selection, _ := runSelection(record.Request, c.selection.Index)
 			prepared, on := runSelection(d.Prepared, c.selection.Index)
 			if !on || !indexRunSelectionEnabled(prepared) || !indexRunSelectionEnabled(selection) {
+				c.abortLocatorBatch()
+				countLocatorWrites(c, &counts)
 				c.progress.State = "off"
 				c.progress.Reason = "Off; committed records are retained."
 				continue
@@ -914,6 +1132,16 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 			c.progress.To = consumerTarget
 			if h > consumerTarget {
+				if c.store != nil && c.selection.Index == "tx-locator" {
+					err := c.store.FlushLocatorBatch(consumerCtx)
+					countLocatorWrites(c, &counts)
+					if err != nil {
+						c.progress.State, c.progress.Reason = "failed", err.Error()
+						c.abortLocatorBatch()
+						failed = true
+						continue
+					}
+				}
 				c.progress.State = "complete"
 				c.progress.Reason = "Committed coverage satisfies this run target."
 				continue
@@ -1198,6 +1426,11 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				}
 				return nil
 			})
+			if c.selection.Index == "tx-locator" {
+				lean, release := a.indexRunLocatorBatchGuard(ctx, id, c.selection, c.progress, h, p.block.Hash, p.rawProduced)
+				c.locatorGuardReleases = append(c.locatorGuardReleases, release)
+				publishCtx = context.WithValue(publishCtx, indexLocatorBatchGuardKey{}, lean)
+			}
 			started := time.Now()
 			if outcome, ok := c.external.(indexRunOutcomeConsumer); ok && bitmapConsumerKind(c.selection.Index) == "chain" {
 				counts.OutcomeReads++
@@ -1209,6 +1442,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				err = a.applyRunConsumer(publishCtx, c, p, authority, runRawRetention(record.Request))
 			}
 			counts.ApplyMilliseconds += time.Since(started).Milliseconds()
+			countLocatorWrites(c, &counts)
 			if err != nil {
 				c.progress.State = "failed"
 				if errors.Is(err, errIndexRunConsumerStopped) {

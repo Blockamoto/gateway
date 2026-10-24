@@ -121,7 +121,7 @@ func (s *indexStore) makeLocatorDirectories(path string) error {
 	return nil
 }
 
-func (s *indexStore) writeLocatorReceipt(path string, r indexLocatorReceipt) error {
+func (s *indexStore) writeLocatorReceipt(path string, r any) error {
 	if err := updateapply.CheckPath(path); err != nil {
 		return err
 	}
@@ -151,7 +151,11 @@ func (s *indexStore) writeLocatorReceipt(path string, r indexLocatorReceipt) err
 	if err = replaceLocatorFile(name, path); err != nil {
 		return err
 	}
-	return s.syncLocatorDirectory(filepath.Dir(path))
+	s.locatorWriteCounters().ReceiptWrites++
+	if err := s.syncLocatorDirectory(filepath.Dir(path)); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Reader/repair admission must remain cancellable while another durable writer
@@ -213,6 +217,9 @@ func verifyIndexLocatorPrefix(path string, f *os.File, r indexLocatorReceipt) er
 }
 
 func (s *indexStore) locatorActivePath() string {
+	if s.head.LocatorLayout == indexLocatorPackedLayout {
+		return filepath.Join(s.dir, s.locatorKind(), "active-packed-commits.bin")
+	}
 	return filepath.Join(s.dir, s.locatorKind(), "active-commits.bin")
 }
 
@@ -366,6 +373,7 @@ func (s *indexStore) writeActiveLocatorHead(c *indexCheckpoint) error {
 	if err = f.Sync(); err != nil {
 		return err
 	}
+	s.locatorWriteCounters().ActiveWrites++
 	// Common append uses the prior incremental hash state; a rewind/orphan
 	// overwrite hashes at most the bounded compact table once.
 	h := sha256.New()
@@ -630,6 +638,7 @@ func (s *indexStore) appendBitcoinLocatorRecords(path string, records [][]byte) 
 		if err = f.Sync(); err != nil {
 			return err
 		}
+		s.locatorWriteCounters().ShardSyncs++
 		if err = s.writeLocatorReceipt(path+".receipt.json", r); err != nil {
 			return err
 		}
@@ -666,6 +675,12 @@ func (s *indexStore) appendBitcoinLocatorRecords(path string, records [][]byte) 
 	}
 	if err := f.Sync(); err != nil {
 		return err
+	}
+	s.locatorWriteCounters().ShardSyncs++
+	if len(records) > 0 {
+		s.locatorWriteCounters().ShardAppends++
+		s.locatorWriteCounters().RecordsWritten += int64(len(records))
+		s.locatorWriteCounters().BytesWritten += int64(len(records) * indexLocatorRecordBytes)
 	}
 	r.SHA256 = hex.EncodeToString(h.Sum(nil))
 	r.State, err = h.(encoding.BinaryMarshaler).MarshalBinary()
@@ -951,7 +966,7 @@ func (s *indexStore) bitcoinLocatorRecordsWithRepair(ctx context.Context, txid s
 
 // A translation catalogue may contain many output aliases for one creation;
 // its bounded pointer budget must not count them as transaction incarnations.
-func (s *indexStore) bitcoinLocatorRecordsWithBudget(ctx context.Context, txid string, repair bool, maxMatches int, maxShardBytes int64) ([]indexLocatorRecord, error) {
+func (s *indexStore) bitcoinLocatorRecordsLegacyWithBudget(ctx context.Context, txid string, repair bool, maxMatches int, maxShardBytes int64) ([]indexLocatorRecord, error) {
 	if readOnly, _ := ctx.Value(indexLocatorReadOnlyKey{}).(bool); readOnly {
 		repair = false
 	}

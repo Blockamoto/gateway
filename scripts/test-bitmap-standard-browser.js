@@ -23,7 +23,7 @@ async function main(){const browser=await pw.chromium.launch({headless:true,exec
   if(url.pathname.startsWith('/shell/')){const file=path.join(root,'ui',url.pathname);return reply(fs.readFileSync(file),200,file.endsWith('.js')?'application/javascript':'text/css');}
   if(url.pathname==='/favicon.ico')return reply('',200,'image/x-icon');
   calls.push({path:url.pathname,method:req.method(),body:req.postDataJSON()});
-  if(url.pathname==='/api/v1/index/status')return reply(state);
+  if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname))return reply(state);
   if(url.pathname==='/api/v1/index/layout')return reply({schema:2,revision:1,order:{}});
   if(url.pathname==='/api/v1/index/run/prepare'){state.run.prepared=req.postDataJSON();return reply(state.run);}
   if(url.pathname==='/api/v1/bitmap/profiles')return reply(profiles);

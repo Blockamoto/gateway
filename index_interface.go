@@ -158,7 +158,12 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 		if !indexMethod(w, r, http.MethodGet) {
 			return
 		}
-		result = a.indexStatus()
+		result = a.indexStatusSnapshot()
+	case "progress":
+		if !indexMethod(w, r, http.MethodGet) {
+			return
+		}
+		result, err = a.indexProgressStatus(r.Context())
 	case "storage":
 		if !indexMethod(w, r, http.MethodGet) {
 			return

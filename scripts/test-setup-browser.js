@@ -36,7 +36,7 @@ async function run(){
    if(url.pathname==='/api/v1/browser/status')return reply(browserState());
    if(url.pathname==='/api/v1/browser/open-setup')return launchFailure?reply({error:'Selected browser launch unavailable'},404):reply({state:'manual_navigation_required',manual_url:'edge://extensions/'});
    if(url.pathname==='/api/v1/network')return reply({enabled:false,connected:0,gateway_connected:0,headers:{header_height:headerHeight,header_target_height:2,header_state:headerHeight===2?'current':'catching_up'}});
-   if(url.pathname==='/api/v1/index/status')return reply({definitions:[],live:[],instances:[],job:{}});
+   if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname))return reply({definitions:[],live:[],instances:[],job:{}});
    if(url.pathname==='/api/v1/updates/status')return reply({state:'not_configured',configured:false,channels:[]});
    if(url.pathname==='/api/v1/appearance')return reply({theme:'light',default:'light'});
    return reply({error:'Unexpected request '+method+' '+url.pathname},500);

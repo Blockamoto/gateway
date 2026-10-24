@@ -131,9 +131,9 @@ async function harness(browser, address = '.gateway', failStatus = false, addres
     }
     if(url.pathname==='/api/v1/sats/view')return fulfill(JSON.stringify({state:satState,sat_number:Number(url.searchParams.get('sat')),origin:{height:144,first_sat:50,subsidy_offset:1},properties:{rarity:'common'},location:{state:'unspent',output_coordinate:'0.1.144',offset:1,address:bitcoinAddress},snapshot:addressCheckpoint,note:'Saved Sat location.'}),'application/json');
     if(url.pathname==='/api/v1/settings'&&request.method()==='POST'){assert.equal(Object.hasOwn(request.postDataJSON(),'satline_enabled'),false,'Settings no longer sends the legacy Satline disable flag');return fulfill(JSON.stringify({ok:true}),'application/json');}
-    if (request.method() === 'GET' && Object.hasOwn(fixtures, url.pathname)) {
+    if (request.method() === 'GET' && Object.hasOwn(fixtures, url.pathname==='/api/v1/index/progress'?'/api/v1/index/status':url.pathname)) {
       if (failStatus && url.pathname === '/api/v1/settings') return fulfill(JSON.stringify({error:'Fixture services unavailable'}), 'application/json', 503);
-      return fulfill(JSON.stringify(fixtures[url.pathname]), 'application/json');
+      return fulfill(JSON.stringify(fixtures[url.pathname==='/api/v1/index/progress'?'/api/v1/index/status':url.pathname]), 'application/json');
     }
     unexpected.push(`${request.method()} ${url.pathname}`);
     return fulfill(JSON.stringify({error:'Unexpected test request'}), 'application/json', 500);

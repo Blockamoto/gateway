@@ -14,7 +14,7 @@ const browserPath = [process.env.GATEWAY_TEST_BROWSER, pw.chromium.executablePat
 if (!browserPath) throw Error('An existing Chromium browser is required; this test never downloads one.');
 const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8"><link rel="stylesheet" href="/shell/style.css"><link rel="stylesheet" href="/shell/index-timeline.css"></head><body class="indexes-workspace embedded"><main><section id="index-timeline"></section></main><script src="/shell/index-cards.js"></script><script src="/shell/index-transport.js"></script><script src="/shell/index-timeline.js"></script><script src="/shell/index-workspace.js"></script><script>
 window.fixtureCalls=[];window.fixtureEntities=[];window.fixtureNotifications=[];
-const defs=[{id:'headers',name:'Bitcoin headers',buildable:false},{id:'blocks',name:'Raw blocks',buildable:true},{id:'tx-locator',name:'Transaction Index',buildable:true},{id:'txo-spender',name:'TXIO',buildable:true},{id:'sat-state',name:'Sat ranges',buildable:true},{id:'inscriptions',name:'Inscriptions',buildable:true}].map(d=>({...d,start_height:0,dependencies:[],rules:[],version:1,network:'bitcoin-mainnet'}));
+const defs=[{id:'headers',name:'Bitcoin headers',buildable:false},{id:'blocks',name:'Raw blocks',buildable:true},{id:'tx-locator',name:'Transaction Index',buildable:true},{id:'txo-spender',name:'TXIO',buildable:true},{id:'utxo-state',name:'UTXO set',buildable:true},{id:'sat-state',name:'Sat ranges',buildable:true},{id:'inscriptions',name:'Inscriptions',buildable:true}].map(d=>({...d,start_height:0,dependencies:[],rules:[],version:1,network:'bitcoin-mainnet'}));
 const fixtureState={definitions:defs,instances:[],providers:[],live:[],jobs:[],job:{},run:{schema:1,configured:false,prepared:{consumers:[]},run:null},timeline:{tip_height:999999,target_height:999999,tracks:[{id:'headers',coverage:[{from:0,to:999999}]},{id:'blocks',coverage:[]}]}};
 window.fixtureState=fixtureState;
 function metadata(value){return {...value,block_hash:'a'.repeat(64),count:value.kind==='block'?20:value.kind==='transaction'?3:[5000000000,0,7][value.outputIndex],entries:[]};}
@@ -80,11 +80,11 @@ async function main() {
     const txio = page.locator('#timeline-group-txio'), labels = page.locator('.timeline-group[data-group=txio] .timeline-group-labels');
     assert.equal(await labels.isVisible(), true, 'Collapsed TXIO summarizes its child layers');
     await txio.click(); assert.equal(await labels.isVisible(), false, 'Expanded TXIO does not repeat the child-name summary');
-    assert.deepEqual(await page.locator('.timeline-track[data-group=txio]').evaluateAll(nodes => nodes.map(n => n.dataset.index)), ['txio-links','txio-values','txio-scripts','txio-sat-ranges'], 'Sat ranges stays adjacent to the other TXIO children');
+    assert.deepEqual(await page.locator('.timeline-track[data-group=txio]').evaluateAll(nodes => nodes.map(n => n.dataset.index)), ['tx-locator','txio-links','txio-values','txio-scripts','utxo-state','txio-sat-ranges'], 'Transactions contains the six accepted sibling tracks');
     await capture('desktop-expanded');
     await txio.click(); assert.equal(await labels.isVisible(), true, 'Collapsing TXIO restores its child summary');
     await page.locator('.timeline-track[data-index=blocks] button[data-switch=arm]').click();
-    await page.locator('.timeline-track[data-index=tx-locator] button[data-switch=arm]').click();
+    if(await txio.getAttribute('aria-expanded')==='false')await txio.click();await page.locator('.timeline-track[data-index=tx-locator] button[data-switch=arm]').click();
     await pull.click(); assert.equal(await pull.getAttribute('aria-expanded'), 'false');
     await page.evaluate(()=>timeline.setGlobalRange(20,80));
     await page.getByRole('button',{name:'Start indexing',exact:true}).click();

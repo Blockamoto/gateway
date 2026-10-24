@@ -18,6 +18,19 @@ func indexProviderRow(t *testing.T, rows []indexProviderView, id, provider strin
 	return indexProviderView{}
 }
 
+func TestIndexProvidersDemandRemainsIndependentOfRetainedBodies(t *testing.T) {
+	local := indexProviderState{BitcoinPeersAvailable: true, Blocks: []heightInterval{{From: 1, To: 2}}}
+	row := indexProviderRow(t, buildIndexProviderViews(appSettings{}, coreStatus{}, local), "blocks", "gateway_cache")
+	if !row.Queryable || !row.OnDemand {
+		t.Fatal("retained bodies must not hide connected on-demand capability", row)
+	}
+	local.BitcoinPeersAvailable = false
+	row = indexProviderRow(t, buildIndexProviderViews(appSettings{}, coreStatus{}, local), "blocks", "gateway_cache")
+	if !row.Queryable || row.OnDemand {
+		t.Fatal("retained coverage must not imply a connected source", row)
+	}
+}
+
 func TestIndexProvidersCoreProgressAndPolicy(t *testing.T) {
 	settings := appSettings{ServeData: true}
 	core := coreStatus{Connected: true, Height: 100, BestBlockHash: genesisHashDisplay, TxIndexEnabled: true, TxIndexHeight: 60, SpenderIndexEnabled: true, SpenderIndexHeight: 40}

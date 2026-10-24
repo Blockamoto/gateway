@@ -44,6 +44,7 @@ type savedFilesView struct {
 }
 
 type blockView struct {
+	sourceTiming          blockSourceTiming
 	inscriptionExtraction *inscriptionBlockResult
 	CoinbaseMessage       *coinbaseMessageView `json:"coinbase_message,omitempty"`
 	// Owned immutable serialized evidence; never exposed through JSON. Each

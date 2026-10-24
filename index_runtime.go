@@ -57,6 +57,7 @@ func cloneIndexJob(j indexJob) indexJob {
 }
 
 type indexStatusView struct {
+	Observation        *indexStatusObservation `json:"observation,omitempty"`
 	BitmapCapabilities bitmapCapabilitiesView  `json:"bitmap_capabilities"`
 	Run                indexRunDocument        `json:"run"`
 	Sats               *indexSatStatusView077  `json:"sats,omitempty"`

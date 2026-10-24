@@ -48,7 +48,7 @@ async function run() {
       if(url.pathname==='/api/v1/navigate')return reply({error:'Offline block fixture'},'application/json',503);
       const body=req.method()==='POST'?req.postDataJSON():null;
       calls.push({method:req.method(),path:url.pathname,body});
-      if(url.pathname==='/api/v1/index/status')return reply(snapshot);
+      if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname))return reply(snapshot);
       if(url.pathname==='/api/v1/index/query')return reply({rows:[],total:0,total_known:true,inspected_blocks:0,chain_state:'selected_chain'});
       if(url.pathname==='/api/v1/index/plan')return reply({definition:snapshot.definitions.find(d=>d.id===body.index),from:body.from,to:body.to??snapshot.timeline.tip_height,retention:body.retention,dependencies:[],notes:['Disposable plan only.'],storage_estimate:'Fixture',verification:'selected_chain'});
       unexpected.push(req.method()+' '+url.pathname);
@@ -68,7 +68,7 @@ async function run() {
   await page.goto(origin+'/indexes',{waitUntil:'networkidle'});await page.locator('#timeline-collapse:not([aria-expanded=true])').click();
     await page.locator('#timeline-divider').waitFor();
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks'],'Headers and Blocks are default tracks even without stored blocks');
-    assert.equal(await page.locator('#timeline-add-index').isDisabled(),false,'Built-ins remain present; Plus offers custom Bitmap rulesets');
+    assert.equal(await page.locator('#timeline-add-index').isDisabled(),true,'Canonical built-ins remain fixed; custom Bitmap creation is unavailable');
     await page.locator('.timeline-track[data-index="blocks"] .timeline-track-select').click();
     await page.locator('#timeline-details').evaluate(el=>el.open=true);
     assert.deepEqual(await page.locator('.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['headers','blocks']);
@@ -101,9 +101,9 @@ async function run() {
     await page.locator('#timeline-fit').click();
     const barBox=await page.locator(horizontal).boundingBox();
     await drag(page.locator(horizontal+' .end'),-barBox.width*.2);
-    const endZoom=await view();assert.equal(endZoom.from,0);assert(endZoom.to>700000&&endZoom.to<900000);
-    await drag(page.locator(horizontal+' .start'),barBox.width*.15);
-    const startZoom=await view();assert.equal(startZoom.to,endZoom.to,'Left handle preserves right endpoint');assert(startZoom.from>100000);
+    const endZoom=await view();assert.equal(endZoom.from,0);assert(endZoom.to>0&&endZoom.to<999999,'Nonlinear end resize reduces the actual range while keeping its left anchor');
+    await drag(page.locator(horizontal+' .start'),barBox.width*.01);
+    const startZoom=await view();assert.equal(startZoom.to,endZoom.to,'Left handle preserves right endpoint');assert(startZoom.from>0&&startZoom.from<startZoom.to,'Nonlinear start resize preserves a nonempty actual range');
     await drag(page.locator(horizontal+' .timeline-scroll-thumb'),barBox.width*.05);
     const thumbPan=await view();assert.equal(span(thumbPan),span(startZoom));assert(thumbPan.from>startZoom.from);
     assert.equal(await page.locator(horizontal+' .timeline-scroll-thumb').getAttribute('aria-orientation'),'horizontal');
@@ -235,12 +235,12 @@ async function run() {
       assert(span(await view())<span(rightBefore),width+' one pixel right of the label divider permits intentional Ctrl zoom');
       await verticalWheelCase(width+' data lane vertical with diagonal drift',lane,{dx:3,dy:120});
       await verticalWheelCase(width+' right scrollbar gutter',page.locator('#timeline-scrollbar-vertical'),{modifiers:['Alt']});
-      const add=page.locator('.timeline-add-track-row[data-add-kind=district]');await add.scrollIntoViewIfNeeded();await settle();
+      const add=page.locator('.timeline-track:not([hidden]) .timeline-track-heading').last();await add.scrollIntoViewIfNeeded();await settle();
       const addPoint=await add.evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x+3,y:r.y+r.height/2};});
       const addBefore=await wheelState(),addScroll=await trackViewport.evaluate(el=>el.scrollTop);
       await page.mouse.move(addPoint.x,addPoint.y);await page.keyboard.down('Control');await page.mouse.wheel(3,-120);await page.keyboard.up('Control');await settle();
-      assert((await trackViewport.evaluate(el=>el.scrollTop))<addScroll,width+' add-row label gap scrolls upward');assert.deepEqual(await wheelState(),addBefore,width+' add-row gap cannot zoom');
-      wheelChecks.push({case:width+' add-row label gap',scrollBefore:addScroll,scrollAfter:await trackViewport.evaluate(el=>el.scrollTop)});
+      assert((await trackViewport.evaluate(el=>el.scrollTop))<addScroll,width+' bottom track label gap scrolls upward');assert.deepEqual(await wheelState(),addBefore,width+' bottom track label gap cannot zoom');
+      wheelChecks.push({case:width+' bottom track label gap',scrollBefore:addScroll,scrollAfter:await trackViewport.evaluate(el=>el.scrollTop)});
       const selectedTrack=page.locator('.timeline-track[data-index="blocks"] .timeline-track-select');await selectedTrack.scrollIntoViewIfNeeded();await selectedTrack.click();
       await page.locator('#timeline-inspector-tab').click();await page.locator('#timeline-details').evaluate(el=>el.open=true);
       await page.locator('#timeline-collapse').click();await settle();

@@ -55,7 +55,7 @@ async function run(){
    if(url.pathname==='/api/v1/flow'){const tx=transaction(body.height===9).transaction;return reply({inputs:tx.inputs.map(i=>({index:i.n,value:null,outpoint:i.prev_txid?i.prev_txid+':'+i.prev_vout:null,coinbase:i.coinbase})),outputs:tx.outputs,fee:null,note:'Fixture value flow; missing input values remain unknown.'});}
    if(url.pathname==='/api/v1/index/block-map')return reply({height:url.searchParams.get('block')===block(9)?9:170,hash:url.searchParams.get('block'),total:1,transactions:[],indexing:[]});
    if(url.pathname==='/api/v1/txio/lookup'){assert.equal(url.searchParams.get('direction'),'input');assert.equal(url.searchParams.get('position'),'i0.1.170');return reply({direction:'input',position:'i0.1.170',state:'known',rows:[{input:'i0.1.170',output:'0.0.9',height:170,block_hash:block(170),creation_block_hash:block(9)}]});}
-   if(req.method()==='GET'&&Object.hasOwn(fixtures,url.pathname))return reply(fixtures[url.pathname]);
+   if(req.method()==='GET'&&Object.hasOwn(fixtures,url.pathname==='/api/v1/index/progress'?'/api/v1/index/status':url.pathname))return reply(fixtures[url.pathname==='/api/v1/index/progress'?'/api/v1/index/status':url.pathname]);
    unexpected.push(req.method()+' '+url.pathname);return reply({error:'Unexpected request'},'application/json',500);
   });
   const search=async value=>{await page.locator('#address').fill(value);await page.locator('#address-form').evaluate(form=>form.requestSubmit());};

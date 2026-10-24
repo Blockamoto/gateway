@@ -30,7 +30,7 @@ const listen=(server,host='127.0.0.1')=>new Promise(resolve=>server.listen(0,hos
   if(url.pathname==='/api/v1/activation')return reply({});
   if(url.pathname==='/api/v1/appearance'){if(body)appearance=body.theme;return reply({theme:appearance,default:'light'});}
   if(url.pathname==='/api/v1/index/layout')return reply({schema:1,order:{},revision:0});
-  if(url.pathname==='/api/v1/index/status')return reply(snapshot);
+  if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname))return reply(snapshot);
   if(url.pathname==='/api/v1/index/run/prepare'){snapshot.run={schema:1,configured:true,prepared:body};return reply(snapshot.run);}
   if(url.pathname==='/api/v1/index/browse'){const setting=snapshot.browse.find(item=>item.index===body.index);if(!setting)return reply({error:'Unsupported browse index'},403);setting.enabled=body.enabled;return reply(setting);}
   if(url.pathname==='/api/v1/index/query')return reply({rows:[],total:0,total_known:true,inspected_blocks:0,chain_state:'selected_chain'});

@@ -10,7 +10,7 @@ const sandbox = {window:{}};
 for (const file of ['index-cards.js','index-timeline.js']) {
   vm.runInNewContext(fs.readFileSync(path.join(root,'ui/shell',file),'utf8'),sandbox,{filename:file});
 }
-const {normalizeRanges,subtractRanges,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,indexBounds,established,rulerMarks,rulerNotch} = sandbox.window.GatewayIndexTimeline;
+const {normalizeRanges,subtractRanges,coveragePartitionRows,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,indexBounds,established,rulerMarks,rulerNotch} = sandbox.window.GatewayIndexTimeline;
 const plain = value => JSON.parse(JSON.stringify(value));
 const valid = range => range && Number.isSafeInteger(range.from) && Number.isSafeInteger(range.to) && range.from >= 0 && range.to >= range.from;
 function asSet(ranges) {
@@ -24,6 +24,8 @@ function exact(ranges) {
 }
 
 assert.deepEqual(plain(normalizeRanges([{from:10,to:12},{from:0,to:3},{from:4,to:6},{from:11,to:15},{from:8,to:8}])),[{from:0,to:6},{from:8,to:8},{from:10,to:15}]);
+assert.deepEqual(plain(coveragePartitionRows({sources:[{kind:'committed_records',ranges:[{from:792435,to:792465}],complete:true},{kind:'browse_records',ranges:[{from:792435,to:792497},{from:0,to:0}],complete:true},{kind:'provider_reported',ranges:[{from:0,to:999999}],complete:false}]})),[['Committed run coverage','31 blocks'],['Viewed block facts','64 blocks']],'Overlapping prefix and viewed facts retain their own scopes; provider claims cannot inflate local source partitions');
+assert.deepEqual(plain(coveragePartitionRows({sources:[{kind:'browse_records',ranges:[{from:1,to:3},{from:3,to:4}],complete:false},{kind:'browse_records',ranges:[{from:4,to:5}],complete:true}]})),[['Viewed block facts','5 blocks · mapped so far']],'Each source partition counts its own union once and preserves incomplete mapping');
 assert.deepEqual(plain(normalizeRanges([null,{}, {from:-1,to:4},{from:2,to:1},{from:0.1,to:2},{from:0,to:Infinity},{from:'0',to:2},{from:0,to:0}])),[{from:0,to:0}], 'Malformed coverage cannot turn into fictional coverage');
 assert.deepEqual(plain(subtractRanges([{from:0,to:10}], [{from:0,to:0},{from:3,to:5},{from:10,to:10}])),[{from:1,to:2},{from:6,to:9}]);
 assert.deepEqual(plain(subtractRanges([{from:5,to:5}], [{from:5,to:5}])),[],'A one-block gap removes that exact block');

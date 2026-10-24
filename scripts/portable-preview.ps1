@@ -43,7 +43,7 @@ if (-not $running) {
     }
     if (-not $running) { throw ('Preview startup timed out. Profile retained: ' + $ProfilePath) }
 }
-$browserURL = $running.url + '/?resolve=bitmap.gateway'
+$browserURL = $running.url + '/?resolve=.gateway'
 Write-Output ('Browser: ' + $browserURL)
 Write-Output ('Profile: ' + $ProfilePath)
 Write-Output ('PID: ' + $running.pid)

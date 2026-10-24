@@ -282,6 +282,11 @@ func (a *app) fetchAndDecodeTargetUncachedContext(ctx context.Context, target bl
 // retention; source reads never create optional graph or transaction indexes.
 type blockUnavailableError struct{ error }
 
+// Timing is local observation only, excluded from persisted block evidence.
+// Acquisition includes provider/cache lookup and waiting for shared work;
+// decode is measured separately where a serialized body is parsed.
+type blockSourceTiming struct{ acquireNanoseconds, decodeNanoseconds, rawNanoseconds, incidentalNanoseconds int64 }
+
 func (a *app) fetchBlockWithPolicy(target blockTarget, policy string) (blockView, error) {
 	return a.fetchBlockWithPolicyContext(context.Background(), target, policy)
 }
@@ -292,12 +297,14 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 	a.settingsMu.RLock()
 	settings := a.settings
 	a.settingsMu.RUnlock()
+	acquireStarted := time.Now()
 	view, err := a.coalescedBlockBaseContext(ctx, target, settings, func(work context.Context) (blockView, error) {
 		return a.acquireBlockBaseContext(work, target, settings)
 	})
 	if err != nil {
 		return blockView{}, err
 	}
+	view.sourceTiming.acquireNanoseconds = max(int64(0), time.Since(acquireStarted).Nanoseconds()-view.sourceTiming.decodeNanoseconds)
 	if err = ctx.Err(); err != nil {
 		return blockView{}, err
 	}
@@ -338,7 +345,10 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 	}
 	// Legacy call signatures remain source-compatible. Their retention string
 	// cannot override the timeline's sole Raw on/off choice.
-	if err = a.ensureRawProducerContext(ctx, view); err != nil {
+	rawStarted := time.Now()
+	err = a.ensureRawProducerContext(ctx, view)
+	view.sourceTiming.rawNanoseconds = time.Since(rawStarted).Nanoseconds()
+	if err != nil {
 		// The coordinator may retain this already authenticated temporary body
 		// within its bounded prepared cache while Raw storage is repaired.
 		return view, err
@@ -346,8 +356,10 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 	if err = ctx.Err(); err != nil {
 		return blockView{}, err
 	}
+	incidentalStarted := time.Now()
 	prepareResolvedBlockExtraction(ctx, a.dataDir, &view)
 	a.ingestResolvedVerifiedBlock(ctx, view)
+	view.sourceTiming.incidentalNanoseconds = time.Since(incidentalStarted).Nanoseconds()
 	return view, nil
 }
 
@@ -501,7 +513,9 @@ func readRetainedIndexBlock(path string, target blockTarget) ([]byte, blockView,
 	return raw, view, nil
 }
 
-func parseBlockDetailed(height int64, hashDisplay string, expectedHeader, payload []byte, source string, fromCache bool) (blockView, error) {
+func parseBlockDetailed(height int64, hashDisplay string, expectedHeader, payload []byte, source string, fromCache bool) (result blockView, resultErr error) {
+	started := time.Now()
+	defer func() { result.sourceTiming.decodeNanoseconds = time.Since(started).Nanoseconds() }()
 	if len(payload) < 81 {
 		return blockView{}, fmt.Errorf("short block")
 	}

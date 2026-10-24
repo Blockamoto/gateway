@@ -7,7 +7,7 @@ Node.prototype.before=function(){};
 const html=fs.readFileSync('ui/shell/indexes.html','utf8');
 const {doc,nodes,tabs,panes}=documentFor(html);
 const definition={id:'bitmap',name:'Bitmap',buildable:true,theory:'Base districts',start_height:792435,dependencies:['blocks'],rules:['First valid claim wins'],version:1,network:'mainnet'};
-let job=null,calls=[],instances=[],live=[],jobs=[],refreshTimer;
+let job=null,calls=[],instances=[],live=[],jobs=[],refreshTimer,refreshDelay;
 const definitions=[{...definition,id:'headers',name:'Bitcoin headers',buildable:false},definition,{...definition,id:'inscriptions',name:'Inscriptions',start_height:0,arbitrary_start:true},{...definition,id:'address-history',buildable:false,locked:true,lock_reason:'Locked during Headers and Blocks testing.'}];
 const snapshot=()=>({definitions,instances,providers:[],job,live,jobs});
 let queryPending=null,mutationGate=null;
@@ -43,7 +43,7 @@ const window={addEventListener(){},GatewayWorkspaceResources:{mount(){return {cl
  select(id){selectedTimeline=id;options.workspace.hidden=!id||!!definitions.find(d=>d.id===id)?.locked},
  model(id){return window.GatewayIndexCards.model(definitions.find(d=>d.id===id)||{id},timelineSnapshot)}
 }}}};
-const context=vm.createContext({document:doc,window,location:{search:'?embedded=1',origin:'http://fixture.local'},parent:{postMessage:(value,origin)=>navigation.push({value,origin})},URLSearchParams,fetch,setInterval:fn=>{refreshTimer=fn;},console});
+const context=vm.createContext({document:doc,window,location:{search:'?embedded=1',origin:'http://fixture.local'},parent:{postMessage:(value,origin)=>navigation.push({value,origin})},URLSearchParams,fetch,setTimeout:(fn,delay)=>{refreshTimer=fn;refreshDelay=delay;return 1;},clearTimeout:()=>{refreshTimer=null;},console});
 vm.runInContext(fs.readFileSync('ui/shell/index-cards.js','utf8'),context);
 vm.runInContext(fs.readFileSync('ui/shell/bitmap-workspace.js','utf8'),context);
 vm.runInContext(fs.readFileSync('ui/shell/index-transport.js','utf8'),context);
@@ -66,5 +66,5 @@ const flush=()=>new Promise(r=>setImmediate(r));
  const staged=draftChanges.length;timelineOptions.select('address-history','catalog');assert.equal(nodes.get('index-workspace').hidden,true,'Locked index cannot expose its settings');timelineOptions.buildRange('address-history',1,2);assert.equal(draftChanges.length,staged);
  assert.equal(calls.filter(c=>c.body).length,0,'Selecting contexts, reading records and resource navigation starts no work');
  assert(!calls.some(c=>/\/peers$|\/peer-preview|\/publish|\/build|\/queue|\/live$/.test(c.url)));
- assert.equal(typeof refreshTimer,'function');console.log('Indexes controller PASS: foundational selection, contextual staged options, bounded records, stale-response rejection, locked settings, resource navigation and no competing execution.');
+ assert.equal(typeof refreshTimer,'function');assert.equal(refreshDelay,5000,'Idle observation uses a completion-scheduled five-second timeout');console.log('Indexes controller PASS: foundational selection, contextual staged options, bounded records, stale-response rejection, locked settings, resource navigation and no competing execution.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

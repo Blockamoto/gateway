@@ -58,7 +58,7 @@ window.GatewayBitmapWorkspace = (() => {
     const status=el('p','Reading the fixed definition…','small');status.setAttribute('role','status');
     const content=el('section',undefined,'bitmap-settings-content');root.replaceChildren(el('h2','Bitmap index rules'),el('p','Read-only rules and authenticated implementation metadata. Use the timeline to start, pause, resume, choose range or follow Live.','small muted'),status,content);
     function chainControls(chain){
-      if(!chain)return;const box=el('section',undefined,'bitmap-chain-controls');box.append(el('h3',sourceKindLabel(chain)+' Chain'));
+      if(!chain)return;const box=el('section',undefined,'bitmap-chain-controls');box.append(el('h3',sourceKindLabel(chain)+' Chain'));if(window.GatewayIndexHelp)box.append(window.GatewayIndexHelp.controls({document:root.ownerDocument,id:chain.id||'bitmap-chain',definition:chain}));
       const reason='Bitmap Chain methodology is being developed. Saved evidence remains available for inspection.';
       for(const label of ['Chain On','Chain Live']){const control=button(label,()=>{},'bitmap-chain-toggle');control.disabled=true;control.title=reason;control.setAttribute('aria-pressed','false');box.append(control);}box.append(el('p',reason,'small muted'));if(chain.id&&chain.id!==target.id)box.append(button('Inspect saved chain evidence',()=>onInspect?.(chain.id),'text-button'));content.append(box);
     }

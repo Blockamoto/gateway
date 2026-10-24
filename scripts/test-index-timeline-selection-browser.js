@@ -36,7 +36,7 @@ async function run(){
       if(url.pathname==='/api/v1/appearance')return reply({theme:'light',default:'light'});
       const body=req.method()==='POST'?req.postDataJSON():null;calls.push({method:req.method(),path:url.pathname,body,time:Date.now()});
       if(url.pathname==='/api/v1/index/run/prepare')return reply({schema:1,prepared:body});
-      if(url.pathname==='/api/v1/index/status')return unavailable?reply({error:'Fixture status unavailable'},'application/json',503):reply(snapshot);
+      if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname))return unavailable?reply({error:'Fixture status unavailable'},'application/json',503):reply(snapshot);
       if(url.pathname==='/api/v1/index/query')return reply({rows:[],total:0,total_known:true,inspected_blocks:0,chain_state:'selected_chain'});
       if(url.pathname==='/api/v1/index/block-map'){const height=parseInt(url.searchParams.get('block'),16);return reply({height,hash:height.toString(16).padStart(64,'0'),total:1,transaction_count:1,transactions:[{index:0,txid:height.toString(16).padStart(64,'0'),output_sats:5000000000,vsize:100,weight:400,coinbase:true}]});}
       if(url.pathname==='/api/v1/navigate'){

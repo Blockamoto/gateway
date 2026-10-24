@@ -90,7 +90,7 @@ async function run() {
       const call = {method:request.method(), path:url.pathname, body:request.method() === 'POST' ? request.postDataJSON() : null};
       calls.push(call);
       if(url.pathname==='/api/v1/navigate')return reply({error:'Offline block fixture'},'application/json',503);
-      if(url.pathname==='/api/v1/index/status'){if(holdNextStatus){holdNextStatus=false;await new Promise(resolve=>releaseStatus=resolve);}return unavailable?reply({error:'Fixture unavailable'},'application/json',503):reply(snapshot);}
+      if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname)){if(holdNextStatus){holdNextStatus=false;await new Promise(resolve=>releaseStatus=resolve);}return unavailable?reply({error:'Fixture unavailable'},'application/json',503):reply(snapshot);}
       if (url.pathname === '/api/v1/index/query') return reply({rows:[], total:0, total_known:true, inspected_blocks:0, chain_state:'selected_chain'});
       unexpected.push(call.method + ' ' + call.path);
       return reply({error:'Unexpected fixture action'}, 'application/json', 500);

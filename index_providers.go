@@ -14,6 +14,7 @@ import (
 // providers of the same index definition. Coverage describes recorded work;
 // each existing resolver still checks the evidence needed for its answer.
 type indexProviderView struct {
+	OnDemand       bool             `json:"on_demand"`
 	Readiness      string           `json:"readiness"`
 	ID             string           `json:"id"`
 	Provider       string           `json:"provider"`
@@ -291,6 +292,9 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 
 	for i := range rows {
 		r := &rows[i]
+		if r.ID == "blocks" {
+			r.OnDemand = r.Provider == "gateway_cache" && local.BitcoinPeersAvailable || r.Provider == "bitcoin_core" && r.Queryable
+		}
 		r.Readiness = "needs_coverage_or_provider"
 		if r.Queryable {
 			r.Readiness = "provider_available_check_coverage"
@@ -341,6 +345,7 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 			r.Readiness = "not_implemented"
 		}
 		if !releaseFeatureAvailable(r.ID) {
+			r.OnDemand = false
 			r.Readiness, r.Note = "locked", releaseLockReason(r.ID)
 			r.Queryable, r.Serveable = false, false
 			r.PublicCoverage = nil

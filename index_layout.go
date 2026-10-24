@@ -30,7 +30,7 @@ func indexLayoutPath(root string) string             { return filepath.Join(root
 func indexLayoutParents(ctx context.Context, root string) (map[string]string, error) {
 	parents := map[string]string{
 		"group:blocks": "root", "group:txio": "root", "group:addresses": "root", "group:bitmap": "root",
-		"headers": "group:blocks", "blocks": "group:blocks", "tx-locator": "root", "utxo-state": "root", "inscriptions": "root",
+		"headers": "group:blocks", "blocks": "group:blocks", "tx-locator": "group:txio", "utxo-state": "group:txio", "inscriptions": "root",
 		"txio-links": "group:txio", "txio-values": "group:txio", "txio-scripts": "group:txio", "txio-sat-ranges": "group:txio",
 		"address-state": "group:addresses", "address-history": "group:addresses",
 	}
@@ -107,6 +107,11 @@ func normalizeIndexLayoutVersion(ctx context.Context, root string, order map[str
 				continue
 			}
 			targetParent := parent
+			if legacy && parent == "root" && (id == "tx-locator" || id == "utxo-state") {
+				// Project the former standalone Transaction Index and UTXO set into Transactions.
+				// Preserve its identity and the existing child order; reads never write.
+				targetParent = "group:txio"
+			}
 			if legacy && oldDistrictParent {
 				instance, err := bitmapResolvedInstance(ctx, root, id)
 				if err != nil || instance.Kind != "parcel" || instance.DistrictInstance != strings.TrimPrefix(parent, "district:") {

@@ -120,6 +120,35 @@ func resolvedAdmissionAllowed(d indexRunDocument, id string, height int64) error
 	}
 	return nil
 }
+
+// The scheduled body has one durable owner per admitted run member. This
+// excludes duplicate sparse publication only for that exact body; unrelated
+// dependency bodies and armed tracks outside the run retain normal fanout.
+func resolvedOwnedByCoordinator(ctx context.Context, d indexRunDocument, id string, block blockView) bool {
+	owner, ok := ctx.Value(indexRunSourceOwnershipKey{}).(indexRunSourceOwnership)
+	if !ok || owner.RunID == "" || owner.Height != block.Height || owner.Hash != block.Hash || d.Run == nil || d.Run.ID != owner.RunID || (d.Run.State != "running" && d.Run.State != "waiting") {
+		return false
+	}
+	selection, ok := runSelection(d.Run.Request, resolvedSelectionOwner(id))
+	if !ok || !resolvedSelectionEnabled(selection, id) {
+		return false
+	}
+	prepared, ok := runSelection(d.Prepared, resolvedSelectionOwner(id))
+	if !ok || indexDigest(selection) != indexDigest(prepared) {
+		return false
+	}
+	p, ok := indexRunProgressFor(d.Run, resolvedSelectionOwner(id))
+	if !ok || (p.AdmissionState != "" && p.AdmissionState != "admitted" && p.AdmissionState != "pending") || p.State == "failed" || p.State == "rebuild_required" {
+		return false
+	}
+	if p.EffectiveFrom != nil && block.Height < *p.EffectiveFrom {
+		return false
+	}
+	if block.Height < p.From || (d.Run.Request.Out != nil || !selection.Live) && block.Height > p.To {
+		return false
+	}
+	return true
+}
 func resolvedSelectionContext(ctx context.Context, root, id string, captured indexRunSelection, hashAt func(int64) (string, error), block blockView) context.Context {
 	return context.WithValue(ctx, indexRunPublicationKey{}, func() error {
 		if err := ctx.Err(); err != nil {
@@ -195,6 +224,9 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 	apply := func(id string, fn func(context.Context, indexRunSelection) error) {
 		c, ok := choices[resolvedSelectionOwner(id)]
 		if !ok || !resolvedSelectionEnabled(c, id) || !releaseFeatureAvailable(resolvedSelectionOwner(id)) {
+			return
+		}
+		if resolvedOwnedByCoordinator(ctx, d, id, block) {
 			return
 		}
 		work := resolvedSelectionContext(ctx, a.dataDir, id, c, hashAt, block)

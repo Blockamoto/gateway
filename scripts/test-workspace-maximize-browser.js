@@ -17,7 +17,7 @@ await page.route('**/*',async route=>{const request=route.request(),u=new URL(re
  if(u.pathname==='/foreign-frame')return reply('<body>Other same-origin iframe<script>top.postMessage({type:"gateway:workspace-panel-mode",panel:"timeline"},"*")</script>','text/html');
  if(u.pathname==='/favicon.ico')return reply('','image/x-icon');calls.push({path:u.pathname,method:request.method(),body:request.postData()});
  if(u.pathname==='/api/v1/appearance')return reply({theme:'light'});
- if(u.pathname==='/api/v1/index/status')return reply(state);
+ if(['/api/v1/index/status','/api/v1/index/progress'].includes(u.pathname))return reply(state);
  if(u.pathname==='/api/v1/index/run')return reply(state.run);
  if(u.pathname==='/api/v1/index/run/prepare'){state.run.prepared=request.postDataJSON();return reply(state.run);}
  if(u.pathname==='/api/v1/index/run/plan'){const body=request.postDataJSON(),selected=body.consumers.filter(c=>c.armed),missing=selected.some(c=>c.index==='address-state')&&!savedUTXO&&!selected.some(c=>c.index==='utxo-state');return reply({plan_id:'fixture-reviewed',ready:!missing,request:body,notes:['Whole boundary blocks are processed.'],consumers:selected.map(c=>({index:c.index,state:missing&&c.index==='address-state'?'waiting':'ready',from:body.in??0,to:body.out??170,dependencies:[{index:c.index==='address-state'?'utxo-state':'blocks',kind:c.index==='address-state'?'state':'source',state:missing?'missing':savedUTXO?'ready':'selected',reason:c.index==='address-state'?'A saved UTXO checkpoint is required.':'Source blocks can be read without arming Raw blocks.'}]}))});}

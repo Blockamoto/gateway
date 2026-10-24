@@ -69,6 +69,12 @@ type indexRunProgress struct {
 	RequiresLeadIn                bool                 `json:"requires_lead_in,omitempty"`
 	ReusedBlocks                  int64                `json:"reused_blocks"`
 	AddedBlocks                   int64                `json:"added_blocks"`
+	StagedHeight                  *int64               `json:"staged_height,omitempty"`
+	StagedBlocks                  int                  `json:"staged_blocks,omitempty"`
+	StagedBytes                   int64                `json:"staged_bytes,omitempty"`
+	StagedRecords                 int                  `json:"staged_records,omitempty"`
+	LogicalBatchFrom              *int64               `json:"logical_batch_from,omitempty"`
+	LogicalBatchTo                *int64               `json:"logical_batch_to,omitempty"`
 }
 type indexRunDependency struct {
 	Index  string `json:"index"`
@@ -78,17 +84,31 @@ type indexRunDependency struct {
 	Action string `json:"action,omitempty"`
 }
 type indexRunCounts struct {
-	SourceMilliseconds     int64 `json:"source_milliseconds,omitempty"`
-	ExtractionMilliseconds int64 `json:"extraction_milliseconds,omitempty"`
-	ApplyMilliseconds      int64 `json:"apply_milliseconds,omitempty"`
-	ProgressMilliseconds   int64 `json:"progress_milliseconds,omitempty"`
-	ReconcileMilliseconds  int64 `json:"reconcile_milliseconds,omitempty"`
-	OutcomeReads           int64 `json:"outcome_reads,omitempty"`
-	ChainSteps             int64 `json:"chain_steps,omitempty"`
-	SourceReads            int64 `json:"source_reads"`
-	DecodedBlocks          int64 `json:"decoded_blocks"`
-	InscriptionExtractions int64 `json:"inscription_extractions"`
-	CacheHits              int64 `json:"cache_hits"`
+	SourceAcquireMilliseconds      int64 `json:"source_acquire_milliseconds,omitempty"`
+	SourceDecodeMilliseconds       int64 `json:"source_decode_milliseconds,omitempty"`
+	SourceRawRetentionMilliseconds int64 `json:"source_raw_retention_milliseconds,omitempty"`
+	SourceIncidentalMilliseconds   int64 `json:"source_incidental_milliseconds,omitempty"`
+	StorageFlushMilliseconds       int64 `json:"storage_flush_milliseconds,omitempty"`
+	LocatorBatchFlushes            int64 `json:"locator_batch_flushes,omitempty"`
+	LocatorShardAppends            int64 `json:"locator_shard_appends,omitempty"`
+	LocatorShardSyncs              int64 `json:"locator_shard_syncs,omitempty"`
+	LocatorReceiptWrites           int64 `json:"locator_receipt_writes,omitempty"`
+	LocatorActiveWrites            int64 `json:"locator_active_writes,omitempty"`
+	LocatorHeadWrites              int64 `json:"locator_head_writes,omitempty"`
+	LocatorCommitWrites            int64 `json:"locator_commit_writes,omitempty"`
+	LocatorRecordsWritten          int64 `json:"locator_records_written,omitempty"`
+	LocatorBytesWritten            int64 `json:"locator_bytes_written,omitempty"`
+	SourceMilliseconds             int64 `json:"source_milliseconds,omitempty"`
+	ExtractionMilliseconds         int64 `json:"extraction_milliseconds,omitempty"`
+	ApplyMilliseconds              int64 `json:"apply_milliseconds,omitempty"`
+	ProgressMilliseconds           int64 `json:"progress_milliseconds,omitempty"`
+	ReconcileMilliseconds          int64 `json:"reconcile_milliseconds,omitempty"`
+	OutcomeReads                   int64 `json:"outcome_reads,omitempty"`
+	ChainSteps                     int64 `json:"chain_steps,omitempty"`
+	SourceReads                    int64 `json:"source_reads"`
+	DecodedBlocks                  int64 `json:"decoded_blocks"`
+	InscriptionExtractions         int64 `json:"inscription_extractions"`
+	CacheHits                      int64 `json:"cache_hits"`
 }
 type indexRunRecord struct {
 	AdmissionRevision   uint64             `json:"admission_revision,omitempty"`
@@ -181,6 +201,12 @@ func (a *app) loadIndexRunLocked() error {
 	a.indexRunState, a.indexRunError = readIndexRunDocument(a.dataDir)
 	if a.indexRunError == nil && a.indexRunState.Run != nil {
 		r := a.indexRunState.Run
+		// Staging belongs to the former writer's bounded memory, never to the
+		// saved run request. A restart retains only the published index prefix.
+		for i := range r.Consumers {
+			r.Consumers[i].StagedHeight, r.Consumers[i].LogicalBatchFrom, r.Consumers[i].LogicalBatchTo = nil, nil, nil
+			r.Consumers[i].StagedBlocks, r.Consumers[i].StagedBytes, r.Consumers[i].StagedRecords = 0, 0, 0
+		}
 		if r.State == "running" || r.State == "waiting" || r.State == "pausing" {
 			r.State = "paused"
 			r.Reason = "Interrupted by restart. Resume the admitted run from committed index checkpoints."

@@ -23,7 +23,7 @@ const server=http.createServer(async(req,res)=>{
   const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=chunks.length?JSON.parse(Buffer.concat(chunks).toString()):null;calls.push({path:url.pathname,method:req.method,query:url.search,body});
   if(url.pathname==='/api/v1/appearance')return reply({theme:'light'});
   if(url.pathname==='/api/v1/index/layout')return reply({schema:1,order:{},revision:0});
-  if(url.pathname==='/api/v1/index/status')return reply(snapshot);if(url.pathname==='/api/v1/index/run/prepare'){snapshot.run={schema:1,configured:true,prepared:body,run:null};return reply(snapshot.run);}
+  if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname))return reply(snapshot);if(url.pathname==='/api/v1/index/run/prepare'){snapshot.run={schema:1,configured:true,prepared:body,run:null};return reply(snapshot.run);}
   if(url.pathname==='/api/v1/index/query')return reply({rows:[],known:true,total:0,total_known:true});
   if(url.pathname==='/api/v1/index/block-map')return reply({...block(height),total:20,indexing:[],transactions});
   if(url.pathname==='/api/v1/sats/point'){

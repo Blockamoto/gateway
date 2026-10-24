@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="/shell/style.css">
 <link rel="stylesheet" href="/shell/index-timeline.css">
 <link rel="stylesheet" href="/shell/bitmap-workspace.css">
+<link rel="stylesheet" href="/shell/index-help.css">
+<link rel="stylesheet" href="/shell/explorer-features.css">
 <link rel="stylesheet" href="/shell/transaction-flow-layout.css">
 <link rel="stylesheet" href="/shell/block-viewport.css">
 <style nonce="__INDEX_NONCE__">
@@ -61,6 +63,9 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 </div></main>
 <script src="/shell/index-cards.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-transport.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-help-content.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-help.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-scrollbar-geometry.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-timeline.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/utxo-panel.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/address-panel.js" nonce="__INDEX_NONCE__"></script>
@@ -72,6 +77,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <script src="/shell/sat-view.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/bitmap-view.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/bitmap-workspace.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/explorer-features.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/workspace-resources.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/timeline-explorer.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/inscription-viewport.js" nonce="__INDEX_NONCE__"></script>
@@ -88,7 +94,8 @@ function selectView(view) {
   for (const tab of document.querySelectorAll('[data-view]')) { if (tab.dataset.view === view) tab.setAttribute('aria-current','page'); else tab.removeAttribute('aria-current'); }
 }
 for (const tab of document.querySelectorAll('[data-view]')) tab.addEventListener('click', () => { selectView(tab.dataset.view); showSelectedStatus(); if (tab.dataset.view === 'results' && selectedDefinition()?.buildable) loadRecords(); });
-let definitions = [], reviewedRequest = '', planSerial = 0, status = null, fetching = false, refreshAgain = false, instancesKey = '', providersKey = '', statusRevision = 0, refreshPromise = null;
+let definitions = [], reviewedRequest = '', planSerial = 0, status = null, fetching = false, refreshAgain = false, fullRefreshPending = false, instancesKey = '', providersKey = '', statusRevision = 0, refreshPromise = null, progressTimer = null;
+const terminalObservations=new Map();
 const rangePicker = window.GatewayIndexWorkspace.mountRange({root:$('build-range-picker'),from:$('from'),to:$('to'),live:$('initial-live')});
 const pretty = value => JSON.stringify(value, null, 2);
 const human = value => ({first_valid_claim:'First valid claim in the indexed history',not_evaluated:'Not evaluated',recorded_contiguous_range:'Recorded continuous range',ephemeral:'Discard source blocks after processing',unknown:'Unknown'})[value] || String(value ?? 'unknown').replaceAll('_', ' ');
@@ -298,20 +305,26 @@ $('inspect-inscription-storage').addEventListener('click',async()=>{
   finally{button.disabled=false;}
 });
 
-async function refresh() {
+async function refresh({progressOnly=false}={}) {
+  if(!progressOnly)fullRefreshPending=true;
+  cancelProgressPoll();
   if (fetching) { refreshAgain=true; return refreshPromise; }
   fetching = true;
   refreshPromise = (async () => {
     try { do {
       refreshAgain=false;const revision=statusRevision;
     try {
-      const result = await api('status');
-      if (revision !== statusRevision) { refreshAgain=true; continue; } // A pending control superseded this status read.
+      const action=fullRefreshPending?'status':'progress';fullRefreshPending=false;
+      const result = await api(action);
+      if (revision !== statusRevision) { refreshAgain=true; fullRefreshPending=true; continue; } // A pending control superseded this status read.
+      const terminalRefresh=observeTerminalWork(status,result,action==='progress');
       status = result; definitions = status.definitions || [];
+      if(terminalRefresh){fullRefreshPending=true;refreshAgain=true;}
       $('status-json').textContent = pretty(status);
       const healthy=!(status.errors || []).some(x => String(x).startsWith('live:'));
       const recovering=$('index-timeline').dataset.healthy==='false';
-      timeline.render(status); timeline.health(healthy);
+      timeline.health(healthy,{render:false}); timeline.render(status);
+      resources?.updateStatus?.();
       // Position can change while requests are paused. Resume the latest
       // playhead rather than the block that was focused before status loss.
       if(recovering && healthy && explorer?.state().resource==='block' && selectedIndex && !selectedDefinition()?.locked && timeline.getPlayhead()!==null) explorer?.focus({index:selectedIndex,height:timeline.getPlayhead(),immediate:false});
@@ -325,19 +338,30 @@ async function refresh() {
       syncRetainedStart();
       rangePicker.update(selectedDefinition(),status);
       const workspaceStatus={type:'gateway:index-status',localIndexes:status.instances?.length||0,following:(status.live||[]).filter(x=>x.enabled&&x.on).length,sharingLocked:true};
-      $('workspace-state').textContent=workspaceStatus.localIndexes+' local indexes · '+workspaceStatus.following+' following new blocks · Gateway sharing locked';
+      $('workspace-state').textContent=workspaceStatus.localIndexes+' local indexes · '+workspaceStatus.following+' following new blocks · Gateway sharing locked'+(status.observation?.mode==='progress'?' · Coverage detail snapshot '+(Number.isFinite(status.observation.details_age_milliseconds)?(status.observation.details_age_milliseconds/1000).toFixed(1)+' seconds old':'age unavailable')+(status.observation.details_refreshing?' · refreshing':''):'');
       if(document.body.classList.contains('embedded'))parent.postMessage(workspaceStatus,location.origin);
       if (status.errors?.length) message(status.errors.join('\n'), true);
-      if (selectedIndex && currentView === 'results' && $('follow-records').checked) {
+      if (!terminalRefresh && selectedIndex && currentView === 'results' && $('follow-records').checked) {
         const instance = status.instances?.find(x => x.definition === selectedIndex);
-        const key = selectedIndex + ':' + (instance?.checkpoint?.commitment || 'empty') + ':' + (instance?.verification || '');
+        const progressCommit=status.observation?.mode==='progress'?status.run?.run?.consumers?.find(consumer=>consumer.index===selectedIndex)?.commitment:null;
+        const key = selectedIndex + ':' + (progressCommit || instance?.checkpoint?.commitment || 'empty') + ':' + (instance?.verification || '');
         if (key !== recordKey && !recordLoading) { if (await loadRecords()) recordKey = key; }
       }
     } catch (error) { timeline.health(false);utxoPanel?.health(false);addressPanel?.health(false);satPanel?.health(false); explorer?.health(false); message('Status unavailable: ' + error.message, true); }
-    } while(refreshAgain); } finally { fetching = false; }
+    } while(refreshAgain); } finally { fetching = false; scheduleProgressPoll(); }
   })();
   return refreshPromise;
 }
+function observeTerminalWork(before,after,progressOnly){
+ const active=new Set(['running','waiting','pausing','queued']),terminal=new Set(['complete','completed','complete_with_errors','failed','error','paused','cancelled','canceled','stopped','rebuild_required','yielded']);
+ const records=value=>[...(value?.run?.run?.id?[['run:'+value.run.run.id,value.run.run]]:[]),...[value?.job,...(value?.jobs||[])].filter(job=>job?.id).map(job=>['job:'+job.id,job])],previous=new Map(records(before));let refreshDetails=false;
+ for(const[key,record]of new Map(records(after))){if(active.has(record.state)){terminalObservations.delete(key);continue;}if(!terminal.has(record.state))continue;const fingerprint=JSON.stringify([record.state,record.height,record.block_hash,record.commitment,record.updated,(record.consumers||[]).map(consumer=>[consumer.index,consumer.height,consumer.block_hash,consumer.commitment])]);if(active.has(previous.get(key)?.state)&&terminalObservations.get(key)!==fingerprint){terminalObservations.set(key,fingerprint);if(progressOnly)refreshDetails=true;}}
+ while(terminalObservations.size>128)terminalObservations.delete(terminalObservations.keys().next().value);
+ return refreshDetails;
+}
+function cancelProgressPoll(){if(progressTimer!==null){clearTimeout(progressTimer);progressTimer=null;}}
+function progressPollDelay(){return [status?.run?.run,status?.job,...(status?.jobs||[])].some(job=>['running','waiting','pausing'].includes(job?.state))?1000:5000;}
+function scheduleProgressPoll(){cancelProgressPoll();if(!workspaceVisible||document.hidden)return;progressTimer=setTimeout(()=>{progressTimer=null;if(workspaceVisible&&!document.hidden)refresh({progressOnly:true});},progressPollDelay());}
 function syncLiveForm(){ $('end-field').hidden = $('initial-live').checked; $('to').disabled = $('initial-live').checked; rangePicker.update(selectedDefinition(),status); }
 $('initial-live').addEventListener('change',()=>{syncLiveForm();invalidatePlan();});
 for (const id of ['from', 'to', 'retention', 'mode', 'retain-sat-history', 'conventional-ids','retain-output-values','retain-output-scripts']) $(id).addEventListener('input', invalidatePlan);
@@ -501,7 +525,7 @@ async function navigateWorkspace(value,options={}){
 }
 window.addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin)return;
  if(event.data?.type==='gateway:workspace-address')navigateWorkspace(event.data.address,{blockHint:event.data.blockHint,navigationId:event.data.navigationId,historyMode:event.data.historyMode||'replace',focus:event.data.focus}).catch(error=>message(error.message,true));
- if(event.data?.type==='gateway:workspace-visibility'){workspaceVisible=event.data.visible===true;if(!workspaceVisible){timeline.cancelPendingNavigation();explorer.cancelResource?.();resources?.suspend();}else refresh().catch(error=>message(error.message,true));}
+ if(event.data?.type==='gateway:workspace-visibility'){workspaceVisible=event.data.visible===true;if(!workspaceVisible){cancelProgressPoll();timeline.cancelPendingNavigation();explorer.cancelResource?.();resources?.suspend();}else refresh().catch(error=>message(error.message,true));}
  if(event.data?.type==='gateway:workspace-select-index'){const id=event.data.index;if(typeof id!=='string')return;const value={index:id,rebuild_snapshot:event.data.rebuild_snapshot};if(!workspaceReady){pendingIndex=value;return;}if(definitions.some(d=>d.id===id&&(!d.locked||window.GatewayBitmapWorkspace.instanceID(id))))openIndexBuild(value);}
 });
 function openIndexBuild(value){inspectIndex(value.index,value.rebuild_snapshot?{rebuild:true,rebuild_snapshot:value.rebuild_snapshot}:{});}
@@ -521,8 +545,8 @@ document.addEventListener('gateway:bitmap-overview',()=>navigateWorkspace('bitma
 for(const id of ['mode','retain-output-values','retain-output-scripts','conventional-ids'])$(id).addEventListener('change',()=>{if(!selectedIndex)return;const owner=id.startsWith('retain-output-')?'txo-spender':selectedIndex,patch=id==='mode'?{mode:$('mode').value}:id==='conventional-ids'?{conventional_ids:inscriptionLocatorsAvailable()&&$('conventional-ids').checked}:{[id==='retain-output-values'?'retain_output_values':'retain_output_scripts']:$(id).checked};timeline.setConsumerOptions?.(owner,patch);});
 selectView('catalog');
 refresh().then(()=>{workspaceReady=true;if(pendingIndex){openIndexBuild(pendingIndex);pendingIndex=null;}const params=new URLSearchParams(location.search),request=pendingAddress||{address:params.get('focus')||(params.get('viewer')==='1'?'ord.gateway':'.gateway'),options:{navigationId:params.has('navigationId')?Number(params.get('navigationId')):null,historyMode:'replace',focus:params.get('focusPanel')==='1'}};pendingAddress=null;return navigateWorkspace(request.address,request.options);}).catch(error=>message(error.message,true));
-window.addEventListener('pagehide',()=>{resources?.teardown();viewport?.teardown();explorer?.teardown();});
-setInterval(()=>{if(workspaceVisible&&!document.hidden)refresh();},5000);
+window.addEventListener('pagehide',()=>{cancelProgressPoll();resources?.teardown();viewport?.teardown();explorer?.teardown();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelProgressPoll();else if(workspaceVisible)refresh({progressOnly:true});});
 </script>
 </body>
 </html>

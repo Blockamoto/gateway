@@ -44,6 +44,7 @@ type indexBatch struct {
 	Diagnostics            []inscriptionExtractionDiagnostic `json:"diagnostics,omitempty"`
 }
 type indexHead struct {
+	LocatorLayout      string                      `json:"locator_layout,omitempty"`
 	SatSavepoints      []satSavepoint077           `json:"sat_savepoints,omitempty"`
 	SatSavepointsHash  string                      `json:"sat_savepoints_hash,omitempty"`
 	TXIOLayersSchema   int                         `json:"txio_layers_schema,omitempty"`
@@ -73,6 +74,8 @@ type indexStore struct {
 	locatorSyncDirectory     func(string) error
 	locatorDirectoriesSynced map[string]bool
 	locatorReplay            bool
+	locatorBatch             *indexLocatorBatchSession
+	locatorWrites            *indexLocatorWriteStats
 }
 
 func openIndexStore(root, id string) (*indexStore, error) {
@@ -160,6 +163,9 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 	}
 	if e = json.Unmarshal(b, &s.head); e != nil {
 		return nil, e
+	}
+	if s.head.LocatorLayout != "" && (id != "tx-locator" || s.head.LocatorLayout != indexLocatorPackedLayout) {
+		return nil, fmt.Errorf("unsupported index locator physical layout")
 	}
 	if s.head.Commitment != "" {
 		b, e := s.readBatch(s.head.Commitment)
@@ -609,12 +615,16 @@ func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash s
 			return e
 		}
 	}
+	if s.locatorBatch != nil {
+		return s.stageLocatorBatch(b, retention)
+	}
 	var e error
 	_, existingCommit := os.Stat(filepath.Join(s.dir, "commits", c.Commitment+".json"))
 	s.locatorReplay = existingCommit == nil
 	if e = atomicWriteJSON(filepath.Join(s.dir, "commits", c.Commitment+".json"), b); e != nil {
 		return e
 	}
+	s.locatorWriteCounters().CommitWrites++
 	if e = syncDirectory(filepath.Join(s.dir, "commits")); e != nil {
 		return e
 	}
@@ -645,6 +655,7 @@ func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash s
 	if e = atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); e != nil {
 		return e
 	}
+	s.locatorWriteCounters().HeadWrites++
 	if e = syncDirectory(s.dir); e != nil {
 		return e
 	}
@@ -668,6 +679,14 @@ func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash s
 // Unavailable chain evidence is an error, never evidence of a reorg. Rewind
 // only after actual hash disagreement, retaining old immutable audit batches.
 func (s *indexStore) reconcile(hashAt func(int64) (string, error)) error {
+	if s.locatorBatch != nil {
+		if pending, _, _ := s.LocatorBatchStats(); pending > 0 {
+			return fmt.Errorf("discard the unflushed locator stage before selected-chain reconciliation")
+		}
+		// Reconciliation can replace the durable prefix. A new batch must
+		// capture that replacement rather than reuse its previous base head.
+		s.AbortLocatorBatch()
+	}
 	if s.definition.ID == "sat-state" {
 		return s.reconcileSatStateSelected(s.ordinalContext(), -1, hashAt)
 	}
@@ -751,6 +770,7 @@ func (s *indexStore) reconcile(hashAt func(int64) (string, error)) error {
 	if e = atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); e != nil {
 		return e
 	}
+	s.locatorWriteCounters().HeadWrites++
 	if e = syncDirectory(s.dir); e != nil {
 		return e
 	}

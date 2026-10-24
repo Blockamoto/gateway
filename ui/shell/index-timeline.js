@@ -37,6 +37,12 @@ window.GatewayIndexTimeline = (() => {
     const state=saved.state==='rebuilding'?'rebuilding map':'mapping incomplete';
     return (height(saved.observed_blocks)&&saved.observed_blocks>0?'At least '+blockCount(saved.observed_blocks)+' saved · ':'Saved-body total unknown · ')+state;
   }
+  function coveragePartitionRows(model) {
+    return [['committed_records','Committed run coverage'],['browse_records','Viewed block facts']].flatMap(([kind,label])=>{
+      const sources=(model.sources||[]).filter(source=>source.kind===kind),ranges=normalizeRanges(sources.flatMap(source=>source.ranges||[]));
+      return sources.length?[[label,blockCount(count(ranges))+(sources.some(source=>source.complete===false)?' · mapped so far':'')]]:[];
+    });
+  }
   // Indexing selections are inclusive interval sets, independent of the playhead.
   // Toggling a block may split a range; the resulting hole must survive a build.
   function toggleBlock(ranges, block) {
@@ -144,7 +150,7 @@ window.GatewayIndexTimeline = (() => {
     const added=new Set(Array.isArray(preferences.tracks)?preferences.tracks.filter(id=>typeof id==='string'&&id!=='satline'&&id.length<100):[]);
     const hidden=new Set(Array.isArray(preferences.hiddenTracks)?preferences.hiddenTracks.filter(id=>typeof id==='string'&&id!=='headers'&&id.length<100):[]);
     const groups=new Map(),expandedGroups={blocks:preferences.groups?.blocks!==false,txio:preferences.groups?.txio===true,addresses:preferences.groups?.addresses===true,bitmap:preferences.groups?.bitmap!==false};
-    const groupOf=id=>['headers','blocks'].includes(id)?'blocks':layers.some(([layer])=>layer===id)?'txio':['address-state','address-history'].includes(id)?'addresses':/^bitmap-/.test(id)?'bitmap':null;
+    const groupOf=id=>['headers','blocks'].includes(id)?'blocks':['tx-locator','utxo-state'].includes(id)||layers.some(([layer])=>layer===id)?'txio':['address-state','address-history'].includes(id)?'addresses':/^bitmap-/.test(id)?'bitmap':null;
     const districtExpanded={...(preferences.districts||{})};let bitmapComparison=null;
     const customBitmap=id=>/^bitmap-(?:districts|parcels|chain)-[0-9a-f]{32}$/.test(id||'');
     const bitmapFeature=name=>doc.defaultView.GatewayBitmapWorkspace?.featureEnabled(snapshot,name)===true;
@@ -157,7 +163,7 @@ window.GatewayIndexTimeline = (() => {
     const isDistrict=d=>/^bitmap-districts(?:-|$)/.test(d.id);
     const parcelParent=()=>null; // Bitmap Districts and Parcels are sibling indexing tracks.
     const bitmapParent=d=>parcelParent(d)||chainParent(d);
-    const groupName=id=>({blocks:'Blocks',txio:'TXIO',addresses:'Addresses',bitmap:'Bitmap'})[id];
+    const groupName=id=>({blocks:'Blocks',txio:'Transactions',addresses:'Addresses',bitmap:'Bitmap'})[id];
     const trackName=d=>({headers:'Headers',blocks:'Raw blocks','address-state':'Current UTXOs','address-history':'Historical outputs'})[d.id]||d.name;
     const definitionFor=id=>childDefinitions(snapshot).find(d=>d.id===id)||(snapshot.definitions||[]).find(d=>d.id===id);
     function select(id,nextView){skipContext=id;const d=definitionFor(id);selectIndex(d?.owner||id,nextView);if(d?.owner){selected=id;skipContext=id;selection={id,kind:'track'};render();}}
@@ -255,7 +261,7 @@ window.GatewayIndexTimeline = (() => {
     function allDefinitions(){return [...(snapshot.definitions||[])].sort((a,b)=>a.id==='headers'?-1:b.id==='headers'?1:0);}
     function ordered(){
       const defs=allDefinitions().filter(d=>d.id!=='satline'&&(!d.locked||customBitmap(d.id))&&!chainParent(d)).flatMap(d=>['txo-spender','sat-state'].includes(d.id)?childDefinitions(snapshot).filter(child=>child.owner===d.id):[d]);
-      const order=['headers','blocks','tx-locator',...layers.map(([id])=>id),'utxo-state','address-state','address-history','inscriptions','bitmap-districts'],position=id=>{const n=order.indexOf(id);return n<0?order.length:n;},top=defs.filter(d=>!parcelParent(d)).sort((a,b)=>position(a.id)-position(b.id)),units=[...new Set(top.map(d=>groupOf(d.id)?'group:'+groupOf(d.id):d.id))],result=[];
+      const order=['headers','blocks','tx-locator','txio-links','txio-values','txio-scripts','utxo-state','txio-sat-ranges','address-state','address-history','inscriptions','bitmap-districts'],position=id=>{const n=order.indexOf(id);return n<0?order.length:n;},top=defs.filter(d=>!parcelParent(d)).sort((a,b)=>position(a.id)-position(b.id)),units=[...new Set(top.map(d=>groupOf(d.id)?'group:'+groupOf(d.id):d.id))],result=[];
       for(const unit of orderIDs('root',units)){const children=unit.startsWith('group:')?top.filter(d=>groupOf(d.id)===unit.slice(6)):top.filter(d=>d.id===unit),parent=unit.startsWith('group:')?unit:'root';for(const id of (unit.startsWith('group:')?orderIDs(parent,children.map(d=>d.id)):children.map(d=>d.id))){const d=children.find(d=>d.id===id);result.push(d);if(isDistrict(d))for(const childID of orderIDs('district:'+d.id,defs.filter(child=>parcelParent(child)===d.id).map(child=>child.id)))result.push(defs.find(child=>child.id===childID));}}
       for(const d of defs)if(!result.includes(d))result.push(d);return result;
     }
@@ -307,7 +313,7 @@ window.GatewayIndexTimeline = (() => {
       const heading=el('div',undefined,'timeline-group-heading'),toggle=button('', 'timeline-group-'+id,null,()=>{skipContext=null;selectedTracks.clear();trackSelectionAnchor=null;expandedGroups[id]=!expandedGroups[id];save();render();});
       toggle.className='timeline-group-toggle';toggle.setAttribute('aria-controls','timeline-group-bands-'+id);
       const name=el('strong',groupName(id)),labels=el('span',undefined,'timeline-group-labels');if(id==='bitmap'){toggle.textContent='›';const open=button('',null,'Open Bitmap overview',()=>{skipContext=null;selectedTracks.clear();trackSelectionAnchor=null;paintTrackSelection();transport?.paint();doc.dispatchEvent(new doc.defaultView.CustomEvent('gateway:bitmap-overview'));});open.className='timeline-group-name';open.append(name);heading.append(toggle,open,labels);}else{toggle.append(name,labels);heading.append(toggle);}
-      heading.prepend(reorderHandle('group:'+id,groupName(id)));reorderTarget(row,'group:'+id);const bands=el('div',undefined,'timeline-group-bands');bands.id='timeline-group-bands-'+id;row.append(heading,bands);const group={id,row,toggle,name,labels,bands,canvases:new Map()};groups.set(id,group);return group;
+      if(window.GatewayIndexHelp)heading.append(window.GatewayIndexHelp.controls({document:doc,id:'group:'+id}));heading.prepend(reorderHandle('group:'+id,groupName(id)));reorderTarget(row,'group:'+id);const bands=el('div',undefined,'timeline-group-bands');bands.id='timeline-group-bands-'+id;row.append(heading,bands);const group={id,row,toggle,name,labels,bands,canvases:new Map()};groups.set(id,group);return group;
     }
     function renderGroups(defs){
       const activeGroups=new Set(defs.map(d=>groupOf(d.id)).filter(Boolean));for(const[id,g]of groups)if(!activeGroups.has(id)){g.row.remove();groups.delete(id);}
@@ -325,13 +331,13 @@ window.GatewayIndexTimeline = (() => {
     function paintTrackSelection(){for(const[id,e]of entries){e.row.dataset.trackSelected=String(selectedTracks.has(id));e.head.setAttribute('aria-pressed',String(selectedTracks.has(id)));}root.dataset.selectedTrackCount=String(selectedTracks.size);}
     function selectTrackLabel(id,event){const parent=reorderParent(id),anchor=trackSelectionAnchor;let ids=[id];if(event?.shiftKey&&anchor&&reorderParent(anchor)===parent){const siblings=ordered().filter(d=>reorderParent(d.id)===parent).map(d=>d.id),a=siblings.indexOf(anchor),b=siblings.indexOf(id);if(a>=0&&b>=0)ids=siblings.slice(Math.min(a,b),Math.max(a,b)+1);}else trackSelectionAnchor=id;selectedTracks.clear();for(const value of ids)selectedTracks.add(value);selectingLabels=true;try{select(id,definitionFor(id)?.buildable?'build':'providers');}finally{selectingLabels=false;}if(selectedTracks.size>1)skipContext=null;paintTrackSelection();}
     function requestSelectedDeletion(){const ids=[...new Set([...selectedTracks].map(id=>definitionFor(id)?.owner||id))];if(!ids.length)return false;doc.dispatchEvent(new doc.defaultView.CustomEvent('gateway:timeline-delete-selection',{detail:{indices:ids}}));return true;}
-    doc.addEventListener('keydown',event=>{if(event.defaultPrevented||event.isComposing||event.repeat||event.ctrlKey||event.metaKey||event.altKey)return;const target=event.target;if(!root.contains(target)||target.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"]),dialog,[role="dialog"],[role="menu"]')||[...doc.querySelectorAll('dialog[open],.timeline-help[open],[role="menu"],[role="dialog"]')].some(node=>!node.hidden&&node.getClientRects().length))return;if(event.key==='Delete'&&requestSelectedDeletion()){event.preventDefault();event.stopImmediatePropagation();}else if(event.key==='Escape'&&selectedTracks.size>1){selectedTracks.clear();trackSelectionAnchor=null;paintTrackSelection();}},true);
+    doc.addEventListener('keydown',event=>{if(event.defaultPrevented||event.isComposing||event.repeat||event.ctrlKey||event.metaKey||event.altKey)return;const target=event.target;if(!root.contains(target)||target.closest?.('.index-help-trigger,.index-help-popover,input,textarea,select,[contenteditable]:not([contenteditable="false"]),dialog,[role="dialog"],[role="menu"]')||[...doc.querySelectorAll('dialog[open],.timeline-help[open],[role="menu"],[role="dialog"]')].some(node=>!node.hidden&&node.getClientRects().length))return;if(event.key==='Delete'&&requestSelectedDeletion()){event.preventDefault();event.stopImmediatePropagation();}else if(event.key==='Escape'&&selectedTracks.size>1){selectedTracks.clear();trackSelectionAnchor=null;paintTrackSelection();}},true);
     function makeTrack(d) {
       const row=el('div',undefined,'timeline-track');row.dataset.index=d.id;row.id='timeline-track-'+d.id;
       const head=button('',null,null,event=>selectTrackLabel(d.id,event));head.className='timeline-track-select';
       const name=el('strong',d.name),state=el('span','','timeline-track-state'),detail=el('span','','timeline-track-count');head.append(name,state,detail);
       const remove=button('×',null,'Built-in tracks remain visible',()=>{});remove.className='timeline-track-remove';remove.dataset.index=d.id;remove.hidden=true;
-      const heading=el('div',undefined,'timeline-track-heading');heading.append(head,remove);
+      const heading=el('div',undefined,'timeline-track-heading');heading.append(head,remove);if(window.GatewayIndexHelp)heading.append(window.GatewayIndexHelp.controls({document:doc,id:d.id,definition:()=>entries.get(d.id)?.d||d}));
       heading.prepend(reorderHandle(d.id,d.name));reorderTarget(row,d.id);
       let disclosure;
       const trackBody=el('div',undefined,'timeline-track-body'),canvas=el('canvas',undefined,'timeline-lane');canvas.dataset.index=d.id;canvas.tabIndex=0;canvas.setAttribute('role','button');canvas.setAttribute('aria-describedby','timeline-instructions');
@@ -392,8 +398,8 @@ window.GatewayIndexTimeline = (() => {
     function pointerAnchor(x){const rect=ruler.getBoundingClientRect();return clamp((x-rect.left)/Math.max(1,rect.width),0,1);}
     function setTrackHeight(value,anchor=.5){const old=trackHeight,pixels=trackViewport.clientHeight*anchor,point=(trackViewport.scrollTop+pixels)/old;trackHeight=clamp(value,56,220);root.style.setProperty('--timeline-track-height',trackHeight+'px');trackViewport.scrollTop=Math.max(0,point*trackHeight-pixels);save();redraw();}
     function updateScrollbars(){
-      const v=navView(),max=navExtent(),span=v.to-v.from+1,total=max+1,length=horizontal.bar.clientWidth||1,minThumb=Math.min(36,length),size=Math.max(minThumb,span/total*length),travel=Math.max(0,length-size);
-      horizontal.thumb.style.width=size+'px';horizontal.thumb.style.left=(total>span?v.from/(total-span)*travel:0)+'px';
+      const v=navView(),max=navExtent(),span=v.to-v.from+1,total=max+1,length=horizontal.bar.clientWidth||1,geometry=window.GatewayIndexScrollbarGeometry?.geometry(v,max,length),minThumb=Math.min(36,length),size=geometry?.size??Math.max(minThumb,span/total*length),travel=Math.max(0,length-size);
+      horizontal.thumb.style.width=size+'px';horizontal.thumb.style.left=(geometry?.offset??(total>span?v.from/(total-span)*travel:0))+'px';horizontal.bar.dataset.zoomMapping=geometry?'logarithmic':'linear';if(geometry)horizontal.bar.style.setProperty('--scrollbar-handle-size',geometry.handleSize+'px');
       horizontal.thumb.setAttribute('aria-valuemin','0');horizontal.thumb.setAttribute('aria-valuemax',String(Math.max(0,total-span)));horizontal.thumb.setAttribute('aria-valuenow',String(v.from));horizontal.thumb.setAttribute('aria-valuetext',positionLabel(v.from)+'–'+format(v.to));
       for(const [handle,value,min,last] of [[horizontal.start,v.from,0,v.to],[horizontal.end,v.to,v.from,max]]){handle.setAttribute('aria-valuemin',String(min));handle.setAttribute('aria-valuemax',String(last));handle.setAttribute('aria-valuenow',String(value));handle.setAttribute('aria-valuetext',positionLabel(value));}
       const vh=vertical.bar.clientHeight||1,visible=trackViewport.clientHeight,totalPixels=Math.max(visible,trackViewport.scrollHeight),vsize=Math.max(Math.min(32,vh),visible/Math.max(1,totalPixels)*vh),maxScroll=Math.max(0,totalPixels-visible);
@@ -414,7 +420,7 @@ window.GatewayIndexTimeline = (() => {
       scroll.bar.addEventListener('pointerdown',event=>{
         const edge=event.target.closest('[data-edge]')?.dataset.edge;
         if(!scroll.thumb.contains(event.target)){if(scroll.axis==='horizontal')pan(event.clientX<scroll.thumb.getBoundingClientRect().left?-.8:.8);else trackViewport.scrollTop+=(event.clientY<scroll.thumb.getBoundingClientRect().top?-1:1)*trackViewport.clientHeight*.8;return;}
-        beginDrag(event,{kind:scroll.axis,edge,bar:scroll.bar.getBoundingClientRect(),thumb:scroll.thumb.getBoundingClientRect(),scrollHeight:trackViewport.scrollHeight,viewportHeight:trackViewport.clientHeight});
+        beginDrag(event,{kind:scroll.axis,edge,bar:scroll.bar.getBoundingClientRect(),length:scroll.bar.clientWidth,thumb:scroll.thumb.getBoundingClientRect(),scrollHeight:trackViewport.scrollHeight,viewportHeight:trackViewport.clientHeight});
       });
       scroll.thumb.addEventListener('keydown',event=>{
         const edge=event.target.dataset.edge,back=['ArrowLeft','ArrowUp'].includes(event.key),forward=['ArrowRight','ArrowDown'].includes(event.key);if(!back&&!forward&&event.key!=='Home'&&event.key!=='End')return;event.preventDefault();
@@ -459,7 +465,8 @@ window.GatewayIndexTimeline = (() => {
         if(drag.plain&&!drag.moved)return;
         spaceDragged=spaceDragged||drag.moved;const span=drag.view.to-drag.view.from+1,from=Math.max(0,drag.view.from-Math.round(dx/drag.laneWidth*span));setNavView({from,to:from+span-1});if(root.dataset.timelineCollapsed==='true')drag.upper.scrollTop=drag.upperScroll-dy;else trackViewport.scrollTop=drag.scroll-dy;
       }else if(drag.kind==='horizontal'){
-        if(drag.edge){const delta=Math.round(dx/Math.max(1,drag.bar.width)*(navExtent()+1));setNavView(drag.edge==='start'?{from:clamp(drag.view.from+delta,0,drag.view.to),to:drag.view.to}:{from:drag.view.from,to:clamp(drag.view.to+delta,drag.view.from,navExtent())});}
+        if(window.GatewayIndexScrollbarGeometry)setNavView(drag.edge?window.GatewayIndexScrollbarGeometry.resize(drag.view,navExtent(),drag.length,drag.edge,dx):window.GatewayIndexScrollbarGeometry.pan(drag.view,navExtent(),drag.length,dx));
+        else if(drag.edge){const delta=Math.round(dx/Math.max(1,drag.bar.width)*(navExtent()+1));setNavView(drag.edge==='start'?{from:clamp(drag.view.from+delta,0,drag.view.to),to:drag.view.to}:{from:drag.view.from,to:clamp(drag.view.to+delta,drag.view.from,navExtent())});}
         else {const span=drag.view.to-drag.view.from+1,delta=Math.round(dx/Math.max(1,drag.bar.width-drag.thumb.width)*(navExtent()+1-span)),from=Math.max(0,drag.view.from+delta);setNavView({from,to:from+span-1});}
       }else if(drag.kind==='vertical'){
         if(drag.edge){const first=drag.scroll/drag.height,last=(drag.scroll+drag.viewportHeight)/drag.height,delta=dy/Math.max(1,drag.bar.height)*Math.max(entries.size,drag.viewportHeight/drag.height),visible=drag.edge==='start'?last-clamp(first+delta,0,last-.2):Math.max(.2,last+delta-first);trackHeight=clamp(drag.viewportHeight/visible,56,220);root.style.setProperty('--timeline-track-height',trackHeight+'px');trackViewport.scrollTop=drag.edge==='start'?Math.max(0,last*trackHeight-drag.viewportHeight):first*trackHeight;save();}
@@ -478,7 +485,7 @@ window.GatewayIndexTimeline = (() => {
     function wheel(event){
       const target=event.target;
       if(picker.contains(target)||help.contains(target)||target.closest?.('.timeline-run-review')){if(event.ctrlKey||event.metaKey)event.preventDefault();return;}
-      if(target.closest?.('input,textarea,select,[contenteditable="true"]'))return;
+      if(target.closest?.('.index-help-trigger,.index-help-popover,input,textarea,select,[contenteditable="true"]'))return;
       event.preventDefault();tooltip.hidden=true;
       const unit=event.deltaMode===1?16:event.deltaMode===2?Math.max(1,wheelScroller().clientHeight):1,dx=event.deltaX*unit,dy=event.deltaY*unit;
       const inTracks=trackArea.contains(target);
@@ -510,7 +517,7 @@ window.GatewayIndexTimeline = (() => {
       status.textContent=!healthy?'Status unavailable':m.locked?'Locked':d.id==='headers'?(snapshot.timeline?.syncing?'Syncing headers':m.total?'Headers available':'Waiting for headers'):m.state;
       status.dataset.locked=String(m.locked);subtitle.textContent=isTrack?d.theory||'Local index coverage':d.name+' · '+(m.locked?'Locked':s.kind==='block'?'Inspect this position in the chain.':'An exact block-height selection.');
       const coverageRanges=isTrack?m.coverage:normalizeRanges(picks.flatMap(r=>intersect(m.coverage,r))),available=count(coverageRanges),length=isTrack?extent+1:count(picks);
-      const backfill=m.projection?.backfill;setMeta(isTrack?[...(m.projection?.retained_coverage?[['Saved Raw bodies',coverageLabel(m)],['Backfill cursor',backfill&&height(backfill.height)?'Through block '+format(backfill.height)+' · next '+format(backfill.next)+' · target '+format(backfill.target)+' · '+(backfill.state||'unknown'):'No saved backfill cursor']]:[]),[d.id==='blocks'?'Available from all local sources':'Available locally',blockCount(m.total)+(m.complete?'':' · mapped so far')],[d.id==='blocks'?'Separate mapped ranges':'Separate ranges',format(m.coverage.length)],['Coverage observed',snapshot.timeline?.observed_at||'Unknown'],['Local header tip',format(snapshot.timeline?.tip_height)]]:[['Selection',blockCount(length)],['Available locally',format(available)+' / '+format(length)],['Coverage',available===length?'Complete':available?'Partial':m.complete?'Not stored':'Not established']]);
+      const backfill=m.projection?.backfill;setMeta(isTrack?[...(m.projection?.retained_coverage?[['Saved Raw bodies',coverageLabel(m)],['Backfill cursor',backfill&&height(backfill.height)?'Through block '+format(backfill.height)+' · next '+format(backfill.next)+' · target '+format(backfill.target)+' · '+(backfill.state||'unknown'):'No saved backfill cursor']]:[]),[d.id==='blocks'?'Available from all local sources':'Available locally',blockCount(m.total)+(m.complete?'':' · mapped so far')],...(d.id==='blocks'?[]:coveragePartitionRows(m)),[d.id==='blocks'?'Separate mapped ranges':'Separate ranges',format(m.coverage.length)],['Coverage observed',snapshot.timeline?.observed_at||'Unknown'],...(snapshot.observation?.mode==='progress'?[['Coverage detail snapshot',Number.isFinite(snapshot.observation.details_age_milliseconds)?(snapshot.observation.details_age_milliseconds/1000).toFixed(1)+' seconds old'+(snapshot.observation.details_refreshing?' · refreshing':''):'Age unavailable']]:[]),['Local header tip',format(snapshot.timeline?.tip_height)]]:[['Selection',blockCount(length)],['Available locally',format(available)+' / '+format(length)],['Coverage',available===length?'Complete':available?'Partial':m.complete?'Not stored':'Not established']]);
       const stateTrack=['utxo-state','address-state','txio-sat-ranges'].includes(d.id);controls.hidden=stateTrack;switches.hidden=true;
       on.input.checked=m.on;live.input.checked=m.live;on.input.disabled=live.input.disabled=!healthy||busy||m.locked||!d.buildable;
       on.input.setAttribute('aria-label',d.id+' On');live.input.setAttribute('aria-label',d.id+' Live');
@@ -524,6 +531,7 @@ window.GatewayIndexTimeline = (() => {
       advanced.hidden=m.locked;summary.textContent='Advanced settings and evidence';if(workspace)workspace.hidden=m.locked;
       notice.textContent=m.locked?d.lock_reason||'This index is locked while Headers and Blocks are tested.':!healthy?'Showing the last known coverage. Controls are paused until local status is available.':d.id==='headers'?'Headers link the chain together. They do not contain the transactions inside each block.':d.id==='blocks'?'Filled ranges show block files available on this computer. Processing a block does not always keep its source file. Files are checked again when opened.':m.note||'Filled ranges show committed local results. They do not imply that source block files are retained.';
       if(!m.locked&&!m.complete)notice.textContent+=' Coverage is partial: blank areas may contain data that has not been mapped yet.';
+      if(isTrack&&coveragePartitionRows(m).length>1)notice.textContent+=' Committed run coverage and viewed block facts may overlap; Available locally counts each block once.';
       if(isTrack&&d.buildable&&!m.locked&&!stateTrack)notice.textContent+=' An idle Start uses the requested scope and required saved prefix. Joining an active run begins only at its current safe boundary when prior state is sufficient; it never backfills automatically. Indexing status shows the exact admitted scope or blocker.';
       if(m.stale)notice.textContent+=' Chain verification needs attention; inspect the source details before relying on saved results.';
       if(s.kind==='block'&&!bodyAvailable&&!m.locked)notice.textContent+=' Viewing this block in Explorer may fetch it from your configured sources.';
@@ -598,7 +606,7 @@ window.GatewayIndexTimeline = (() => {
     setCollapsed(preferences.collapsed!==false,false);
     const result={getSelectedTracks:()=>[...selectedTracks],requestSelectedDeletion,cancelPendingNavigation,acceptResource,syncResource,zoomIntoFocus,returnParent,setCollapsed,redraw,
       setBitmapComparison:()=>{},expandDistrict:(id,expanded=true)=>{districtExpanded[id]=!!expanded;save();render();},
-      skipNotch,getSkipState,createHandleRange,getHierarchy:()=>hierarchy.map(p=>({kind:p.kind,height:p.height,txIndex:p.txIndex,outputIndex:p.outputIndex,count:p.count,view:{...p.view},focused:p.focused})),render,health:ok=>{healthy=ok;render();},
+      skipNotch,getSkipState,createHandleRange,getHierarchy:()=>hierarchy.map(p=>({kind:p.kind,height:p.height,txIndex:p.txIndex,outputIndex:p.outputIndex,count:p.count,view:{...p.view},focused:p.focused})),render,health:(ok,{render:paint=true}={})=>{healthy=ok;if(paint)render();},
       select:id=>{id=id==='txo-spender'?'txio-links':id==='sat-state'?'txio-sat-ranges':id;const changed=selected!==id;selected=id;skipContext=id;if(!selectingLabels){selectedTracks.clear();if(id)selectedTracks.add(id);trackSelectionAnchor=id||null;}selection=id?{id,kind:'track'}:null;if(changed)advanced.open=false;render();},
       model:id=>trackModel(definitionFor(id)||{id},snapshot),getView:()=>({...navView(),fit:fit&&!frame()}),getSelection:id=>selectedRanges(id).map(r=>({...r})),getPlayhead:()=>playhead,focus:focusHeight,removeTrack,
       getNavigationPoint:()=>{const index=frame()?(frame().focused??navView().from):(playhead??navView().from);return {...childEntity(index),block_hash:frame()?.block_hash||resourceAnchors.get(frame()?.height??index)};},
@@ -609,5 +617,5 @@ window.GatewayIndexTimeline = (() => {
     if(window.GatewayIndexTransport){transport=window.GatewayIndexTransport.mount({document:doc,root,timeline:result,api,refresh,notify,getSnapshot:()=>snapshot,inspect:(id,options)=>{selectIndex(id,'advanced');if(options)doc.dispatchEvent(new doc.defaultView.CustomEvent('gateway:timeline-inspect-index',{detail:{id,options}}));}});Object.assign(result,transport);}
     return result;
   }
-  return {normalizeRanges,subtractRanges,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,indexBounds,established,rulerStep,rulerNotch,rulerMarks,mount};
+  return {normalizeRanges,subtractRanges,coveragePartitionRows,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,indexBounds,established,rulerStep,rulerNotch,rulerMarks,mount};
 })();

@@ -39,6 +39,10 @@ def main():
     shutil.copy2(ROOT / 'docs' / 'APPROVED-BRIEF-0.7.8.md', out / 'APPROVED-BRIEF-0.7.8.md')
     shutil.copy2(ROOT / 'docs' / 'SPARSE-INDEXING-0.7.8.md', out / 'SPARSE-INDEXING-0.7.8.md')
     shutil.copy2(ROOT / 'docs' / 'VERIFICATION-0.7.8.md', out / 'VERIFICATION-0.7.8.md')
+    performance_docs = ('APPROVED-PERFORMANCE-BRIEF-0.7.8.md', 'INDEX-REPLAY-PERFORMANCE.md',
+                        'TRANSACTION-LOCATOR-BATCHING.md', 'VERIFICATION-PERFORMANCE-0.7.8.md')
+    for name in performance_docs:
+        shutil.copy2(ROOT / 'docs' / name, out / name)
     shutil.copy2(ROOT / 'scripts' / 'portable-preview.ps1', out / 'Preview.ps1')
     (out / 'Start-Preview.cmd').write_text('@echo off\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Preview.ps1"\n', encoding='ascii')
     (out / 'Stop-Preview.cmd').write_text('@echo off\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Preview.ps1" -Stop\n', encoding='ascii')
@@ -46,6 +50,7 @@ def main():
     dirty = bool(subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=normal'], cwd=ROOT, text=True))
     names = ['GatewayClient.exe', 'LICENSE', 'THIRD-PARTY-NOTICES.txt', 'GO-LICENSE.txt',
              'COMPATIBILITY.json', 'TESTING-0.7.8.md', 'APPROVED-BRIEF-0.7.8.md', 'SPARSE-INDEXING-0.7.8.md', 'VERIFICATION-0.7.8.md', 'Preview.ps1', 'Start-Preview.cmd', 'Stop-Preview.cmd']
+    names.extend(performance_docs)
     manifest = dict(version=version, kind='local-portable-development-preview', source_revision=revision,
                     source_dirty=dirty, updates='disabled at build time', installers=False,
                     files={name: hashlib.sha256((out / name).read_bytes()).hexdigest() for name in names})

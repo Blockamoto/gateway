@@ -172,7 +172,7 @@ func Test073BrowseConcurrentDedupReorgAndTampering(t *testing.T) {
 		t.Fatal("corrupt receipt claimed coverage", got)
 	}
 }
-func Test073BrowseNavigationOnlyAndSequentialResume(t *testing.T) {
+func Test073BrowseEveryCompleteSourceAndSequentialResume(t *testing.T) {
 	a := prepareLiveTestApp063(t)
 	a.settings.NetworkDisabled = true
 	setBrowse073(t, a, "tx-locator", true)
@@ -184,8 +184,8 @@ func Test073BrowseNavigationOnlyAndSequentialResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, head, _ := a.browseStore("tx-locator")
-	if len(head.Blocks) != 0 {
-		t.Fatal("internal block fetch triggered browsing")
+	if len(head.Blocks) != 1 || head.Blocks["0"] == "" {
+		t.Fatal("complete verified internal fetch missed its armed track", head)
 	}
 	s, err := openIndexStore(a.dataDir, "tx-locator")
 	if err != nil {
@@ -289,7 +289,7 @@ func Test073BlockMapRealBytesEndpointAndGatePromotion(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &view); err != nil {
 		t.Fatal(err)
 	}
-	if view.Total != 1 || !view.Transactions[0].Coinbase || view.Transactions[0].OutputSats != 5000000000 || view.Indexing[0].State != "indexed" {
+	if view.Total != 1 || !view.Transactions[0].Coinbase || view.Transactions[0].OutputSats != 5000000000 || view.Indexing[0].State != "already_indexed" {
 		t.Fatal(view)
 	}
 	if !releaseFeatureAvailable("tx-locator") || !releaseInscriptionLocatorsAvailable() || !releaseFeatureAvailable("txo-spender") || releaseFeatureAvailable("gateway-peerhood") {

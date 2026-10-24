@@ -40,7 +40,7 @@ func (a *app) handleBitmapProfiles(w http.ResponseWriter, r *http.Request) {
 	instances = a.bitmapProfileLifecycleViews(r.Context(), instances)
 	chainMetadata := map[string]any{}
 	for _, instance := range instances {
-		if instance.Kind == "chain" && bitmapBuiltinExecutionAvailable(instance.ID) {
+		if instance.Kind == "chain" && bitmapCanonicalChainID(instance.ID) {
 			chainMetadata[instance.ID] = bitmapChainMetadata(instance)
 		}
 	}
@@ -48,6 +48,6 @@ func (a *app) handleBitmapProfiles(w http.ResponseWriter, r *http.Request) {
 		"capabilities": bitmapCapabilities(), "instances": instances, "drafts": d.Drafts,
 		"revision": d.Revision, "chain_metadata": chainMetadata,
 		"read_only": true,
-		"note":      "Canonical District and Parcel rules are fixed and inspect-only. Each optional chain has its own versioned development codec. Legacy definitions and saved results retain their original identity and are inspect-only; no custom interpretation or comparison can execute.",
+		"note":      "Canonical District and Parcel rules are fixed and read-only. Bitmap Chain methodology is being developed; saved chain evidence remains inspectable. Previous generations and saved custom definitions cannot execute or be reinterpreted as the current indexes.",
 	})
 }

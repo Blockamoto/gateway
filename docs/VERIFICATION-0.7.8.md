@@ -1,82 +1,96 @@
-# Gateway 0.7.8 portable preview verification
+# Gateway 0.7.8 reviewed portable verification
 
-This is local development acceptance, not release or updater promotion.
-The implementation branch is `v0.7.8`, created after fetching Gateway
-`origin/main` at `7e1d1d9b731b689586309df8f287316a614e1934`.
-The Bitmap source is the new `Blockamoto/bitmap` repository:
+This record concerns the final approved scope in `APPROVED-BRIEF-0.7.8.md`.
+The earlier preview remains intact; its acceptance does not establish acceptance
+of this revised artifact. Gateway main is not pushed or merged, no installer or
+update delivery is promoted, and no application update is installed.
 
-- Canonical rules: main `335958311eb1c8ce4d14c48bc5c21d23c7a4b134`,
-  README blob `cbd10d75feac8636dd553c10ab52995e38e55514`.
-- Chain draft: `577bae5e5810cb2389f1e02f322438df567f0089`,
-  README blob `5a67f8b37a12bd0ce9968c67f8c8ab8d40488a27`.
+Base: Gateway `origin/main` `7e1d1d9b731b689586309df8f287316a614e1934`.
+Canonical Bitmap main: `335958311eb1c8ce4d14c48bc5c21d23c7a4b134`;
+README blob: `cbd10d75feac8636dd553c10ab52995e38e55514`.
 
-The newer timeline/shared acquisition/outcome-retention implementation was
-adapted from the read-only `timeline-bitmap-development` checkout. Its saved
-profiles and uncommitted work were preserved. Source commits were not rebased
-or replayed onto main. The saved project's stale local main was not the base.
+## Standards repository
 
-## Deterministic and compiled checks
+The authorized private repository rename completed, preserving repository ID
+1406477590, privacy, history, default branch, permissions, and settings. New URL:
+`https://github.com/Blockamoto/blocators`. Terminology changes are on the separate
+`codex/blocators-terminology` branch, commit
+`77257bc8fd478f3c05eec5d5dba0cc0f67e8f29a`. Main was checked unchanged at
+`e3c4c93a92f8b454e8ddc3245a142e8e37191af1` after that branch update.
+The changes preserve positional grammar, hash examples and conformance vectors.
 
-Go 1.27.1, Windows amd64, `GO111MODULE=off`, `CGO_ENABLED=0`:
+## Backend and browser checks
 
-- Canonical District/Parcel fixtures cover exact ASCII bodies regardless of
-  declared charset; parsed MIME parameters/case; grammar and bounds; first
-  qualifying reveal; restart/reorg; selected-parent proof, wrong/missing parent,
-  exact retained preblock Sat state, and collected evidence remaining unresolved.
-- Development chain vectors cover exact provisional bytes, slot activation and
-  retirement, previous-final chaining, independent District/Parcel histories,
-  simultaneous versus retained-outcome catch-up, empty versus missing results,
-  unknown codec refusal, restart, Full/Pruned history and selected-branch recovery.
-- Actual worker catch-up of both chains performs six steps with zero source
-  reads, decodes or inscription extractions. Missing producer history does not
-  initiate raw replay or advance a chain checkpoint.
-- Bitmap legacy inspection and execution fences, timeline/shared runtime,
-  raw coverage and deletion tests were exercised. Internal and packaging package
-  tests and `go vet . ./internal/... ./packaging/...` pass.
-- The actual portable executable passes `test-bitmap-standard-native-api.py`:
-  pinned fixed definitions, unchanged legacy hashes, denied authoring/comparison
-  and legacy/custom execution, cancellable source gaps, and no fabricated result.
-- `test-bitmap-standard-browser.js`, index controller/timeline/transport helpers,
-  and Browser Companion checks pass. The real application's browser check uses
-  no mocked routes and checks read-only metadata, desktop/narrow layout,
-  disabled updates, and absence of hidden indexing starts.
+Go 1.27.1, Windows amd64, `GO111MODULE=off`, `CGO_ENABLED=0`.
+Focused canonical/v2 tests cover the 792435 origin, exact six/seven published
+rules, frozen v1 hashes and unchanged readable heads, ID-free persisted Bitmap
+records/parent receipts, evaluated empty outcomes, selected-chain replay and
+exact-next/admission fences. Compiled offline native API checks pass for fixed
+profiles, origin planning, disabled chains, custom authoring/comparison refusals,
+and preserved legacy identity.
 
-The initial broad Bitmap command exceeded its aggregate 300-second limit.
-The 900-second run completed, revealing stale fixture assumptions about legacy
-names/classification and the old default view; those fixtures were corrected
-and the failed groups rerun. A large raw-coverage test's fixed 30-second wait was
-brittle under Windows filesystem contention. Its unchanged isolated run passed;
-the helper now has a two-minute absolute limit and a 30-second no-progress
-limit, with exact 5,000-record, restart, deletion and reorg assertions unchanged.
+Sparse-ingestion checks cover complete local/cached bodies with Raw Off,
+independent Values/Scripts-only explicit runs, sparse TXIO pending translations,
+independent query/collection/deletion owners, deferred dependency bodies while a
+state writer holds its lock, exact-next UTXO/Sats/Current Addresses, historical
+empty scans, Full/Lean/conventional-ID choices, and late-Off publication fences.
+Relationship/Coinbase checks pass for usable saved and Core routes, historical
+creation identity, selected anchors, exact coinbase bytes, later availability
+pages, cancellation, and no automatic locator-sidecar reconstruction.
 
-## Live Bitcoin smoke
+Browser checks pass for Bitmap sibling rows/rules/limits/disabled controls,
+TXIO backward/forward actions and paged availability beyond127, stale/anchor
+rejection, direct same-block targets, shell navigation, Satpoints and numbered
+Sats, workspace resources, immediate flow output rendering and hover/focus help,
+and 27 pinned geometry vectors including zero/unknown/fee behavior. Narrow and
+zoomed tooltip wrapping is checked. `go vet . ./internal/... ./packaging/...`
+passes.
 
-The isolated preview profile has ordinary Bitcoin networking enabled, with Core
-access, serving and application updates disabled. It received fresh headers from
-real Bitcoin peers and reached height 972831, then observed height 972832.
-A request for block 972831 fetched 1,635,654 serialized bytes over Bitcoin P2P
-and parsed 3,830 transactions. The application verified the P2P checksum,
-header hash/chain, proof of work, Merkle root and witness commitment. Full Bitcoin
-consensus validation is not claimed.
+The broad `go test ./... -count=1 -timeout 20m` run is **not a pass**: its aggregate
+limit expired while the existing 10,000-coin/321-transition UTXO maintenance
+fixture was collecting pages. It also exposed obsolete expectations and real
+integration fences, which were corrected and rerun in focused groups. The
+remaining short UTXO and Bitcoin wire/protocol group passes (24.961s), as do
+internal/cleanup after its unrelated random-TempDir-name false-positive was
+fixed, plus datadir, updateapply, updatepublisher, updates, launcher and native
+host packages. The large maintenance fixture and a complete race suite are not
+claimed complete.
 
-The same block was opened in the actual browser workspace. A separately explicit
-canonical District run over heights 0 through 1 completed using the real runtime:
-two source reads, two decodes, two inscription extractions, two committed evaluated
-blocks. The checkpoint at 1 is
-`00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048`.
-This is a bounded smoke check, not a completed mainnet Bitmap index.
+## Real executable checks
 
-## Limits
+The separately owned QA executable used real Bitcoin P2P, with Core RPC/mounted
+Core access, data serving, raw retention and application updates disabled. A
+read-only header bootstrap was copied into its new profile, and it then received
+fresh headers from a Bitcoin peer to height972920. Block792435 was fetched from
+`100.6.76.66:8333`: 1,834,669 serialized bytes, 3,139 transactions, hash
+`000000000000000000035d4eee4c3b3864b503ed5c6b35a92de219529b34ca2c`.
+The receipt verifies P2P checksum, header hash/chain, proof of work, Merkle root,
+transaction parsing and witness commitment; full consensus validation is false.
 
-The chain codec is deliberately developmental; unresolved upstream encoding
-choices and fixed vectors are documented in [the codec guide](BITMAP-CHAIN-DEV-V1.md).
-Same-block parent creation/transfers and unavailable/collected exact preblock
-Sat evidence remain explicit parcel dependency gaps. A first-valid-0 origin change
-requires explicit chain rebuilding. No full mainnet index, complete Go/race suite,
-installer flow or released update delivery is claimed by this local preview.
+An explicit one-block District plus normal Transaction Locators shared run
+completed at792435. Its worker counters report one source read/decode/extraction;
+it did not index a genesis prefix. Windows locator-file writes took about127s.
+Only the actual792435 coverage is claimed.
 
-Use `scripts/build-portable-preview.py` to reproduce the Windows portable ZIP.
-Its manifest records source revision, dirty state and file hashes. It contains no
-installer or update helper; update actions are disabled at build time. Local QA
-profiles, logs, screenshots and runtime tokens stay outside versioned source and
-the ZIP. See [launch/stop instructions](TESTING-0.7.8.md).
+Actual browser checks use no mocked routes. They verify exact published rules,
+desktop/narrow layout, disabled updates and no hidden index controls. They also
+verify both direct `0.bitmap` and block0's sticky Bitmap tab reuse the existing
+inscription viewer for `953i0.792435`, preserve district focus0, and render the
+exact eight bytes `0.bitmap` from the separate isolated content origin. Browser
+fetched content SHA-256 is
+`df16aa5fafa5bbbc3036c992169cc287e704b1ea6d6b01aa7c71d8b3f34d81e2`, matching
+the saved winner. The real check caught an empty legacy-panel collision; that
+was fixed and the real check rerun successfully.
+
+Final separately packaged artifact/profile acceptance is recorded below before
+delivery. The QA process or a previous binary is not substituted for that check.
+
+## Scope limits
+
+Sparse positive records do not establish contiguous completeness or unspentness.
+Stateful projections require exact predecessor state. Parcel child evaluation
+needs referenced Sat context; a local evaluation receipt is not a portable proof
+that independently reconstructs missing Sat history. Legacy state remains readable
+under frozen identities. Chains are disabled, and future chain-retention,
+reproduction, and index/outcome hashes are not implemented. This preview does not
+claim full Bitcoin consensus validation or a completed mainnet Bitmap index.

@@ -419,7 +419,7 @@ func installRunProtocolHeader(t *testing.T, a *app, block *blockView) {
 
 func TestTimelineRunBitmapSharedExtractionAndIndependentWaiting(t *testing.T) {
 	a := runTestApp(t)
-	b0 := bitmapDevelopmentFixtureBlock(0, "", "0.bitmap")
+	b0 := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "", "792435.bitmap")
 	installRunProtocolHeader(t, a, &b0)
 	parent, err := hex.DecodeString(b0.Transactions[1].TxID)
 	if err != nil {
@@ -428,8 +428,8 @@ func TestTimelineRunBitmapSharedExtractionAndIndependentWaiting(t *testing.T) {
 	for i, j := 0, len(parent)-1; i < j; i, j = i+1, j-1 {
 		parent[i], parent[j] = parent[j], parent[i]
 	}
-	b1 := bitmapDevelopmentFixtureBlock(b0.Height+1, b0.Hash, "0.0.bitmap")
-	b1.Transactions[1].Inputs[0].Witness = ordWitness050(inscriptionTestScript([]byte{1}, []byte("text/plain"), []byte{3}, parent, nil, []byte("0.0.bitmap")))
+	b1 := bitmapDevelopmentFixtureBlock(b0.Height+1, b0.Hash, "0.792435.bitmap")
+	b1.Transactions[1].Inputs[0].Witness = ordWitness050(inscriptionTestScript([]byte{1}, []byte("text/plain"), []byte{3}, parent, nil, []byte("0.792435.bitmap")))
 	installRunProtocolHeader(t, a, &b1)
 	a.indexRunSourceBlock = func(ctx context.Context, target blockTarget, retention string) (blockView, error) {
 		for _, b := range []blockView{b0, b1} {
@@ -440,7 +440,7 @@ func TestTimelineRunBitmapSharedExtractionAndIndependentWaiting(t *testing.T) {
 		return a.indexSourceBlock(ctx, target, retention)
 	}
 	first, last := b0.Height, b0.Height
-	req := indexRunRequest{In: &first, Out: &last, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}, {Index: bitmapCanonicalParcelID, Armed: true}, {Index: "bitmap-district-chain-dev-v1", Armed: true}}}
+	req := indexRunRequest{In: &first, Out: &last, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}, {Index: bitmapCanonicalParcelID, Armed: true}}}
 	p, err := a.planIndexRun(context.Background(), req)
 	if err != nil || !p.Ready {
 		t.Fatal(p, err)
@@ -473,7 +473,7 @@ func TestTimelineRunBitmapSharedExtractionAndIndependentWaiting(t *testing.T) {
 		for _, c := range d.Run.Consumers {
 			states[c.Index] = c
 		}
-		return states[bitmapCanonicalDistrictID].Height == b1.Height && states["bitmap-district-chain-dev-v1"].Height == b1.Height && states[bitmapCanonicalParcelID].State == "waiting" && states[bitmapCanonicalParcelID].Height == b0.Height
+		return states[bitmapCanonicalDistrictID].Height == b1.Height && states[bitmapCanonicalParcelID].State == "waiting" && states[bitmapCanonicalParcelID].Height == b0.Height
 	})
 	if waiting.Run.Counts.InscriptionExtractions != 1 || waiting.Run.Counts.SourceReads != 2 {
 		t.Fatal("shared reveal or referenced block read was repeated", waiting.Run.Counts)

@@ -81,8 +81,9 @@ func legacyIndexDefinition(d indexDefinition) indexDefinition {
 // The public payload contains positions only. Its block-level recipe and
 // denominator are committed separately, never repeated on every inscription.
 type inscriptionBlockMetadata struct {
-	Mode             string `json:"mode"`
-	TransactionCount uint32 `json:"transaction_count"`
+	ConventionalIDs  []transactionLocatorEntry `json:"conventional_ids,omitempty"`
+	Mode             string                    `json:"mode"`
+	TransactionCount uint32                    `json:"transaction_count"`
 }
 
 // A single-key row keeps the user's positional schema while preserving numeric
@@ -172,6 +173,7 @@ func validateInscriptionPayload(b indexBatch) error {
 		return fmt.Errorf("Full occurrence/coordinate count mismatch")
 	}
 	lastTx, lastIndex := -1, -1
+	reveals := map[uint32]bool{}
 	for i, coordinate := range b.InscriptionCoordinates {
 		position, ok := parseBODCoordinate(coordinate)
 		if !ok || position.Kind != coordInscription || position.Height != b.Checkpoint.Height || position.TxIndex < 1 || uint64(position.TxIndex) >= uint64(meta.TransactionCount) || coordinate != inscriptionCoordinate(uint32(position.TxIndex), uint32(position.InscriptionIndex), position.Height) {
@@ -181,6 +183,7 @@ func validateInscriptionPayload(b indexBatch) error {
 			return fmt.Errorf("inscription positions are not canonical and ordered")
 		}
 		lastTx, lastIndex = position.TxIndex, position.InscriptionIndex
+		reveals[uint32(position.TxIndex)] = true
 		if meta.Mode == "full" {
 			occurrence := b.Inscriptions[i]
 			bodyHash := sha256.Sum256(occurrence.Body)
@@ -188,6 +191,13 @@ func validateInscriptionPayload(b indexBatch) error {
 				return fmt.Errorf("Full occurrence position/profile mismatch")
 			}
 		}
+	}
+	previousIDPosition := -1
+	for _, entry := range meta.ConventionalIDs {
+		if !reveals[entry.TxIndex] || int(entry.TxIndex) <= previousIDPosition || !validHash(entry.TxID) {
+			return fmt.Errorf("invalid reveal-scoped conventional ID projection")
+		}
+		previousIDPosition = int(entry.TxIndex)
 	}
 	return nil
 }
@@ -423,6 +433,11 @@ func (a *app) committedInscriptionBatch(ctx context.Context, height int64, hash 
 	}
 	if b.Checkpoint.BlockHash != hash {
 		return a.browsedBatchContext(ctx, "inscriptions", height, hash)
+	}
+	if sparse, have, e := a.browsedBatchContext(ctx, "inscriptions", height, hash); e != nil {
+		return b, false, e
+	} else if have && inscriptionBatchMode(sparse) == "full" && inscriptionBatchMode(b) != "full" {
+		return sparse, true, nil
 	}
 	return b, true, nil
 }

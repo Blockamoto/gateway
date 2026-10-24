@@ -176,7 +176,7 @@ func Test073FlowSameBlockDirectParentsAndBoundedMissingParents(t *testing.T) {
 	}
 }
 
-func Test073FlowRealGenesisDoesNotIndexEvenWhenBrowseEnabled(t *testing.T) {
+func Test078FlowCompleteVerifiedBlockFeedsAlreadyArmedTracks(t *testing.T) {
 	a, raw := testAppWithGenesis(t)
 	a.settings.CoreDisabled, a.settings.NetworkDisabled, a.settings.OrdEnabled = true, true, true
 	setBrowse073(t, a, "tx-locator", true)
@@ -195,10 +195,19 @@ func Test073FlowRealGenesisDoesNotIndexEvenWhenBrowseEnabled(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil || result.Context.State != "complete" || result.Context.Count != 0 || len(result.Outputs) != 1 || result.Outputs[0].ValueSats != 5000000000 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	for _, id := range []string{"tx-locator", "inscriptions", "blocks", "sat-state", "browse/tx-locator", "browse/inscriptions"} {
+	for _, id := range []string{"tx-locator", "inscriptions", "blocks", "sat-state"} {
 		if _, err := os.Stat(filepath.Join(a.dataDir, "indexes", filepath.FromSlash(id), "head.json")); !os.IsNotExist(err) {
 			t.Fatal("flow advanced indexing", id, err)
 		}
+	}
+	for _, id := range []string{"tx-locator", "inscriptions"} {
+		_, head, e := a.browseStore(id)
+		if e != nil || len(head.Blocks) != 1 || head.Blocks["0"] == "" {
+			t.Fatal("complete flow source did not feed existing armed sparse owner", id, head, e)
+		}
+	}
+	if doc := a.indexRunSnapshot(); doc.Run != nil {
+		t.Fatal("flow started a background range", doc.Run)
 	}
 	if releaseFeatureAvailable("gateway-peerhood") {
 		t.Fatal("viewing unlocked a future feature")

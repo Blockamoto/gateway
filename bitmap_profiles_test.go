@@ -34,8 +34,31 @@ func TestBitmapNamedProfilesRegistryAndImmutableDependencies(t *testing.T) {
 		t.Fatal(a, b)
 	}
 	instances, err := bitmapProfileInstances(ctx, root)
-	if err != nil || len(instances) != 12 {
+	// Nine fixed current/preserved definitions plus the five named instances
+	// created above (two District/Chain pairs and one linked Parcel).
+	if err != nil || len(instances) != 14 {
 		t.Fatal(instances, err)
+	}
+	fixed := map[string]bitmapProfileInstance{}
+	for _, i := range instances {
+		if !bitmapCustomConsumerID(i.ID) {
+			fixed[i.ID] = i
+		}
+	}
+	for _, id := range []string{bitmapCanonicalDistrictID, bitmapCanonicalParcelID} {
+		i, ok := fixed[id]
+		if !ok || i.Legacy || i.StartHeight != 792435 || !i.Profile.CanonicalStandard || !releaseFeatureAvailable(id) {
+			t.Fatal("current canonical identity unavailable", id, i)
+		}
+	}
+	for _, id := range []string{bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1", "bitmap-districts", "bitmap-parcels", "bitmap-chain"} {
+		i, ok := fixed[id]
+		if !ok || !i.Legacy || releaseFeatureAvailable(id) {
+			t.Fatal("preserved identity lost or executable", id, i)
+		}
+	}
+	if fixed[bitmapCanonicalV1DistrictID].ProfileHash != "eee99fd265545a86f71373406a3b302a30ffe11dfbdd4f06eafc2b1780ee961f" {
+		t.Fatal("frozen canonical v1 identity changed", fixed[bitmapCanonicalV1DistrictID])
 	}
 	var parcel bitmapProfileInstance
 	for _, i := range instances {

@@ -47,7 +47,7 @@ func TestTimelineRunLiveFairnessIdleNewTipAndSameHeightReorg(t *testing.T) {
 	blocks := map[int64]blockView{}
 	previous := ""
 	for i := int64(0); i < 20; i++ {
-		b := bitmapDevelopmentFixtureBlock(0+i, previous)
+		b := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart+i, previous)
 		installRunProtocolHeader(t, a, &b)
 		previous = b.Hash
 		blocks[b.Height] = b
@@ -79,7 +79,7 @@ func TestTimelineRunLiveFairnessIdleNewTipAndSameHeightReorg(t *testing.T) {
 		}
 		return b, nil
 	}
-	from := int64(0)
+	from := bitmapDevelopmentStart
 	// Fair scheduling does not need the separate conventional-ID enrichment.
 	req := indexRunRequest{In: &from, Consumers: []indexRunSelection{{Index: "inscriptions", Armed: true, indexRunOptions: indexRunOptions{ConventionalIDs: boolPointer(false)}}, {Index: live.ID, Armed: true, Live: true}}}
 	p, err := a.planIndexRun(ctx, req)
@@ -94,7 +94,7 @@ func TestTimelineRunLiveFairnessIdleNewTipAndSameHeightReorg(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("historical consumer did not start")
 	}
-	b := bitmapDevelopmentFixtureBlock(0+20, previous)
+	b := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart+20, previous)
 	installRunProtocolHeader(t, a, &b)
 	mu.Lock()
 	blocks[b.Height] = b
@@ -230,62 +230,28 @@ func bitmapChainTestHashes(blocks map[int64]blockView) func(int64) (string, erro
 	}
 }
 
-func TestTimelineRunChainRetainedOutcomesNeedNoBitcoinBodies(t *testing.T) {
+func TestTimelineRunDisabledChainPreservesSavedOutcomesWithoutSourceWork(t *testing.T) {
 	ctx := context.Background()
 	a := runTestApp(t)
-	producer := bitmapTestConsumer(t, a.dataDir, bitmapCanonicalDistrictID)
-	blocks := map[int64]blockView{}
-	previous := ""
-	for i := int64(0); i < 3; i++ {
-		claims := []string{}
-		if i == 0 {
-			claims = []string{"0.bitmap"}
-		}
-		b := bitmapDevelopmentFixtureBlock(0+i, previous, claims...)
-		installRunProtocolHeader(t, a, &b)
-		blocks[b.Height] = b
-		previous = b.Hash
-		if err := producer.Apply(ctx, b, nil); err != nil {
-			t.Fatal(err)
-		}
-	}
+	chain, _, _ := bitmapCanonicalChainFixture(t, a.dataDir, true)
+	before := chain.head.Commitment
 	a.indexRunSourceBlock = func(context.Context, blockTarget, string) (blockView, error) {
-		t.Error("Chain-only catchup attempted a Bitcoin body read")
+		t.Error("disabled Chain attempted a Bitcoin body read")
 		return blockView{}, fmt.Errorf("raw body deliberately unavailable")
 	}
-	from, to := int64(0), int64(2)
-	req := indexRunRequest{In: &from, Out: &to, Consumers: []indexRunSelection{{Index: "bitmap-district-chain-dev-v1", Armed: true}}}
-	plan, err := a.planIndexRun(ctx, req)
-	if err != nil || !plan.Ready {
-		t.Fatal(plan, err)
+	from, to := int64(1), int64(3)
+	req := indexRunRequest{In: &from, Out: &to, Consumers: []indexRunSelection{{Index: chain.id, Armed: true}}}
+	if _, err := a.planIndexRun(ctx, req); err == nil || !strings.Contains(err.Error(), "methodology is being developed") {
+		t.Fatal("chain plan was admitted", err)
 	}
-	if len(plan.Consumers[0].Dependencies) != 1 || plan.Consumers[0].Dependencies[0].Index != bitmapCanonicalDistrictID {
-		t.Fatal("Chain required a raw source instead of its exact producer", plan)
+	if _, err := a.startIndexRun(ctx, req, ""); err == nil {
+		t.Fatal("chain execution was admitted")
 	}
-	if _, err = a.startIndexRun(ctx, req, plan.PlanID); err != nil {
-		t.Fatal(err)
-	}
-	done := waitRun(t, a)
-	if done.Run.State != "complete" {
-		t.Fatal(done.Run)
-	}
-	c := done.Run.Counts
-	if c.SourceReads != 0 || c.DecodedBlocks != 0 || c.InscriptionExtractions != 0 || c.OutcomeReads != 3 || c.ChainSteps != 3 {
-		t.Fatal("retained outcome path performed source work", c)
-	}
-	chain := bitmapTestConsumer(t, a.dataDir, "bitmap-district-chain-dev-v1")
-	if chain.head.Height != to || chain.head.LastBlock.IsolatedHash == "" || !chain.head.LastBlock.BlockEvaluated {
-		t.Fatal(chain.head)
-	}
-	if err = chain.Reconcile(ctx, bitmapChainTestHashes(blocks)); err != nil {
-		t.Fatal(err)
-	}
-	before := chain.head.Commitment
-	if err = chain.ApplyRetainedOutcome(ctx, to+1); !errors.Is(err, ErrBitmapEvidenceRequired) || chain.head.Commitment != before {
-		t.Fatal("unknown output became an empty outcome", err)
+	saved, err := readBitmapDevelopmentHead(ctx, a.dataDir, chain.id)
+	if err != nil || saved == nil || saved.Commitment != before {
+		t.Fatal("disabled chain lost saved evidence", saved, err)
 	}
 }
-
 func TestBitmapStoredIndependentDistrictsFeedTheirExactAttachedChains(t *testing.T) {
 	ctx := context.Background()
 	a := runTestApp(t)

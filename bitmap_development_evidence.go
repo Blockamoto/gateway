@@ -20,6 +20,9 @@ type bitmapParentEvidence struct {
 }
 
 func storeBitmapParentEvidence(ctx context.Context, root string, e *satEditor077, b indexBatch, out satIndexOutput, proof *bitmapParentProof) error {
+	if proof.ParentBlocator != "" {
+		return storeBitmapParentReceiptV2(ctx, root, proof)
+	}
 	bundle := bitmapParentEvidence{Schema: 1, Proof: *proof, SatBatch: b, Pages: map[string]ordinalPage{}, Facts: map[string]outputFactPage{}}
 	for _, tree := range []*ordinalTree{e.ids, e.locations, e.outputs, e.native} {
 		for hash, page := range tree.cache {
@@ -75,6 +78,9 @@ func storeBitmapParentEvidence(ctx context.Context, root string, e *satEditor077
 func verifyBitmapParentEvidence(ctx context.Context, root string, proof *bitmapParentProof) error {
 	if proof == nil {
 		return nil
+	}
+	if proof.ParentBlocator != "" {
+		return verifyBitmapParentReceiptV2(ctx, root, proof)
 	}
 	if !proof.Verified || !validHash(proof.EvidenceHash) {
 		return fmt.Errorf("checked Parcel parent evidence is unavailable")

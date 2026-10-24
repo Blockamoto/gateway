@@ -62,7 +62,7 @@ func TestTimelineBrowsePublicationRechecksArm(t *testing.T) {
 		return nil
 	})
 	got := a.indexBrowsedBlock(ctx, browseBlock073(t, 2, hashes[2]), nil)
-	if len(got) != 1 || got[0].State != "error" || calls != 2 {
+	if len(got) != 1 || got[0].State != "unavailable" || calls != 2 {
 		t.Fatal("final Off fence was not exercised", got, calls)
 	}
 	if _, present, err := a.browsedBatchContext(context.Background(), "tx-locator", 2, hashes[2]); err != nil || present {

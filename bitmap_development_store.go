@@ -23,7 +23,8 @@ var ErrBitmapEvidenceRequired = errors.New("Bitmap requires checked dependency e
 var ErrBitmapParentInvalid = errors.New("authenticated parent output is not consumed by the reveal")
 
 type bitmapDevelopmentCandidate struct {
-	ID                     string             `json:"id"`
+	ID                     string             `json:"id,omitempty"`
+	Blocator               string             `json:"blocator,omitempty"`
 	Kind                   string             `json:"kind"`
 	District               *uint64            `json:"district,omitempty"`
 	Transaction            *uint64            `json:"transaction,omitempty"`
@@ -38,6 +39,9 @@ type bitmapDevelopmentCandidate struct {
 	Selection              string             `json:"selection"`
 	Reason                 string             `json:"reason"`
 	Parents                []string           `json:"parents,omitempty"`
+	ParentBlocators        []string           `json:"parent_blocators,omitempty"`
+	DeclaredParentCount    int                `json:"declared_parent_count,omitempty"`
+	SelectedParentDeclared bool               `json:"selected_parent_declared,omitempty"`
 	Provenance             *bitmapParentProof `json:"provenance,omitempty"`
 	UnresolvedDependencies []string           `json:"unresolved_dependencies,omitempty"`
 	Ownership              string             `json:"ownership"`
@@ -47,15 +51,19 @@ type bitmapDevelopmentCandidate struct {
 	DelegateFieldEvidence  string             `json:"delegate_field_evidence,omitempty"`
 }
 type bitmapParentProof struct {
-	ParentID     string          `json:"parent_id"`
-	SatNumber    uint64          `json:"sat_number"`
-	InputIndex   int             `json:"input_index"`
-	Output       string          `json:"output_coordinate"`
-	Value        uint64          `json:"value_sats"`
-	Offset       uint64          `json:"parent_offset"`
-	Snapshot     indexCheckpoint `json:"sat_snapshot"`
-	Verified     bool            `json:"verified"`
-	EvidenceHash string          `json:"evidence_hash"`
+	ParentID       string          `json:"parent_id,omitempty"`
+	ParentBlocator string          `json:"parent_blocator,omitempty"`
+	ChildBlocator  string          `json:"child_blocator,omitempty"`
+	ChildBlockHash string          `json:"child_block_hash,omitempty"`
+	EvaluationKind string          `json:"evaluation_kind,omitempty"`
+	SatNumber      uint64          `json:"sat_number"`
+	InputIndex     int             `json:"input_index"`
+	Output         string          `json:"output_coordinate"`
+	Value          uint64          `json:"value_sats"`
+	Offset         uint64          `json:"parent_offset"`
+	Snapshot       indexCheckpoint `json:"sat_snapshot"`
+	Verified       bool            `json:"verified"`
+	EvidenceHash   string          `json:"evidence_hash"`
 }
 type bitmapDevelopmentBlock struct {
 	ChainCodec           string   `json:"chain_codec,omitempty"`
@@ -64,6 +72,7 @@ type bitmapDevelopmentBlock struct {
 	BlockHash            string   `json:"block_hash"`
 	BlockEvaluated       bool     `json:"block_evaluated"`
 	OrderedWinnerIDs     []string `json:"ordered_winner_ids"`
+	WinnerBlocators      []string `json:"winner_blocators,omitempty"`
 	CandidateCount       int      `json:"candidate_count"`
 	IsolatedHash         string   `json:"isolated_outcome_hash,omitempty"`
 	ChainHash            string   `json:"outcome_chain_hash,omitempty"`
@@ -178,6 +187,17 @@ func readBitmapDevelopmentCommit(ctx context.Context, root, id, commit string) (
 	}
 	if h.Schema != 1 || h.Index != id || h.Height < h.SegmentStart || (!bitmapCanonicalChainID(id) && h.SegmentStart != instance.StartHeight) || h.Commitment != commit || bitmapDevelopmentDigest(h) != commit || h.ProfileHash != bitmapProfileHash(h.Profile) || h.ProfileHash != instance.ProfileHash || !validHash(h.BlockHash) || h.LastBlock.Height != h.Height || h.LastBlock.BlockHash != h.BlockHash || !h.LastBlock.BlockEvaluated || !h.LastBlock.CompleteScope || h.DistrictInstance != "" && h.DistrictInstance != instance.DistrictInstance {
 		return nil, fmt.Errorf("Bitmap checkpoint authentication/profile mismatch; explicit reviewed recovery required")
+	}
+	if instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+		if h.LastBlock.WinnerBlocators == nil || len(h.LastBlock.OrderedWinnerIDs) != 0 {
+			return nil, fmt.Errorf("Bitmap v2 outcome reference generation mismatch; explicit rebuild required")
+		}
+		for _, value := range h.LastBlock.WinnerBlocators {
+			c, ok := parseBODCoordinate(value)
+			if !ok || !bitmapValidInscriptionBlocator(value) || c.Height != h.Height {
+				return nil, fmt.Errorf("Bitmap v2 outcome blocator is invalid")
+			}
+		}
 	}
 	if !instance.Legacy && instance.Kind != "district" && h.DistrictInstance != instance.DistrictInstance {
 		return nil, fmt.Errorf("Bitmap checkpoint lost its exact District instance binding")
@@ -524,6 +544,9 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 	}
 	winners, candidates, targets, blocks := tree(h.WinnerRoot), tree(h.CandidateRoot), tree(h.TargetRoot), tree(h.BlockRoot)
 	row := bitmapDevelopmentBlock{Height: block.Height, BlockHash: block.Hash, BlockEvaluated: true, OrderedWinnerIDs: []string{}, CompleteScope: true, PreviousCommitment: h.Previous}
+	if s.instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+		row.WinnerBlocators = []string{}
+	}
 	if bitmapConsumerKind(s.id) != "district" {
 		d, err := bitmapHeadAt(ctx, s.root, s.instance.DistrictInstance, block.Height)
 		if err != nil {
@@ -625,10 +648,14 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 			continue
 		}
 		c := bitmapDevelopmentCandidate{ID: o.ID, Kind: bitmapConsumerKind(s.id), RevealCoordinate: inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height), RevealHeight: block.Height, RevealHash: block.Hash, TxIndex: o.TxIndex, InscriptionIndex: o.Index, ContentHash: o.ContentSHA256, Eligibility: "ineligible", Selection: "not-selected", Reason: reason, Parents: append([]string(nil), o.Envelope.Parents...), Ownership: "unknown"}
+		if s.instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+			c.Blocator = c.RevealCoordinate
+			c.DeclaredParentCount = len(c.Parents)
+		}
 		if len(text) <= 128 {
 			c.Content = text
 		}
-		if bitmapNamedSchema(s.instance.Profile.FingerprintSchema) || s.instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+		if bitmapNamedSchema(s.instance.Profile.FingerprintSchema) || s.instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema || s.instance.Profile.FingerprintSchema == bitmapCanonicalV1ProfileSchema {
 			c.DecodeState = "pass"
 			if reason == "unresolved_charset" {
 				c.DecodeState = "unknown"
@@ -744,6 +771,15 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 				continue
 			}
 			declared := false
+			if len(c.Parents) > 0 && parent.ID == "" {
+				parent, e = s.selectedParentIdentity(ctx, block, parent)
+				if e != nil {
+					c.Eligibility = "unresolved"
+					c.Reason = "selected_parent_reveal_evidence_required"
+					c.UnresolvedDependencies = []string{e.Error()}
+					return s.pending(ctx, block, append(staged, c), "Selected District reveal evidence is unavailable; no unrelated index was started.")
+				}
+			}
 			for _, id := range c.Parents {
 				if id == parent.ID {
 					declared = true
@@ -754,6 +790,10 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 				c.Reason = "recognized_district_not_declared_parent"
 				staged = append(staged, c)
 				continue
+			}
+			if c.Blocator != "" {
+				c.SelectedParentDeclared = true
+				c.ParentBlocators = []string{parent.Blocator}
 			}
 			proof, e := checkedBitmapParent(ctx, s.a, block, o, parent)
 			if e != nil {
@@ -790,7 +830,7 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 		} else {
 			c.Selection = "selected"
 			c.Reason = "first_eligible_under_development_profile"
-			if s.instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+			if s.instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema || s.instance.Profile.FingerprintSchema == bitmapCanonicalV1ProfileSchema {
 				c.Reason = "first_qualifying_canonical_reveal"
 			}
 			c.RuleResults = bitmapRuleAudits(s.instance.Profile, c)
@@ -798,7 +838,11 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 				return err
 			}
 			h.WinnerCount++
-			row.OrderedWinnerIDs = append(row.OrderedWinnerIDs, c.ID)
+			if c.Blocator != "" {
+				row.WinnerBlocators = append(row.WinnerBlocators, c.Blocator)
+			} else {
+				row.OrderedWinnerIDs = append(row.OrderedWinnerIDs, c.ID)
+			}
 		}
 		staged = append(staged, c)
 	}
@@ -927,6 +971,12 @@ func checkedBitmapParent(ctx context.Context, a *app, block blockView, o inscrip
 					return nil, nil
 				}
 				proof := &bitmapParentProof{ParentID: parent.ID, SatNumber: *identity.SatNumber, InputIndex: vi, Output: out.Output, Value: out.Value, Offset: offset, Snapshot: b.Checkpoint, Verified: true}
+				if parent.Blocator != "" {
+					proof.ParentBlocator = parent.Blocator
+					proof.ChildBlocator = inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height)
+					proof.ChildBlockHash = block.Hash
+					proof.EvaluationKind = "locally_evaluated_creation_relationship_v2"
+				}
 				if err := storeBitmapParentEvidence(ctx, a.dataDir, e, b, out, proof); err != nil {
 					return nil, err
 				}

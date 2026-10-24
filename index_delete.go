@@ -49,7 +49,7 @@ type indexDeletePathStamp struct {
 func indexDeleteOwner(id string) string {
 	switch id {
 	case "txio-values", "txio-scripts":
-		return "txo-spender"
+		return id
 	case "txio-sat-ranges":
 		return "sat-state"
 	}
@@ -57,6 +57,9 @@ func indexDeleteOwner(id string) string {
 }
 func indexDeletePaths(root, id string) ([]string, error) {
 	id = indexDeleteOwner(id)
+	if id == "txio-values" || id == "txio-scripts" {
+		return []string{sparseOutputLayerDir(root, id)}, nil
+	}
 	if id == "headers" {
 		return nil, fmt.Errorf("Bitcoin headers are the shared chain authority; deleting them requires a separate full-profile reset")
 	}
@@ -162,6 +165,10 @@ func (a *app) indexDeleteReviewLocked(ctx context.Context, id string) (indexDele
 		return r, nil
 	}
 	r.Scope = append(r.Scope, "Saved "+r.Name+" index records, checkpoints and owned pages")
+	if id == "txio-values" || id == "txio-scripts" {
+		r.Note = "Clear this independently owned sparse fact layer and turn its retention flag Off. Positional links and sibling layers are preserved."
+		r.Retained = append(r.Retained, "Legacy authenticated parent-bound TXIO history remains owned by its original parent records; mandatory UTXO/Sat/recovery facts remain independently owned.")
+	}
 	if indexBrowseAvailable(id) {
 		r.Scope = append(r.Scope, "Saved singleton browse records for this index")
 	}

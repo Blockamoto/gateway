@@ -149,9 +149,9 @@ func bitmapCanonicalChainInstance(id string) (bitmapProfileInstance, bool) {
 	if !bitmapCanonicalChainID(id) {
 		return bitmapProfileInstance{}, false
 	}
-	kind, sourceID, label := "district", "bitmap-districts-canonical", "Bitmap District Chain (development codec v1)"
+	kind, sourceID, label := "district", "bitmap-districts-canonical", "Saved District Chain evidence"
 	if id == "bitmap-parcel-chain-dev-v1" {
-		kind, sourceID, label = "parcel", "bitmap-parcels-canonical", "Bitmap Parcel Chain (development codec v1)"
+		kind, sourceID, label = "parcel", "bitmap-parcels-canonical", "Saved Parcel Chain evidence"
 	}
 	source, _ := bitmapCanonicalInstance(sourceID)
 	p := bitmapDevelopmentProfile{
@@ -173,7 +173,7 @@ func bitmapCanonicalChainInstance(id string) (bitmapProfileInstance, bool) {
 	}
 	return bitmapProfileInstance{ID: id, Kind: "chain", Label: label, Profile: p, ProfileHash: bitmapProfileHash(p), StartHeight: 0,
 		DistrictInstance: sourceID, DistrictProfileHash: source.ProfileHash, State: "ready", RulesLocked: true, RulesEditable: false,
-		ConfigurationRevision: 1, Classification: "development_chain", Note: "Optional replaceable chain codec; source binding is an outcome producer (district or parcel), independent of Bitmap validity."}, true
+		ConfigurationRevision: 1, Classification: "legacy", Legacy: true, Note: errBitmapChainDeferred.Error()}, true
 }
 
 // Exact bytes are retained in each authenticated chain state. There is one

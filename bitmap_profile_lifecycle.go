@@ -76,11 +76,11 @@ func bitmapEffectiveConfigurationRevision(i bitmapProfileInstance) uint64 {
 }
 
 func bitmapProfileClassification(i bitmapProfileInstance) string {
+	if i.Legacy {
+		return "legacy"
+	}
 	if i.Profile.CanonicalStandard {
 		return "canonical"
-	}
-	if bitmapBuiltinExecutionAvailable(i.ID) && i.Kind == "chain" {
-		return "development_chain"
 	}
 	return "legacy"
 }
@@ -236,10 +236,10 @@ func (a *app) bitmapProfileLifecycleViews(ctx context.Context, instances []bitma
 		i.ExecutionAvailable = &available
 		i.RulesEditable = false
 		if available {
-			i.RulesLockReason = "This canonical index or versioned optional chain has a fixed read-only definition."
+			i.RulesLockReason = "This canonical index has a fixed read-only definition."
 		} else {
-			i.ExecutionUnavailableReason = errBitmapComparisonDeferred.Error()
-			i.RulesLockReason = errBitmapComparisonDeferred.Error()
+			i.ExecutionUnavailableReason = releaseLockReason(i.ID)
+			i.RulesLockReason = i.ExecutionUnavailableReason
 		}
 	}
 	return out
@@ -253,11 +253,11 @@ func (a *app) bitmapStoredProfileLifecycleViews(ctx context.Context, instances [
 		i.Classification = bitmapProfileClassification(*i)
 		i.RulesEditable = false
 		if i.Legacy {
-			i.RulesLockReason = "Preserved legacy interpretation; clone a new named track to change rules."
+			i.RulesLockReason = "Preserved previous interpretation; its definition cannot be edited or executed."
 			continue
 		}
 		if i.Kind == "chain" {
-			i.RulesLockReason = "Chain rules follow their exact District track; configure the unindexed District."
+			i.RulesLockReason = errBitmapChainDeferred.Error()
 			continue
 		}
 		ids := bitmapAffectedProfileIDs(instances, i.ID)

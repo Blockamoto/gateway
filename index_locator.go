@@ -826,12 +826,17 @@ func unwrittenIndexLocatorRecords(path string, records [][]byte) ([][]byte, erro
 // from the authenticated immutable range, with bounded memory and cancellation.
 // The old head and payload bytes remain untouched; an interrupted partial
 // pointer backfill is harmless and is retried before a ready table is published.
+type indexLocatorReadOnlyKey struct{}
+
 func (s *indexStore) ensureIndexLocators(ctx context.Context) error {
 	if s.checkpoint == nil || (s.definition.ID != "blocks" && s.definition.ID != "tx-locator" && s.definition.ID != inscriptionLocatorIndex && s.definition.ID != "inscriptions" && s.definition.ID != "txo-spender" && s.definition.ID != "sat-state") {
 		return nil
 	}
 	if _, ready, err := s.activeLocatorCommitContext(ctx, s.checkpoint.Height); err == nil && ready {
 		return nil
+	}
+	if readOnly, _ := ctx.Value(indexLocatorReadOnlyKey{}).(bool); readOnly {
+		return fmt.Errorf("saved locator acceleration is unavailable; automatic availability checks do not reconstruct historical sidecars")
 	}
 	if err := lockIndexLocators(ctx); err != nil {
 		return err
@@ -947,6 +952,9 @@ func (s *indexStore) bitcoinLocatorRecordsWithRepair(ctx context.Context, txid s
 // A translation catalogue may contain many output aliases for one creation;
 // its bounded pointer budget must not count them as transaction incarnations.
 func (s *indexStore) bitcoinLocatorRecordsWithBudget(ctx context.Context, txid string, repair bool, maxMatches int, maxShardBytes int64) ([]indexLocatorRecord, error) {
+	if readOnly, _ := ctx.Value(indexLocatorReadOnlyKey{}).(bool); readOnly {
+		repair = false
+	}
 	if s.definition.ID == "blocks" {
 		repair = false
 	}

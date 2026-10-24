@@ -211,7 +211,7 @@ func (a *app) retainedSatSpender(ctx context.Context, id string, vout uint32) (s
 		return out, fmt.Errorf("missing Sat state")
 	}
 	if batch.Sats.Profile == satIndexProfile {
-		// New BPS snapshots retain current membership without retaining all
+		// New blocator snapshots retain current membership without retaining all
 		// historical transaction movements. A positive live output is sufficient;
 		// a miss still says nothing about its historical spender.
 		output, known, err := retainedSatSnapshotOutput077(ctx, s, batch, id, vout)

@@ -553,7 +553,8 @@ func publishAddressStateContext(ctx context.Context, root string, c addressState
 	if err := checkIndexConsumerPublication(ctx, root, "address-state"); err != nil {
 		return err
 	}
-	if automatic, _ := ctx.Value(indexRunAddressProjectionKey{}).(bool); automatic && !indexRunProjectionAllowed(root, c.Height) {
+	_, incidental := ctx.Value(resolvedIngestionKey{}).(*resolvedIngestionQueue)
+	if automatic, _ := ctx.Value(indexRunAddressProjectionKey{}).(bool); automatic && !incidental && !indexRunProjectionAllowed(root, c.Height) {
 		return errIndexRunConsumerStopped
 	}
 	if err := atomicWriteJSON(filepath.Join(dir, "head.json"), c); err != nil {
@@ -750,7 +751,20 @@ func buildAddressStateWithHookContext(ctx context.Context, root string, progress
 // optional address error can turn an already published UTXO head into an older
 // state. A failed projection remains unavailable until repaired/rebuilt.
 func syncAddressStateContext(ctx context.Context, u *utxoStore, hook func(string) error) (err error) {
-	if u.head != nil && !indexRunProjectionAllowed(u.root, u.head.Checkpoint.Height) {
+	_, incidental := ctx.Value(resolvedIngestionKey{}).(*resolvedIngestionQueue)
+	if incidental && !indexRunOptionalWorkAllowed(u.root, "address-state") {
+		return nil
+	}
+	if incidental && u.head != nil {
+		d, err := readIndexRunDocument(u.root)
+		if err != nil {
+			return err
+		}
+		if err := resolvedAdmissionAllowed(d, "address-state", u.head.Checkpoint.Height); err != nil {
+			return nil
+		}
+	}
+	if u.head != nil && !incidental && !indexRunProjectionAllowed(u.root, u.head.Checkpoint.Height) {
 		return nil
 	}
 	ctx = context.WithValue(ctx, indexRunAddressProjectionKey{}, true)

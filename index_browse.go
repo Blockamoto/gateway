@@ -23,9 +23,11 @@ const indexBrowseBudget int64 = 64 << 20
 var indexBrowseMu sync.Mutex
 
 type indexBrowsePolicy struct {
-	Index     string `json:"index"`
-	Enabled   bool   `json:"enabled"`
-	Available bool   `json:"available"`
+	Index      string `json:"index"`
+	Enabled    bool   `json:"enabled"`
+	Available  bool   `json:"available"`
+	Capability string `json:"capability"`
+	Reason     string `json:"reason"`
 }
 type indexBrowseRequest struct {
 	Index   string `json:"index"`
@@ -62,7 +64,7 @@ func lockIndexBrowse(ctx context.Context) error {
 	}
 }
 func indexBrowseAvailable(id string) bool {
-	return (id == "tx-locator" || id == "inscriptions") && releaseFeatureAvailable(id)
+	return (id == "tx-locator" || id == "inscriptions" || id == "txo-spender") && releaseFeatureAvailable(id)
 }
 func boundedBrowseJSON(path string, value any) error {
 	if err := updateapply.CheckPath(path); err != nil {
@@ -93,13 +95,7 @@ func (a *app) indexBrowsePoliciesContext(ctx context.Context) ([]indexBrowsePoli
 	if err != nil {
 		return nil, err
 	}
-	rows := []indexBrowsePolicy{}
-	for _, d := range indexDefinitions() {
-		choice, exists := runSelection(doc.Prepared, d.ID)
-		available := indexBrowseAvailable(d.ID)
-		rows = append(rows, indexBrowsePolicy{d.ID, available && doc.Configured && exists && choice.Armed, available})
-	}
-	return rows, nil
+	return resolvedIngestionCapabilities(doc), nil
 }
 func (a *app) setIndexBrowsePolicy(ctx context.Context, req indexBrowseRequest) (indexBrowsePolicy, error) {
 	req.Index = strings.ToLower(strings.TrimSpace(req.Index))
@@ -142,14 +138,14 @@ func (a *app) setIndexBrowsePolicy(ctx context.Context, req indexBrowseRequest) 
 	if err != nil {
 		return indexBrowsePolicy{}, err
 	}
-	return indexBrowsePolicy{req.Index, *req.Enabled, true}, nil
+	return indexBrowsePolicy{Index: req.Index, Enabled: *req.Enabled, Available: true, Capability: "sparse", Reason: "Verified observed blocks only; no predecessor scan."}, nil
 }
 func (a *app) browseStore(id string) (*indexStore, indexBrowseHead, error) {
 	d, err := findIndexDefinition(id)
 	if err != nil || !indexBrowseAvailable(id) {
 		return nil, indexBrowseHead{}, fmt.Errorf("unsupported browsed index")
 	}
-	s := &indexStore{dir: filepath.Join(a.dataDir, "indexes", "browse", id), definition: d, head: indexHead{Mode: "lean"}}
+	s := &indexStore{profileRoot: a.dataDir, dir: filepath.Join(a.dataDir, "indexes", "browse", id), definition: d, head: indexHead{Mode: "lean"}}
 	head := indexBrowseHead{Schema: 1, Blocks: map[string]string{}}
 	err = boundedBrowseJSON(filepath.Join(s.dir, "head.json"), &head)
 	if os.IsNotExist(err) {
@@ -170,6 +166,10 @@ func (a *app) browseStore(id string) (*indexStore, indexBrowseHead, error) {
 	return s, head, nil
 }
 func singletonBrowseBatch(id string, block blockView, extracted *inscriptionBlockResult) (indexBatch, error) {
+	return singletonBrowseBatchMode(indexRunSelection{Index: id, indexRunOptions: indexRunOptions{Mode: "lean", ConventionalIDs: boolPointer(false)}}, block, extracted)
+}
+func singletonBrowseBatchMode(choice indexRunSelection, block blockView, extracted *inscriptionBlockResult) (indexBatch, error) {
+	id := choice.Index
 	if !integrityVerified(block) || (!block.Verification.HeaderChainMatch && !block.Verification.ConsensusValidated) || block.Height < 0 || len(block.Transactions) == 0 || block.TransactionCount != uint64(len(block.Transactions)) {
 		return indexBatch{}, fmt.Errorf("browsing index requires verified selected-chain block")
 	}
@@ -196,10 +196,26 @@ func singletonBrowseBatch(id string, block blockView, extracted *inscriptionBloc
 		if extracted.BlockHeight != block.Height || extracted.BlockHash != block.Hash || extracted.ParserProfile != inscriptionParserProfile {
 			return b, fmt.Errorf("inscription extraction does not match browsed block")
 		}
-		b.InscriptionBlock = &inscriptionBlockMetadata{Mode: "lean", TransactionCount: uint32(len(block.Transactions))}
+		mode := choice.Mode
+		if mode == "" {
+			mode = "lean"
+		}
+		b.InscriptionBlock = &inscriptionBlockMetadata{Mode: mode, TransactionCount: uint32(len(block.Transactions))}
 		b.InscriptionCoordinates = []string{}
 		for _, o := range extracted.Occurrences {
 			b.InscriptionCoordinates = append(b.InscriptionCoordinates, inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height))
+		}
+		if mode == "full" {
+			b.Inscriptions = append([]inscriptionOccurrence(nil), extracted.Occurrences...)
+		}
+		if inscriptionIDsEnabled(choice.ConventionalIDs) {
+			seen := map[int]bool{}
+			for _, o := range extracted.Occurrences {
+				if !seen[o.TxIndex] {
+					b.InscriptionBlock.ConventionalIDs = append(b.InscriptionBlock.ConventionalIDs, transactionLocatorEntry{TxIndex: uint32(o.TxIndex), TxID: o.TxID})
+					seen[o.TxIndex] = true
+				}
+			}
 		}
 	} else {
 		return b, fmt.Errorf("unsupported browsing index")
@@ -318,41 +334,7 @@ func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (
 	return true, nil
 }
 func (a *app) indexBrowsedBlock(ctx context.Context, block blockView, extracted *inscriptionBlockResult) []indexBrowseResult {
-	if err := lockIndexBrowse(ctx); err != nil {
-		return []indexBrowseResult{{Index: "browse", State: "error", Error: err.Error()}}
-	}
-	defer indexBrowseMu.Unlock()
-	out := []indexBrowseResult{}
-	for _, id := range []string{"tx-locator", "inscriptions"} {
-		on, err := timelineTrackArmed(a.dataDir, id)
-		if err != nil {
-			return append(out, indexBrowseResult{Index: id, State: "error", Error: err.Error()})
-		}
-		if !on || !indexBrowseAvailable(id) {
-			continue
-		}
-		if complete, e := a.completeIndexedBrowseBlock(ctx, id, block); e != nil {
-			out = append(out, indexBrowseResult{Index: id, State: "error", Error: e.Error()})
-			continue
-		} else if complete {
-			out = append(out, indexBrowseResult{Index: id, State: "already_indexed"})
-			continue
-		}
-		b, e := singletonBrowseBatch(id, block, extracted)
-		added := false
-		if e == nil {
-			added, e = a.persistBrowseBatch(ctx, id, b)
-		}
-		r := indexBrowseResult{Index: id, State: "already_indexed"}
-		if added {
-			r.State = "indexed"
-		}
-		if e != nil {
-			r.State, r.Error = "error", e.Error()
-		}
-		out = append(out, r)
-	}
-	return out
+	return a.ingestResolvedVerifiedBlock(ctx, block)
 }
 
 // Consult only authenticated point membership. A navigation must not repair an
@@ -423,7 +405,7 @@ func (a *app) browsedTransactionLocations(ctx context.Context, txid, hash string
 	rows := []indexLocatorRecord{}
 	err = boundedBrowseJSON(filepath.Join(s.dir, "locators", txid[:2]+".json"), &rows)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return a.browsedInscriptionIDLocations(ctx, txid, hash, before)
 	}
 	if err != nil {
 		return nil, err
@@ -446,7 +428,49 @@ func (a *app) browsedTransactionLocations(ctx context.Context, txid, hash string
 		}
 		matches = append(matches, txLocation{TxID: txid, Height: r.Height, BlockHash: b.Checkpoint.BlockHash, TxIndex: r.TxIndex})
 	}
-	return matches, nil
+	additional, err := a.browsedInscriptionIDLocations(ctx, txid, hash, before)
+	return append(matches, additional...), err
+}
+
+func (a *app) browsedInscriptionIDLocations(ctx context.Context, txid, hash string, before int64) ([]txLocation, error) {
+	s, head, err := a.browseStore("inscriptions")
+	if err != nil {
+		return nil, err
+	}
+	out := []txLocation{}
+	n := 0
+	for _, commit := range head.Blocks {
+		if n >= indexExplorerMaxBatches {
+			break
+		}
+		n++
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		b, err := s.readBatch(commit)
+		if err != nil {
+			return nil, err
+		}
+		if before >= 0 && b.Checkpoint.Height > before || hash != "" && b.Checkpoint.BlockHash != hash {
+			continue
+		}
+		selected, err := a.canonicalHashAtHeight(b.Checkpoint.Height)
+		if err != nil {
+			return nil, err
+		}
+		if selected != b.Checkpoint.BlockHash {
+			continue
+		}
+		if b.InscriptionBlock == nil {
+			continue
+		}
+		for _, entry := range b.InscriptionBlock.ConventionalIDs {
+			if entry.TxID == txid {
+				out = append(out, txLocation{TxID: txid, Height: b.Checkpoint.Height, BlockHash: b.Checkpoint.BlockHash, TxIndex: int(entry.TxIndex)})
+			}
+		}
+	}
+	return out, nil
 }
 func (a *app) browseTimelineSource(id string, h *timelineLocalReader) (indexTimelineSource, error) {
 	s, head, err := a.browseStore(id)
@@ -543,6 +567,11 @@ func (a *app) browseQueryRows(ctx context.Context, id string, limit int, seen ma
 		if id == "tx-locator" {
 			rows = append(rows, b.TransactionLocator)
 			total++
+		} else if id == "txo-spender" {
+			for i := range b.Spenders.Rows {
+				rows = append(rows, indexSpendMatch{txioSpendRow(b.Spenders, i), height, b.Checkpoint.BlockHash})
+				total++
+			}
 		} else {
 			coordinates := inscriptionBatchCoordinates(b)
 			rows = append(rows, struct {

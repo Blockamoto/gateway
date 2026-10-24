@@ -84,7 +84,7 @@ func (a *app) indexRunConsumerContext(ctx context.Context, index string, admitte
 			return nil
 		}
 		selection, ok := runSelection(d.Prepared, index)
-		if !ok || !selection.Armed {
+		if !ok || !indexRunSelectionEnabled(selection) {
 			return errIndexRunConsumerStopped
 		}
 		if d.Run != nil {
@@ -92,7 +92,7 @@ func (a *app) indexRunConsumerContext(ctx context.Context, index string, admitte
 				return errIndexRunConsumerStopped
 			}
 			selection, ok = runSelection(d.Run.Request, index)
-			if !ok || !selection.Armed {
+			if !ok || !indexRunSelectionEnabled(selection) {
 				return errIndexRunConsumerStopped
 			}
 			if len(admitted) > 0 {
@@ -107,21 +107,34 @@ func (a *app) indexRunConsumerContext(ctx context.Context, index string, admitte
 }
 
 type indexRunPrepared struct {
-	cacheBytes  int
-	rawProduced bool
-	block       blockView
-	extraction  *inscriptionBlockResult
-	refs        map[string]map[string]outputFactRef
-	prevouts    map[string]utxoCoin
+	cacheBytes        int
+	rawProduced       bool
+	block             blockView
+	extraction        *inscriptionBlockResult
+	extractionCounted bool
+	refs              map[string]map[string]outputFactRef
+	prevouts          map[string]utxoCoin
 }
 
 func (a *app) ensurePreparedRawProducer(ctx context.Context, p *indexRunPrepared) error {
+	// A reused prepared body is another complete-source operation. New armed
+	// tracks must see it even when Raw already owns its receipt or is now Off.
 	if p.rawProduced {
+		a.ingestResolvedVerifiedBlock(context.WithValue(ctx, indexRunPreparedKey{}, p), p.block)
 		return ctx.Err()
 	}
 	produced, err := a.rawProducerReceiptContext(ctx, p.block)
 	p.rawProduced = produced
+	if err == nil {
+		a.ingestResolvedVerifiedBlock(context.WithValue(ctx, indexRunPreparedKey{}, p), p.block)
+	}
 	return err
+}
+func countPreparedExtraction(p *indexRunPrepared, counts *indexRunCounts) {
+	if p.extraction != nil && !p.extractionCounted {
+		counts.InscriptionExtractions++
+		p.extractionCounted = true
+	}
 }
 func (a *app) checkPreparedRawProducer(ctx context.Context, p *indexRunPrepared) error {
 	if err := ctx.Err(); err != nil {
@@ -191,6 +204,15 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 	c, _ := runSelection(r.Request, p.Index)
 	v := &indexRunConsumer{selection: c, progress: p}
 	var err error
+	if indexRunFactsOnly(c) {
+		consumer := &sparseFactsRunConsumer{a: a, choice: c, from: p.From, next: p.From}
+		if p.Height >= p.From && validHash(p.BlockHash) {
+			consumer.next = p.Height + 1
+			consumer.cp = &indexCheckpoint{Schema: 1, Definition: p.Index, Version: 1, From: p.From, Height: p.Height, BlockHash: p.BlockHash, Commitment: p.Commitment}
+		}
+		v.external = consumer
+		return v, nil
+	}
 	if bitmapConsumerID(p.Index) {
 		if err = checkIndexRunPublication(ctx); err != nil {
 			return v, err
@@ -319,20 +341,56 @@ func (a *app) reconcileRunConsumerUncached(ctx context.Context, c *indexRunConsu
 	return nil
 }
 func (a *app) applyRunConsumer(ctx context.Context, c *indexRunConsumer, prepared *indexRunPrepared, authority chainAuthorityView, retention string) error {
+	ctx, drain := a.withDeferredBlockIngestion(ctx)
+	defer drain()
 	b := prepared.block
 	hashAt := a.addressSelectedHashes(ctx, authority)
 	if c.external != nil {
+		if refresh, ok := c.external.(interface {
+			RefreshForBlock(context.Context, blockView) (bool, error)
+		}); ok {
+			already, err := refresh.RefreshForBlock(ctx, b)
+			if err != nil || already {
+				return err
+			}
+		}
 		return c.external.Apply(ctx, b, prepared.extraction)
 	}
 	if c.utxo != nil {
-		err := c.utxo.ApplyBlock(ctx, b)
+		latest, err := openUTXOStoreContext(ctx, a.dataDir)
+		if err != nil {
+			return err
+		}
+		c.utxo = latest
+		if h := latest.Head(); h != nil && h.Height >= b.Height {
+			selected, err := hashAt(h.Height)
+			if err != nil {
+				return err
+			}
+			if selected != h.BlockHash {
+				return fmt.Errorf("UTXO source changed before cohort publication")
+			}
+			return nil
+		}
+		err = c.utxo.ApplyBlock(ctx, b)
 		if optionalAddressProjectionError(err) {
 			return nil
 		}
 		return err
 	}
 	if c.history != nil {
-		return c.history.CommitBlockContext(ctx, b, hashAt)
+		latest, err := openAddressHistoryStoreContext(ctx, a.dataDir)
+		if err != nil {
+			return err
+		}
+		c.history = latest
+		var saved addressHistoryBlock
+		if have, err := latest.tree("blocks", latest.head.BlocksRoot, ctx).get(addressHistoryHeightKey(b.Height), &saved); err != nil {
+			return err
+		} else if have && saved.BlockHash == b.Hash && saved.DestinationVersion == 1 {
+			return nil
+		}
+		return latest.CommitBlockContext(ctx, b, hashAt)
 	}
 	s := c.store
 	s.locatorContext = ctx
@@ -343,6 +401,25 @@ func (a *app) applyRunConsumer(ctx context.Context, c *indexRunConsumer, prepare
 		return s.recordTXIOEnrichmentCoverage(b.Height, b.Hash, s.retainOutputValues, s.retainOutputScripts)
 	}
 	if c.selection.Index == "sat-state" {
+		latest, err := indexStoreHead(a.dataDir, "sat-state")
+		if err != nil {
+			return err
+		}
+		latest.locatorContext = ctx
+		latest.head.Mode = "lean"
+		latest.retainSatHistory = c.selection.RetainSatHistory
+		c.store = latest
+		s = latest
+		if h := s.checkpoint; h != nil && h.Height >= b.Height {
+			selected, err := hashAt(h.Height)
+			if err != nil {
+				return err
+			}
+			if selected != h.BlockHash {
+				return fmt.Errorf("Sats source changed before cohort publication")
+			}
+			return nil
+		}
 		return appendSatSelectedBlock077(ctx, s, b, 0, retention, prepared.extraction, hashAt)
 	}
 	from := c.progress.From
@@ -401,7 +478,7 @@ func (a *app) saveRunProgress(id, state, reason string, consumers []*indexRunCon
 		if cp := c.checkpoint(); cp != nil {
 			p.Height, p.BlockHash, p.Commitment = cp.Height, cp.BlockHash, cp.Commitment
 		}
-		if selection, ok := runSelection(r.Request, p.Index); !ok || !selection.Armed {
+		if selection, ok := runSelection(r.Request, p.Index); !ok || !indexRunSelectionEnabled(selection) {
 			p.State, p.AdmissionState, p.Reason = "off", "off", "Off; committed records are retained."
 		}
 		r.Consumers = append(r.Consumers, p)
@@ -534,6 +611,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			if err := a.ensurePreparedRawProducer(callCtx, p); err != nil {
 				return nil, err
 			}
+			countPreparedExtraction(p, &counts)
 			counts.CacheHits++
 			return p, nil
 		}
@@ -559,7 +637,8 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		if b.Height != h || b.Hash != t.HashDisplay || !integrityVerified(b) {
 			return nil, fmt.Errorf("source block does not match the selected target")
 		}
-		p := &indexRunPrepared{block: b, refs: map[string]map[string]outputFactRef{}, prevouts: map[string]utxoCoin{}}
+		p := &indexRunPrepared{block: b, extraction: b.inscriptionExtraction, refs: map[string]map[string]outputFactRef{}, prevouts: map[string]utxoCoin{}}
+		countPreparedExtraction(p, &counts)
 		// Bound the cache by decoded JSON as well as entry count. An oversized
 		// block still serves its ready consumers without being retained here.
 		encoded, _ := json.Marshal(b)
@@ -639,7 +718,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				existing.external.Close()
 			}
 			c := &indexRunConsumer{selection: selection, progress: p}
-			if p.AdmissionState != "blocked" && selection.Armed {
+			if p.AdmissionState != "blocked" && indexRunSelectionEnabled(selection) {
 				opened, err := a.openRunConsumer(a.indexRunBoundConsumerContext(ctx, p), record, p)
 				if opened != nil {
 					c = opened
@@ -675,7 +754,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		hashAt := a.addressSelectedHashes(ctx, authority)
 		anyLive := false
 		for _, s := range record.Request.Consumers {
-			anyLive = anyLive || s.Armed && s.Live
+			anyLive = anyLive || indexRunSelectionEnabled(s) && s.Live
 		}
 		if record.Request.Out == nil && anyLive && authority.Height >= 0 {
 			target, targetHash = authority.Height, authority.Hash
@@ -687,7 +766,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			consumerTarget := record.InitialTargetHeight
 			selection, _ := runSelection(record.Request, c.selection.Index)
 			prepared, on := runSelection(d.Prepared, c.selection.Index)
-			if !on || !prepared.Armed || !selection.Armed {
+			if !on || !indexRunSelectionEnabled(prepared) || !indexRunSelectionEnabled(selection) {
 				c.progress.State = "off"
 				c.progress.Reason = "Off; committed records are retained."
 				continue
@@ -1069,6 +1148,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				}
 			} else {
 				p.extraction = &x
+				p.extractionCounted = true
 			}
 		}
 		blockCtx := context.WithValue(ctx, indexRunPreparedKey{}, p)
@@ -1082,7 +1162,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 			latest := a.indexRunSnapshot()
 			active, ok := runSelection(latest.Prepared, c.selection.Index)
-			if !ok || !active.Armed || ctx.Err() != nil {
+			if !ok || !indexRunSelectionEnabled(active) || ctx.Err() != nil {
 				continue
 			}
 			selected, e := hashAt(h)
@@ -1101,6 +1181,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				c.retryAfter = time.Now().Add(time.Second)
 				continue
 			}
+			countPreparedExtraction(p, &counts)
 			publishCtx := context.WithValue(consumerCtx, indexRunPublicationKey{}, func() error {
 				if err := checkIndexRunPublication(consumerCtx); err != nil {
 					return err

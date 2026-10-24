@@ -1,41 +1,58 @@
-# Gateway 0.7.8 local portable preview
+# Gateway 0.7.8 reviewed portable preview
 
-This is a local development build for user testing. It does not install Gateway,
-register a browser integration, or apply application updates. No release or update
-feed is published by the preview build script.
+This local development build uses a separate profile and has application updates
+disabled at build time. It does not install Gateway or publish a release/feed.
+Keep any older preview folder and its profile intact.
 
-Extract the ZIP into a new directory and run `Start-Preview.cmd`. It uses a separate
-`preview-profile` beside the executable, opens the browser, and prints its URL.
-`Stop-Preview.cmd` stops only the process authenticated by that profile's runtime
-record and preserves its data. Run Start again to resume that profile.
-
-For a separate disposable profile, use PowerShell:
+Extract this ZIP into a new folder and run `Start-Preview.cmd`. It prints its
+loopback URL, opens Bitmap, and uses `preview-profile` beside this executable.
+`Stop-Preview.cmd` authenticates and stops only that profile's process, retaining
+data. Start resumes the same profile. A separate disposable profile is also
+supported:
 
 ```powershell
-.\Preview.ps1 -ProfilePath C:\GatewayTests\bitmap-078
-.\Preview.ps1 -ProfilePath C:\GatewayTests\bitmap-078 -Stop
+.\Preview.ps1 -ProfilePath C:\GatewayTests\bitmap-078-reviewed
+.\Preview.ps1 -ProfilePath C:\GatewayTests\bitmap-078-reviewed -Stop
 ```
 
-Use `-Offline` on first creation for offline UI inspection. Otherwise ordinary
-Bitcoin header networking is enabled. Core access and data serving start disabled
-in this isolated profile. Settings remain under your control. Opening an index
-view does not start indexing.
+Use `-Offline` for an offline profile or `-NoOpen` to skip opening a browser.
+Ordinary Bitcoin networking is enabled by default; Core RPC/mounted Core access,
+data serving, optional indexes, and raw retention begin disabled. Merely opening
+an index view does not arm or start an index.
 
-Canonical District and Parcel tracks use new identities and start at genesis to
-establish the first qualifying reveal. Legacy experimental definitions and results
-remain inspectable and deletable but cannot execute. They are not migrated into
-canonical checkpoints. Select the canonical tracks, review a bounded range, and
-use the timeline Start/Pause/Resume and independent Live and retention controls.
+The fixed canonical District and Parcel tracks both start at **792435** and are
+siblings. Review a bounded range, arm the chosen normal tracks, then Start.
+Bitmap arming offers the existing Transaction Locators track as a companion.
+Legacy/custom Bitmap profiles remain inspectable but cannot execute. Old
+checkpoints are not migrated into the new canonical identities. Both chains are
+disabled, including direct API and restored execution. Saved evidence is retained.
 
-Chains are optional derived records. District and Parcel chains have independent
-outcome histories and can consume saved authenticated outcomes. Missing history
-is a gap, never an empty block. The chain scheme uses a replaceable development
-codec because the upstream draft leaves mechanical encoding choices unresolved.
-Consult the read-only rule/source metadata and codec documentation before comparing
-hashes with another implementation.
+Already-armed capable tracks can retain facts from a complete verified block
+obtained by ordinary browsing. Sparse facts do not imply complete history or
+negative knowledge. Stateful tracks advance only on the exact next block.
+Values and Scripts can be selected independently of TXIO links. Sat historical
+ranges require their explicit existing retention option. Capability details are
+in `SPARSE-INDEXING-0.7.8.md`.
 
-Parcel parent declarations alone do not prove the Ordinals child relationship.
-When the required dependency evidence is unavailable, the preview reports it as
-unresolved and does not silently start unrelated indexing. Backend fixtures and
-local browser checks are evidence of bounded behavior, not a completed current
-mainnet index or full Bitcoin consensus validation.
+Canonical source rules are separate from implementation limits. Parcel parent
+tags alone do not establish an Ordinals child relationship: exact evaluated parent,
+spend, and Sat context is required. Missing evidence remains unresolved. A local
+parent-evaluation receipt preserves what this installation checked; independently
+replaying that check still needs its referenced Sat evidence.
+
+Relationship buttons explain missing local coverage or configured Core evidence.
+A missing spender never establishes that an output is unspent. Core's transaction
+or spender indexes are RPC services; normal Bitcoin P2P retrieves known blocks.
+Hover or focus a flow strand for immediate known amount and destination details.
+Unknown inputs do not hide known outputs or create an inferred fee.
+
+The standards project is now `https://github.com/Blockamoto/blocators`.
+The grammar is unchanged. Frozen compatibility identifiers such as
+`gateway-sat-fifo-mainnet-bps-v2` retain their original spelling because changing
+an authenticated identifier would change profile identity. Historical recipe
+strings can likewise retain the old spelling; active UI terminology is lowercase
+blocator/blocators.
+
+See `APPROVED-BRIEF-0.7.8.md` for scope and `VERIFICATION-0.7.8.md` for the checks
+actually completed. This is bounded local acceptance, not a full mainnet index or
+full Bitcoin consensus validation.

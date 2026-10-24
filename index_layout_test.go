@@ -29,14 +29,14 @@ func TestIndexLayoutPersistsAcrossPortsWithoutChangingIndexing(t *testing.T) {
 	if _, err := os.Stat(indexLayoutPath(root)); !os.IsNotExist(err) {
 		t.Fatal("reading layout wrote a file")
 	}
-	w := request(a, "50101", "POST", `{"order":{"root":["inscriptions","group:bitmap","group:txio"],"group:txio":["txio-sat-ranges","txio-links","txio-values","txio-scripts"],"group:bitmap":["bitmap-districts"],"district:bitmap-districts":["bitmap-parcels"]}}`)
+	w := request(a, "50101", "POST", `{"order":{"root":["inscriptions","group:bitmap","group:txio"],"group:txio":["txio-sat-ranges","txio-links","txio-values","txio-scripts"],"group:bitmap":["bitmap-districts","bitmap-parcels"]}}`)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	restarted := &app{dataDir: root}
 	w = request(restarted, "50999", "GET", "")
 	var got indexLayoutDocument
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Schema != 2 || got.Revision != 1 || got.Order["root"][0] != "inscriptions" || got.Order["group:txio"][0] != "txio-sat-ranges" || got.Order["district:bitmap-districts"][0] != "bitmap-parcels" {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Schema != 2 || got.Revision != 1 || got.Order["root"][0] != "inscriptions" || got.Order["group:txio"][0] != "txio-sat-ranges" || got.Order["group:bitmap"][1] != "bitmap-parcels" {
 		t.Fatal(w.Code, w.Body.String())
 	}
 	if got.Checksum != "" {
@@ -100,14 +100,14 @@ func TestIndexLayoutMigratesParcelOrderWithoutWritingOrReparenting(t *testing.T)
 	if err != nil || got.Schema != 2 || got.Revision != 7 {
 		t.Fatal(got, err)
 	}
-	if ids := got.Order["group:bitmap"]; len(ids) != 2 || ids[0] != district.ID || ids[1] != "bitmap-districts" {
-		t.Fatal("District order changed", ids)
+	if ids := got.Order["group:bitmap"]; len(ids) != 4 || ids[0] != parcel || ids[1] != "bitmap-parcels" || ids[2] != district.ID || ids[3] != "bitmap-districts" {
+		t.Fatal("saved sibling order changed", ids)
 	}
-	if ids := got.Order["district:"+district.ID]; len(ids) != 1 || ids[0] != parcel {
-		t.Fatal("custom Parcel escaped parent", ids)
+	if len(got.Order["district:"+district.ID]) != 0 {
+		t.Fatal("custom Parcel remained nested", got.Order)
 	}
-	if ids := got.Order["district:bitmap-districts"]; len(ids) != 1 || ids[0] != "bitmap-parcels" {
-		t.Fatal("legacy Parcel escaped parent", ids)
+	if len(got.Order["district:bitmap-districts"]) != 0 {
+		t.Fatal("legacy Parcel remained nested", got.Order)
 	}
 	after, err := os.ReadFile(indexLayoutPath(root))
 	if err != nil || string(before) != string(after) {
@@ -116,8 +116,8 @@ func TestIndexLayoutMigratesParcelOrderWithoutWritingOrReparenting(t *testing.T)
 	if _, err = normalizeIndexLayout(ctx, root, map[string][]string{"district:bitmap-districts": {parcel}}); err == nil {
 		t.Fatal("Parcel moved to a different District")
 	}
-	if _, err = normalizeIndexLayout(ctx, root, map[string][]string{"group:bitmap": {parcel}}); err == nil {
-		t.Fatal("new request used legacy migration")
+	if _, err = normalizeIndexLayout(ctx, root, map[string][]string{"group:bitmap": {parcel}}); err != nil {
+		t.Fatal("new sibling layout was refused", err)
 	}
 }
 
@@ -144,5 +144,33 @@ func TestIndexLayoutRejectsForeignOriginAndNonJSON(t *testing.T) {
 	}
 	if _, err := os.Stat(indexLayoutPath(a.dataDir)); !os.IsNotExist(err) {
 		t.Fatal("rejected requests created layout state")
+	}
+}
+
+func TestIndexLayoutProjectsSavedNestedParcelsIntoBitmapSiblings(t *testing.T) {
+	ctx, root := context.Background(), t.TempDir()
+	stored := indexLayoutDocument{Schema: 2, Revision: 4, Order: map[string][]string{"group:bitmap": {bitmapCanonicalV1DistrictID}, "district:" + bitmapCanonicalV1DistrictID: {bitmapCanonicalV1ParcelID}}}
+	stored.Checksum = indexLayoutDigest(stored)
+	if err := atomicWriteJSON(indexLayoutPath(root), stored); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(indexLayoutPath(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := readIndexLayout(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := view.Order["group:bitmap"]
+	if len(ids) != 2 || ids[0] != bitmapCanonicalV1DistrictID || ids[1] != bitmapCanonicalV1ParcelID || len(view.Order["district:"+bitmapCanonicalV1DistrictID]) != 0 {
+		t.Fatal(view)
+	}
+	after, err := os.ReadFile(indexLayoutPath(root))
+	if err != nil || string(after) != string(before) {
+		t.Fatal("read-only layout migration changed saved file", err)
+	}
+	if _, err = normalizeIndexLayout(ctx, root, map[string][]string{"group:bitmap": {bitmapCanonicalDistrictID, bitmapCanonicalParcelID}}); err != nil {
+		t.Fatal("current Bitmap sibling tracks rejected", err)
 	}
 }

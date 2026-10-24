@@ -45,7 +45,8 @@ type bitmapDevelopmentView struct {
 	NextCursor            string                       `json:"next_cursor"`
 	HasMore               bool                         `json:"has_more"`
 	BlockEvaluated        bool                         `json:"block_evaluated"`
-	OrderedWinnerIDs      []string                     `json:"ordered_winner_ids"`
+	OrderedWinnerIDs      []string                     `json:"ordered_winner_ids,omitempty"`
+	WinnerBlocators       []string                     `json:"winner_blocators,omitempty"`
 	IsolatedHash          string                       `json:"isolated_outcome_hash,omitempty"`
 	ChainHash             string                       `json:"outcome_chain_hash,omitempty"`
 	ScopedCommitment      *string                      `json:"bitmap_chain_commitment"`
@@ -68,11 +69,11 @@ func bitmapSnapshot(h *bitmapDevelopmentHead) *bitmapDevelopmentSnapshot {
 	if h == nil {
 		return nil
 	}
-	verification := "locally_evaluated_legacy_experimental_profile; header_anchored; full_consensus_deferred"
-	if h.Profile.CanonicalStandard {
+	verification := "saved_previous_bitmap_generation; header_anchored; full_consensus_deferred"
+	if h.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
 		verification = "locally_evaluated_canonical_bitmap_rules; header_anchored; full_consensus_deferred"
 	} else if bitmapCanonicalChainID(h.Index) {
-		verification = "locally_derived_versioned_development_chain; header_anchored; full_consensus_deferred"
+		verification = "saved_chain_evidence; methodology_deferred; header_anchored; full_consensus_deferred"
 	}
 	return &bitmapDevelopmentSnapshot{Height: h.Height, BlockHash: h.BlockHash, Commitment: h.Commitment, ProfileID: h.Profile.ID, ProfileHash: h.ProfileHash, SegmentStart: h.SegmentStart, Verification: verification}
 }
@@ -109,7 +110,7 @@ func readBitmapPending(ctx context.Context, root, id string, h *bitmapDevelopmen
 
 func bitmapNewView(kind string) bitmapDevelopmentView {
 	p := bitmapProfile(kind)
-	return bitmapDevelopmentView{State: "not_built", Kind: kind, Profile: p, ProfileHash: bitmapProfileHash(p), Coverage: []heightInterval{}, Gaps: []heightInterval{}, Candidates: []bitmapDevelopmentCandidate{}, Rows: []any{}, OrderedWinnerIDs: []string{}, Ownership: "unknown", Note: "Saved claim evidence and separately versioned chain records. Opening this view starts no index, dependency build, trace or block scan."}
+	return bitmapDevelopmentView{State: "not_built", Kind: kind, Profile: p, ProfileHash: bitmapProfileHash(p), Coverage: []heightInterval{}, Gaps: []heightInterval{}, Candidates: []bitmapDevelopmentCandidate{}, Rows: []any{}, OrderedWinnerIDs: []string{}, Ownership: "unknown", Note: "Saved Bitmap claim evidence. Chain methodology is being developed. Opening this view starts no index, dependency build, trace or block scan."}
 }
 func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, district, transaction, height *uint64, cursor string, limit int, records bool) (bitmapDevelopmentView, error) {
 	return a.bitmapInstanceViewContext(ctx, kind, "", "", "", district, transaction, height, cursor, limit, records)
@@ -255,12 +256,18 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 		}
 		out.State = "unclaimed_at_snapshot"
 		out.Result = map[string]any{"district": district, "transaction": transaction, "winner_id": nil, "ownership": "unknown"}
+		if instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+			out.Result = map[string]any{"district": district, "transaction": transaction, "winner_blocator": nil, "ownership": "unknown"}
+		}
 		if have {
 			if err := verifyBitmapParentEvidence(ctx, a.dataDir, winner.Provenance); err != nil {
 				return out, err
 			}
 			out.State = "selected"
 			out.Result = map[string]any{"district": district, "transaction": transaction, "winner_id": winner.ID, "winner": winner, "ownership": "unknown"}
+			if winner.Blocator != "" {
+				out.Result = map[string]any{"district": district, "transaction": transaction, "winner_blocator": winner.Blocator, "winner": winner, "ownership": "unknown"}
+			}
 		} else if pending != nil {
 			for _, row := range out.PendingCandidates {
 				if row.District == nil || *row.District == *district && (transaction == nil || row.Transaction != nil && *row.Transaction == *transaction) {
@@ -387,7 +394,7 @@ func (a *app) registerBitmapDevelopmentRoutes(mux *http.ServeMux) {
 }
 func (a *app) handleBitmapDevelopmentView(w http.ResponseWriter, r *http.Request) {
 	if !safeLocalRequest(r) {
-		jsonError(w, 403, fmt.Errorf("Bitmap development evidence is restricted to the local management interface"))
+		jsonError(w, 403, fmt.Errorf("Bitmap saved evidence is restricted to the local management interface"))
 		return
 	}
 	if r.Method != "GET" {
@@ -469,7 +476,13 @@ func (a *app) bitmapDevelopmentInstancesContext(ctx context.Context) ([]indexIns
 			coverage = view.RetainedIntervals
 			retention = view.Mode
 		}
-		out = append(out, indexInstance{Definition: id, Version: 1, Network: "bitcoin-mainnet", Coverage: coverage, Gaps: []heightInterval{}, Completeness: "complete_contiguous_evaluation_under_experimental_profile", Verification: "header_anchored_processing; " + state + "; consensus_validated=false", Provenance: "locally_derived_development_profile", Retention: retention, Queryable: state == "selected_chain", Checkpoint: s.Checkpoint(), Note: instance.Label + ": explicit Gateway development profile " + h.ProfileHash + "; not a frozen canonical Bitmap standard. Ownership is unknown; unresolved evidence never advances coverage."})
+		completeness, provenance, note := "saved_previous_generation_evaluation", "locally_evaluated_saved_generation", instance.Note
+		if instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+			completeness = "complete_consecutive_bitmap_evaluation"
+			provenance = "locally_evaluated_pinned_bitmap_rules"
+			note = "Fixed published Bitmap rules at the committed Bitcoin snapshot. Missing evidence never advances complete coverage. Parent receipts record local evaluation; replay requires retained context."
+		}
+		out = append(out, indexInstance{Definition: id, Version: 1, Network: "bitcoin-mainnet", Coverage: coverage, Gaps: []heightInterval{}, Completeness: completeness, Verification: "header_anchored_processing; " + state + "; consensus_validated=false", Provenance: provenance, Retention: retention, Queryable: state == "selected_chain", Checkpoint: s.Checkpoint(), Note: note})
 	}
 	return out, nil
 }

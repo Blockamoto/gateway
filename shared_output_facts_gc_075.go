@@ -22,6 +22,7 @@ func collectSharedOutputFactsContext(ctx context.Context, root string) error {
 	outputFactCollectionMu.Lock()
 	defer outputFactCollectionMu.Unlock()
 	pins := map[string]bool{}
+	if e:=visitSparseOutputFactPages(ctx,root,func(hash string)error{pins[hash]=true;return nil});e!=nil{return e}
 	u, e := utxoStoreHead(root)
 	if e != nil {
 		return e

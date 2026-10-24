@@ -250,7 +250,7 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 		}
 		d, err := findIndexDefinition(c.Index)
 		if err != nil || execution && (!d.Buildable || d.Locked) {
-			if c.Armed {
+			if indexRunSelectionEnabled(*c) {
 				if err == nil && d.LockReason != "" {
 					return req, fmt.Errorf("%s", d.LockReason)
 				}
@@ -406,7 +406,7 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 	}
 	armed := 0
 	for _, c := range req.Consumers {
-		if !c.Armed {
+		if !indexRunSelectionEnabled(c) {
 			continue
 		}
 		armed++
@@ -430,6 +430,16 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 		}
 		if q.From < d.StartHeight {
 			q.From = d.StartHeight
+		}
+		if indexRunFactsOnly(c) {
+			q.RangeMode = "sparse_facts"
+			q.Height = q.From - 1
+			q.Reason = "Read selected blocks only for independently armed Values/ScriptPubKeys; TXIO links remain Off."
+			q.Dependencies = []indexRunDependency{{Index: "blocks", Kind: "source", State: "obtainable_on_demand", Reason: "Verified temporary bodies; Raw need not be armed."}}
+			next := q.From
+			q.NextRequiredHeight = &next
+			p.Consumers = append(p.Consumers, q)
+			continue
 		}
 		var head *indexCheckpoint
 		if bitmapConsumerID(c.Index) { // The instance adapter owns its distinct immutable rules/store.
@@ -895,8 +905,8 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 		}
 	}
 	for _, c := range r.Request.Consumers {
-		if c.Armed {
-			if p, ok := runSelection(a.indexRunState.Prepared, c.Index); !ok || !p.Armed {
+		if indexRunSelectionEnabled(c) {
+			if p, ok := runSelection(a.indexRunState.Prepared, c.Index); !ok || !indexRunSelectionEnabled(p) {
 				return indexRunDocument{}, fmt.Errorf("%s is Off; arm it before resuming the admitted run", c.Index)
 			}
 		}

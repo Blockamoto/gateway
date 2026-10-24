@@ -38,13 +38,14 @@ type bitmapDevelopmentProfile struct {
 	ActivationPolicy      string         `json:"activation_policy,omitempty"`
 	ContextPolicy         string         `json:"context_policy,omitempty"`
 	ActivationHeight      int64          `json:"activation_height,omitempty"`
+	ImplementationLimits  []string       `json:"implementation_limits,omitempty"`
 }
 
 // Display names never define semantic identity. The v1/v2 hash projections are
 // frozen; v3 additionally binds its exact reference and delegate policy. These
 // are declared development encodings, not the unfinished standard format.
 func bitmapProfileHash(p bitmapDevelopmentProfile) string {
-	if p.FingerprintSchema == bitmapCanonicalProfileSchema || p.FingerprintSchema == bitmapChainProfileSchema {
+	if p.FingerprintSchema == bitmapCanonicalProfileSchema || p.FingerprintSchema == bitmapCanonicalV1ProfileSchema || p.FingerprintSchema == bitmapChainProfileSchema {
 		// Unlike the frozen legacy projections, every immutable canonical rule
 		// and its pinned source are authenticated. A display ID is not a rule.
 		p.ID = ""

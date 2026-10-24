@@ -201,7 +201,7 @@ func (a *app) timelineTXIOLayers(headers *timelineLocalReader, tip int64) ([]ind
 		return nil, err
 	}
 	head := s.head
-	complete := head.TXIOLayersSchema == 1 && head.TXIOLayersComplete
+	complete := s.checkpoint == nil || head.TXIOLayersSchema == 1 && head.TXIOLayersComplete
 	if !complete && s.checkpoint != nil {
 		head.TXIOLayers = map[string][]heightInterval{}
 		complete, err = walkExplorerIndex(context.Background(), s, func(batch indexBatch) error {
@@ -227,6 +227,33 @@ func (a *app) timelineTXIOLayers(headers *timelineLocalReader, tip int64) ([]ind
 		track := indexTimelineTrack{ID: id, Coverage: coverage, RecordedCoverage: append([]heightInterval{}, coverage...), ReportedCoverage: []heightInterval{}, Gaps: []heightInterval{}, Sources: []indexTimelineSource{}, CoverageComplete: complete && anchored && tip >= 0, Note: "Independent TXIO historical layer coverage; mandatory UTXO live and recovery facts do not imply optional historical coverage."}
 		if id == "txio-links" {
 			track.Note = "Blocks with complete resolved positional input/output links. Unresolved translations remain unknown."
+		}
+		if id == "txio-links" {
+			store, head, e := a.browseStore("txo-spender")
+			if e != nil {
+				return nil, e
+			}
+			for _, commit := range head.Blocks {
+				b, e := store.readBatch(commit)
+				if e != nil {
+					return nil, e
+				}
+				links, _, _ := txioLayerAvailability(b.Spenders)
+				if links && headers.matches(b.Checkpoint.Height, b.Checkpoint.BlockHash) {
+					coverage = append(coverage, heightInterval{b.Checkpoint.Height, b.Checkpoint.Height})
+				}
+			}
+			track.Coverage = mergeIntervals(coverage)
+			track.RecordedCoverage = append([]heightInterval{}, track.Coverage...)
+		} else {
+			source, e := sparseOutputLayerTimeline(a.dataDir, id, headers)
+			if e != nil {
+				return nil, e
+			}
+			track.Sources = append(track.Sources, source)
+			coverage = mergeIntervals(append(coverage, source.Ranges...))
+			track.Coverage = coverage
+			track.RecordedCoverage = append([]heightInterval{}, coverage...)
 		}
 		if track.CoverageComplete {
 			track.Gaps = indexCoverageGaps(coverage, 0, tip)

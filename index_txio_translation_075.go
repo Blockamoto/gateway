@@ -463,7 +463,7 @@ func (a *app) txioSpendersViaLocator(ctx context.Context, s *indexStore, id stri
 			return out, e
 		}
 		for _, match := range found.Rows {
-			// The BPS lookup opens its own head. A concurrent reorganization
+			// The blocator lookup opens its own head. A concurrent reorganization
 			// must not join an old native alias to a newly rebound position.
 			if match.PrevTxID != id || match.Vout != vout || match.CreationBlockHash != creationHash {
 				return nil, fmt.Errorf("spender native lookup changed creation identity")

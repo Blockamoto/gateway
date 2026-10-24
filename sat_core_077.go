@@ -131,7 +131,7 @@ func newSatEditor077(ctx context.Context, s *indexStore, p satIndexSnapshot) *sa
 func satPosition077(position string) (bodCoordinate, error) {
 	c, ok := parseBODCoordinate(position)
 	if !ok || c.Kind != coordOutput || c.TxID != "" || c.Height < 0 || c.TxIndex < 0 || c.IOIndex < 0 || position != outputCoordinate(c.IOIndex, c.TxIndex, c.Height) {
-		return c, fmt.Errorf("%w: invalid BPS output", ErrSatStateCorrupt)
+		return c, fmt.Errorf("%w: invalid blocator output", ErrSatStateCorrupt)
 	}
 	return c, nil
 }

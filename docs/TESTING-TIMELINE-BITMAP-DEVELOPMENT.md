@@ -6,7 +6,7 @@ Use the supplied portable directory and its own data profile. Keep other Gateway
 
 ## Raw storage and Core-based acquisition
 
-The [Core alignment contract](BLOCK-FETCHING-CORE-ALIGNMENT.md) describes the current block-acquisition work. Raw Blocks is a retention choice: save verified serialized Bitcoin bytes and the small storage catalog needed to find those bytes and resume safely. It does not build new transaction-ID lookup rows or save decoded transaction/input/output arrays. Open a known block or BPS coordinate to derive its details on demand. Use the optional Transaction Locator track when you want new transaction-ID-to-location lookup coverage.
+The [Core alignment contract](BLOCK-FETCHING-CORE-ALIGNMENT.md) describes the current block-acquisition work. Raw Blocks is a retention choice: save verified serialized Bitcoin bytes and the small storage catalog needed to find those bytes and resume safely. It does not build new transaction-ID lookup rows or save decoded transaction/input/output arrays. Open a known block or blocator to derive its details on demand. Use the optional Transaction Locator track when you want new transaction-ID-to-location lookup coverage.
 
 New bodies use bounded append segments. Existing legacy data remains readable without automatic conversion or deletion. New schema 3 records require this development build; use its separate portable profile when comparing with an older executable. Logical range deletion may retain shared physical segment bytes until safe compaction; the completion receipt must distinguish those facts.
 

@@ -460,13 +460,21 @@ func (a *app) stopIndexDeletionMembersLocked(ids []string) error {
 	}
 	for n := range a.indexRunState.Prepared.Consumers {
 		c := &a.indexRunState.Prepared.Consumers[n]
+		if c.Index == "txo-spender" {
+			if selected["txio-values"] {
+				c.RetainOutputValues = boolPointer(false)
+			}
+			if selected["txio-scripts"] {
+				c.RetainOutputScripts = boolPointer(false)
+			}
+		}
 		if selected[c.Index] {
 			c.Armed, c.Live = false, false
 		}
 	}
 	if run := a.indexRunState.Run; run != nil {
 		for _, c := range run.Request.Consumers {
-			if selected[c.Index] {
+			if selected[c.Index] || c.Index == "txo-spender" && (selected["txio-values"] || selected["txio-scripts"]) {
 				run.State, run.Reason = "cancelled", "Selected saved data was deleted; review a new run before indexing."
 				run.AdmissionRevision = effectiveIndexRunAdmissionRevision(run) + 1
 				break
@@ -479,7 +487,7 @@ func (a *app) stopIndexDeletionMembersLocked(ids []string) error {
 	for n := range a.indexQueue {
 		entry := &a.indexQueue[n]
 		for _, id := range ids {
-			if indexJobOwns(entry.Job, id) {
+			if indexJobOwns(entry.Job, id) || entry.Job.Index == "txo-spender" && (id == "txio-values" || id == "txio-scripts") {
 				entry.StopState, entry.Job.State, entry.Job.WaitingReason = "cancelled", "cancelled", "Saved data deleted; review a new build."
 			}
 		}

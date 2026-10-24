@@ -4,12 +4,12 @@ window.GatewayBitmapWorkspace = (() => {
   const known = n => Number.isSafeInteger(n) && n >= 0;
   const number = n => known(n) ? n.toLocaleString('en-GB') : 'Not established';
   const kindOf = value => value?.kind || (/^bitmap-parcels(?:-|$)/.test(value?.id || '') ? 'parcel' : /^bitmap-(?:district|parcel)-chain-dev-v1$|^bitmap-chain(?:-|$)/.test(value?.id || '') ? 'chain' : 'district');
-  const instanceID = value => typeof value === 'string' && /^(?:bitmap-(?:districts|parcels)(?:-canonical|-[0-9a-f]{32})?|bitmap-chain(?:-[0-9a-f]{32})?|bitmap-(?:district|parcel)-chain-dev-v1)$/.test(value);
+  const instanceID = value => typeof value === 'string' && /^(?:bitmap-(?:districts|parcels)(?:-canonical(?:-v2)?|-[0-9a-f]{32})?|bitmap-chain(?:-[0-9a-f]{32})?|bitmap-(?:district|parcel)-chain-dev-v1)$/.test(value);
   const answerBits = (ids, values) => ids.map(id => values[id]).join('').replace(/0+$/, '');
   const customInstance = id => /^bitmap-(?:districts|parcels|chain)-[0-9a-f]{32}$/.test(id || '');
   const capabilities = value => value?.capabilities || value?.bitmap_capabilities || value?.bitmap?.capabilities || {};
   const featureEnabled = (value, feature) => capabilities(value)[feature] === true;
-  const deferredReason = 'Legacy experimental definitions and saved results are available for inspection and deletion. Only the fixed canonical District and Parcel indexes and their optional versioned chains can run.';
+  const deferredReason = 'Legacy experimental definitions and saved results are available for inspection and deletion. Current District and Parcel indexes use fixed canonical rules. Bitmap Chain methodology is being developed.';
   function address(target) {
     const p = new URLSearchParams();
     if (instanceID(target.instance)) p.set('instance', target.instance);
@@ -57,34 +57,26 @@ window.GatewayBitmapWorkspace = (() => {
     const {el,button,field,select}=helpers(root);let dead=false;
     const status=el('p','Reading the fixed definition…','small');status.setAttribute('role','status');
     const content=el('section',undefined,'bitmap-settings-content');root.replaceChildren(el('h2','Bitmap index rules'),el('p','Read-only rules and authenticated implementation metadata. Use the timeline to start, pause, resume, choose range or follow Live.','small muted'),status,content);
-    function chainControls(chain,registry) {
-      if(!chain||chain.execution_available!==true)return;
-      const box=el('section',undefined,'bitmap-chain-controls');box.append(el('h3',chain.label||'Optional chain'));
-      const current=()=>timeline?.getRunDraft?.().consumers?.find(c=>c.index===chain.id)||{};
-      const armed=button('Chain On',()=>{const next=!current().armed;timeline?.setConsumerOptions?.(chain.id,{armed:next});armed.setAttribute('aria-pressed',String(next));status.textContent='Optional chain selection staged. Apply it with the timeline controls.';},'bitmap-chain-toggle');
-      armed.setAttribute('aria-label','Optional chain On');armed.setAttribute('aria-pressed',String(!!current().armed));
-      const live=button('Chain Live',()=>{const next=!current().live;timeline?.setConsumerOptions?.(chain.id,{live:next});live.setAttribute('aria-pressed',String(next));status.textContent='Chain Live staged. Apply it with the timeline controls.';},'bitmap-chain-toggle');live.setAttribute('aria-pressed',String(!!current().live));
-      const retention=select('Chain history retention',[['full','Full — evaluated block history'],['pruned','Pruned — current state and recovery checkpoints']]);retention.value=current().options?.retention||current().retention||'full';retention.onchange=()=>{timeline?.setConsumerOptions?.(chain.id,{retention:retention.value});status.textContent='Chain retention staged. Earlier discarded outcomes are not recreated.';};
-      box.append(armed,live,field('Derived chain history',retention),el('p','Runs alongside its exact index or catches up from retained completed outcomes while that index is Off. Missing history is a gap; no raw replay starts automatically. Raw block retention is separate.','small muted'));
-      if(chain.id!==target.id)box.append(button('Inspect chain rules',()=>onInspect?.(chain.id),'text-button'));
-      const chainData=registry.chain_metadata?.[chain.id];if(chainData){const details=el('details'),pre=el('pre',JSON.stringify(chainData,null,2));details.append(el('summary','Immutable definitions, activation history and development codec'),pre);box.append(details);}
-      const saved=el('details'),savedStatus=el('p','Reading saved chain state…','small'),savedJSON=el('pre');saved.append(el('summary','Saved registry activation and retention history'),savedStatus,savedJSON);box.append(saved);
-      api('/api/v1/bitmap/view?'+new URLSearchParams({kind:'chain',instance:chain.id,expected_profile:chain.profile_hash})).then(value=>{if(dead)return;savedStatus.textContent=value.chain_state?'Authenticated saved chain state at block '+number(value.snapshot?.height)+'.':value.note||'No saved chain state; activation resolves when the first valid 0.bitmap is established.';savedJSON.textContent=JSON.stringify({chain_state:value.chain_state||null,retention:value.retention||null},null,2);}).catch(error=>{if(!dead)savedStatus.textContent='Saved chain history unavailable: '+error.message;});
-      content.append(box);
+    function chainControls(chain){
+      if(!chain)return;const box=el('section',undefined,'bitmap-chain-controls');box.append(el('h3',sourceKindLabel(chain)+' Chain'));
+      const reason='Bitmap Chain methodology is being developed. Saved evidence remains available for inspection.';
+      for(const label of ['Chain On','Chain Live']){const control=button(label,()=>{},'bitmap-chain-toggle');control.disabled=true;control.title=reason;control.setAttribute('aria-pressed','false');box.append(control);}box.append(el('p',reason,'small muted'));if(chain.id&&chain.id!==target.id)box.append(button('Inspect saved chain evidence',()=>onInspect?.(chain.id),'text-button'));content.append(box);
     }
+    const sourceKindLabel=i=>i?.producer_kind==='parcel'||i?.id?.includes('parcel')?'Parcel':'District';
     const ready=api('/api/v1/bitmap/profiles').then(registry=>{
       if(dead)return;const source=[...(registry.instances||[]),...(registry.drafts||[])].find(i=>i.id===target.id);
       if(!source){status.textContent='Select an existing canonical index or saved legacy definition.';return;}
-      const p=source.profile||{},active=source.execution_available===true,canonical=p.canonical_standard===true;
-      content.replaceChildren(el('h3',source.label||source.id),el('p',canonical?'Canonical Bitmap standard · fixed rules':active?'Optional chain · versioned development codec':'Legacy experimental definition · inspection only','small bitmap-profile-classification'));
+      const p=source.profile||{},active=source.execution_available===true,canonical=active&&p.canonical_standard===true;
+      content.replaceChildren(el('h3',source.kind==='chain'?'Bitmap '+sourceKindLabel(source)+' Chain':source.label||source.id),el('p',canonical?'Canonical Bitmap standard · fixed rules':source.kind==='chain'?'Bitmap Chain methodology is being developed':'Legacy saved definition · inspection only','small bitmap-profile-classification'));
       metadata(content,[['Index ID',source.id],['Profile ID',p.id],['Profile hash',source.profile_hash],['Implementation',p.implementation_version||p.fingerprint_schema],['Pinned source revision',p.reference_revision],['Source blob',p.reference_blob],['Index start',source.start_height],['Exact outcome producer',source.district_instance],['Producer profile hash',source.district_profile_hash]],el);
       sourceLink(content,p,el);
-      const list=el('ol');for(const rule of p.rules||[])list.append(el('li',rule));content.append(el('h3','Implemented rules'),list);
-      if(!active)content.append(el('p',deferredReason,'small bitmap-availability'));
+      const list=el('ol');for(const rule of p.rules||[])list.append(el('li',rule));content.append(el('h3',canonical?'Published Bitmap rules':'Saved rules'),list);
+      if(p.implementation_limits?.length){const limits=el('ul');for(const limit of p.implementation_limits)limits.append(el('li',limit));content.append(el('h3','Implementation limits'),limits);}
+      if(!active&&source.kind!=='chain')content.append(el('p',deferredReason,'small bitmap-availability'));
       if(source.note)content.append(el('p',source.note,'small muted'));
       if(source.district_instance)content.append(button('Inspect exact dependency',()=>onInspect?.(source.district_instance),'text-button'));
       const chain=source.kind==='chain'?source:(registry.instances||[]).find(i=>i.id===source.chain_instance);
-      chainControls(chain,registry);
+      chainControls(chain||(canonical?{kind:'chain',producer_kind:source.kind}:null));
       const details=el('details'),pre=el('pre',JSON.stringify({definition:source,chain:registry.chain_metadata?.[source.id]},null,2));details.append(el('summary','Machine-readable definition'),pre);content.append(details);
       status.textContent=source.rules_lock_reason||'Fixed read-only definition. Opening this view starts no work.';
     }).catch(error=>{if(!dead)status.textContent=error.message;});
@@ -94,15 +86,15 @@ window.GatewayBitmapWorkspace = (() => {
     const {el,button}=helpers(root);let dead=false;
     const status=el('p','Reading Bitmap indexes…','small');status.setAttribute('role','status');
     const current=el('section'),legacy=el('details');legacy.append(el('summary','Preserved legacy definitions and saved results'));
-    root.replaceChildren(el('h1','Bitmap'),el('p','Canonical Districts and Parcels have fixed rules. Each index has an optional independent chain; its provisional codec is versioned and replaceable.','small muted'),status,current,legacy);
+    root.replaceChildren(el('h1','Bitmap'),el('p','Canonical Districts and Parcels have fixed rules. District and Parcel chains are unavailable while their methodology is being developed.','small muted'),status,current,legacy);
     const ready=api('/api/v1/bitmap/profiles').then(registry=>{if(dead)return;
       for(const source of [...(registry.instances||[]),...(registry.drafts||[])]){
-        const active=source.execution_available===true,card=el('article',undefined,'panel bitmap-index-definition');card.append(el('h2',source.label||source.id),el('p',active?source.profile?.canonical_standard?'Canonical standard · fixed rules':'Optional development chain':'Legacy experimental · inspection only','small'));
+        const active=source.execution_available===true,card=el('article',undefined,'panel bitmap-index-definition');card.append(el('h2',source.kind==='chain'?'Bitmap '+(source.id.includes('parcel')?'Parcel':'District')+' Chain':source.label||source.id),el('p',source.kind==='chain'?'Bitmap Chain methodology is being developed':active?'Canonical standard · fixed rules':'Legacy saved definition · inspection only','small'));
         metadata(card,[['Profile hash',source.profile_hash],['Pinned source revision',source.profile?.reference_revision],['Exact outcome producer',source.district_instance]],el);
         sourceLink(card,source.profile,el);card.append(button('Inspect rules and saved state',()=>onInspect?.(source.id),'text-button'));(active?current:legacy).append(card);
       }
       legacy.hidden=legacy.children.length===1;status.textContent=registry.note||'Select an index to inspect its fixed rules. Indexing controls are on the timeline.';
-      viewport?.message?.('Canonical Bitmap indexes and optional versioned chains.','bitmap');onResolved?.('bitmap.gateway',{state:'canonical_preview'});
+      viewport?.message?.('Canonical Bitmap indexes. Chain methodology is being developed.','bitmap');onResolved?.('bitmap.gateway',{state:'canonical_preview'});
     }).catch(error=>{if(!dead){status.textContent=error.message;onResolved?.('bitmap.gateway',{state:'unavailable'});}});
     return {ready,teardown(){dead=true;root.replaceChildren();}};
   }

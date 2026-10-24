@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -207,7 +208,7 @@ func TestSelectedCoreCapturedHeightDoesNotQueryNewLatestTip(t *testing.T) {
 
 func TestTimelineRunExtensionDuringBitmapPublicationIsNotTerminal(t *testing.T) {
 	a := runTestApp(t)
-	b := bitmapDevelopmentFixtureBlock(0, "", "0.bitmap")
+	b := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "", "0.bitmap")
 	installRunProtocolHeader(t, a, &b)
 	a.indexRunSourceBlock = func(ctx context.Context, target blockTarget, retention string) (blockView, error) {
 		next := bitmapDevelopmentFixtureBlock(b.Height+1, b.Hash)
@@ -215,7 +216,7 @@ func TestTimelineRunExtensionDuringBitmapPublicationIsNotTerminal(t *testing.T) 
 		return b, nil
 	}
 	first := b.Height
-	req := indexRunRequest{In: &first, Out: &first, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}, {Index: "bitmap-district-chain-dev-v1", Armed: true}}}
+	req := indexRunRequest{In: &first, Out: &first, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}}}
 	if _, err := a.startIndexRun(context.Background(), req, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +297,7 @@ func TestTimelineRunPausedJoinWaitsAndPreservesLiveAndFiniteChoices(t *testing.T
 
 func TestTimelineRunRequiredOriginIsExplicitAndCannotBeSkipped(t *testing.T) {
 	a := runTestApp(t)
-	b := bitmapDevelopmentFixtureBlock(1, "", "0.bitmap")
+	b := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart+1, "", "0.bitmap")
 	installRunProtocolHeader(t, a, &b)
 	first, last := b.Height, b.Height
 	request := indexRunRequest{In: &first, Out: &last, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}, {Index: "utxo-state", Armed: true}, {Index: "sat-state", Armed: true}}}
@@ -306,6 +307,9 @@ func TestTimelineRunRequiredOriginIsExplicitAndCannotBeSkipped(t *testing.T) {
 	}
 	for _, p := range plan.Consumers {
 		origin := int64(0)
+		if p.Index == bitmapCanonicalDistrictID {
+			origin = bitmapDevelopmentStart
+		}
 		if p.RangeMode != "complete_prefix" || p.OriginHeight == nil || *p.OriginHeight != origin || p.NextRequiredHeight == nil || *p.NextRequiredHeight != origin || p.State != "needs_prerequisite" || !p.RequiresLeadIn {
 			t.Fatal("required beginning was not explicit", p)
 		}
@@ -316,7 +320,7 @@ func TestTimelineRunRequiredOriginIsExplicitAndCannotBeSkipped(t *testing.T) {
 	if a.indexRunSnapshot().Run != nil {
 		t.Fatal("blocked start installed an admitted run")
 	}
-	w := indexInterfaceCall(indexInterfaceHandler(a), "POST", "/api/v1/index/run/start", `{"request":{"in":1,"out":1,"consumers":[{"index":"bitmap-districts-canonical","armed":true}]}}`)
+	w := indexInterfaceCall(indexInterfaceHandler(a), "POST", "/api/v1/index/run/start", fmt.Sprintf(`{"request":{"in":%d,"out":%d,"consumers":[{"index":%q,"armed":true}]}}`, first, last, bitmapCanonicalDistrictID))
 	var response struct {
 		Error string       `json:"error"`
 		Plan  indexRunPlan `json:"plan"`

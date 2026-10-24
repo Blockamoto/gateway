@@ -171,7 +171,7 @@ func (a *app) amendIndexRun(ctx context.Context, change indexRunAmendment) (inde
 				p.From = max(p.From, join)
 			}
 		}
-		if !c.Armed {
+		if !indexRunSelectionEnabled(c) {
 			p.State, p.AdmissionState = "off", "off"
 			p.Reason = "Off; committed records are retained."
 		}

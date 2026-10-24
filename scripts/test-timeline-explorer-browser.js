@@ -22,6 +22,8 @@ const block=height=>({height,hash:String(height).padStart(64,'a'),transaction_co
       if(url.pathname==='/style.css')return reply(fs.readFileSync(path.join(root,'ui/shell/style.css'),'utf8'),'text/css');
       if(url.pathname==='/timeline.css')return reply(fs.readFileSync(path.join(root,'ui/shell/index-timeline.css'),'utf8'),'text/css');
       if(url.pathname==='/favicon.ico')return reply('','image/x-icon');
+      if(url.pathname==='/api/v1/bitmap/view')return reply({state:'not_built',note:'No saved canonical mapping.'});
+      if(url.pathname==='/api/v1/txio/readiness')return reply({inputs:[],outputs:[],sources_checked:[]});
       calls.push({path:url.pathname,body,query:url.search});
       if(url.pathname==='/api/v1/navigate'){
         const parts=body.address.split('.'),height=Number(parts[parts.length-2]);

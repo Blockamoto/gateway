@@ -145,6 +145,7 @@ func (a *app) verifyTxLocationBlockContext(ctx context.Context, txid string, loc
 	if found == nil {
 		return txResolutionView{}, blockView{}, fmt.Errorf("peer locator pointed to block %s, but transaction %s was not in it", loc.BlockHash, txid)
 	}
+	a.rememberRelationshipTransaction(block, *found)
 	return txResolutionView{TxID: txid, TxIndex: found.Index, Height: loc.Height, BlockHash: loc.BlockHash, LocatorPeer: locatorPeer, BitcoinPeer: block.SourcePeer, SourceNetwork: block.SourceNetwork, FromCache: block.FromCache, LocatorVerified: block.Verification.HeaderChainMatch, TransactionVerified: true, VerificationState: block.VerificationState, Transaction: *found}, block, nil
 }
 
@@ -315,6 +316,7 @@ func (a *app) resolveCoordinateContext(ctx context.Context, c bodCoordinate) (co
 	if err != nil {
 		return coordinateResolution{}, err
 	}
+	a.rememberRelationshipTransaction(block, tx)
 	locator := "Gateway positional address " + c.Raw
 	if c.TxID != "" {
 		locator = "Gateway hash-located address " + c.Raw

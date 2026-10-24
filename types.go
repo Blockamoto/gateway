@@ -44,6 +44,8 @@ type savedFilesView struct {
 }
 
 type blockView struct {
+	inscriptionExtraction *inscriptionBlockResult
+	CoinbaseMessage       *coinbaseMessageView `json:"coinbase_message,omitempty"`
 	// Owned immutable serialized evidence; never exposed through JSON. Each
 	// successful parser call copies its input so providers cannot mutate it.
 	verifiedRaw        []byte

@@ -84,6 +84,10 @@ func (a *app) applyIndexDeleteBrowse(ctx context.Context, b *indexDeleteBrowseRa
 
 func (a *app) planIndexDeletionRange(ctx context.Context, act *indexDeleteAction, requested *indexDeleteRange) error {
 	id := act.Item.Index
+	if id == "txio-values" || id == "txio-scripts" {
+		act.Item.Blockers = append(act.Item.Blockers, "Range deletion of this independently owned fact layer requires a separate sparse-manifest rewrite; select whole layer data to clear it. Positional links are preserved.")
+		return nil
+	}
 	act.Item.Operation = "delete_range"
 	act.Item.Scope = nil
 	act.Item.Note = "The track definition stays. Only the explicitly displayed interval may be removed."

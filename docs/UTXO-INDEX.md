@@ -14,13 +14,13 @@ UTXO retention is **Pruned**. Required live output facts and recovery dependenci
 
 ## Live coins and shared facts
 
-Each live output has its exact satoshi amount, exact scriptPubKey hex, creation BPS position and creation-block identity. Output BPS is `vout.transactionOrdinal.height`, with zero-based ordinals. The first transaction is structurally checked as coinbase, allowing creation height and coinbase status to be derived from the saved position.
+Each live output has its exact satoshi amount, exact scriptPubKey hex, creation blocator and creation-block identity. Output blocator is `vout.transactionOrdinal.height`, with zero-based ordinals. The first transaction is structurally checked as coinbase, allowing creation height and coinbase status to be derived from the saved position.
 
 The engine stores membership separately from immutable output facts:
 
 | Record | Retained fields and purpose |
 | --- | --- |
-| Live member | Output BPS and a shared fact-page hash/row reference. |
+| Live member | Output blocator and a shared fact-page hash/row reference. |
 | Live transaction | Transaction ID, creation height/hash/ordinal and live-output count, stored once per live transaction. |
 | Native bridge | Transaction ID to the current live transaction incarnation. Together with `vout`, this resolves Bitcoin input prevouts even after raw-body eviction. |
 | Output-fact page | Shared creation height/hash, ordered output coordinates, exact values and scripts. Pages contain bounded rows; they are not one file per output. |
@@ -29,7 +29,7 @@ The engine stores membership separately from immutable output facts:
 
 These are separate JSON files under `indexes/utxo-state`, with bounded copy-on-write radix pages and content-addressed commits/journals. Shared output pages live under `indexes/output-facts-v1`. The transaction hash catalogue is not duplicated in each TXIO spend row. The optional historical **Transaction Locator** remains its own track/store; the engine's mandatory live bridge is published with live membership and does not depend on complete historical locator coverage.
 
-BPS remains the logical live-output identity. Internal live/transaction/native-bridge radix keys disperse their identities with SHA-256 to avoid deep common numeric prefixes; direct BPS or native-outpoint lookup computes its key locally and checks the original identity in the referenced records. The current checkpoint schema is version 2. Earlier unreleased development UTXO heads are rejected rather than interpreted with a different key encoding; published 0.7.4 profiles contain no enabled UTXO state.
+blocator remains the logical live-output identity. Internal live/transaction/native-bridge radix keys disperse their identities with SHA-256 to avoid deep common numeric prefixes; direct blocator or native-outpoint lookup computes its key locally and checks the original identity in the referenced records. The current checkpoint schema is version 2. Earlier unreleased development UTXO heads are rejected rather than interpreted with a different key encoding; published 0.7.4 profiles contain no enabled UTXO state.
 
 The following is an illustrative resolved lookup, not the physical membership record or a claim about an actual output:
 
@@ -48,7 +48,7 @@ The following is an illustrative resolved lookup, not the physical membership re
 }
 ```
 
-The management API accepts either an output BPS or `txid:vout` for `index=utxo-state` lookup. A bounded query lists live coins, with its checkpoint and validation status. Reads refuse a state whose checkpoint cannot currently be anchored to the selected chain. A negative live lookup means absent from that explicitly identified processed state; it does not prove historical nonexistence, global sat identity, ownership or spendability under full consensus rules.
+The management API accepts either an output blocator or `txid:vout` for `index=utxo-state` lookup. A bounded query lists live coins, with its checkpoint and validation status. Reads refuse a state whose checkpoint cannot currently be anchored to the selected chain. A negative live lookup means absent from that explicitly identified processed state; it does not prove historical nonexistence, global sat identity, ownership or spendability under full consensus rules.
 
 ## Recovery and rebuild
 

@@ -12,7 +12,6 @@ import (
 	_ "image/png"
 	"mime"
 	"net/http"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -143,39 +142,12 @@ func (a *app) handleIndexBlockMap(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
-// Deliberate navigation is the admission boundary. Internal prevout, flow and
-// recursive dependency fetches never become new browse-index work.
+// Compatibility notification for callers already holding a complete block.
+// Generic and dependency resolution use the common source hook directly;
+// indexing alone must not fetch an additional containing block.
 func (a *app) indexBrowsedNavigation(ctx context.Context, result searchResponse) []indexBrowseResult {
-	policies, err := a.indexBrowsePoliciesContext(ctx)
-	if err != nil {
-		return []indexBrowseResult{{Index: "browse", State: "error", Error: err.Error()}}
-	}
-	needed := false
-	for _, policy := range policies {
-		needed = needed || (policy.Available && policy.Enabled)
-	}
-	if !needed {
-		return []indexBrowseResult{}
-	}
 	if result.Block != nil {
 		return a.indexBrowsedBlock(ctx, *result.Block, nil)
 	}
-	height, hash := int64(-1), ""
-	if result.Tx != nil {
-		height, hash = result.Tx.Height, result.Tx.BlockHash
-	}
-	if result.Ord != nil {
-		height, hash = result.Ord.Height, result.Ord.BlockHash
-	}
-	if height < 0 || !validHash(hash) {
-		return []indexBrowseResult{}
-	}
-	block, err := a.fetchAndDecodeContext(ctx, strconv.FormatInt(height, 10))
-	if err != nil {
-		return []indexBrowseResult{{Index: "browse", State: "error", Error: err.Error()}}
-	}
-	if block.Hash != hash {
-		return []indexBrowseResult{{Index: "browse", State: "error", Error: "Selected chain changed during navigation"}}
-	}
-	return a.indexBrowsedBlock(ctx, block, nil)
+	return []indexBrowseResult{}
 }

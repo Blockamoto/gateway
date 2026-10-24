@@ -88,7 +88,7 @@ When visiting Settings or Peers, suspend workspace view polling and preserve the
 
 ## Address history and external handoff
 
-Use one canonical classifier for address-bar entry, resource clicks, timeline selections, startup links and browser-companion activation. Preserve the existing precedence for public keys/hashes, explicit namespaces, selected-tip number classification, Sat names and BPS coordinates. Retain the canonical address even when data is unavailable.
+Use one canonical classifier for address-bar entry, resource clicks, timeline selections, startup links and browser-companion activation. Preserve the existing precedence for public keys/hashes, explicit namespaces, selected-tip number classification, Sat names and blocators. Retain the canonical address even when data is unavailable.
 
 | Navigation intent | Browser history behavior |
 | --- | --- |
@@ -145,7 +145,7 @@ The route/panel changes can be reviewed independently of the shared index coordi
 ## Acceptance checks
 
 - Follow address bar to block, transaction, output, P2PK/address, Sat and inscription inside the same actual workspace instance. Assert iframe/root identity, not only successful headings.
-- Verify numeric/name Sat links, BPS, native transaction/outpoint forms, public keys, inscription hints and companion activation through the production dispatcher.
+- Verify numeric/name Sat links, blocator, native transaction/outpoint forms, public keys, inscription hints and companion activation through the production dispatcher.
 - Test explicit Back/Forward entries, scrub replacement, no duplicate startup navigation and late responses after rapid resource changes.
 - Check unknown Sat location, missing reveal locator, damaged/stale source state and checkpoint changes during paginated ranges/holdings. Never turn them into known zero/empty results.
 - Verify track/context selection preserves global marks, draft settings and saved work. Missing-data actions only inspect/prepare their dependency.

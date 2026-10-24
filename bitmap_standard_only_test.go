@@ -193,12 +193,12 @@ func TestBitmapStandardOnlySavedCustomReadsStopAndExecutionFences(t *testing.T) 
 func TestBitmapCanonicalOnlyFixedRunRemainsAvailable(t *testing.T) {
 	a := runTestApp(t)
 	ctx := context.Background()
-	b := bitmapDevelopmentFixtureBlock(0, "", "0.bitmap")
+	b := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "", "0.bitmap")
 	installRunProtocolHeader(t, a, &b)
 	var calls atomic.Int64
 	a.indexRunSourceBlock = func(context.Context, blockTarget, string) (blockView, error) { calls.Add(1); return b, nil }
 	from, to := b.Height, b.Height
-	req := indexRunRequest{In: &from, Out: &to, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}, {Index: bitmapCanonicalParcelID, Armed: true}, {Index: "bitmap-district-chain-dev-v1", Armed: true}, {Index: "bitmap-parcel-chain-dev-v1", Armed: true}}}
+	req := indexRunRequest{In: &from, Out: &to, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}, {Index: bitmapCanonicalParcelID, Armed: true}}}
 	plan, err := a.planIndexRun(ctx, req)
 	if err != nil || !plan.Ready {
 		t.Fatal(plan, err)
@@ -207,7 +207,7 @@ func TestBitmapCanonicalOnlyFixedRunRemainsAvailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := waitRun(t, a)
-	if done.Run.State != "complete" || calls.Load() != 1 || done.Run.Counts.ChainSteps != 2 {
+	if done.Run.State != "complete" || calls.Load() != 1 || done.Run.Counts.ChainSteps != 0 {
 		t.Fatal("fixed canonical run was blocked or duplicated", done.Run, calls.Load())
 	}
 }

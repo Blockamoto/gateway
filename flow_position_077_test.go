@@ -24,6 +24,6 @@ func Test077FlowPositionsRequireKnownSelectedCreation(t *testing.T) {
 	a.settings.CoreDisabled = true
 	inputs = a.flowInputValues(context.Background(), b, spend)
 	if inputs[0].PreviousOutput != "" || inputs[0].CreationBlockHash != "" {
-		t.Fatal("unanchored parent advertised BPS", inputs)
+		t.Fatal("unanchored parent advertised blocator", inputs)
 	}
 }

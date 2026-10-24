@@ -238,7 +238,7 @@ func Test054PreviewLegacyAndQASelection(t *testing.T) {
 		t.Fatalf("wrong profile discovery: %+v", rows)
 	}
 	for _, r := range rows {
-		if strings.Contains(r.Path, "999") {
+		if filepath.Base(r.Path) == "GatewayClient-999-QA" {
 			t.Fatal("name resemblance treated as ownership")
 		}
 	}

@@ -123,6 +123,8 @@ async function harness(browser, address = '.gateway', failStatus = false, addres
       if(address===txid||address===txid+'.840000.bitcoin'){const located=address===txid;return fulfill(JSON.stringify({resource:{query:address,transaction:{txid,height:840000,block_hash:block,tx_index:7,locator_verified:true,transaction_verified:!located,source_network:located?'local_index_locator':'local_index',locator_peer:'committed transaction locator',verification_state:located?'header_anchored_locator':'header_anchored',resolution_state:located?'located_bytes_unavailable':'',note:'<img src="https://untrusted.invalid/pixel"> A provider must supply the containing block.',transaction:located?{index:0,inputs:null,outputs:null}:{txid,index:7,inputs:[],outputs:[{n:0,value_sats:123,type:'script'}]}}}}),'application/json')}
     }
     if(url.pathname==='/api/v1/navigate'&&request.method()==='POST'){const address=request.postDataJSON().address,height=Number(address.replace(/\.bitcoin$/,'').split('.').at(-1));return fulfill(JSON.stringify({resource:{kind:'block',query:address,block:{height:Number.isFinite(height)?height:0,hash:'b'.repeat(64),transaction_count:0,transactions:[]}}}),'application/json');}
+    if(url.pathname==='/api/v1/bitmap/view')return fulfill(JSON.stringify({state:'not_built',note:'No saved canonical Bitmap mapping.'}),'application/json');
+    if(url.pathname==='/api/v1/txio/readiness')return fulfill(JSON.stringify({inputs:[],outputs:[],sources_checked:[]}),'application/json');
     if(url.pathname==='/api/v1/address/view'){
       const destination=url.searchParams.get('address');assert.equal(request.method(),'GET');assert([bitcoinAddress,numericPublicKey].includes(destination));assert.equal(url.searchParams.get('mode'),'current');
       return fulfill(JSON.stringify({address:destination,destination_type:destination===numericPublicKey?'p2pk':'p2pkh',mode:'current',state:addressLookupState,snapshot:addressLookupState==='rebuild_required'?addressCheckpoint:{},current_balance_sats:null,current_output_count:null,outputs:[],complete:false,note:'Current UTXOs require inspection or a reviewed build.'}),'application/json');
@@ -157,7 +159,7 @@ async function checkRoute(page,address,selector){
  const exception=['peers.gateway','settings.gateway'].includes(address);
  if(selector&&selector!=='iframe.indexes-frame')await (exception?page:workspace(page)).locator(selector+':visible').first().waitFor();
  else await page.locator('#indexes-module').waitFor({state:'visible'});
- await healthy(page,address);assert.equal(await page.locator('#address').inputValue(),address);
+ await page.waitForFunction(expected=>document.querySelector('#address')?.value===expected,address);await healthy(page,address);assert.equal(await page.locator('#address').inputValue(),address);
  const active=page.locator('.nav-item.active');assert.equal(await active.count(),1);
  assert.equal(await active.getAttribute('data-route'),exception?address:'indexes.gateway');
  assert.equal(await active.getAttribute('aria-current'),'page');

@@ -1,3 +1,6 @@
+> Historical compatibility documentation. Both chains are disabled in the reviewed
+> 0.7.8 build; this frozen codec is not an active execution methodology.
+
 # Replaceable Bitmap Chain development codec v1
 
 The optional District and Parcel chains follow the shape of the Bitmap chain

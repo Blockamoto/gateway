@@ -333,6 +333,9 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 		view.Verification.ConsensusValidated = true
 		view.Note = "Bitcoin Core confirmed this exact block at the requested active-chain height; Gateway independently verified the serialized body."
 	}
+	if view.CoinbaseMessage == nil {
+		view.CoinbaseMessage = coinbaseMessageForTransactions(view.Transactions)
+	}
 	// Legacy call signatures remain source-compatible. Their retention string
 	// cannot override the timeline's sole Raw on/off choice.
 	if err = a.ensureRawProducerContext(ctx, view); err != nil {
@@ -343,6 +346,8 @@ func (a *app) fetchBlockWithPolicyContext(ctx context.Context, target blockTarge
 	if err = ctx.Err(); err != nil {
 		return blockView{}, err
 	}
+	prepareResolvedBlockExtraction(ctx, a.dataDir, &view)
+	a.ingestResolvedVerifiedBlock(ctx, view)
 	return view, nil
 }
 
@@ -595,6 +600,7 @@ func parseBlockDetailed(height int64, hashDisplay string, expectedHeader, payloa
 	txs = annotateCoordinates(height, txs)
 
 	return blockView{
+		CoinbaseMessage:  coinbaseMessageForTransactions(txs),
 		verifiedRaw:      append([]byte(nil), payload...),
 		verifiedRawProof: newVerifiedBlockBytes(height, strings.ToLower(hashDisplay), txCount, payload),
 		Coordinate: func() string {

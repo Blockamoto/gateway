@@ -46,7 +46,7 @@ func TestBitmapCanonicalASCIICharsetAndIdentity(t *testing.T) {
 
 func TestBitmapCanonicalFirstWholeASCIIRevealAndSafeRestart(t *testing.T) {
 	ctx, root := context.Background(), t.TempDir()
-	canonical := bitmapTestConsumer(t, root, bitmapCanonicalDistrictID)
+	canonical := bitmapTestConsumer(t, root, bitmapCanonicalV1DistrictID)
 	block := bitmapDevelopmentFixtureBlock(0, "", "0.bitmap", "0.bitmap", "01.bitmap", "1.bitmap", "0.BITMAP", "0.bitmap\n", " 0.bitmap", "0.bitmap.bitmap")
 	block.Transactions[1].Inputs[0].Witness = ordWitness050(inscriptionTestScript([]byte{1}, []byte("TEXT/PLAIN; charset=utf-16; x=y"), []byte{11}, []byte{1}, nil, []byte("0.bitmap")))
 	if err := canonical.Apply(ctx, block, nil); err != nil {
@@ -60,7 +60,7 @@ func TestBitmapCanonicalFirstWholeASCIIRevealAndSafeRestart(t *testing.T) {
 	if err != nil || !have || selected.ID != block.Transactions[1].TxID+"i0" || selected.Reason != "first_qualifying_canonical_reveal" {
 		t.Fatal(selected, err)
 	}
-	if got := bitmapTestConsumer(t, root, bitmapCanonicalDistrictID); got.head.Commitment != canonical.head.Commitment {
+	if got := bitmapTestConsumer(t, root, bitmapCanonicalV1DistrictID); got.head.Commitment != canonical.head.Commitment {
 		t.Fatal("restart changed canonical outcome")
 	}
 	if got := bitmapTestConsumer(t, root, "bitmap-districts"); got.head != nil {
@@ -81,7 +81,7 @@ func TestBitmapCanonicalFirstWholeASCIIRevealAndSafeRestart(t *testing.T) {
 	if err = writeBitmapChainJSON(ctx, filepath.Join(canonical.dir, "commits", bad.Commitment[:2], bad.Commitment+".json"), bad); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = readBitmapDevelopmentCommit(ctx, root, bitmapCanonicalDistrictID, bad.Commitment); err == nil {
+	if _, err = readBitmapDevelopmentCommit(ctx, root, bitmapCanonicalV1DistrictID, bad.Commitment); err == nil {
 		t.Fatal("legacy semantics resumed as canonical")
 	}
 	old := canonical.head.Commitment
@@ -96,7 +96,7 @@ func TestBitmapCanonicalFirstWholeASCIIRevealAndSafeRestart(t *testing.T) {
 	if canonical.head.Height != 0 || canonical.head.WinnerCount != 1 {
 		t.Fatal("reorg failed to rewind canonical winners", canonical.head)
 	}
-	if _, err = readBitmapDevelopmentCommit(ctx, root, bitmapCanonicalDistrictID, old); err != nil {
+	if _, err = readBitmapDevelopmentCommit(ctx, root, bitmapCanonicalV1DistrictID, old); err != nil {
 		t.Fatal("reorg erased orphan inspection evidence", err)
 	}
 }
@@ -119,8 +119,8 @@ func TestBitmapCanonicalParcelSelectedDistrictAndProvenance(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, root := context.Background(), t.TempDir()
-			district := bitmapTestConsumer(t, root, bitmapCanonicalDistrictID)
-			parcel := bitmapTestConsumer(t, root, bitmapCanonicalParcelID)
+			district := bitmapTestConsumer(t, root, bitmapCanonicalV1DistrictID)
+			parcel := bitmapTestConsumer(t, root, bitmapCanonicalV1ParcelID)
 			b0 := utxoFixtureBlock(0, "", utxoFixtureCoinbase(86000, subsidyAtHeight(0)))
 			cb := utxoFixtureCoinbase(86001, 10, subsidyAtHeight(1)-10)
 			b1 := utxoFixtureBlock(1, b0.Hash, cb)
@@ -187,7 +187,7 @@ func TestBitmapCanonicalParcelSelectedDistrictAndProvenance(t *testing.T) {
 				if !errors.Is(err, ErrBitmapEvidenceRequired) || parcel.head.Height != 2 {
 					t.Fatal("missing proof became empty completion", parcel.head, err)
 				}
-				pending, e := readBitmapPending(ctx, root, bitmapCanonicalParcelID, parcel.head)
+				pending, e := readBitmapPending(ctx, root, bitmapCanonicalV1ParcelID, parcel.head)
 				if e != nil || pending == nil || len(pending.Candidates) != 1 || pending.Candidates[0].Reason != tc.wantReason {
 					t.Fatal(pending, e)
 				}
@@ -213,12 +213,12 @@ func TestBitmapCanonicalParcelSelectedDistrictAndProvenance(t *testing.T) {
 
 func TestBitmapCanonicalParcelMissingDistrictIsGap(t *testing.T) {
 	ctx, root := context.Background(), t.TempDir()
-	parcel := bitmapTestConsumer(t, root, bitmapCanonicalParcelID)
+	parcel := bitmapTestConsumer(t, root, bitmapCanonicalV1ParcelID)
 	block := bitmapDevelopmentFixtureBlock(0, "", "0.0.bitmap")
 	if err := parcel.Apply(ctx, block, nil); !errors.Is(err, ErrBitmapEvidenceRequired) || parcel.head != nil {
 		t.Fatal("missing district became complete", parcel.head, err)
 	}
-	if h, err := readBitmapDevelopmentHead(ctx, root, bitmapCanonicalDistrictID); err != nil || h != nil {
+	if h, err := readBitmapDevelopmentHead(ctx, root, bitmapCanonicalV1DistrictID); err != nil || h != nil {
 		t.Fatal("parcel started district index", h, err)
 	}
 }

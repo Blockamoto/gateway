@@ -147,7 +147,7 @@ func utxoPositionKey(height int64, tx, vout int) string {
 	return indexDigest("output:" + outputCoordinate(vout, tx, height))
 }
 
-// BPS remains the logical identity and query input. Internal radix keys are
+// blocator remains the logical identity and query input. Internal radix keys are
 // dispersed to avoid rewriting a long common numeric prefix on every spend.
 func utxoTransactionKey(height int64, tx int) string {
 	return indexDigest(fmt.Sprintf("transaction:%d.%d", tx, height))
@@ -914,7 +914,7 @@ func (s *utxoStore) LookupBPS(ctx context.Context, position string) (utxoCoin, b
 	}
 	c, ok := parseBODCoordinate(position)
 	if !ok || c.Kind != coordOutput || c.TxID != "" || outputCoordinate(c.IOIndex, c.TxIndex, c.Height) != position {
-		return utxoCoin{}, false, fmt.Errorf("UTXO lookup requires an output BPS")
+		return utxoCoin{}, false, fmt.Errorf("UTXO lookup requires an output blocator")
 	}
 	if s.head == nil {
 		return utxoCoin{}, false, nil

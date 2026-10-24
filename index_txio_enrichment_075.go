@@ -131,19 +131,28 @@ type txioOutputFactsResult struct {
 }
 
 func (a *app) lookupTXIOOutputFacts(ctx context.Context, pos string) (txioOutputFactsResult, error) {
-	out := txioOutputFactsResult{Position: pos, State: "unknown", Note: "No retained historical output facts; absence is not proof of unspentness."}
+	out, sparseErr := a.sparseOutputFacts(ctx, pos)
+	if sparseErr != nil {
+		return out, sparseErr
+	}
 	c, e := parseTXIOPosition("output", pos)
 	if e != nil {
 		return out, e
 	}
 	s, e := indexStoreHead(a.dataDir, "txo-spender")
 	if e != nil {
+		if out.State == "known" {
+			return out, nil
+		}
 		return out, e
 	}
 	if s.checkpoint == nil {
 		return out, nil
 	}
 	if a.indexChainState(s.checkpoint) != "selected_chain" {
+		if out.State == "known" {
+			return out, nil
+		}
 		return out, fmt.Errorf("TXIO needs selected-chain reconciliation")
 	}
 	if c.Height < s.checkpoint.From || c.Height > s.checkpoint.Height {

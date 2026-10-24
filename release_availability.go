@@ -27,6 +27,12 @@ func releaseAvailability() map[string]bool {
 }
 
 func releaseLockReason(id string) string {
+	if bitmapConsumerID(id) {
+		if bitmapConsumerKind(id) == "chain" {
+			return errBitmapChainDeferred.Error()
+		}
+		return errBitmapComparisonDeferred.Error()
+	}
 	if bitmapCustomConsumerID(id) {
 		return errBitmapComparisonDeferred.Error()
 	}

@@ -51,8 +51,8 @@ func txioKey(direction, position string) string {
 	return hex.EncodeToString(key[:])
 }
 
-// Each spend reserves three pointer slots: compatible txid:vout, input BPS,
-// output BPS. Unknown creations get a private non-queryable placeholder key;
+// Each spend reserves three pointer slots: compatible txid:vout, input blocator,
+// output blocator. Unknown creations get a private non-queryable placeholder key;
 // this keeps the row offset stable without claiming any output position.
 func txioBatchKeys(b indexBatch) []string {
 	p := b.Spenders
@@ -330,7 +330,7 @@ func (a *app) configureTXIOStore(s *indexStore) {
 }
 
 // Core can attest an exact transaction/outpoint without its transaction
-// ordinal. A negative Index is not a BPS position: obtain verified block order
+// ordinal. A negative Index is not a blocator: obtain verified block order
 // from the known block, or retain the relationship as unresolved.
 func (a *app) positionedTXIOParent(ctx context.Context, id string, before int64) (satlineTxEvidence, error) {
 	r, err := a.flowParentTransaction(ctx, id, before)
@@ -377,7 +377,7 @@ func parseTXIOPosition(direction, position string) (bodCoordinate, error) {
 		return c, fmt.Errorf("direction must be input or output")
 	}
 	if !ok || c.Kind != want || c.TxID != "" || position != canonical {
-		return c, fmt.Errorf("enter a canonical zero-based %s BPS position", direction)
+		return c, fmt.Errorf("enter a canonical zero-based %s blocator", direction)
 	}
 	return c, nil
 }
@@ -392,15 +392,26 @@ func (a *app) lookupTXIO(ctx context.Context, direction, position string) (txioR
 	if _, err := parseTXIOPosition(direction, position); err != nil {
 		return out, err
 	}
+	sparse, err := a.sparseTXIORows(ctx, direction, position, "", 0)
+	if err != nil {
+		return out, err
+	}
+	out.Rows = sparse
 	s, err := indexStoreHead(a.dataDir, "txo-spender")
 	if err != nil {
+		if len(out.Rows) > 0 {
+			return completeTXIOResult(out), nil
+		}
 		return out, err
 	}
 	out.Checkpoint, out.ChainState = s.checkpoint, a.indexChainState(s.checkpoint)
 	if s.checkpoint == nil {
-		return out, nil
+		return completeTXIOResult(out), nil
 	}
 	if out.ChainState != "selected_chain" {
+		if len(out.Rows) > 0 {
+			return completeTXIOResult(out), nil
+		}
 		return out, fmt.Errorf("TXIO index needs selected-chain reconciliation")
 	}
 	if err = s.ensureIndexLocators(ctx); err != nil {
@@ -455,7 +466,7 @@ func (a *app) lookupTXIO(ctx context.Context, direction, position string) (txioR
 				return out, fmt.Errorf("TXIO creation belongs to a disconnected branch")
 			}
 		}
-		out.Rows = append(out.Rows, txioMatch{indexSpendMatch{r, b.Checkpoint.Height, b.Checkpoint.BlockHash}, input, creationHash})
+		out.Rows = mergeTXIORows(out.Rows, []txioMatch{{indexSpendMatch{r, b.Checkpoint.Height, b.Checkpoint.BlockHash}, input, creationHash}})
 	}
 	if len(out.Rows) > 0 {
 		out.Absence = ""
@@ -528,6 +539,7 @@ func (a *app) fallbackTXIO(ctx context.Context, out txioResult) (txioResult, err
 }
 
 func (a *app) registerTXIORoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/v1/txio/readiness", a.handleRelationshipReadiness)
 	for _, path := range []string{"/api/txio/lookup", "/api/v1/txio/lookup"} {
 		mux.HandleFunc(path, a.handleTXIOLookup)
 	}

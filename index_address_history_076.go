@@ -556,7 +556,7 @@ func (s *addressHistoryStore) CommitBlockContext(ctx context.Context, block bloc
 	defer addressHistoryMu.Unlock()
 	outputFactCollectionMu.Lock()
 	defer outputFactCollectionMu.Unlock()
-	if !integrityVerified(block) || !block.Verification.HeaderChainMatch || len(block.Transactions) == 0 {
+	if !integrityVerified(block) || (!block.Verification.HeaderChainMatch && !block.Verification.ConsensusValidated) || len(block.Transactions) == 0 {
 		return fmt.Errorf("address history requires verified selected-chain block")
 	}
 	if e := s.requireCurrent(ctx); e != nil {

@@ -31,7 +31,7 @@ See [the Sats feature breakdown](SATS-FEATURES-0.7.7.md), [brief](IMPLEMENTATION
 
 - Build Current UTXOs from saved complete UTXO state, with checkpoint-specific balances and a deeper paginated output view.
 - Offer independently retained Historical outputs over explicit sparse creation ranges, with coverage and range totals rather than inferred balances.
-- Share existing output values/scripts and retain address-to-output BPS membership; do not copy complete decoded blocks.
+- Share existing output values/scripts and retain address-to-output blocator membership; do not copy complete decoded blocks.
 - Add typed-address entry, clickable output addresses and independent Current/Historical timeline bands.
 - Include exact compressed/uncompressed P2PK public-key destinations, with explicit upgrade/backfill requirements for older conventional-only coverage.
 - The Addresses release defers inscription holdings and Sat tracking to Sats; full consensus validation remains future work. Its publication and verified update delivery are recorded in status.
@@ -40,7 +40,7 @@ See [the Addresses brief](IMPLEMENTATION-BRIEF-0.7.6.md) and [guide](ADDRESSES-I
 
 ## Available: v0.7.5 UTXO set
 
-- Build a complete live-output state from genesis to an explicit processed selected-chain tip, with exact values/scripts, BPS creation identity and a durable native-prevout bridge.
+- Build a complete live-output state from genesis to an explicit processed selected-chain tip, with exact values/scripts, blocator creation identity and a durable native-prevout bridge.
 - Pause/resume at an atomic head; retain a fixed 288 complete recovery transitions, independently of raw-body retention. Deeper reorganizations require an explicit reviewed rebuild and preserve prior state archives.
 - Add optional TXIO Values and ScriptPubKeys output history with independent coverage and shared fact retention. Transaction Locator and TXIO remain separate stores/tracks.
 - Group Blocks into Headers/raw bodies and TXIO into Positional links/Values/ScriptPubKeys; give UTXO its own state/build panel with honest progress, anchors and measured storage.

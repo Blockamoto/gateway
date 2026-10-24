@@ -525,11 +525,52 @@ func (a *app) graphFindSpend(txid string, vout uint32) (graphSpend, bool) {
 }
 
 func (a *app) graphReadSpend(txid string, vout uint32) (graphSpend, bool, error) {
+	return a.graphReadSpendWithAnchor(context.Background(), txid, vout, a.canonicalHashAtHeight)
+}
+
+// Readiness must not enter the legacy graph's unbounded Core inspection path.
+// Its selected-chain checks and lock waits share the caller's deadline.
+func (a *app) graphReadSpendContext(ctx context.Context, txid string, vout uint32) (graphSpend, bool, error) {
+	return a.graphReadSpendWithAnchor(ctx, txid, vout, func(height int64) (string, error) {
+		return a.flowCanonicalHash(ctx, height)
+	})
+}
+
+func (a *app) lockGraphReadContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if ctx.Done() == nil {
+		a.graphStoreMu.RLock()
+		return nil
+	}
+	for !a.graphStoreMu.TryRLock() {
+		timer := time.NewTimer(5 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		a.graphStoreMu.RUnlock()
+		return err
+	}
+	return nil
+}
+
+func (a *app) graphReadSpendWithAnchor(ctx context.Context, txid string, vout uint32, hashAt func(int64) (string, error)) (graphSpend, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return graphSpend{}, false, err
+	}
 	path, err := graphShardPath(a.graphDir(), "spends", txid)
 	if err != nil {
 		return graphSpend{}, false, err
 	}
-	a.graphStoreMu.RLock()
+	if err := a.lockGraphReadContext(ctx); err != nil {
+		return graphSpend{}, false, err
+	}
 	defer a.graphStoreMu.RUnlock()
 	if err := a.checkGraphShard(path, "spends"); err != nil {
 		return graphSpend{}, false, err
@@ -551,6 +592,9 @@ func (a *app) graphReadSpend(txid string, vout uint32) (graphSpend, bool, error)
 	found := false
 	readBytes := uint64(0)
 	for {
+		if err := ctx.Err(); err != nil {
+			return graphSpend{}, false, err
+		}
 		_, err := io.ReadFull(f, buf)
 		if err == io.EOF {
 			break
@@ -566,7 +610,7 @@ func (a *app) graphReadSpend(txid string, vout uint32) (graphSpend, bool, error)
 		if !strings.EqualFold(prev, txid) || vv != vout {
 			continue
 		}
-		canon, e := a.canonicalHashAtHeight(rec.Height)
+		canon, e := hashAt(rec.Height)
 		if e != nil {
 			return graphSpend{}, false, fmt.Errorf("cannot anchor indexed spend: %w", e)
 		}
@@ -584,11 +628,26 @@ func (a *app) graphReadSpend(txid string, vout uint32) (graphSpend, bool, error)
 }
 
 func (a *app) graphFindTx(txid string) ([]graphTxLocation, error) {
+	return a.graphFindTxWithAnchor(context.Background(), txid, a.canonicalHashAtHeight)
+}
+
+func (a *app) graphFindTxContext(ctx context.Context, txid string) ([]graphTxLocation, error) {
+	return a.graphFindTxWithAnchor(ctx, txid, func(height int64) (string, error) {
+		return a.flowCanonicalHash(ctx, height)
+	})
+}
+
+func (a *app) graphFindTxWithAnchor(ctx context.Context, txid string, hashAt func(int64) (string, error)) ([]graphTxLocation, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	path, err := graphShardPath(a.graphDir(), "txloc", txid)
 	if err != nil {
 		return nil, err
 	}
-	a.graphStoreMu.RLock()
+	if err := a.lockGraphReadContext(ctx); err != nil {
+		return nil, err
+	}
 	defer a.graphStoreMu.RUnlock()
 	if err := a.checkGraphShard(path, "txloc"); err != nil {
 		return nil, err
@@ -610,6 +669,9 @@ func (a *app) graphFindTx(txid string) ([]graphTxLocation, error) {
 	seen := map[string]bool{}
 	readBytes := uint64(0)
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		_, err := io.ReadFull(f, buf)
 		if err == io.EOF {
 			break
@@ -625,7 +687,7 @@ func (a *app) graphFindTx(txid string) ([]graphTxLocation, error) {
 		if !strings.EqualFold(rec.TxID, txid) {
 			continue
 		}
-		canon, e := a.canonicalHashAtHeight(rec.Height)
+		canon, e := hashAt(rec.Height)
 		if e != nil {
 			return nil, fmt.Errorf("cannot anchor indexed transaction: %w", e)
 		}

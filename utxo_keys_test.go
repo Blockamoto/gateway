@@ -7,7 +7,7 @@ import (
 )
 
 // Model the actual radix leaf-split threshold without filesystem timing. A
-// numeric BPS catalogue concentrates many keys behind a long zero prefix;
+// numeric blocator catalogue concentrates many keys behind a long zero prefix;
 // dispersed keys should not reintroduce that COW path amplification.
 func utxoFixtureRadixDepth(keys []string, depth int) int {
 	if len(keys) <= ordinalPageEntries {

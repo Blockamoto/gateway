@@ -73,8 +73,8 @@ func TestBitmapChainDevCodecFixedVectorsAndRegistryHistory(t *testing.T) {
 func bitmapCanonicalChainFixture(t *testing.T, root string, simultaneous bool) (*bitmapRunConsumer, *bitmapRunConsumer, map[int64]blockView) {
 	t.Helper()
 	ctx := context.Background()
-	district := bitmapTestConsumer(t, root, bitmapCanonicalDistrictID)
-	parcel := bitmapTestConsumer(t, root, bitmapCanonicalParcelID)
+	district := bitmapTestConsumer(t, root, bitmapCanonicalV1DistrictID)
+	parcel := bitmapTestConsumer(t, root, bitmapCanonicalV1ParcelID)
 	dchain := bitmapTestConsumer(t, root, "bitmap-district-chain-dev-v1")
 	pchain := bitmapTestConsumer(t, root, "bitmap-parcel-chain-dev-v1")
 	blocks := map[int64]blockView{}
@@ -155,7 +155,7 @@ func TestBitmapChainDevSimultaneousEqualsSavedOutcomeCatchupAndRestart(t *testin
 		t.Fatal("district and parcel chains were mixed")
 	}
 	progress := indexRunProgress{Index: b.id}
-	if _, err := bindIndexRunBitmapProgress(context.Background(), b.root, &progress); err != nil || progress.DistrictInstance != bitmapCanonicalParcelID {
+	if _, err := bindIndexRunBitmapProgress(context.Background(), b.root, &progress); err != nil || progress.DistrictInstance != bitmapCanonicalV1ParcelID {
 		t.Fatal("parcel outcome producer binding rejected", progress, err)
 	}
 	bad := *a.head
@@ -176,7 +176,7 @@ func TestBitmapChainDevSimultaneousEqualsSavedOutcomeCatchupAndRestart(t *testin
 func TestBitmapChainDevInteriorOutcomeGapIsNotCompletedInterval(t *testing.T) {
 	chain, _, _ := bitmapCanonicalChainFixture(t, t.TempDir(), true)
 	ctx := context.Background()
-	producer := bitmapTestConsumer(t, chain.root, bitmapCanonicalDistrictID)
+	producer := bitmapTestConsumer(t, chain.root, bitmapCanonicalV1DistrictID)
 	tree := newOrdinalTree(filepath.Join(producer.dir, "pages"), producer.head.BlockRoot).withContext(ctx)
 	tree.remove(fmt.Sprintf("%016x", int64(2)))
 	root, err := tree.flush()
@@ -197,7 +197,7 @@ func TestBitmapChainDevInteriorOutcomeGapIsNotCompletedInterval(t *testing.T) {
 func TestBitmapChainDevPrunedRestartAndSelectedBranchRecovery(t *testing.T) {
 	chain, _, blocks := bitmapCanonicalChainFixture(t, t.TempDir(), true)
 	ctx := context.Background()
-	producer := bitmapTestConsumer(t, chain.root, bitmapCanonicalDistrictID)
+	producer := bitmapTestConsumer(t, chain.root, bitmapCanonicalV1DistrictID)
 	producerCommitment := producer.head.Commitment
 	chain.ConfigureRetention("pruned")
 	if err := chain.Reconcile(ctx, bitmapChainTestHashes(blocks)); err != nil {
@@ -248,7 +248,7 @@ func TestBitmapChainDevPrunedRestartAndSelectedBranchRecovery(t *testing.T) {
 func TestBitmapChainDevOwnedReceiptsReconcileWithoutProducerFiles(t *testing.T) {
 	chain, _, blocks := bitmapCanonicalChainFixture(t, t.TempDir(), true)
 	ctx := context.Background()
-	producerDir := bitmapDevelopmentDir(chain.root, bitmapCanonicalDistrictID)
+	producerDir := bitmapDevelopmentDir(chain.root, bitmapCanonicalV1DistrictID)
 	if err := os.Rename(producerDir, filepath.Join(chain.root, "preserved-producer")); err != nil {
 		t.Fatal(err)
 	}
@@ -262,59 +262,5 @@ func TestBitmapChainDevOwnedReceiptsReconcileWithoutProducerFiles(t *testing.T) 
 	}
 	if err := reopened.ApplyRetainedOutcome(ctx, 4); !errors.Is(err, ErrBitmapEvidenceRequired) {
 		t.Fatal("missing future producer not reported", err)
-	}
-}
-
-func TestBitmapChainDevWorkerBothCatchupsReadNoBitcoinBodies(t *testing.T) {
-	ctx := context.Background()
-	a := runTestApp(t)
-	district := bitmapTestConsumer(t, a.dataDir, bitmapCanonicalDistrictID)
-	parcel := bitmapTestConsumer(t, a.dataDir, bitmapCanonicalParcelID)
-	previous := ""
-	for height := int64(0); height < 4; height++ {
-		claims := []string{}
-		if height == 1 {
-			claims = []string{"0.bitmap", "1.bitmap"}
-		}
-		block := bitmapDevelopmentFixtureBlock(height, previous, claims...)
-		installRunProtocolHeader(t, a, &block)
-		previous = block.Hash
-		if err := district.Apply(ctx, block, nil); err != nil {
-			t.Fatal(err)
-		}
-		if err := parcel.Apply(ctx, block, nil); err != nil {
-			t.Fatal(err)
-		}
-	}
-	a.indexRunSourceBlock = func(context.Context, blockTarget, string) (blockView, error) {
-		t.Error("chain-only saved outcome run attempted raw Bitcoin body read")
-		return blockView{}, fmt.Errorf("raw bodies deliberately unavailable")
-	}
-	from, to := int64(1), int64(3)
-	req := indexRunRequest{In: &from, Out: &to, Consumers: []indexRunSelection{{Index: "bitmap-district-chain-dev-v1", Armed: true}, {Index: "bitmap-parcel-chain-dev-v1", Armed: true}}}
-	plan, err := a.planIndexRun(ctx, req)
-	if err != nil || !plan.Ready {
-		t.Fatal(plan, err)
-	}
-	for _, consumer := range plan.Consumers {
-		if consumer.From != 1 || len(consumer.Dependencies) != 1 || consumer.Dependencies[0].Index == "blocks" {
-			t.Fatal("wrong chain origin or raw prerequisite", consumer)
-		}
-	}
-	if _, err := a.startIndexRun(ctx, req, plan.PlanID); err != nil {
-		t.Fatal(err)
-	}
-	done := waitRun(t, a)
-	if done.Run.State != "complete" {
-		t.Fatal(done.Run)
-	}
-	counts := done.Run.Counts
-	if counts.SourceReads != 0 || counts.DecodedBlocks != 0 || counts.InscriptionExtractions != 0 || counts.OutcomeReads != 6 || counts.ChainSteps != 6 {
-		t.Fatal("saved chain catchup performed source work", counts)
-	}
-	for _, consumer := range done.Run.Consumers {
-		if consumer.Height != 3 {
-			t.Fatal("chain failed catchup", consumer)
-		}
 	}
 }

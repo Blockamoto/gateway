@@ -199,7 +199,7 @@ type satOutputView077 struct {
 
 func (a *app) satOutputContext077(ctx context.Context, output string, limit int, cursor string) (satOutputView077, error) {
 	if _, err := satPosition077(output); err != nil {
-		return satOutputView077{}, fmt.Errorf("enter an output BPS position")
+		return satOutputView077{}, fmt.Errorf("enter an output blocator position")
 	}
 	if limit < 1 || limit > 100 {
 		return satOutputView077{}, fmt.Errorf("range page limit must be 1..100")

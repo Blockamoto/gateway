@@ -175,7 +175,11 @@ func (a *app) coreSpenderFast(ctx context.Context, s appSettings, id string, vou
 		v.BlockHash = row.BlockHash
 		v.Transaction = &tx
 		v.SpendingInput = &tx.Inputs[vin]
-		if native, ok := a.graphFindSpend(id, vout); ok && native.SpendingTxID != v.SpendingTxID {
+		native, ok, graphErr := a.graphReadSpendContext(ctx, id, vout)
+		if ctx.Err() != nil {
+			return v, ctx.Err()
+		}
+		if graphErr == nil && ok && native.SpendingTxID != v.SpendingTxID {
 			v.ConfirmedState = "provider_disagreement"
 			v.Found = false
 			v.Note = "Core and the canonical native graph disagree; no lineage advance is permitted."

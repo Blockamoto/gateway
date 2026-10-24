@@ -21,6 +21,7 @@ window.GatewayTimelineExplorer = (() => {
     const explorerTab = element('button','Resource'); explorerTab.id='timeline-explorer-tab'; explorerTab.type='button'; explorerTab.setAttribute('role','tab'); explorerTab.setAttribute('aria-controls',explorer.id);
     tabs.append(explorerTab,inspectorTab); root.append(tabs,inspector,explorer); root.classList.add('timeline-tabbed-inspector');
     const panes=new Map([['explorer',{panel:explorer,tab:explorerTab}],['inspector',{panel:inspector,tab:inspectorTab}]]), resourcePanels=new Map(), viewHandlers=new Map();
+    const bitmapPanel=element('section',undefined,'timeline-block-bitmap-panel'),bitmapTab=element('button','Bitmap');bitmapPanel.id='timeline-block-bitmap-panel';bitmapPanel.setAttribute('role','tabpanel');bitmapPanel.hidden=true;bitmapTab.type='button';bitmapTab.id='timeline-block-bitmap-tab';bitmapTab.setAttribute('role','tab');bitmapTab.setAttribute('aria-controls',bitmapPanel.id);bitmapTab.hidden=true;tabs.insertBefore(bitmapTab,inspectorTab);root.append(bitmapPanel);panes.set('bitmap',{panel:bitmapPanel,tab:bitmapTab});let bitmapSticky=false,bitmapContentOpen=false,bitmapSerial=0,bitmapTarget=null;
     let resource='block', viewKind='block';
     const painter=viewport&&window.GatewayBlockViewport?.mount({root:viewport,document:doc,onTransaction:(tx,map)=>entity({kind:'transaction',height:map.height,txIndex:tx.index,index:'blocks'}),onInput:(input,context)=>{if(focused?.height!==context.height||Number(explorer.querySelector('#timeline-explorer-tx-detail')?.dataset.txIndex)!==context.index)return;const button=explorer.querySelector('[data-txio-direction="input"][data-txio-index="'+input.index+'"]');if(button)button.click();else notify?.('Coinbase inputs have no previous output.');},onOutput:(output,context)=>entity({kind:'output',height:context.height,txIndex:context.index,outputIndex:output.n,index:'tx-locator'}),onInscription:entry=>viewHandlers.get('inscriptions')?.open?.(entry.coordinate||entry.id)});
     let active='inspector', explicitTab=false, dead=false, available=true, pending=null, focused=null, loaded=null, generation=0, txGeneration=0, pageGeneration=0, timer=null,pendingEntity=null;
@@ -38,19 +39,21 @@ window.GatewayTimelineExplorer = (() => {
     function addressOf(value){if(validHeight(value.inputIndex))return 'i'+value.inputIndex+'.'+value.txIndex+'.'+value.height+'.bitcoin';if(validHeight(value.satOffset)&&validHeight(value.outputIndex))return value.satOffset+'.'+value.outputIndex+'.'+value.txIndex+'.'+value.height+'.bitcoin';if(validHeight(value.outputIndex))return value.outputIndex+'.'+value.txIndex+'.'+value.height+'.bitcoin';if(validHeight(value.txIndex))return value.txIndex+'.'+value.height+'.bitcoin';return value.height+'.bitcoin';}
     const setTab = (name, explicit=true) => {
       if(dead)return;
-      if(resourcePanels.has(name)){activateResource(name);name='explorer';}if(name==='details')name='explorer';
-      active=panes.has(name)?name:'inspector'; if(explicit)explicitTab=true;
+      if(resourcePanels.has(name)&&!panes.has(name)){activateResource(name);name='explorer';}if(name==='details')name='explorer';
+      active=panes.has(name)?name:'inspector';if(explicit){explicitTab=true;bitmapSticky=active==='bitmap';}
       for(const [key,{panel,tab}] of panes) { const selected=key===active;panel.hidden=!selected;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1; }
       explorer.hidden=active!=='explorer'||resource!=='block';
       for(const [key,panel]of resourcePanels)panel.hidden=active!=='explorer'||resource!==key;
       explorerTab.setAttribute('aria-controls',resourcePanels.get(resource)?.id||explorer.id);
+      if(active==='bitmap'){bitmapPanel.hidden=bitmapContentOpen;const content=resourcePanels.get('inscriptions');if(bitmapContentOpen&&content){content.hidden=false;bitmapTab.setAttribute('aria-controls',content.id);}else bitmapTab.setAttribute('aria-controls',bitmapPanel.id);}
       root.dataset.activePane=active;root.dataset.resource=resource;const workspaceRoot=root.closest('.index-timeline');if(workspaceRoot)workspaceRoot.dataset.activePane=active;
     };
+    bitmapTab.addEventListener('click',()=>{bitmapSticky=true;setTab('bitmap');if(bitmapTarget&&!bitmapContentOpen)loadBitmapMapping(bitmapTarget);});
     inspectorTab.addEventListener('click',()=>setTab('inspector'));
     explorerTab.addEventListener('click',()=>setTab('explorer'));
     tabs.addEventListener('keydown',event=>{
       if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
-      event.preventDefault();const keys=['explorer','inspector'],at=keys.indexOf(active),name=event.key==='Home'?keys[0]:event.key==='End'?keys.at(-1):keys[(at+(event.key==='ArrowLeft'?-1:1)+keys.length)%keys.length];setTab(name);panes.get(name).tab.focus();
+      event.preventDefault();const keys=['explorer',...(bitmapTab.hidden?[]:['bitmap']),'inspector'],at=keys.indexOf(active),name=event.key==='Home'?keys[0]:event.key==='End'?keys.at(-1):keys[(at+(event.key==='ArrowLeft'?-1:1)+keys.length)%keys.length];setTab(name);panes.get(name).tab.focus();
     });
     setTab('inspector',false);
 
@@ -98,7 +101,8 @@ window.GatewayTimelineExplorer = (() => {
       const actions=article.querySelector('.io-actions')||element('div',undefined,'io-actions');
       if(!actions.isConnected)article.insertBefore(actions,article.querySelector('details'));
       const button=direction==='output'?[...actions.querySelectorAll('button')].find(node=>node.textContent.includes('Spender'))||element('button'):element('button');
-      button.type='button';button.disabled=false;button.removeAttribute('title');button.textContent=direction==='input'?'Open original output':'Find spending input';button.setAttribute('aria-label',button.textContent+' for '+direction+' '+ordinal);button.dataset.txioDirection=direction;button.dataset.txioIndex=String(ordinal);if(!button.isConnected)actions.append(button);
+      button.type='button';button.disabled=true;button.title='Checking existing relationship evidence.';button.dataset.evidenceReady='false';button.textContent=direction==='input'?'Open original output':'Find spending input';button.setAttribute('aria-label',button.textContent+' for '+direction+' '+ordinal);button.dataset.txioDirection=direction;button.dataset.txioIndex=String(ordinal);if(!button.isConnected)actions.append(button);
+      const help=element('span',undefined,'relationship-readiness');help.tabIndex=0;help.setAttribute('role','group');help.setAttribute('aria-label',button.getAttribute('aria-label'));button.replaceWith(help);help.append(button);const explanation=element('span','Checking existing relationship evidence.','relationship-help');explanation.setAttribute('role','tooltip');help.append(explanation);help.title=explanation.textContent;
       const note=element('p','','small muted');note.setAttribute('role','status');note.dataset.txioStatus=direction+':'+ordinal;article.insertBefore(note,article.querySelector('details'));
       button.onclick=async()=>{
         if(!available||!current(ticket)||requestTicket!==txGeneration)return;
@@ -127,8 +131,14 @@ window.GatewayTimelineExplorer = (() => {
           note.textContent='Opening '+targetKind+' '+number(target[targetKind==='input'?'inputIndex':'outputIndex'])+' in block '+number(target.height)+'…';
           onNavigateIntent?.(target);await navigate(target.address);
         }catch(error){if(valid()&&error.name!=='AbortError')note.textContent=error.message;}
-        finally{if(current(ticket)&&requestTicket===txGeneration&&button.isConnected){button.disabled=false;if(!valid()&&note.textContent.includes('Checking '))note.textContent='Lookup cancelled.';}if(relationshipController===controller)relationshipController=null;}
+        finally{if(current(ticket)&&requestTicket===txGeneration&&button.isConnected){button.disabled=button.dataset.evidenceReady!=='true';if(!valid()&&note.textContent.includes('Checking '))note.textContent='Lookup cancelled.';}if(relationshipController===controller)relationshipController=null;}
       };
+    }
+    async function relationshipReadiness(detail,record,block,ticket,requestTicket){
+      const controls=[...detail.querySelectorAll('[data-txio-direction]')],pending=new Set(controls),positions=new Map(controls.map(button=>[button.dataset.txioDirection+':'+button.dataset.txioIndex,button]));
+      const apply=(button,available,reason)=>{if(!button.isConnected)return;button.dataset.evidenceReady=String(available);button.disabled=!available;button.title=reason;const help=button.closest('.relationship-readiness');if(help){help.title=reason;help.querySelector('.relationship-help').textContent=reason;}};
+      try{let from=0;for(;;){const value=await api('/api/v1/txio/readiness?'+new URLSearchParams({height:block.height,block_hash:block.hash,tx_index:record.transaction.index,from}),undefined,ticket,'transaction');if(!current(ticket)||requestTicket!==txGeneration)return;for(const direction of ['input','output'])for(const row of value[direction+'s']||[]){const button=positions.get(direction+':'+row.index);if(!button)continue;if(direction==='input'&&row.available===true&&linkedPosition(row.target,'output'))button.dataset.previousOutput=row.target;apply(button,row.available===true,row.reason||'No verified relationship evidence is available for this position.');pending.delete(button);}if(value.next_from===undefined||value.next_from===null)break;if(!validHeight(value.next_from)||value.next_from<=from)throw Error('Relationship availability returned an invalid next position.');from=value.next_from;for(const button of pending)apply(button,false,'Checking additional relationship positions.');}for(const button of pending)apply(button,false,'No verified relationship evidence is available for this position.');}
+      catch(error){if(current(ticket)&&requestTicket===txGeneration)for(const button of pending)apply(button,false,'Relationship availability could not be checked: '+error.message);}
     }
     function blank(message, state='idle', retry=false) {
       explorer.dataset.state=state;painter?.message(message,state);
@@ -171,7 +181,7 @@ window.GatewayTimelineExplorer = (() => {
         return;
       }
       cancel();focused=next;loaded=null;pending=next;
-      if(!explicitTab||value.immediate!==false)setTab('explorer',false);
+      if(!explicitTab||value.immediate!==false)setTab(bitmapSticky?'bitmap':'explorer',false);
       blank(value.immediate===false?'Move along the timeline; this block will load once the playhead settles.':'Loading from local sources first. Missing block data may be fetched from a connected Bitcoin provider.',value.immediate===false?'settling':'loading');
       if(value.immediate===false) {
         const ticket=generation;
@@ -193,14 +203,15 @@ window.GatewayTimelineExplorer = (() => {
 
     function renderBlock(block,elapsed,ticket) {
       if(!current(ticket))return;
-      explorer.dataset.state='ready';explorer.dataset.resource='block';viewKind='block';
+      explorer.dataset.state='ready';explorer.dataset.resource='block';viewKind='block';bitmapContentOpen=false;bitmapTarget={kind:'district',district:block.height};loadBitmapMapping(bitmapTarget);
       explorer.setAttribute('aria-busy','false');
       explorer.innerHTML='<div class="timeline-explorer-content"><header class="timeline-explorer-heading"><div><div class="eyebrow">BITCOIN BLOCK</div><h2>Block '+esc(number(block.height))+'</h2></div><button type="button" id="timeline-explorer-refresh">Refresh block</button></header>'+
         '<section class="panel timeline-explorer-summary"><div class="actions mb"><span class="badge" title="Verification state. Header anchoring is not full consensus validation.">'+esc(String(block.verification_state||'unknown').replaceAll('_',' '))+'</span><span class="badge">'+esc(sourceName(block.evidence?.bytes||block.source_network))+'</span>'+(Number.isFinite(elapsed)?'<span class="small muted">'+esc(number(elapsed))+' ms server-side</span>':'')+'</div><p class="mono">'+esc(block.hash)+'</p><div class="stats"><div class="stat"><strong>'+esc(number(block.transaction_count))+'</strong><span>transactions</span></div><div class="stat"><strong>'+esc(bytes(block.serialized_bytes))+'</strong><span>serialized size</span></div><div class="stat"><strong>'+esc(number(block.total_output_sats))+'</strong><span>total output sats</span></div></div>'+
         pairs([['Time',block.time_iso],['Source',block.source_peer],['Verifier receipt',block.verification?.verifier_version || 'Needs recheck']])+evidence(block)+
         '<details><summary>Block header and dimensions</summary>'+pairs([['Previous block',block.previous_block_hash],['Merkle root',block.merkle_root],['Version',block.version],['Difficulty bits',block.bits],['Nonce',block.nonce],['Weight',block.weight],['Virtual size',block.vsize],['Inputs',block.input_count],['Outputs',block.output_count]])+'</details></section>'+
-        '<section class="panel timeline-explorer-transactions"><div class="section-head"><h3>Transactions</h3><span class="small muted">Original block order</span></div><div id="timeline-explorer-tx-table"></div><div class="actions mt"><button type="button" id="timeline-explorer-tx-prev" disabled>Previous</button><button type="button" id="timeline-explorer-tx-next">Next 40</button><span class="small muted" id="timeline-explorer-tx-page"></span></div><p id="timeline-explorer-page-error" class="small" role="alert" hidden></p></section>'+
+        '<section class="panel timeline-explorer-transactions"><div class="section-head"><h3>Transactions ('+esc(number(block.transaction_count))+')</h3><span class="small muted">Original block order</span></div><div id="timeline-explorer-tx-table"></div><div class="actions mt"><button type="button" id="timeline-explorer-tx-prev" disabled>Previous</button><button type="button" id="timeline-explorer-tx-next">Next 40</button><span class="small muted" id="timeline-explorer-tx-page"></span></div><p id="timeline-explorer-page-error" class="small" role="alert" hidden></p></section>'+
         '<section id="timeline-explorer-tx-detail" class="timeline-explorer-transaction" hidden></section></div>';
+      const miner=block.coinbase_message;if(miner){const section=element('section',undefined,'panel block-coinbase-message');section.append(element('h3','Coinbase miner message'),element('p',miner.text||'No printable text in the coinbase input.','mono'));const raw=element('details');raw.append(element('summary','Raw coinbase scriptSig'),element('pre',miner.hex||''));section.append(raw);if(miner.note)section.append(element('p',miner.note,'small muted'));explorer.querySelector('.timeline-explorer-summary')?.append(section);}
       explorer.scrollTop=0;
       explorer.querySelector('#timeline-explorer-refresh').onclick=()=>{onNavigateIntent?.(focused);focus({...focused,immediate:true,refresh:true});};
       let offset=0;
@@ -226,6 +237,16 @@ window.GatewayTimelineExplorer = (() => {
       prev.onclick=()=>page(-40);next.onclick=()=>page(40);
       if(pendingEntity?.height===block.height&&validHeight(pendingEntity.txIndex))loadTransaction(pendingEntity.txIndex,block,ticket);
     }
+    async function loadBitmapMapping(target,address){
+      const serial=++bitmapSerial,height=target.district;bitmapTarget={...target};bitmapContentOpen=false;
+      bitmapPanel.replaceChildren(element('h2',target.kind==='parcel'?'Parcel '+target.transaction+'.'+height+'.bitmap':'District '+height+'.bitmap'),element('p','Reading the saved canonical Bitmap mapping for this block…','small'));if(active==='bitmap')setTab('bitmap',false);
+      try{const params=new URLSearchParams({kind:target.kind||'district',district:String(height)});if(validHeight(target.transaction))params.set('transaction',String(target.transaction));const response=await win.fetch('/api/v1/bitmap/view?'+params,{credentials:'same-origin'}),value=await response.json();if(dead||serial!==bitmapSerial)return;if(!response.ok)throw Error(value.error||'Bitmap mapping unavailable.');const winner=value.result?.winner,blocator=value.result?.winner_blocator||winner?.blocator;
+        if(value.state!=='selected'||typeof blocator!=='string'||!/^(?:0|[1-9][0-9]*)i(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/.test(blocator)){bitmapPanel.replaceChildren(element('h2',target.kind==='parcel'?'Parcel '+target.transaction+'.'+height+'.bitmap':'District '+height+'.bitmap'),element('p',value.note||'No selected canonical Bitmap mapping is available in saved coverage. Opening this tab starts no indexing.','small'));if(bitmapSticky)bitmapTab.hidden=false;if(active==='bitmap')setTab('bitmap',false);return;}
+        bitmapTab.hidden=false;const open=element('button','Open Bitmap inscription '+blocator);open.type='button';open.onclick=()=>{bitmapSticky=true;setTab('bitmap');loadBitmapMapping(target,address);};bitmapPanel.replaceChildren(element('h2',target.kind==='parcel'?'Parcel '+target.transaction+'.'+height+'.bitmap':'District '+height+'.bitmap'),element('p','Canonical inscription at '+blocator,'mono'),open);
+        if(active==='bitmap'||bitmapSticky){const viewer=viewHandlers.get('inscriptions');if(!viewer?.open)throw Error('The inscription detail viewer is unavailable.');viewKind='bitmap';await viewer.open(blocator,{activate:false,intent:false,publishEntity:false});if(dead||serial!==bitmapSerial)return;bitmapContentOpen=true;setTab('bitmap',false);if(address)onEntity?.({kind:'block',height,address,resolved:true});}
+      }catch(error){if(dead||serial!==bitmapSerial)return;bitmapPanel.replaceChildren(element('h2','Bitmap · block '+number(height)),element('p',error.message+' No indexing was started.','small'));if(bitmapSticky)bitmapTab.hidden=false;if(active==='bitmap')setTab('bitmap',false);}
+    }
+    function openBitmapResource(target,address){activateResource('block');cancel();focused={height:target.district,index:'blocks',locationOnly:true};bitmapSticky=true;bitmapTab.hidden=false;setTab('bitmap',false);return loadBitmapMapping(target,address);}
     function evidence(block) {
       const record=block.evidence||{};
       return '<details><summary>Source, authority and verification</summary>'+pairs([['Locator',record.locator||block.locator_peer||'Not recorded'],['Bytes',sourceName(record.bytes||block.source_network)],['Byte provider',record.byte_provider||block.source_peer],['Chain authority',record.chain_authority||'Pending'],['Snapshot',validHeight(record.snapshot_height)?number(record.snapshot_height)+' · '+short(record.snapshot_hash):'Not yet anchored'],['Original byte source',record.original_bytes?sourceName(record.original_bytes):'Not recorded for a previous fetch'],['Original provider',record.original_provider||'Not recorded']])+'<details><summary>Technical verification receipt</summary><pre>'+esc(JSON.stringify({evidence:block.evidence,checks:block.verification},null,2))+'</pre></details></details>';
@@ -259,6 +280,7 @@ window.GatewayTimelineExplorer = (() => {
       const sections=[...detail.querySelectorAll('.io-grid>section')];
       sections[0]?.querySelectorAll('.io').forEach((article,index)=>{const input=tx.inputs[index],position=element('p','Input position · i'+input.n+'.'+tx.index+'.'+block.height,'small mono muted');article.insertBefore(position,article.querySelector('p'));if(!input.coinbase){article.querySelector('p.mono:not(.small)')?.setAttribute('data-native-prevout','');relationshipControl(article,'input',input.n,record,block,ticket,requestTicket);showPreviousPosition(article,input);}});
       sections[1]?.querySelectorAll('.io').forEach((article,index)=>relationshipControl(article,'output',tx.outputs[index].n,record,block,ticket,requestTicket));
+      relationshipReadiness(detail,record,block,ticket,requestTicket);
       detail.querySelector('#timeline-explorer-close-tx').onclick=()=>{onNavigateIntent?.({kind:'block',height:block.height});txGeneration++;for(const request of txRequests)request.abort();txRequests.clear();if(!Number.isSafeInteger(block.transaction_count))return focus({...focused,immediate:true,refresh:true});detail.hidden=true;detail.replaceChildren();viewKind='block';explorer.dataset.resource='block';if(loaded?.map)painter?.block(loaded.map);else if(loaded?.block)loadMap(loaded.block,generation);onEntity?.({kind:'block',height:block.height,address:block.height+'.bitcoin',resolved:true,metadata:metadata({kind:'block',height:block.height},block)});};
       if(pendingEntity?.height===block.height&&pendingEntity.txIndex===tx.index){const value=pendingEntity;detail.dataset.focusKind=value.kind||'transaction';if(validHeight(value.inputIndex)){const articles=[...detail.querySelectorAll('.io-grid>section:first-child .io')];articles.find((item,index)=>tx.inputs[index]?.n===value.inputIndex)?.classList.add('focused');}if(validHeight(value.outputIndex)){const articles=[...detail.querySelectorAll('.io-grid>section:last-child .io')],output=articles.find((item,index)=>tx.outputs[index]?.n===value.outputIndex);output?.classList.add('focused');if(validHeight(value.satOffset))output?.append(element('p','Output-local sat offset: '+number(value.satOffset),'sat-focus'));}pendingEntity=null;}
       detail.querySelectorAll('[data-explorer-copy]').forEach(button=>button.onclick=async()=>{try{await win.navigator.clipboard.writeText(button.dataset.explorerCopy);notify?.('Copied to clipboard.');}catch{notify?.('Clipboard access is unavailable. Select the displayed text to copy it.',true);}});
@@ -266,6 +288,7 @@ window.GatewayTimelineExplorer = (() => {
       const flowButton=detail.querySelector('#timeline-explorer-flow'),flow=detail.querySelector('#timeline-explorer-flow-result'),flowNote=detail.querySelector('#timeline-explorer-flow-note');
       flowButton.onclick=async()=>{
         flowButton.disabled=true;flowButton.textContent='Resolving input values…';
+        const initial={txid:tx.txid,inputs:(tx.inputs||[]).map(input=>({index:input.n,outpoint:input.coinbase?'Coinbase':input.prev_txid+':'+input.prev_vout,value:null,coinbase:input.coinbase})),outputs:tx.outputs||[],fee:null,note:'Output values are known from this transaction. Parent input values are being checked.'};painter?.flow(initial,{index:tx.index,height:block.height});flow.innerHTML=flowSVG(initial);flow.hidden=Boolean(painter);flowNote.hidden=false;flowNote.textContent=initial.note;
         try {
           const result=await api('/api/v1/flow',{txid:tx.txid,block_hash:block.hash,height:block.height},ticket,'transaction');
           if(!current(ticket)||requestTicket!==txGeneration)return;
@@ -313,7 +336,7 @@ window.GatewayTimelineExplorer = (() => {
         if(map.height!==block.height||map.hash!==block.hash||(block.transaction_count>0&&map.total!==block.transaction_count))throw Error('The full transaction map does not match the selected block.');
         if(loaded)loaded.map=map;
         showRelatedInscription();
-        if(viewKind==='block')painter.block(map);
+        if(viewKind==='block'&&active!=='bitmap')painter.block(map);
         const failures=(map.indexing||[]).filter(item=>item.error);if(failures.length)notify?.('Browsing index: '+failures.map(item=>item.error).join('; '),true);
       }catch(error){if(current(ticket)&&error.name!=='AbortError'&&viewKind==='block')painter.message(error.message,'error');}
     }
@@ -325,12 +348,13 @@ window.GatewayTimelineExplorer = (() => {
     async function navigate(address,{blockHint}={}) {
       const query=String(address||'').trim();if(!query||dead)return;
       if(/(?:i[0-9]+(?:\.[0-9]+(?:\.bitcoin)?)?|\.ord)$/i.test(query)&&viewHandlers.get('inscriptions')?.open)return viewHandlers.get('inscriptions').open(query,{block:blockHint});
-      activateResource('block');cancel();loaded=null;pendingEntity=null;focused=null;setTab('explorer');blank('Resolving the address through local sources and connected Bitcoin providers.','loading');const ticket=generation;
+      activateResource('block');cancel();loaded=null;pendingEntity=null;focused=null;setTab(bitmapSticky?'bitmap':'explorer',false);blank('Resolving the address through local sources and connected Bitcoin providers.','loading');const ticket=generation;
       try {
         const result=await api('/api/v1/navigate',{address:query},ticket);if(!current(ticket))return;const value=result.resource||{};
         if(value.inscription)return viewHandlers.get('inscriptions')?.open?.(query,{record:value.inscription,block:blockHint,intent:false});
         if(value.block){focused={height:value.block.height,index:'blocks'};loaded={block:value.block,elapsed:result.elapsed_ms};retain(blockRecords,value.block.height,value.block);renderBlock(value.block,result.elapsed_ms,ticket);loadMap(value.block,ticket);onEntity?.({kind:'block',height:value.block.height,address:value.coordinate||value.query||query,resolved:true,metadata:metadata({kind:'block',height:value.block.height},value.block)});}
         else if(value.transaction){
+          bitmapSticky=false;setTab('explorer',false);
           const record=value.transaction,index=validHeight(record.tx_index)?record.tx_index:record.transaction?.index;
           if(record.resolution_state==='location_unknown')throw Error(record.note||'The transaction location is not known. A saved locator or containing block is required.');
           if(!validHeight(record.height)||!validHeight(index))throw Error(record.note||'The transaction location is not known. A saved locator or containing block is required.');
@@ -372,18 +396,19 @@ window.GatewayTimelineExplorer = (() => {
     function cleanupFullscreen(){exitFullscreen();doc.removeEventListener('keydown',fullscreenKey);doc.removeEventListener('fullscreenchange',fullscreenState);win.removeEventListener('gateway:panel-layout',fullscreenState);if(fullscreenButton)fullscreenButton.onclick=null;}
     async function openSatPoint(value){
       const output=value.outputIndex+'.'+value.txIndex+'.'+value.height,anchor=loaded?.block.height===value.height?loaded.block.hash:blockRecords.get(value.height)?.hash;
-      cancel();const ticket=generation;focused={...value,index:'sat-state',savedSatPoint:true,locationOnly:true};resource='block';viewKind='satpoint';pendingEntity=null;setTab('explorer');blank('Reading Sat identity from saved output ranges…','loading');explorer.querySelector('h2').textContent='Sat at '+output+' · offset '+number(value.satOffset);explorer.dataset.resource='satpoint';
+      activateResource('block');cancel();const ticket=generation;focused={...value,index:'sat-state',savedSatPoint:true,locationOnly:true};viewKind='satpoint';pendingEntity=null;setTab('explorer');
+      const box=element('section',undefined,'panel satpoint-detail'),status=element('p','Checking saved output ranges…','small');status.setAttribute('role','status');box.append(element('h2','Satpoint '+number(value.satOffset)+'.'+output),status);const facts=element('div');facts.innerHTML=pairs([['Output',output],['Output-local offset',number(value.satOffset)],['Creation block',number(value.height)],['Block hash',anchor||'Not established'],['Sat identity','Not established']]);box.append(facts);const open=element('button','Open this output');open.type='button';open.onclick=()=>navigate(output+'.bitcoin');box.append(open);const inspect=element('button','Inspect Sat ranges');inspect.type='button';inspect.onclick=()=>doc.dispatchEvent(new win.CustomEvent('gateway:timeline-inspect-index',{detail:{id:'sat-state'}}));box.append(inspect);explorer.replaceChildren(box);explorer.dataset.resource='satpoint';explorer.dataset.state='loading';painter?.message('Output '+output+' · offset '+number(value.satOffset)+'. Sat identity has not been established.','satpoint');
       try{
-        if(!/^[a-f0-9]{64}$/i.test(anchor||''))throw Error('The output block anchor is unavailable. Open its block before selecting a Sat. No history scan was started.');
+        if(!/^[a-f0-9]{64}$/i.test(anchor||''))throw Error('The creation-block anchor is unavailable. This output-local coordinate does not establish an absolute Sat identity.');
         const result=await api('/api/v1/sats/point?output='+encodeURIComponent(output)+'&offset='+value.satOffset+'&block_hash='+encodeURIComponent(anchor),undefined,ticket);
         if(result.output_coordinate!==output||result.offset!==value.satOffset||result.block_hash?.toLowerCase()!==anchor.toLowerCase())throw Error('The Sat identity response does not match this output and offset.');
-        if(result.state!=='ready'){blank(result.note||'Sat identity is unavailable in saved output ranges. No history scan was started.','unavailable');return;}
+        if(result.state!=='ready'){status.textContent=result.note||'Saved ranges cannot establish the Sat identity at this output offset. No history scan was started.';explorer.dataset.state='unavailable';return;}
         if(!validHeight(result.sat_number)||!validHeight(result.snapshot?.height)||result.snapshot.height<value.height||!/^[a-f0-9]{64}$/i.test(result.snapshot.block_hash||'')||!/^[a-f0-9]{64}$/i.test(result.snapshot.commitment||''))throw Error('The saved Sat identity is missing its authenticated checkpoint.');
         const address=result.sat_number+'.sat';if(onNavigate)onNavigate(address);else if(win.parent!==win)win.parent.postMessage({type:'gateway:navigate',address},win.location.origin);else win.location.href='/?resolve='+encodeURIComponent(address);
-      }catch(error){if(current(ticket)&&error.name!=='AbortError')blank(error.message,'error');}
+      }catch(error){if(current(ticket)&&error.name!=='AbortError'){status.textContent=error.message+' No history scan was started.';explorer.dataset.state='unavailable';}}
     }
     function entity(value){if(!validHeight(value?.height))return;onNavigateIntent?.(value);if(value.kind==='satpoint'&&validHeight(value.txIndex)&&validHeight(value.outputIndex)&&validHeight(value.satOffset)){openSatPoint(value);return;}const saved=value;focus({...value,immediate:true,preserveEntity:true});pendingEntity=saved;setTab('explorer');if(loaded?.block.height===saved.height&&validHeight(saved.txIndex))loadTransaction(saved.txIndex,loaded.block,generation);}
-    return {focus,entity,navigate,loadHierarchy,health,teardown,addPane,activateResource,showResource:name=>{activateResource(name);setTab('explorer');},cancelResource:()=>{cancel();viewHandlers.get(resource)?.deactivate?.();},registerView:(name,handler)=>viewHandlers.set(name,handler),viewport:painter,setTab:name=>setTab(name),state:()=>({active,resource,height:focused?.height,index:focused?.index,healthy:available,loading:explorer.dataset.state,loadedHeight:loaded?.block.height})};
+    return {focus,entity,navigate,openBitmapResource,loadHierarchy,health,teardown,addPane,activateResource,showResource:name=>{activateResource(name);setTab('explorer');},cancelResource:()=>{cancel();viewHandlers.get(resource)?.deactivate?.();},registerView:(name,handler)=>viewHandlers.set(name,handler),viewport:painter,setTab:name=>setTab(name),state:()=>({active,resource,height:focused?.height,index:focused?.index,healthy:available,loading:explorer.dataset.state,loadedHeight:loaded?.block.height})};
   }
   return {mount};
 })();

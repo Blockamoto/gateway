@@ -176,6 +176,12 @@ func indexDefinitions() []indexDefinition {
 		if d.ID == "tx-locator" {
 			d.Name = "Transaction Index"
 		}
+		if d.ID == "sat-state" {
+			// The authenticated recipe above is frozen. Display terminology can
+			// change without rewriting existing checkpoints or its profile ID.
+			d.Rules = append([]string(nil), d.Rules...)
+			d.Rules[len(d.Rules)-1] = "Output blocator range records share amount and exact script facts; complete historical ranges are optional and off by default."
+		}
 		if d.ID == "bitmap-districts" {
 			d.Name = "Legacy Experimental Districts"
 		}
@@ -183,7 +189,8 @@ func indexDefinitions() []indexDefinition {
 			d.Name = "Legacy Experimental Parcels"
 		}
 		if d.ID == "bitmap-chain" {
-			d.Name = "Legacy Experimental District Chain"
+			d.Name = "Saved District Chain evidence"
+			d.Theory = errBitmapChainDeferred.Error()
 		}
 		if d.ID == "txo-spender" {
 			// Preserve the legacy recipe identity and readable immutable batches.
@@ -197,7 +204,7 @@ func indexDefinitions() []indexDefinition {
 			d.LockReason = releaseLockReason(d.ID)
 		}
 	}
-	for _, id := range []string{bitmapCanonicalDistrictID, bitmapCanonicalParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1"} {
+	for _, id := range []string{bitmapCanonicalDistrictID, bitmapCanonicalParcelID, bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1"} {
 		if d, ok := bitmapFixedIndexDefinition(id); ok {
 			defs = append(defs, d)
 		}
@@ -228,7 +235,12 @@ func bitmapFixedIndexDefinition(id string) (indexDefinition, bool) {
 	if i.Kind == "chain" {
 		d.Dependencies = []string{i.DistrictInstance}
 		d.Metadata = bitmapChainMetadata(i)
-		d.Theory = "Optional independent chain over completed saved outcomes. Its replaceable, versioned development codec pins mechanical choices unresolved by the upstream draft."
+		d.Theory = errBitmapChainDeferred.Error()
+	}
+	d.Buildable = bitmapBuiltinExecutionAvailable(id)
+	d.Locked = !d.Buildable
+	if d.Locked {
+		d.LockReason = releaseLockReason(id)
 	}
 	return d, true
 }
@@ -341,7 +353,7 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 		return indexPlan{}, fmt.Errorf("invalid index range")
 	}
 	if !d.ArbitraryStart && from != d.StartHeight {
-		return indexPlan{}, fmt.Errorf("%s requires its genesis/prior validated checkpoint; arbitrary fresh starting ranges are invalid", d.ID)
+		return indexPlan{}, fmt.Errorf("%s requires its declared origin at %d or an authenticated prior checkpoint; arbitrary fresh starts are invalid", d.ID, d.StartHeight)
 	}
 	p := indexPlan{Live: req.Live, Mode: mode, Definition: d, From: from, To: to, Retention: retention, Sequential: !d.ArbitraryStart, Dependencies: []indexDefinition{}, SourceBytes: retention, StorageEstimate: "Unknown until source coverage is examined; derived records grow with the selected range.", Verification: "Locally checked Bitcoin block and witness evidence anchored to selected headers or Core active chain.", Notes: []string{"Core and Ord are optional providers, not required installations.", "Peer claims never become locally verified state without evidence.", "All new derived index records are private until explicitly published.", "A negative end height snapshots the available verified tip when work starts."}}
 	seen := map[string]bool{}

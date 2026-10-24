@@ -122,7 +122,7 @@ func querySatPointContext077(ctx context.Context, root, output, blockHash string
 	out := satPointView077{State: "not_built", Output: output, BlockHash: blockHash, Offset: offset, Note: "Saved Sat ranges are unavailable. No history scan was started."}
 	key, err := satOutputKey077(output)
 	if err != nil || !validHash(blockHash) {
-		return out, nil, fmt.Errorf("a valid output BPS position and block hash are required")
+		return out, nil, fmt.Errorf("a valid output blocator position and block hash are required")
 	}
 	s, b, err := openSatQuery077(ctx, root)
 	if err != nil || s.checkpoint == nil {

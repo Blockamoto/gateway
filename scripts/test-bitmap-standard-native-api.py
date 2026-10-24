@@ -114,7 +114,7 @@ class Runtime:
     def denied(self, path, body=None, expected=(400, 403, 409)):
         value = self.call(path, body, expected)
         reason = value.get('error', '')
-        assert reason and any(text in reason.lower() for text in ('unavailable', 'locked', 'not available', 'not an available')), (path, value)
+        assert reason and any(text in reason.lower() for text in ('unavailable', 'locked', 'not available', 'not an available', 'cannot execute', 'methodology', 'fixed canonical')), (path, value)
         return value
 
     def wait_run(self, states, run_id=None):
@@ -153,8 +153,9 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     assert len(GENESIS) == 285
     checks, calls, runtime, profile = [], [], None, None
-    fixed = {'bitmap-districts-canonical': 'district', 'bitmap-parcels-canonical': 'parcel',
-             'bitmap-district-chain-dev-v1': 'chain', 'bitmap-parcel-chain-dev-v1': 'chain'}
+    fixed = {'bitmap-districts-canonical-v2': 'district', 'bitmap-parcels-canonical-v2': 'parcel'}
+    previous = {'bitmap-districts-canonical': 'district', 'bitmap-parcels-canonical': 'parcel'}
+    chains = {'bitmap-district-chain-dev-v1': 'chain', 'bitmap-parcel-chain-dev-v1': 'chain'}
     try:
         profile = prepare_profile(output)
         runtime = Runtime(binary, profile, output / 'runtime.log', calls).start()
@@ -162,34 +163,42 @@ def main():
         assert initial['read_only']
         assert all(initial['capabilities'][key] is False for key in ('custom_profiles', 'comparisons', 'custom_execution'))
         instances = {i['id']: i for i in initial['instances']}
-        assert set(instances) == set(fixed) | set(FIXED)
+        assert set(instances) == set(fixed) | set(previous) | set(chains) | set(FIXED)
         for identity, kind in fixed.items():
             item = instances[identity]
             assert item['kind'] == kind and item['execution_available'] and not item.get('rules_editable')
             assert len(item['profile_hash']) == 64
-            pinned = '577bae5e5810cb2389f1e02f322438df567f0089' if kind == 'chain' else '335958311eb1c8ce4d14c48bc5c21d23c7a4b134'
+            pinned = '335958311eb1c8ce4d14c48bc5c21d23c7a4b134'
             assert item['profile']['reference_revision'] == pinned
             assert pinned in item['profile']['reference_url']
-            assert item['profile']['canonical_standard'] is (kind != 'chain')
+            assert item['profile']['canonical_standard'] is True
+            assert item['start_height'] == 792435
+            assert item['profile']['fingerprint_schema'] == 'gateway-bitmap-canonical-rules-v2'
+            assert len(item['profile']['rules']) == (6 if kind == 'district' else 7)
+            assert item['profile']['implementation_limits']
             view = runtime.call('/api/v1/bitmap/view?' + instance_query(item))
             assert view['state'] == 'not_built' and view['snapshot'] is None and view['profile_hash'] == item['profile_hash']
         for identity, (_, fingerprint) in FIXED.items():
             assert instances[identity]['profile_hash'] == fingerprint
             assert instances[identity]['execution_available'] is False
             assert instances[identity]['classification'] == 'legacy'
-        assert runtime.call('/api/v1/bitmap/view?kind=district')['instance'] == 'bitmap-districts-canonical'
-        assert runtime.call('/api/v1/bitmap/view?kind=parcel')['instance'] == 'bitmap-parcels-canonical'
-        assert set(initial['chain_metadata']) == {'bitmap-district-chain-dev-v1', 'bitmap-parcel-chain-dev-v1'}
-        for metadata in initial['chain_metadata'].values():
-            assert metadata['codec'] == 'gateway-bitmap-chain-dev-v1' and metadata['draft']
-        checks.append('canonical definitions use distinct identities, pinned revisions and read-only rules; legacy hashes remain unchanged and nonexecutable; both independent chain codecs are explicit')
+        assert instances['bitmap-districts-canonical']['profile_hash'] == 'eee99fd265545a86f71373406a3b302a30ffe11dfbdd4f06eafc2b1780ee961f'
+        for identity in previous | chains:
+            assert not instances[identity]['execution_available'] and not instances[identity].get('rules_editable')
+            assert instances[identity]['classification'] == 'legacy'
+            if identity in chains:
+                assert 'methodology is being developed' in instances[identity]['execution_unavailable_reason']
+        assert runtime.call('/api/v1/bitmap/view?kind=district')['instance'] == 'bitmap-districts-canonical-v2'
+        assert runtime.call('/api/v1/bitmap/view?kind=parcel')['instance'] == 'bitmap-parcels-canonical-v2'
+        assert set(initial['chain_metadata']) == set(chains)
+        checks.append('current District/Parcel identities start at 792435 with six/seven published rules and separate implementation limits; previous hashes remain unchanged and chains are inspect-only')
         status = runtime.call('/api/v1/index/status')
         definitions = {i['id']: i for i in status['definitions']}
         assert not status['jobs'] and not status['run'].get('run')
         for identity in fixed:
             assert definitions[identity]['buildable'] and not definitions[identity].get('locked')
             assert definitions[identity]['metadata'] and definitions[identity]['source_url']
-        for identity in FIXED:
+        for identity in FIXED | previous | chains:
             assert definitions[identity]['locked']
         before = preserved_files(profile)
         for action in ('create', 'save_draft', 'update', 'rename'):
@@ -197,28 +206,36 @@ def main():
         runtime.denied('/api/v1/bitmap/profiles/validate', dict(kind='district', rules={}), 403)
         runtime.denied('/api/v1/bitmap/compare?baseline=bitmap-districts&variant=bitmap-parcels', expected=403)
         custom = 'bitmap-districts-' + '1' * 32
-        for identity in list(FIXED) + [custom]:
+        for identity in list(FIXED | previous | chains) + [custom]:
             request = dict(consumers=[selection(identity)])
             runtime.denied('/api/v1/index/run/prepare', request)
             runtime.denied('/api/v1/index/run/start', dict(request=request))
             runtime.denied('/api/v1/index/build', dict(index=identity, retention='pruned'))
             runtime.denied('/api/v1/index/live', dict(index=identity, action='enable'))
         assert preserved_files(profile) == before
-        checks.append('creation/editing/drafts/validation/comparison routes refuse work; all legacy and custom indexing admission routes refuse execution without mutating evidence')
-        request = dict(consumers=[selection('bitmap-districts-canonical', live=True)])
+        checks.append('creation/editing/drafts/validation/comparison routes refuse work; all chain, previous-generation and custom admission routes refuse execution without mutating evidence')
+        request = dict(consumers=[selection('bitmap-districts-canonical-v2')])
         runtime.call('/api/v1/index/run/prepare', request)
+        plan = runtime.call('/api/v1/index/run/plan', request)
+        consumer = plan['consumers'][0]
+        assert consumer['origin_height'] == 792435 and consumer['next_required_height'] == 792435
+        assert consumer['range_mode'] == 'complete_prefix' and consumer['state'] == 'complete'
         started = runtime.call('/api/v1/index/run/start', dict(request=request))['run']
-        current = runtime.wait_run({'waiting'}, started['id'])['run']
-        assert current['consumers'][0]['index'] == 'bitmap-districts-canonical'
-        stopped = runtime.call('/api/v1/index/run/control', dict(action='cancel', id=current['id']))
-        assert stopped['run']['state'] == 'cancelled'
+        current = runtime.wait_run({'complete'}, started['id'])['run']
+        assert current['consumers'][0]['index'] == 'bitmap-districts-canonical-v2'
+        assert current['counts']['source_reads'] == 0 and current['counts']['inscription_extractions'] == 0
         assert preserved_files(profile) == before
-        checks.append('canonical District run is admitted with its genesis prefix, waits on unavailable source data and can be stopped; no missing block is claimed as an empty outcome')
+        assert runtime.call('/api/v1/bitmap/view?kind=district')['state'] == 'not_built'
+        skipped = dict(request={'in': 792436, 'out': 792436, 'consumers': [selection('bitmap-districts-canonical-v2')]})
+        blocked = runtime.call('/api/v1/index/run/start', skipped, expected=409)
+        assert not blocked['plan']['ready'] and blocked['plan']['consumers'][0]['origin_height'] == 792435
+        checks.append('offline genesis-only authority admits a current District track without evaluating any pre-origin block; planning exposes origin 792435 and refuses an arbitrary skipped prefix')
         receipt = dict(result='PASS', binary=str(binary), binary_sha256=sha(binary.read_bytes()),
             checks=checks, calls=calls, limitations=['Offline compiled route/admission checks with a genuine genesis header; no external provider is contacted.',
-            'Canonical claim witnesses, deterministic vectors, catch-up, retention and reorg behavior are verified by Go tests.'])
+            'This fixture does not validate live indexing or source-gap retries beyond the genuine genesis-only authority.',
+            'Canonical witnesses, blocator-only persistence, parent evaluation receipts and disabled-chain admission are checked by focused Go tests.'])
         (output / 'result.json').write_text(json.dumps(receipt, indent=2) + chr(10), encoding='utf-8')
-        print('Compiled canonical Bitmap API PASS: pinned fixed identities, optional chains, legacy preservation, denied authoring/comparisons and cancellable source gaps.')
+        print('Compiled canonical Bitmap API PASS: origin 792435, six/seven published rules, disabled chains, previous-generation hashes and denied custom execution.')
     finally:
         if runtime is not None:
             runtime.stop()

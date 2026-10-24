@@ -23,8 +23,9 @@ assert.throws(()=>flow.layout({inputs:[{index:1,value:1}],outputs:[],fee:0}),/or
 const inconsistent=flow.layout({inputs:[{value:100},{value:null}],outputs:[{n:0,value_sats:50}],fee:null});
 assert.equal(inconsistent.inputs[1].weight,0,'An unknown value never produces a negative residual band');
 class Node {
- constructor(tag){this.tagName=tag;this.attributes={};this.children=[];this.listeners={};this.textContent='';}
+ constructor(tag){this.tagName=tag;this.attributes={};this.children=[];this.listeners={};this.textContent='';this.style={};}
  setAttribute(key,value){this.attributes[key]=value;}
+ removeAttribute(key){delete this.attributes[key];}
  append(...children){for(const child of children){child.parent=this;this.children.push(child);}}
  replaceChildren(...children){this.children=[];this.append(...children);}
  remove(){if(this.parent)this.parent.children=this.parent.children.filter(child=>child!==this);}
@@ -44,7 +45,26 @@ assert.equal(longSvg.attributes.viewBox,'0 0 1200 610');assert(longSvg.flowLayou
 const all=flatten(svg),output=all.find(node=>node.attributes['data-flow-side']==='output'&&node.attributes['data-flow-index']==='0');
 output.fire('click');output.fire('keydown',{key:'Enter'});assert.deepEqual(calls,[['output',0],['output',0]],'Zero output is keyboard and pointer selectable');
 const badges=all.filter(node=>node.attributes['data-flow-inscription-output']!==undefined);assert.equal(badges.length,1,'Only verified reveal output placement gets an output badge');badges[0].fire('click');assert.deepEqual(calls.at(-1),['inscription','fixturei0']);
-assert(all.some(node=>node.tagName==='title'&&node.textContent.includes('<script>')),'Untrusted labels remain literal text nodes');
+const input=all.find(node=>node.attributes['data-flow-side']==='input');input.fire('focus');
+let tip=flatten(svg).find(node=>node.attributes.role==='tooltip');
+assert.equal(tip.attributes['aria-hidden'],'false','Keyboard focus shows details immediately');
+assert(flatten(tip).some(node=>node.tagName==='text'&&node.textContent.includes('<script>')),'Untrusted labels remain literal text nodes');
+assert(flatten(tip).some(node=>node.textContent==='Value unresolved'),'Unknown input stays unresolved');
+input.fire('blur');assert.equal(tip.attributes['aria-hidden'],'true');
+output.fire('pointerenter');tip=flatten(svg).find(node=>node.attributes.role==='tooltip');
+assert(flatten(tip).some(node=>node.textContent==='0.00000000 BTC · 0 sats'),'A zero output immediately shows BTC and sats');
+output.fire('pointerleave');assert.equal(tip.attributes['aria-hidden'],'true');
+const described=flow.render(doc,{inputs:[{value:null}],outputs:[{n:0,value_sats:123456789,address:'bc1qhistorical'},{n:1,value_sats:1,type:'nonstandard'}],fee:null});
+const describedOutputs=flatten(described).filter(node=>node.attributes['data-flow-side']==='output');
+describedOutputs[0].fire('pointerenter');let texts=flatten(described).filter(node=>node.tagName==='text').map(node=>node.textContent);
+assert(texts.includes('Output #0')&&texts.includes('1.23456789 BTC · 123,456,789 sats')&&texts.includes('Historical destination: bc1qhistorical'));
+describedOutputs[1].fire('focus');texts=flatten(described).filter(node=>node.tagName==='text').map(node=>node.textContent);assert(texts.includes('Script type: nonstandard'),'Script type is shown when no address exists');
+assert(!describedOutputs.some(node=>node.attributes.class.includes('unknown-value')),'Known outputs are solid while unrelated input values remain unknown');
+const narrowTip=flow.render(doc,{inputs:[{value:null,outpoint:'a'.repeat(64)+':123'}],outputs:[{n:0,value_sats:1}],fee:null},{width:280});
+const narrowInput=flatten(narrowTip).find(node=>node.attributes['data-flow-side']==='input');narrowInput.fire('focus');
+let narrowDetails=flatten(narrowTip).find(node=>node.attributes.role==='tooltip'),narrowBox=narrowDetails.children[0];
+assert(Number(narrowBox.attributes.width)<=264);assert(narrowDetails.children.slice(1).every(node=>node.textContent.length*7+24<=Number(narrowBox.attributes.width)),'Narrow details wrap inside their background');
+narrowTip.viewBox={baseVal:{x:40,y:10,width:140,height:305}};narrowInput.fire('focus');narrowDetails=flatten(narrowTip).find(node=>node.attributes.role==='tooltip');assert(Number(narrowDetails.children[0].attributes.width)<=132,'Zoomed details fit the live viewport');
 assert(!all.some(node=>['script','foreignObject','iframe','image'].includes(node.tagName)),'Flow metadata never activates inscription content');
 const more=flow.render(doc,{inputs:Array.from({length:3},()=>({value:10})),outputs:[{n:0,value_sats:25}],fee:5},{lineLimit:1,onInput:()=>calls.push(['group'])});
 const rest=flatten(more).find(node=>node.attributes['data-flow-rest']);const before=calls.length;rest.fire('click');rest.fire('keydown',{key:'Enter'});assert.equal(calls.length,before,'An aggregated group cannot navigate as an individual input');

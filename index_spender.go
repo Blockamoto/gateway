@@ -77,15 +77,36 @@ func (a *app) lookupIndexSpender(ctx context.Context, key string) (indexSpendRes
 	if !ok || !validHash(txid) || err != nil || strconv.FormatUint(vout, 10) != voutString {
 		return out, fmt.Errorf("spender key must be txid:vout")
 	}
+	sparse, err := a.sparseTXIORows(ctx, "", "", txid, uint32(vout))
+	if err != nil {
+		return out, err
+	}
+	for _, r := range sparse {
+		out.Rows = append(out.Rows, r.indexSpendMatch)
+	}
 	s, err := indexStoreHead(a.dataDir, "txo-spender")
 	if err != nil {
+		if len(out.Rows) > 0 {
+			out.Absence = ""
+			out.ChainState = "selected_sparse_records"
+			return out, nil
+		}
 		return out, err
 	}
 	out.Checkpoint, out.ChainState = s.checkpoint, a.indexChainState(s.checkpoint)
 	if s.checkpoint == nil {
+		if len(out.Rows) > 0 {
+			out.Absence = ""
+			out.ChainState = "selected_sparse_records"
+		}
 		return out, nil
 	}
 	if out.ChainState != "selected_chain" {
+		if len(out.Rows) > 0 {
+			out.Absence = ""
+			out.ChainState = "selected_sparse_records"
+			return out, nil
+		}
 		return out, fmt.Errorf("spender index needs a current chain anchor or reorg reconciliation")
 	}
 	if err = s.ensureIndexLocators(ctx); err != nil {

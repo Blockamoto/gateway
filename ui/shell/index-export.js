@@ -1,0 +1,67 @@
+'use strict';
+// Export changes the downloaded representation, never the saved index or run scope.
+window.GatewayIndexExport=(()=>{
+  const supported=index=>['inscriptions','bitmap-districts-standard-v1','bitmap-parcels-standard-v1'].includes(index);
+  const height=value=>Number.isSafeInteger(value)&&value>=0;
+  const detailLimit=20;
+  const format=value=>Number.isSafeInteger(value)?value.toLocaleString('en-GB'):String(value??'Unknown');
+  const rangeText=rows=>rows?.length?rows.map(r=>r.from===r.to?format(r.from):format(r.from)+'–'+format(r.to)).join(', '):'None';
+  function mount({root,index='',timeline,getStatus=()=>null}){
+    const doc=root.ownerDocument,win=doc.defaultView,el=(tag,text,cls)=>{const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
+    let currentIndex='',snapshotStatus=null,review=null,lastMetadata=null,controller=null,generation=0,busy=false,dead=false,objectURL=null,revokeTimer=null;
+    const heading=el('h3','Export saved index'),intro=el('p','Choose how inscription references appear in the file. Your saved index stays unchanged. An export covers saved records only; gaps remain unknown.','small muted'),field=el('label',undefined,'field'),representation=el('select'),actions=el('div',undefined,'actions');
+    representation.dataset.exportRepresentation='';representation.setAttribute('aria-label','Export representation');for(const[value,label]of [['native','Native blocators'],['conventional','Conventional inscription IDs']]){const option=el('option',label);option.value=value;representation.append(option);}field.append(el('span','References'),representation);
+    const button=(text,key,action)=>{const node=el('button',text);node.type='button';node.dataset[key]='';node.onclick=action;return node;};
+    const prepare=button('Prepare export','exportPrepare',prepareExport),download=button('Download Gateway JSONL','exportDownload',downloadExport),cancel=button('Cancel request','exportCancel',()=>{invalidate();status.textContent='Export request cancelled. Prepare again when ready.';});
+    const status=el('p','Prepare an export to inspect its saved snapshot and coverage.','small'),metadata=el('dl',undefined,'index-meta'),requirements=el('div',undefined,'index-export-requirements'),missing=el('div',undefined,'index-export-missing'),arm=button('Arm TX ID Locators','exportArmLocators',armLocators),armNote=el('p','This only Arms TX ID Locators. Choose matching In/Out ranges in the timeline and press Play when ready. Your current range and Live choices stay unchanged.','small muted');
+    status.dataset.exportStatus='';status.setAttribute('role','status');status.setAttribute('aria-live','polite');metadata.dataset.exportMetadata='';requirements.dataset.exportRequirements='';missing.dataset.exportMissing='';download.disabled=true;cancel.hidden=true;arm.hidden=armNote.hidden=true;actions.append(prepare,download,cancel);root.classList.add('index-export');root.replaceChildren(heading,intro,field,actions,status,metadata,requirements,missing,arm,armNote);
+    function locatorAvailable(){return (getStatus()?.definitions||snapshotStatus?.definitions||[]).some(d=>d.id==='tx-locator'&&d.buildable&&!d.locked);}
+    function locatorArmed(){try{return timeline?.getRunDraft?.().consumers?.some(c=>c.index==='tx-locator'&&c.armed)===true;}catch{return false;}}
+    function canOfferLocators(){return representation.value==='conventional'&&lastMetadata?.requirements?.some(r=>r.index==='tx-locator')&&lastMetadata?.missing_count>0;}
+    function paint(){root.dataset.busy=String(busy);root.setAttribute('aria-busy',String(busy));representation.disabled=prepare.disabled=busy;download.disabled=busy||!review;cancel.hidden=!busy;arm.hidden=armNote.hidden=!canOfferLocators();arm.disabled=busy||!locatorAvailable()||locatorArmed();arm.textContent=locatorArmed()?'TX ID Locators armed':'Arm TX ID Locators';arm.title=locatorAvailable()?'Select TX ID Locators without changing the range or Live choices.':'TX ID Locators are unavailable in this view.';}
+    function clearMetadata(){metadata.replaceChildren();for(const key of ['coverageShown','coverageTotal','sourcesShown','sourcesTotal'])delete metadata.dataset[key];}
+    function invalidate(){generation++;controller?.abort();controller=null;busy=false;review=null;lastMetadata=null;clearMetadata();requirements.replaceChildren();missing.replaceChildren();paint();}
+    function addMeta(label,value){metadata.append(el('dt',label),el('dd',value));}
+    function renderMetadata(value){
+      lastMetadata=value;clearMetadata();requirements.replaceChildren();missing.replaceChildren();
+      if(value?.snapshot)addMeta('Committed snapshot',value.snapshot);
+      if(Array.isArray(value?.coverage)){const coverage=value.coverage,shown=coverage.slice(0,detailLimit);metadata.dataset.coverageShown=String(shown.length);metadata.dataset.coverageTotal=String(coverage.length);addMeta('Saved coverage',rangeText(shown));if(coverage.length>shown.length){let first=null,last=null;for(const range of coverage){if(height(range.from))first=first===null?range.from:Math.min(first,range.from);if(height(range.to))last=last===null?range.to:Math.max(last,range.to);}addMeta('Coverage details','Showing '+format(shown.length)+' of '+format(coverage.length)+' intervals. Full coverage is included in the file.');if(first!==null&&last!==null)addMeta('Overall height span',rangeText([{from:first,to:last}])+'; gaps remain unknown.');}}
+      if(value?.rows!==undefined)addMeta('Records',format(value.rows));if(value?.blocks!==undefined)addMeta('Blocks',format(value.blocks));
+      const sources=Array.isArray(value?.sources)?value.sources:[],shownSources=sources.slice(0,detailLimit),sourcesTotal=height(value?.sources_total)?Math.max(value.sources_total,sources.length):sources.length;metadata.dataset.sourcesShown=String(shownSources.length);metadata.dataset.sourcesTotal=String(sourcesTotal);if(sourcesTotal>shownSources.length)addMeta('Source details',format(sourcesTotal)+' committed source attestations. Showing '+format(shownSources.length)+' source summaries; the full source attestation is included in the file.');
+      for(const source of shownSources){addMeta('Saved source',source.index);if(height(source.height))addMeta('Committed through',format(source.height));if(source.block_hash)addMeta('Block hash',source.block_hash);if(source.commitment)addMeta('Commitment',source.commitment);if(source.profile_hash)addMeta('Profile hash',source.profile_hash);}
+      if(value?.note)requirements.append(el('p',value.note,'small'));
+      for(const row of value?.requirements||[])requirements.append(el('p',row.reason||row.state||row.index,'small'));
+      if(value?.missing_count>0){
+        missing.append(el('p',format(value.missing_count)+' inscription references need lookup evidence.','small'));
+        if(height(value.lookup_range?.from)&&height(value.lookup_range?.to))missing.append(el('p','Missing lookup height span: '+rangeText([value.lookup_range])+'. This span includes all missing references, can include gaps, and can extend to parent reveals outside the saved coverage.','small'));
+        if(value.missing_truncated)missing.append(el('p','Showing examples of missing references; this list is not exhaustive.','small muted'));
+        const list=el('ul');for(const row of value.missing||[]){const reference=[row.blocator,height(row.height)?'block '+format(row.height):null,row.reason].filter(Boolean).join(' · ');if(reference)list.append(el('li',reference));}if(list.children.length)missing.append(list);
+      }
+      paint();
+    }
+    async function post(operation,body,signal){
+      const response=await win.fetch('/api/v1/index/export/'+operation,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});
+      if(!response.ok){let details;try{details=await response.json();}catch{}const error=new Error(details?.error||details?.note||'Export unavailable ('+response.status+').');error.details=details;throw error;}
+      return response;
+    }
+    function begin(message){controller?.abort();controller=new win.AbortController();const ticket=++generation;busy=true;status.textContent=message;paint();return{ticket,signal:controller.signal};}
+    async function prepareExport(){
+      if(dead||busy||!supported(currentIndex))return;invalidate();const body={index:currentIndex,representation:representation.value},{ticket,signal}=begin('Checking saved records and export requirements…');
+      try{const response=await post('review',body,signal),value=await response.json();if(dead||ticket!==generation)return;if(value.index!==body.index||value.representation!==body.representation||value.format!=='gateway-index-export-jsonl-v1')throw Error('The export response did not match this index and representation. Prepare again.');renderMetadata(value);review=value.ready===true&&value.complete===true&&typeof value.snapshot==='string'&&value.snapshot?{...body,snapshot:value.snapshot}:null;status.textContent=review?'Export ready. Download uses this committed snapshot.':value.note||'The export is incomplete. Review the requirements before preparing again.';}
+      catch(error){if(dead||ticket!==generation||error.name==='AbortError')return;renderMetadata(error.details||{});status.textContent=error.message;review=null;}
+      finally{if(!dead&&ticket===generation){busy=false;controller=null;paint();}}
+    }
+    function revoke(){win.clearTimeout(revokeTimer);revokeTimer=null;if(objectURL){win.URL.revokeObjectURL(objectURL);objectURL=null;}}
+    async function downloadExport(){
+      if(dead||busy||!review)return;const body={...review},{ticket,signal}=begin('Preparing the complete export file…');
+      try{const response=await post('download',body,signal);if(response.headers.get('X-Gateway-Export-Complete')!=='true'||response.headers.get('X-Gateway-Export-Snapshot')!==body.snapshot)throw Error('The file did not confirm the reviewed complete snapshot.');const blob=await response.blob();if(dead||ticket!==generation)return;const length=response.headers.get('Content-Length');if(!blob.size||length!==null&&Number(length)!==blob.size)throw Error('The complete export file was not received.');const match=/filename="?([A-Za-z0-9._-]{1,180})"?(?:;|$)/i.exec(response.headers.get('Content-Disposition')||''),filename=match?.[1]||body.index+'-'+body.representation+'.jsonl';revoke();objectURL=win.URL.createObjectURL(blob);const link=el('a');link.href=objectURL;link.download=filename;link.hidden=true;doc.body.append(link);link.click();link.remove();revokeTimer=win.setTimeout(revoke,30000);status.textContent='Export downloaded from the reviewed snapshot.';}
+      catch(error){if(dead||ticket!==generation||error.name==='AbortError')return;review=null;renderMetadata(error.details||{});status.textContent=error.message+' Prepare again before downloading.';}
+      finally{if(!dead&&ticket===generation){busy=false;controller=null;paint();}}
+    }
+    function armLocators(){if(dead||busy||!canOfferLocators()||!locatorAvailable()||locatorArmed())return;timeline?.setConsumerOptions?.('tx-locator',{armed:true});status.textContent='TX ID Locators armed. Choose the missing ranges with In/Out and press Play when ready. This did not change your range or Live choices.';paint();}
+    function update(value={}){if(dead)return;if(Object.hasOwn(value,'status'))snapshotStatus=value.status;if(Object.hasOwn(value,'index')&&value.index!==currentIndex){invalidate();currentIndex=value.index||'';root.dataset.indexExport=currentIndex;status.textContent='Prepare an export to inspect its saved snapshot and coverage.';}root.hidden=!supported(currentIndex);paint();}
+    representation.onchange=()=>{invalidate();status.textContent='Representation changed. Prepare an export to check its requirements.';};
+    update({index});return{update,teardown(){dead=true;invalidate();revoke();root.replaceChildren();root.hidden=true;}};
+  }
+  return{supported,mount};
+})();

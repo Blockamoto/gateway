@@ -53,8 +53,8 @@ window.GatewayBitmapWorkspace = (() => {
     if(!profile?.reference_url)return;
     const a=el('a','Pinned upstream source');a.href=profile.reference_url;a.target='_blank';a.rel='noopener noreferrer';holder.append(a);
   }
-  function mountSettings({root,target={},api,onInspect,onNavigate,timeline}) {
-    const {el,button,field,select}=helpers(root);let dead=false;
+  function mountSettings({root,target={},api,onInspect,onNavigate,timeline,getStatus}) {
+    const {el,button,field,select}=helpers(root);let dead=false,exportView=null;
     const status=el('p','Reading the fixed definition…','small');status.setAttribute('role','status');
     const content=el('section',undefined,'bitmap-settings-content');root.replaceChildren(el('h2','Bitmap index rules'),el('p','Read-only rules and authenticated implementation metadata. Use the timeline to start, pause, resume, choose range or follow Live.','small muted'),status,content);
     function chainControls(chain){
@@ -77,10 +77,11 @@ window.GatewayBitmapWorkspace = (() => {
       if(source.district_instance)content.append(button('Inspect exact dependency',()=>onInspect?.(source.district_instance),'text-button'));
       const chain=source.kind==='chain'?source:(registry.instances||[]).find(i=>i.id===source.chain_instance);
       chainControls(chain||(canonical?{kind:'chain',producer_kind:source.kind}:null));
+      if(canonical&&window.GatewayIndexExport?.supported(source.id)){const holder=el('section');content.append(holder);exportView=window.GatewayIndexExport.mount({root:holder,index:source.id,timeline,getStatus});}
       const details=el('details'),pre=el('pre',JSON.stringify({definition:source,chain:registry.chain_metadata?.[source.id]},null,2));details.append(el('summary','Machine-readable definition'),pre);content.append(details);
       status.textContent=source.rules_lock_reason||'Fixed read-only definition. Opening this view starts no work.';
     }).catch(error=>{if(!dead)status.textContent=error.message;});
-    return {ready,teardown(){dead=true;root.replaceChildren();}};
+    return {ready,teardown(){dead=true;exportView?.teardown();root.replaceChildren();}};
   }
   function mountOverview({root,api,onInspect,onResolved,viewport}) {
     const {el,button}=helpers(root);let dead=false;

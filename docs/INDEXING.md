@@ -120,3 +120,12 @@ Committed batches bind the definition, rules, network, range, block hash, depend
 Restart checks saved commitments; interrupted work resumes from safe state rather than claiming unfinished coverage. An actual selected-chain disagreement rewinds to a common committed checkpoint. A temporarily unavailable source does not cause a destructive rewind. Old-branch batches do not count as selected coverage.
 
 See [the Sats QA guide](TESTING-0.7.7.md) for current identity, range and recovery checks, [the UTXO guide](TESTING-0.7.5.md) for its independent state/recovery behavior, and [current status](STATUS.md) for exact acceptance evidence.
+
+
+## Export saved records
+
+Inscriptions and the two Standard V1 Bitmap indexes offer native blocators or
+conventional inscription IDs in Index settings. Export uses committed saved
+coverage and does not start indexing or fetch missing history. See
+[Saved index exports](INDEX-EXPORTS-0.7.8.md) for the file format, snapshot
+checks and explicit lookup requirements.

@@ -21,6 +21,7 @@ import (
 // Both local interfaces delegate state and work to the same index runtime.
 func (a *app) registerIndexRoutes(mux *http.ServeMux) {
 	a.registerBitmapDevelopmentRoutes(mux)
+	a.registerIndexExportRoutes(mux)
 	mux.HandleFunc("/api/v1/index/raw-coverage", a.handleRawCoverage)
 	mux.HandleFunc("/indexes", a.handleIndexPage)
 	mux.HandleFunc("/api/v1/index/", a.handleIndexAPI)

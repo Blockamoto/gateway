@@ -46,6 +46,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <fieldset id="txio-enrichment" hidden><legend>TXIO output history</legend><label class="check"><input id="retain-output-values" type="checkbox"> Retain output Values</label><label class="check"><input id="retain-output-scripts" type="checkbox"> Retain exact ScriptPubKeys</label><p class="small muted">Each optional layer records its own coverage. Enabling a layer later does not fill earlier gaps. Live UTXO and recovery facts remain local automatically, regardless of these historical choices.</p></fieldset>
 </form>
 <details id="inscription-storage" hidden><summary>Inspect storage use</summary><p class="small muted">Run a bounded inspection of saved file bytes. Lean coordinates, Full reveal records, related transaction locators, source blocks and resolved content are reported separately. This includes managed files and retained stale commits, not external mounted-node data or filesystem allocation sizes. This does not fetch or index anything.</p><button id="inspect-inscription-storage" type="button">Inspect saved storage</button><p id="inscription-storage-state" class="small" role="status"></p><dl id="inscription-storage-bytes" class="index-meta"></dl><pre id="inscription-storage-json" hidden></pre></details>
+<section id="index-export-panel" hidden></section>
 <div id="plan" class="index-section" hidden><h3>Before this build starts</h3><dl id="plan-meta" class="index-meta"></dl><ul id="plan-notes"></ul><p id="plan-buildability" class="small muted"></p><details><summary>Exact plan JSON</summary><pre id="plan-json"></pre></details></div>
 </section>
 
@@ -76,6 +77,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <script src="/shell/address-view.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/sat-view.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/bitmap-view.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-export.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/bitmap-workspace.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/explorer-features.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/workspace-resources.js" nonce="__INDEX_NONCE__"></script>
@@ -86,7 +88,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 'use strict';
 const $ = id => document.getElementById(id);
 if (new URLSearchParams(location.search).get('embedded') === '1') document.body.classList.add('embedded');
-let currentView = "catalog", selectedIndex = "", timeline, explorer, viewport, utxoPanel, addressPanel, satPanel, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
+let currentView = "catalog", selectedIndex = "", timeline, explorer, viewport, utxoPanel, addressPanel, satPanel, indexExport, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
 let workspaceBoot={};try{workspaceBoot=JSON.parse($('index-bootstrap').textContent);}catch{}
 function selectView(view) {
   currentView = view;
@@ -157,6 +159,7 @@ function syncRetainedStart() {
 }
 function selectIndex(id, view, initialLive = false) {
  resources?.closeBitmapSettings?.();
+ indexExport?.update({index:id==='inscriptions'?id:'',status});
  if(view==='advanced')view='build';
   if(selectedIndex && !selectedDefinition()?.locked){const draft={};for(const key of ['from','to','retention','mode'])draft[key]=$(key).value;draft.live=$('initial-live').checked;draft.history=$('retain-sat-history').checked;draft.conventional_ids=$('conventional-ids').checked;draft.output_values=$('retain-output-values').checked;draft.output_scripts=$('retain-output-scripts').checked;draft.outputs=[...$('output-choices').querySelectorAll('input')].filter(x=>x.checked&&!x.disabled).map(x=>x.value);planDrafts.set(selectedIndex,draft)}
   if(!id){selectedIndex='';timeline.select('');selectView('catalog');return;}
@@ -284,6 +287,7 @@ function showProviders(providers) {
 }
 
 function showSelectedStatus(){
+ indexExport?.update({status});
  if(!selectedIndex||!status||selectedDefinition()?.locked)return;
  $('sat-build-panel').hidden=selectedIndex!=='sat-state';$('utxo-build-panel').hidden=selectedIndex!=='utxo-state';$('address-state-build-panel').hidden=selectedIndex!=='address-state';$('current-job-panel').hidden=['utxo-state','address-state','sat-state'].includes(selectedIndex)||!selectedDefinition()?.buildable;utxoPanel?.render(status,$('index-timeline').dataset.healthy!=='false');addressPanel?.render(status,$('index-timeline').dataset.healthy!=='false');satPanel?.render(status,$('index-timeline').dataset.healthy!=='false');
  showJob(window.GatewayIndexCards.jobFor(selectedIndex,status));
@@ -510,12 +514,13 @@ function focusedAddress(value){return value.address||value.query||(value.kind===
 function publishAddress(address,resolved=true){if(parent!==window){parent.postMessage({type:'gateway:workspace-focused',address,resolved,historyMode:navigationContext.published?'replace':navigationContext.historyMode,...(Number.isSafeInteger(navigationContext.id)?{navigationId:navigationContext.id}:{})},location.origin);}navigationContext.published=true;if(navigationContext.focus){navigationContext.focus=false;requestAnimationFrame(()=>{const panel=document.querySelector('#timeline-inspector [role="tabpanel"]:not([hidden])'),heading=panel?.querySelector('h1,h2');if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}});}}
 function publishFocus(value){if(Number.isSafeInteger(value.height)&&value.height>=0)publishAddress(focusedAddress(value),value.resolved===true);}
 function syncFocusedEntity(value){if(!value||!Number.isSafeInteger(value.height)||value.height<0)return;movingEntity=true;try{timeline.syncResource(value,value.metadata);timeline.acceptGlobalResource?.(value);}finally{movingEntity=false;}publishFocus(value);}
-function focusEntity(value,options={}){if(!value?.address)return;navigationContext={id:null,historyMode:'replace',focus:false,published:false};if(value.kind==='satpoint'){explorer.entity(value);return;}explorer.navigate(value.address).catch(error=>message(error.message,true));}
+function focusEntity(value,options={}){if(!value?.address)return;indexExport?.update({index:''});resources?.closeBitmapSettings?.();navigationContext={id:null,historyMode:'replace',focus:false,published:false};if(value.kind==='satpoint'){explorer.entity(value);return;}explorer.navigate(value.address).catch(error=>message(error.message,true));}
 function isInscriptionAddress(value){return /^(?:[0-9]+|[0-9a-f]{64})(?:\.)?i[0-9]+(?:\.[0-9]+(?:\.bitcoin)?)?$/i.test(value)||value.endsWith('.ord');}
 function inspectIndex(id,options={}){selectIndex(id,'advanced');if(options.rebuild_snapshot&&addressPanel?.reviewRebuild(options.rebuild_snapshot)===false)return;if(Object.keys(options).length)timeline.setConsumerOptions?.(id,options);}
-function resourceIntent(){timeline?.cancelPendingNavigation();navigationContext={id:null,historyMode:'push',focus:false,published:false};}
+function resourceIntent(){indexExport?.update({index:''});resources?.closeBitmapSettings?.();timeline?.cancelPendingNavigation();navigationContext={id:null,historyMode:'push',focus:false,published:false};}
 async function navigateWorkspace(value,options={}){
  const address=String(typeof value==='string'?value:value?.address||value?.query||'').trim();if(!address||address.length>1024||/[\x00-\x1f]/.test(address))return;if(!workspaceReady){pendingAddress={address,options};return;}
+ indexExport?.update({index:''});resources?.closeBitmapSettings?.();
  timeline.cancelPendingNavigation();timeline.acceptGlobalResource?.({resource:'pending',address});navigationContext={id:options.navigationId??null,historyMode:options.historyMode||'push',focus:options.focus===true,published:false};
  if(['settings.gateway','peers.gateway'].includes(address)){if(parent!==window)parent.postMessage({type:'gateway:navigate',address},location.origin);else location.href='/?resolve='+encodeURIComponent(address);return;}
  const saved=resources.classify(address);if(saved){resources.open(saved.name,saved.address,saved.target);return;}
@@ -525,7 +530,7 @@ async function navigateWorkspace(value,options={}){
 }
 window.addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin)return;
  if(event.data?.type==='gateway:workspace-address')navigateWorkspace(event.data.address,{blockHint:event.data.blockHint,navigationId:event.data.navigationId,historyMode:event.data.historyMode||'replace',focus:event.data.focus}).catch(error=>message(error.message,true));
- if(event.data?.type==='gateway:workspace-visibility'){workspaceVisible=event.data.visible===true;if(!workspaceVisible){cancelProgressPoll();timeline.cancelPendingNavigation();explorer.cancelResource?.();resources?.suspend();}else refresh().catch(error=>message(error.message,true));}
+ if(event.data?.type==='gateway:workspace-visibility'){workspaceVisible=event.data.visible===true;if(!workspaceVisible){indexExport?.update({index:''});cancelProgressPoll();timeline.cancelPendingNavigation();explorer.cancelResource?.();resources?.suspend();}else{indexExport?.update({index:selectedIndex==='inscriptions'?selectedIndex:'',status});refresh().catch(error=>message(error.message,true));}}
  if(event.data?.type==='gateway:workspace-select-index'){const id=event.data.index;if(typeof id!=='string')return;const value={index:id,rebuild_snapshot:event.data.rebuild_snapshot};if(!workspaceReady){pendingIndex=value;return;}if(definitions.some(d=>d.id===id&&(!d.locked||window.GatewayBitmapWorkspace.instanceID(id))))openIndexBuild(value);}
 });
 function openIndexBuild(value){inspectIndex(value.index,value.rebuild_snapshot?{rebuild:true,rebuild_snapshot:value.rebuild_snapshot}:{});}
@@ -535,8 +540,9 @@ function showSemantic(){timeline.zoomIntoFocus();}
 utxoPanel=window.GatewayUTXOPanel.mount({root:$('utxo-build-panel'),api,refresh,notify:message});
 satPanel=window.GatewaySatPanel?.mount({root:$('sat-build-panel'),api,refresh,notify:message});
 addressPanel=window.GatewayAddressPanel?.mount({root:$('address-state-build-panel'),api,refresh,notify:message,select:selectIndex});
-timeline=window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:()=>message('Use the global In and Out controls in the timeline.'),openEntity:openTimelineEntity,onFocus:value=>{if(movingEntity)return;navigationContext={id:null,historyMode:'replace',focus:false,published:false};explorer?.focus(value);if(value.immediate!==false)publishFocus({...value,kind:'block'});},onDetail:showSemantic,onEntity:focusEntity,loadHierarchy:(entity,options)=>explorer.loadHierarchy(entity,options),loadRevealMarkers:async(value,{signal})=>{const result=await api('query?index=inscriptions&height='+value.height+'&limit=1000',undefined,{signal});return {markers:inscriptionRows(result.rows).map(inscriptionMarker).filter(Boolean),known:result.known===true,truncated:result.truncated};},onInscription:marker=>{resourceIntent();return viewport.open(marker.address);}});
-for(const id of ['index-requirements','utxo-build-panel','sat-build-panel','address-state-build-panel'])$('timeline-details').before($(id));
+timeline=window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:()=>message('Use the global In and Out controls in the timeline.'),openEntity:openTimelineEntity,onFocus:value=>{if(movingEntity)return;indexExport?.update({index:''});resources?.closeBitmapSettings?.();navigationContext={id:null,historyMode:'replace',focus:false,published:false};explorer?.focus(value);if(value.immediate!==false)publishFocus({...value,kind:'block'});},onDetail:showSemantic,onEntity:focusEntity,loadHierarchy:(entity,options)=>explorer.loadHierarchy(entity,options),loadRevealMarkers:async(value,{signal})=>{const result=await api('query?index=inscriptions&height='+value.height+'&limit=1000',undefined,{signal});return {markers:inscriptionRows(result.rows).map(inscriptionMarker).filter(Boolean),known:result.known===true,truncated:result.truncated};},onInscription:marker=>{resourceIntent();return viewport.open(marker.address);}});
+indexExport=window.GatewayIndexExport.mount({root:$('index-export-panel'),timeline,getStatus:()=>status});
+for(const id of ['index-requirements','utxo-build-panel','sat-build-panel','address-state-build-panel','index-export-panel'])$('timeline-details').before($(id));
 window.GatewayIndexWorkspace.mountLayout($('index-timeline'),$('message'));
 explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message,viewport:$('workspace-viewport-body'),onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:resourceIntent});
 viewport=window.GatewayInscriptionViewport.mount({document,explorer,viewport:$('workspace-viewport-body'),contentOrigin:workspaceBoot.content_origin,notify:message,onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:resourceIntent});

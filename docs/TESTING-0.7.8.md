@@ -34,6 +34,11 @@ older canonical stores remain separately readable and cannot resume execution.
 The Bitmap parent target band shows known claim targets; the children still
 show reveal-block indexing progress. Unmarked targets remain unknown.
 
+The combined-track correction is documented in `COMBINED-TRACKS-0.7.8.md`.
+Compact children are stacked inside one parent row; only an individual child's
+label/disclosure expands it. There is no parent expand-all action. Live ON is
+vivid electric blue and remains independent from the red Arm state.
+
 The fixed canonical District and Parcel tracks both start at **792435** and are
 siblings. Review a bounded range, arm the chosen normal tracks, then Start.
 Bitmap arming offers the existing Transaction Locators track as a companion.

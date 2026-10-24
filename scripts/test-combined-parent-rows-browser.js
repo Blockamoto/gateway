@@ -19,12 +19,74 @@ async function verifyNetworkCacheFreshness(){
   for(let n=0;n<4;n++)listeners.get('gateway:index-status')({detail:{localIndexes:n,following:0}});listeners.get('gateway:dev-mode')();
   assert.equal(win.GatewayNetworkSnapshot.observedAt,1000,'Failed network read plus continued index/dev repaints cannot refresh cached policy age');assert.equal(events,beforeEvents,'Repaints never publish a fresh network observation');
 }
+async function verifyLocatorConsent(browser,origin){
+  const title='Also turn on TX ID Locators?',district='bitmap-districts-standard-v1',parcel='bitmap-parcels-standard-v1',outcomes=[];
+  const cases=[
+    {name:'Inscriptions individual Escape',id:'inscriptions',scope:['inscriptions'],answer:'escape'},
+    {name:'District individual keyboard accept',id:district,scope:[district],answer:'keyboard',shot:'desktop'},
+    {name:'Parcel individual pointer decline',id:parcel,scope:[parcel],answer:'decline',width:390,shot:'narrow'},
+    {name:'Bitmap parent pointer accept',group:'bitmap',scope:[district,parcel],answer:'accept'},
+    {name:'Ordinals parent keyboard accept',group:'ordinals',scope:['sat-state','inscriptions'],answer:'keyboard'},
+    {name:'Mixed Bitmap newly joins Parcel',group:'bitmap',armed:[district],scope:[district,parcel],answer:'escape'},
+    {name:'Public setter individual',id:'inscriptions',scope:['inscriptions'],answer:'decline',publicSetter:true},
+    {name:'Inspector options event',id:district,scope:[district],answer:'accept',optionsEvent:true},
+    {name:'Locator locks while question is open',id:district,scope:[district],answer:'locked'},
+  ];
+  async function fresh(options,run){
+    const context=await browser.newContext({viewport:{width:options.width||1440,height:900}});try{
+      const page=await context.newPage(),errors=[],requests=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push({method:r.method(),path:new URL(r.url()).pathname}));
+      await page.addInitScript(()=>localStorage.setItem('gateway.timeline.workspace.v1',JSON.stringify({collapsed:false,categoryOpen:{blocks:true,txio:true,addresses:true,ordinals:true,bitmap:true}})));
+      const query=new URLSearchParams({consent:'1',armed:(options.armed||[]).join(','),live:'sat-state,inscriptions'});await page.goto(origin+'/?'+query);
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      const draft=()=>page.evaluate(()=>timeline.getRunDraft()),calls=()=>page.evaluate(()=>window.calls.filter(c=>c.body)),question=page.getByRole('dialog',{name:title,exact:true});
+      assert.equal(await question.count(),0,'Saved-choice initialization never asks');await run({page,draft,calls,question,requests});assert.deepEqual(errors,[]);assert(requests.every(r=>r.method==='GET'),'No hidden HTTP writes outside the fixture shared prepare callback');
+    }finally{await context.close();}
+  }
+  for(const item of cases)await fresh(item,async({page,draft,calls,question})=>{
+    const before=await draft(),beforeCalls=(await calls()).length,selector=item.group?'.timeline-group[data-group="'+item.group+'"] .timeline-group-arm':'.timeline-track[data-index="'+item.id+'"] [data-control=arm]',trigger=page.locator(selector);
+    await page.evaluate(()=>{window.locatorOpenings=0;new MutationObserver(records=>{for(const r of records)if(r.type==='attributes'&&r.attributeName==='open'&&r.target.id==='timeline-locator-companion'&&r.target.open)window.locatorOpenings++;}).observe(document,{subtree:true,attributes:true,attributeFilter:['open']});});
+    if(item.optionsEvent){
+      await page.evaluate(id=>{timeline.inspectIndex(id);const button=document.createElement('button');button.id='fixture-options-arm';button.textContent='Apply inspected Arm';button.onclick=()=>document.dispatchEvent(new CustomEvent('gateway:timeline-options',{detail:{index:id,options:{armed:true}}}));document.querySelector('#timeline-inspector').append(button);},item.id);assert.equal(await question.count(),0,'Inspection alone never asks');await page.locator('#fixture-options-arm').click();
+    }else if(item.publicSetter){await trigger.focus();await page.evaluate(id=>timeline.setConsumerOptions(id,{armed:true}),item.id);}
+    else await trigger.click();
+    await question.waitFor({state:'visible'});assert.equal(await question.count(),1,item.name+' shows one accessible question');assert.equal(await page.locator('#timeline-locator-companion[open]').count(),1);assert.equal(await page.locator('.bitmap-companion-offer').count(),0,'No obsolete inline offer remains');
+    assert.equal(await question.getAttribute('aria-labelledby'),'timeline-locator-companion-title');assert.equal(await question.getAttribute('aria-describedby'),'timeline-locator-companion-description');assert.equal(await question.getAttribute('aria-modal'),'true');assert.equal(await page.locator('#timeline-locator-companion-decline').evaluate(e=>e===document.activeElement),true,'Safe decline receives initial focus');
+    await page.evaluate(()=>{timeline.render(snapshot);timeline.update(snapshot);timeline.redraw();});assert.equal(await question.count(),1,'Repeated status/render preserves one prompt');assert.equal(await page.evaluate(()=>locatorOpenings),1,'One staging action opens only one modal, including parent bulk');
+    await page.waitForFunction(n=>window.calls.filter(c=>c.body).length>n,beforeCalls);const stagedCalls=await calls(),beforeAnswer=stagedCalls.length,staged=await draft(),expected=JSON.parse(JSON.stringify(before));for(const c of expected.consumers)if(item.scope.includes(c.index))c.armed=true;
+    assert.deepEqual(staged,expected,item.name+' arms only the explicit source selection before answering');
+    if(item.shot){const folder=path.join(root,'build/qa-078/locator-companion');fs.mkdirSync(folder,{recursive:true});await page.screenshot({path:path.join(folder,item.shot+'.png')});}
+    if(item.answer==='locked')await page.evaluate(()=>{snapshot.definitions.find(d=>d.id==='tx-locator').locked=true;timeline.render(snapshot);});
+    if(item.answer==='escape')await page.keyboard.press('Escape');
+    else if(item.answer==='keyboard'){
+      for(let n=0;n<4&&!await page.locator('#timeline-locator-companion-accept').evaluate(e=>e===document.activeElement);n++)await page.keyboard.press('Tab');assert.equal(await page.locator('#timeline-locator-companion-accept').evaluate(e=>e===document.activeElement),true,'Keyboard reaches accept within the modal');await page.keyboard.press('Enter');
+    }else{
+      const answer=page.locator(item.answer==='decline'?'#timeline-locator-companion-decline':'#timeline-locator-companion-accept');await answer.hover();const box=await answer.boundingBox();assert(await answer.evaluate((e,p)=>e.contains(document.elementFromPoint(p.x,p.y)),{x:box.x+box.width/2,y:box.y+box.height/2}),'Actual pointer hits the answer button');await answer.click();
+    }
+    await question.waitFor({state:'detached'});
+    const accepted=['accept','keyboard'].includes(item.answer);if(accepted){for(const c of expected.consumers)if(c.index==='tx-locator')c.armed=true;await page.waitForFunction(n=>window.calls.filter(c=>c.body).length>n,beforeAnswer);}
+    const focus=item.optionsEvent?page.locator('#fixture-options-arm'):trigger,restoredFocus=await focus.evaluate(e=>e===document.activeElement),focusAfterAnswer=await page.evaluate(()=>document.activeElement.outerHTML.slice(0,200));
+    if(item.answer==='locked')await page.evaluate(()=>{snapshot.definitions.find(d=>d.id==='tx-locator').locked=false;timeline.render(snapshot);});
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));assert.deepEqual(await draft(),expected,'Only accepting changes the existing locator Arm; Live/mode/history/Raw/range/consumer identities stay exact');
+    const afterCalls=await calls();assert.equal(afterCalls.length,beforeAnswer+(accepted?1:0),'Decline/Escape/unavailable accept adds no save; valid accept adds one shared prepare');assert(afterCalls.every(c=>c.action==='run/prepare'),'Prompt starts no run, backfill, Live or storage API');if(accepted)assert.deepEqual(afterCalls.at(-1).body,expected,'Acceptance uses the existing normal prepare request');
+    assert.equal(restoredFocus,true,item.name+' returns focus to its initiator before the independent test unlock/render; actual='+focusAfterAnswer);
+    // No-op true and disarm through both public staging paths stay quiet.
+    if(item.publicSetter||item.optionsEvent){await page.evaluate(id=>{timeline.setConsumerOptions(id,{armed:true});document.dispatchEvent(new CustomEvent('gateway:timeline-options',{detail:{index:id,options:{armed:true}}}));},item.id);assert.equal(await question.count(),0,'No-op armed:true remains quiet');await page.evaluate(id=>document.dispatchEvent(new CustomEvent('gateway:timeline-options',{detail:{index:id,options:{armed:false}}})),item.id);assert.equal(await question.count(),0,'Public disarm remains quiet');}
+    outcomes.push(item.name);
+  });
+  await fresh({armed:['tx-locator']},async({page,draft,question})=>{const before=await draft();await page.locator('.timeline-track[data-index=inscriptions] [data-control=arm]').click();assert.equal(await question.count(),0,'Already armed locator does not ask');before.consumers.find(c=>c.index==='inscriptions').armed=true;assert.deepEqual(await draft(),before);await page.locator('.timeline-track[data-index=inscriptions] [data-control=arm]').click();assert.equal(await question.count(),0,'Individual disarm never asks');outcomes.push('Already armed / individual Off quiet');});
+  await fresh({armed:['inscriptions',district,parcel]},async({page,draft,calls,question})=>{const before=await draft(),count=(await calls()).length;await page.evaluate(()=>{for(let n=0;n<4;n++){timeline.render(snapshot);timeline.update(snapshot);timeline.redraw();}});assert.equal(await question.count(),0,'Restored Inscriptions/Bitmap Arm state never asks during rendering');assert.deepEqual(await draft(),before);assert.equal((await calls()).length,count);outcomes.push('Saved choices and repeated rendering quiet');});
+  await fresh({armed:['inscriptions']},async({page,draft,question})=>{const before=await draft();await page.locator('.timeline-group[data-group=ordinals] .timeline-group-arm').click();assert.equal(await question.count(),0,'Mixed Ordinals only newly arming Sat Ranges never asks');before.consumers.find(c=>c.index==='sat-state').armed=true;assert.deepEqual(await draft(),before);outcomes.push('Mixed Ordinals Sat-only join quiet');});
+  await fresh({},async({page,draft,question})=>{const before=await draft();await page.locator('.timeline-track[data-index=inscriptions] [data-control=live]').click();assert.equal(await question.count(),0,'Live alone never asks');before.consumers.find(c=>c.index==='inscriptions').live=false;assert.deepEqual(await draft(),before);outcomes.push('Live independent / no prompt');});
+  await fresh({},async({page,question})=>{const state=await page.evaluate(()=>{document.querySelector('.timeline-track[data-index=inscriptions] .index-help-purpose').focus();timeline.setConsumerOptions('inscriptions',{armed:true});return{help:!document.querySelector('.index-help-popover').hidden,prompt:document.querySelector('#timeline-locator-companion')?.open};});assert.deepEqual(state,{help:true,prompt:true},'Help is open when the public Arm question opens');await page.keyboard.press('Escape');await question.waitFor({state:'detached'});assert.equal((await page.evaluate(()=>timeline.getRunDraft())).consumers.find(c=>c.index==='tx-locator').armed,false,'First real Escape declines before the background help handler');outcomes.push('Help-open Escape precedence');});
+  await fresh({},async({page,draft,question})=>{const before=await draft(),help=page.locator('.timeline-help'),arm=page.locator('.timeline-track[data-index=inscriptions] [data-control=arm]');await page.getByLabel('Timeline navigation help',{exact:true}).click();assert.equal(await help.evaluate(e=>e.open),true);await arm.focus();await page.keyboard.press('Space');await question.waitFor({state:'visible'});assert.equal(await help.evaluate(e=>e.open),true,'Navigation help remains open behind the native question');await page.keyboard.press('Escape');await question.waitFor({state:'detached'});assert.equal(await help.evaluate(e=>e.open),true,'First Escape belongs to the question before Navigation help');assert.equal(await arm.evaluate(e=>e===document.activeElement),true);before.consumers.find(c=>c.index==='inscriptions').armed=true;assert.deepEqual(await draft(),before,'Escape rejects locators while preserving explicit source Arm');await page.keyboard.press('Escape');assert.equal(await help.evaluate(e=>e.open),false,'After question closes the normal Navigation help Escape handler works');outcomes.push('Navigation help open / first Escape precedence');});
+  console.log('Locator companion consent browser PASS: '+outcomes.length+' cases; '+outcomes.join('; '));
+}
 (async()=>{
   await verifyNetworkCacheFreshness();
   const headerRequests=[];let headerNetwork={enabled:true,headers_user_paused:false,headers:{header_state:'waiting',message:'Waiting for a Bitcoin peer.'}};
   const server=http.createServer((req,res)=>{
     const u=new URL(req.url,'http://fixture');
-    if(u.pathname==='/'){res.setHeader('Content-Type','text/html');return res.end(html);}
+    if(u.pathname==='/'){res.setHeader('Content-Type','text/html');let markup=html;if(u.searchParams.has('consent')){const armed=(u.searchParams.get('armed')||'').split(',').filter(Boolean),live=(u.searchParams.get('live')||'').split(',').filter(Boolean),seed='for(const c of snapshot.run.prepared.consumers){c.armed='+JSON.stringify(armed)+'.includes(c.index);c.live='+JSON.stringify(live)+'.includes(c.index);if(c.index==="inscriptions"){c.mode="full";c.conventional_ids=false;}if(c.index==="sat-state")c.retain_sat_history=true;}snapshot.run.prepared.in=792435;snapshot.run.prepared.out=792442;';markup=markup.replace('window.layout=',seed+'window.layout=');}return res.end(markup);}
     if(u.pathname==='/api/v1/network'){headerRequests.push({method:req.method,path:u.pathname});res.setHeader('Content-Type','application/json');return res.end(JSON.stringify(headerNetwork));}
     if(u.pathname==='/api/v1/headers'&&req.method==='POST'){let body='';req.on('data',part=>body+=part);req.on('end',()=>{const input=JSON.parse(body);headerRequests.push({method:req.method,path:u.pathname,...input});headerNetwork={enabled:true,headers_user_paused:input.action==='pause',headers:{header_state:input.action==='pause'?'paused':'connecting',message:input.action==='pause'?'Paused by you.':'Connecting to Bitcoin peers.'}};res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,status:headerNetwork.headers}));});return;}
     if(u.pathname==='/api/v1/bitmap/target-coverage'){
@@ -39,6 +101,7 @@ async function verifyNetworkCacheFreshness(){
   });
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const origin='http://127.0.0.1:'+server.address().port,browser=await pw.chromium.launch({headless:true,executablePath});
+  if(process.env.GATEWAY_LOCATOR_ONLY==='1'){try{await verifyLocatorConsent(browser,origin);}finally{await browser.close();await new Promise(resolve=>server.close(resolve));}return;}
   try{
     const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],measurements=[];
     page.on('pageerror',e=>errors.push(e.message));
@@ -56,6 +119,7 @@ async function verifyNetworkCacheFreshness(){
     const minis=id=>group(id).locator(':scope > .timeline-child-minis > .timeline-track').evaluateAll(es=>es.map(e=>e.dataset.index));
     const draft=()=>page.evaluate(()=>timeline.getRunDraft());
     const mutations=()=>page.evaluate(()=>calls.filter(c=>c.body).length);
+    async function declineLocatorOffer(){const question=page.locator('#timeline-locator-companion[open]');if(await question.count())await page.locator('#timeline-locator-companion-decline').click();}
     const closeHelp=async()=>{await page.mouse.move(3,3);await page.keyboard.press('Escape');};
     async function screenshot(name,locator){
       if(!process.env.GATEWAY_COMBINED_PROBE_DIR)return;
@@ -180,8 +244,8 @@ async function verifyNetworkCacheFreshness(){
     await track(bitmapIDs[0]).locator('[data-control=arm]').click();
     assert.equal(await bitmapArm.getAttribute('aria-pressed'),'mixed','One selected Bitmap child makes ArmAll mixed');
     assert.equal((await draft()).consumers.find(c=>c.index==='tx-locator').armed,false,'Individual Bitmap Arm keeps optional locators Off');
-    const keep=page.getByRole('button',{name:'Keep current selection',exact:true});if(await keep.count())await keep.click();
-    await parentOpen('bitmap',false);await bitmapArm.click();
+    await declineLocatorOffer();
+    await parentOpen('bitmap',false);await bitmapArm.click();await declineLocatorOffer();
     assert.equal(await bitmapArm.getAttribute('aria-pressed'),'true','Mixed Bitmap ArmAll arms both Standard children');
     const bitmapOn=await draft();for(const id of bitmapIDs)assert.equal(bitmapOn.consumers.find(c=>c.index===id).armed,true);
     assert.deepEqual(bitmapOn.consumers.filter(c=>!bitmapIDs.includes(c.index)),bitmapBefore.draft.consumers.filter(c=>!bitmapIDs.includes(c.index)),'Bitmap ArmAll changes no other tracks, companions or Chains');
@@ -193,9 +257,9 @@ async function verifyNetworkCacheFreshness(){
     await bitmapArm.click();assert.equal(await bitmapArm.getAttribute('aria-pressed'),'false','On Bitmap ArmAll turns both children Off');
     const bitmapOff=await draft();for(const id of bitmapIDs)assert.equal(bitmapOff.consumers.find(c=>c.index===id).armed,false);
     assert.deepEqual(bitmapOff.consumers.map(c=>[c.index,c.live]),bitmapBefore.draft.consumers.map(c=>[c.index,c.live]),'Bulk Off also preserves Live');
-    await bitmapArm.click();assert.equal(await bitmapArm.getAttribute('aria-pressed'),'true','Off Bitmap ArmAll selects both');
+    await bitmapArm.click();await declineLocatorOffer();assert.equal(await bitmapArm.getAttribute('aria-pressed'),'true','Off Bitmap ArmAll selects both');
     await parentOpen('bitmap',true);await track(bitmapIDs[1]).locator('[data-control=arm]').click();assert.equal(await bitmapArm.getAttribute('aria-pressed'),'mixed','Individual Parcel Off updates parent mixed state');
-    await bitmapArm.click();assert.equal(await bitmapArm.getAttribute('aria-pressed'),'true');await bitmapArm.click();assert.equal(await bitmapArm.getAttribute('aria-pressed'),'false');
+    await bitmapArm.click();await declineLocatorOffer();assert.equal(await bitmapArm.getAttribute('aria-pressed'),'true');await bitmapArm.click();assert.equal(await bitmapArm.getAttribute('aria-pressed'),'false');
     await districtLive.click();assert.equal(await page.locator('[data-control=chain],.timeline-chain-switch').count(),0,'ArmAll never recreates Chain controls');
     assert.equal(await page.locator('[data-bitmap-scope-guard] [data-control=arm]').evaluateAll(buttons=>buttons.every(button=>button.checked===true)),true,'Bulk On/Off leaves restored legacy/Chain controls untouched');
     assert.equal((await draft()).consumers.some(c=>['bitmap-districts-canonical-v2','bitmap-district-chain-dev-v1'].includes(c.index)),false,'Frozen/Chain definitions never enter execution requests');
@@ -203,10 +267,10 @@ async function verifyNetworkCacheFreshness(){
     const ordinalBulk=group('ordinals').locator('.timeline-group-arm'),satArm=track('txio-sat-ranges').locator('[data-control=arm]'),satLive=track('txio-sat-ranges').locator('[data-control=live]');
     await satLive.click();const ordinalBefore={draft:await draft(),marks:await page.evaluate(()=>timeline.getGlobalMarks())};
     await satArm.click();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'mixed','Independent Sat Arm gives Ordinals mixed state');assert.equal((await draft()).consumers.find(c=>c.index==='inscriptions').armed,false,'Sat Arm never arms Inscriptions');
-    await ordinalBulk.click();let ordinalOn=await draft();assert.deepEqual(ordinalOn.consumers.filter(c=>['sat-state','inscriptions'].includes(c.index)).map(c=>c.armed),[true,true],'Ordinals ArmAll selects exactly its two distinct consumers');
+    await ordinalBulk.click();await declineLocatorOffer();let ordinalOn=await draft();assert.deepEqual(ordinalOn.consumers.filter(c=>['sat-state','inscriptions'].includes(c.index)).map(c=>c.armed),[true,true],'Ordinals ArmAll selects exactly its two distinct consumers');
     assert.deepEqual(ordinalOn.consumers.filter(c=>!['sat-state','inscriptions'].includes(c.index)),ordinalBefore.draft.consumers.filter(c=>!['sat-state','inscriptions'].includes(c.index)),'Ordinals ArmAll adds no hidden companions');
     assert.deepEqual(ordinalOn.consumers.map(c=>[c.index,c.live]),ordinalBefore.draft.consumers.map(c=>[c.index,c.live]),'Ordinals ArmAll preserves independent Live choices');assert.deepEqual(await page.evaluate(()=>timeline.getGlobalMarks()),ordinalBefore.marks);
-    await track('inscriptions').locator('[data-control=arm]').click();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'mixed');await ordinalBulk.click();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'true');await ordinalBulk.click();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'false');await satLive.click();
+    await track('inscriptions').locator('[data-control=arm]').click();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'mixed');await ordinalBulk.click();await declineLocatorOffer();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'true');await ordinalBulk.click();assert.equal(await ordinalBulk.getAttribute('aria-pressed'),'false');await satLive.click();
     const valueArm=track('txio-values').locator('[data-control=arm]');await valueArm.click();
     const valueDraft=await draft(),valueOwner=valueDraft.consumers.find(c=>c.index==='txo-spender');
     assert.equal(valueOwner.retain_output_values,true,'Values own Arm stages retained facts');assert.equal(valueOwner.armed,false,'Values own Arm does not arm parent Links');
@@ -228,6 +292,7 @@ async function verifyNetworkCacheFreshness(){
     assert.equal(await target.isVisible(),true,'Bitmap parent target band survives open/closed/zoom');
     for(const id of allTracks)assert.equal(await track(id).count(),1,'No interaction duplicates track '+id);
     assert.deepEqual(errors,[]);
+    await verifyLocatorConsent(browser,origin);
     console.log('Combined parent interaction independent browser PASS: '+JSON.stringify({measurements,keyboardZoom,pointerBefore,pointerAfter})+'; default collapsed categories, own-label upper details, right action isolation, real hover/hit bounds, actual row/canvas zoom, mid-list anchor, consent preserved, Bitmap target retained.');
   }finally{await browser.close();await new Promise(r=>server.close(r));}
 })().catch(error=>{console.error(error);process.exitCode=1;});

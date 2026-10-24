@@ -436,3 +436,11 @@ body.indexes-workspace .index-timeline,.index-timeline{--track-label:260px;--tim
 .timeline-track-actions :is([data-control=live],[data-header-sync]){grid-column:3;grid-row:1}
 .timeline-track-actions [data-control=arm],.timeline-group-actions .timeline-group-arm{grid-column:4;grid-row:1}
 @media(max-width:700px){body.indexes-workspace .index-timeline,.index-timeline{--track-label:244px}}
+
+/* Optional companion choice stays above clipped tracks and inside narrow frames. */
+.timeline-locator-companion{width:min(420px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;margin:auto;padding:20px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;box-shadow:0 12px 40px #0004}
+.timeline-locator-companion::backdrop{background:#0006}
+.timeline-locator-companion h2{margin:0 0 12px;font-size:18px;line-height:1.35}
+.timeline-locator-companion p{margin:0 0 18px;line-height:1.6}
+.timeline-locator-companion-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.timeline-locator-companion-actions button{min-height:40px;padding:8px 12px;font-size:12px}

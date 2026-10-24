@@ -42,7 +42,8 @@ def main():
     performance_docs = ('APPROVED-PERFORMANCE-BRIEF-0.7.8.md', 'INDEX-REPLAY-PERFORMANCE.md',
                         'TRANSACTION-LOCATOR-BATCHING.md', 'VERIFICATION-PERFORMANCE-0.7.8.md',
                         'APPROVED-DESIGN-BRIEF-0.7.8.md', 'VERIFICATION-DESIGN-0.7.8.md',
-                        'COMBINED-TRACKS-0.7.8.md', 'PARENT-CATEGORIES-0.7.8.md')
+                        'COMBINED-TRACKS-0.7.8.md', 'PARENT-CATEGORIES-0.7.8.md',
+                        'VISUAL-POLISH-0.7.8.md')
     for name in performance_docs:
         shutil.copy2(ROOT / 'docs' / name, out / name)
     shutil.copy2(ROOT / 'scripts' / 'portable-preview.ps1', out / 'Preview.ps1')

@@ -108,6 +108,10 @@ comparison or new-tip Live-follow claim is made by this presentation pass.
 
 ## Portable use
 
+The follow-up background polish paints unused track-area space with the existing
+`--bg` theme token, matching the surrounding timeline in light and dark modes.
+It changes no row sizes, zoom defaults, selection, coverage or scrollbar geometry.
+
 Directory: `build/portable-v0.7.8-parent-categories`.
 ZIP: `build/Gateway-v0.7.8-parent-categories-portable-preview-windows-amd64.zip`.
 `Start-Preview.cmd` opens Home in its own fresh `preview-profile`;

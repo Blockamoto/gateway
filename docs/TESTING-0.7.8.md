@@ -81,3 +81,10 @@ blocator/blocators.
 See `APPROVED-BRIEF-0.7.8.md` for scope and `VERIFICATION-0.7.8.md` for the checks
 actually completed. This is bounded local acceptance, not a full mainnet index or
 full Bitcoin consensus validation.
+
+## Latest visual follow-up
+
+The fixed-height collapsed parent overviews, Inscriptions data-lane surface,
+Bitmap Arm-all and Chain-icon removal, block-map caption, and continuous
+playhead are covered by `VISUAL-POLISH-0.7.8.md`. Earlier backend evidence is
+reused because production Go code is unchanged.

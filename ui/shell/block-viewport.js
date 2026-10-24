@@ -185,13 +185,15 @@ function navigation(root, doc) {
       const scene=el('div',undefined,'viewport-block-map');scene.id='viewport-block-map';scene.dataset.kind=kind;scene.dataset.height=map.height;scene.dataset.hash=map.hash;scene.dataset.total=map.total;scene.dataset.ready='true';
       scene.setAttribute('aria-label','Block '+number(map.height)+', '+number(map.total)+' transactions sized by output value');
       const layout=pack(map.transactions.map(tx=>({...tx,value:tx.output_sats,vbytes:tx.vsize})),'value');
-      const caption=el('p','Block '+number(map.height)+' · '+number(map.total)+' transactions · size by sats','viewport-caption');
-      const tooltip=el('div',undefined,'viewport-map-tooltip');tooltip.hidden=true;tooltip.setAttribute('role','status');
+      const summary='Block '+number(map.height)+' · '+number(map.total)+' transactions · size by sats';
+      const caption=el('p',summary,'viewport-caption viewport-map-caption');caption.setAttribute('role','status');caption.setAttribute('aria-atomic','true');
+      let hovered=null,focused=null,captionSource='hover';
+      const updateCaption=()=>{caption.textContent=(captionSource==='focus'?(focused??hovered):(hovered??focused))??summary;};
       const buttons=[];
       for(const tile of layout.tiles) {
         const tx=tile.tx,button=el('button',undefined,'viewport-map-tx'+(tx.coinbase?' coinbase':''));button.type='button';button.dataset.mapTx=tx.index;button.dataset.outputSats=tx.output_sats;button.tabIndex=buttons.length?-1:0;
         const box=tileGeometry(tile,layout);button.style.left=box.x+'%';button.style.top=box.y+'%';button.style.width=box.size+'%';button.style.height=box.size+'%';
-        const label='Transaction '+tx.index+' · '+number(tx.output_sats)+' sats'+(tx.coinbase?' · coinbase':'')+(tx.inscription?' · '+number(tx.inscription_count)+' inscription'+(tx.inscription_count===1?'':'s'):'');button.setAttribute('aria-label',label);button.title=label;
+        const label='Transaction '+tx.index+' · '+number(tx.output_sats)+' sats'+(tx.coinbase?' · coinbase':'')+(tx.inscription?' · '+number(tx.inscription_count)+' inscription'+(tx.inscription_count===1?'':'s'):'');button.setAttribute('aria-label',label);
         const ins=tx.inscription;
         if(ins) {
           button.dataset.inscription=ins.coordinate;
@@ -201,8 +203,10 @@ function navigation(root, doc) {
           } else if(preview?.kind==='text')button.append(el('span',String(preview.text||'').slice(0,640),'viewport-map-text'));
           else button.append(el('span','◈','viewport-map-inscription'));
         }
-        const show=()=>{tooltip.hidden=false;tooltip.textContent=label;};
-        button.addEventListener('pointerenter',show);button.addEventListener('pointerleave',()=>{tooltip.hidden=true;});button.addEventListener('focus',show);button.addEventListener('blur',()=>{tooltip.hidden=true;});
+        button.addEventListener('pointerenter',()=>{hovered=label;captionSource='hover';updateCaption();});
+        button.addEventListener('pointerleave',()=>{if(hovered===label)hovered=null;updateCaption();});
+        button.addEventListener('focus',()=>{focused=label;captionSource='focus';updateCaption();});
+        button.addEventListener('blur',()=>{if(focused===label)focused=null;updateCaption();});
         button.addEventListener('click',()=>{select(tx.index);onTransaction?.(tx,map);});
         button.addEventListener('keydown',event=>{
           if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return;
@@ -211,7 +215,7 @@ function navigation(root, doc) {
         });
         buttons.push(button);scene.append(button);
       }
-      const surface=el('div',undefined,'viewport-block-surface');surface.append(scene);frame(surface,'block:'+map.hash,'block');stage.append(tooltip);root.append(caption);sizeMap();root.dataset.state='ready';
+      const surface=el('div',undefined,'viewport-block-surface');surface.append(scene);frame(surface,'block:'+map.hash,'block');root.append(caption);sizeMap();root.dataset.state='ready';
     }
     function select(index){selected=index;for(const button of root.querySelectorAll('[data-map-tx]')){const match=Number(button.dataset.mapTx)===index;button.classList.toggle('selected',match);button.setAttribute('aria-pressed',String(match));}}
     function flow(data,context={}) {

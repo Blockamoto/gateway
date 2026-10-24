@@ -49,6 +49,7 @@ async function run() {
       const body=req.method()==='POST'?req.postDataJSON():null;
       calls.push({method:req.method(),path:url.pathname,body});
       if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname))return reply(snapshot);
+      if(url.pathname==='/api/v1/bitmap/target-coverage')return reply({state:'not_built',axis:url.searchParams.get('axis'),from:Number(url.searchParams.get('from')),to:Number(url.searchParams.get('to')),bins:[],note:'No target mapping in this fixture.'});
       if(url.pathname==='/api/v1/index/query')return reply({rows:[],total:0,total_known:true,inspected_blocks:0,chain_state:'selected_chain'});
       if(url.pathname==='/api/v1/index/plan')return reply({definition:snapshot.definitions.find(d=>d.id===body.index),from:body.from,to:body.to??snapshot.timeline.tip_height,retention:body.retention,dependencies:[],notes:['Disposable plan only.'],storage_estimate:'Fixture',verification:'selected_chain'});
       unexpected.push(req.method()+' '+url.pathname);

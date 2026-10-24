@@ -34,9 +34,9 @@ func TestBitmapNamedProfilesRegistryAndImmutableDependencies(t *testing.T) {
 		t.Fatal(a, b)
 	}
 	instances, err := bitmapProfileInstances(ctx, root)
-	// Nine fixed current/preserved definitions plus the five named instances
+	// Eleven fixed current/preserved definitions plus the five named instances
 	// created above (two District/Chain pairs and one linked Parcel).
-	if err != nil || len(instances) != 14 {
+	if err != nil || len(instances) != 16 {
 		t.Fatal(instances, err)
 	}
 	fixed := map[string]bitmapProfileInstance{}
@@ -51,7 +51,7 @@ func TestBitmapNamedProfilesRegistryAndImmutableDependencies(t *testing.T) {
 			t.Fatal("current canonical identity unavailable", id, i)
 		}
 	}
-	for _, id := range []string{bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1", "bitmap-districts", "bitmap-parcels", "bitmap-chain"} {
+	for _, id := range []string{bitmapCanonicalV2DistrictID, bitmapCanonicalV2ParcelID, bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1", "bitmap-districts", "bitmap-parcels", "bitmap-chain"} {
 		i, ok := fixed[id]
 		if !ok || !i.Legacy || releaseFeatureAvailable(id) {
 			t.Fatal("preserved identity lost or executable", id, i)

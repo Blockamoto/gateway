@@ -78,11 +78,11 @@ async function main() {
     await pull.click(); assert.equal(await pull.getAttribute('aria-expanded'), 'true');
     assert.equal(await pull.evaluate((node, original) => node === original, pullIdentity), true, 'The same control expands and collapses');
     const txio = page.locator('#timeline-group-txio'), labels = page.locator('.timeline-group[data-group=txio] .timeline-group-labels');
-    assert.equal(await labels.isVisible(), true, 'Collapsed TXIO summarizes its child layers');
-    await txio.click(); assert.equal(await labels.isVisible(), false, 'Expanded TXIO does not repeat the child-name summary');
+    assert.equal(await labels.count(),0,'Compact Transactions uses individually labelled child rows');assert.equal(await page.locator('.timeline-track[data-group=txio][data-expanded=false]').count(),6);assert.equal(await page.locator('.timeline-track[data-group=txio][hidden]').count(),0,'Every compact child keeps its aligned lane');
+    await txio.click();assert.equal(await page.locator('.timeline-track[data-group=txio][data-expanded=true]').count(),6,'Parent disclosure expands its own children');
     assert.deepEqual(await page.locator('.timeline-track[data-group=txio]').evaluateAll(nodes => nodes.map(n => n.dataset.index)), ['tx-locator','txio-links','txio-values','txio-scripts','utxo-state','txio-sat-ranges'], 'Transactions contains the six accepted sibling tracks');
     await capture('desktop-expanded');
-    await txio.click(); assert.equal(await labels.isVisible(), true, 'Collapsing TXIO restores its child summary');
+    await txio.click();assert.equal(await page.locator('.timeline-track[data-group=txio][data-expanded=false]').count(),6,'Parent disclosure compacts its children without hiding them');
     await page.locator('.timeline-track[data-index=blocks] button[data-switch=arm]').click();
     if(await txio.getAttribute('aria-expanded')==='false')await txio.click();await page.locator('.timeline-track[data-index=tx-locator] button[data-switch=arm]').click();
     await pull.click(); assert.equal(await pull.getAttribute('aria-expanded'), 'false');

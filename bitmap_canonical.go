@@ -14,8 +14,13 @@ const bitmapCanonicalReferenceRevision = "335958311eb1c8ce4d14c48bc5c21d23c7a4b1
 const bitmapCanonicalReferenceBlob = "cbd10d75feac8636dd553c10ab52995e38e55514"
 const bitmapCanonicalV1DistrictID = "bitmap-districts-canonical"
 const bitmapCanonicalV1ParcelID = "bitmap-parcels-canonical"
-const bitmapCanonicalDistrictID = "bitmap-districts-canonical-v2"
-const bitmapCanonicalParcelID = "bitmap-parcels-canonical-v2"
+const bitmapCanonicalV2DistrictID = "bitmap-districts-canonical-v2"
+const bitmapCanonicalV2ParcelID = "bitmap-parcels-canonical-v2"
+
+// Existing evaluator/default helpers refer to the currently supported pair.
+// Frozen generation references must use the explicit V1/V2 constants above.
+const bitmapCanonicalDistrictID = bitmapStandardDistrictID
+const bitmapCanonicalParcelID = bitmapStandardParcelID
 
 func bitmapCanonicalChainID(id string) bool {
 	return id == "bitmap-district-chain-dev-v1" || id == "bitmap-parcel-chain-dev-v1"
@@ -58,7 +63,7 @@ func bitmapCanonicalV1Profile(kind string) bitmapDevelopmentProfile {
 // These are the exact six District and seven Parcel entries in the pinned
 // README. Operational limitations belong to ImplementationLimits, never to
 // the published standard's ordered rule list.
-func bitmapCanonicalProfile(kind string) bitmapDevelopmentProfile {
+func bitmapCanonicalV2Profile(kind string) bitmapDevelopmentProfile {
 	p := bitmapDevelopmentProfile{ID: "gateway-bitmap-" + kind + "-canonical-v2", Kind: kind,
 		FingerprintSchema: bitmapCanonicalProfileSchema, ReferenceRevision: bitmapCanonicalReferenceRevision,
 		ReferenceURL:  "https://github.com/Blockamoto/bitmap/blob/" + bitmapCanonicalReferenceRevision + "/README.md",
@@ -80,7 +85,7 @@ func bitmapCanonicalProfile(kind string) bitmapDevelopmentProfile {
 	if kind == "district" {
 		p.Rules = []string{"schema: `<district>.bitmap` · regex = `^(?:0|[1-9][0-9]*)\\.bitmap(?![\\s\\S])`", body, text, ascii, "height: `<district>` ≤ reveal block height", "order: first qualifying inscription reveal per `<district>.bitmap`"}
 	} else if kind == "parcel" {
-		p.DistrictProfileHash = bitmapProfileHash(bitmapCanonicalProfile("district"))
+		p.DistrictProfileHash = bitmapProfileHash(bitmapCanonicalV2Profile("district"))
 		p.ParentPolicy = "tag3-selected-district-checked-creation-input-provenance-v2"
 		p.Rules = []string{"schema: `<parcel>.<district>.bitmap` · regex = `^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.bitmap(?![\\s\\S])`", body, text, ascii, "index: `<parcel>` ≤ (`TX count` at `block height` = `<district>`) − 1", "child: claimant is a child inscription of the valid `<district>.bitmap` inscription (parent tag 3)", "order: first qualifying inscription reveal per `<parcel>.<district>.bitmap`"}
 		p.ImplementationLimits = append(p.ImplementationLimits,
@@ -93,10 +98,21 @@ func bitmapCanonicalProfile(kind string) bitmapDevelopmentProfile {
 func bitmapCanonicalInstance(id string) (bitmapProfileInstance, bool) {
 	kind, label, chain := "", "", ""
 	switch id {
-	case bitmapCanonicalDistrictID:
-		kind, label = "district", "Bitmap Districts"
-	case bitmapCanonicalParcelID:
-		kind, label = "parcel", "Bitmap Parcels"
+	case bitmapStandardDistrictID:
+		kind, label = "district", "Bitmap Districts Standard V1"
+	case bitmapStandardParcelID:
+		kind, label = "parcel", "Bitmap Parcels Standard V1"
+	case bitmapCanonicalV2DistrictID, bitmapCanonicalV2ParcelID:
+		kind = "district"
+		if id == bitmapCanonicalV2ParcelID {
+			kind = "parcel"
+		}
+		p := bitmapCanonicalV2Profile(kind)
+		i := bitmapProfileInstance{ID: id, Kind: kind, Label: "Previous Bitmap " + map[string]string{"district": "Districts", "parcel": "Parcels"}[kind] + " canonical-v2 generation", Profile: p, ProfileHash: bitmapProfileHash(p), StartHeight: bitmapDevelopmentStart, State: "ready", Legacy: true, ConfigurationRevision: 1, RulesLocked: true, Classification: "legacy", Note: "Preserved canonical-v2 generation with its original profile, origin and saved identity. Standard V1 uses separate fresh stores; no automatic migration or resume occurs."}
+		if kind == "parcel" {
+			i.DistrictInstance, i.DistrictProfileHash = bitmapCanonicalV2DistrictID, p.DistrictProfileHash
+		}
+		return i, true
 	case bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID:
 		kind = "district"
 		if id == bitmapCanonicalV1ParcelID {
@@ -114,14 +130,14 @@ func bitmapCanonicalInstance(id string) (bitmapProfileInstance, bool) {
 	default:
 		return bitmapProfileInstance{}, false
 	}
-	p := bitmapCanonicalProfile(kind)
+	p := bitmapStandardProfile(kind)
 	i := bitmapProfileInstance{ID: id, Kind: kind, Label: label, Profile: p,
 		ProfileHash: bitmapProfileHash(p), StartHeight: bitmapDevelopmentStart, State: "ready",
 		ConfigurationRevision: 1, RulesLocked: true, Classification: "canonical",
 		ChainInstance: chain,
-		Note:          "Fixed canonical rules pinned to Blockamoto/bitmap main. Current indexing starts at the first Bitmap reveal, block 792435; previous generations remain available under their original identities."}
+		Note:          "Bitmap Standard V1 uses fixed rules pinned to Blockamoto/bitmap main and begins at the first Bitmap reveal, block 792435. This instance has its own authenticated storage identity; previous generations remain available for inspection under their original identities."}
 	if kind == "parcel" {
-		i.DistrictInstance = bitmapCanonicalDistrictID
+		i.DistrictInstance = bitmapStandardDistrictID
 		i.DistrictProfileHash = p.DistrictProfileHash
 	}
 	return i, true

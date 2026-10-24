@@ -28,8 +28,8 @@ func resolvedIngestionCapabilities(d indexRunDocument) []indexBrowsePolicy {
 	add("address-state", "matching_utxo_projection", "Project the matching complete UTXO checkpoint only; no UTXO job starts automatically.", true)
 	add("address-history", "sparse", "Authenticated output history for supported destinations, including an explicit empty scanned block.", true)
 	add("inscriptions", "sparse", "Current Lean/Full and conventional-ID choices apply to this block's own envelope extraction.", true)
-	add(bitmapCanonicalDistrictID, "exact_next", "Fixed district standard from its authenticated origin; no skipped prefix or custom execution.", true)
-	add(bitmapCanonicalParcelID, "exact_next_with_district_evidence", "Exact next parcel block with the selected district/provenance evidence already available; no prerequisite build.", true)
+	add(bitmapStandardDistrictID, "exact_next", "Bitmap Districts Standard V1 from its authenticated origin; no skipped prefix or custom execution.", true)
+	add(bitmapStandardParcelID, "exact_next_with_district_evidence", "Bitmap Parcels Standard V1 at its exact next block with selected District/provenance evidence already available; no prerequisite build.", true)
 	add("bitmap-district-chain-dev-v1", "disabled", "Chain execution is disabled while its draft codec is reviewed; saved state remains inspectable.", false)
 	add("bitmap-parcel-chain-dev-v1", "disabled", "Chain execution is disabled while its draft codec is reviewed; saved state remains inspectable.", false)
 	return rows

@@ -42,7 +42,7 @@ func (a *app) ingestArmedBitmapBlock(ctx context.Context, block blockView, prepa
 		return nil
 	}
 	var failures []error
-	for _, id := range []string{bitmapCanonicalDistrictID, bitmapCanonicalParcelID} {
+	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID} {
 		on, err := timelineTrackArmed(a.dataDir, id)
 		if err != nil {
 			return err

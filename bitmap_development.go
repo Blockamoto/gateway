@@ -45,7 +45,7 @@ type bitmapDevelopmentProfile struct {
 // frozen; v3 additionally binds its exact reference and delegate policy. These
 // are declared development encodings, not the unfinished standard format.
 func bitmapProfileHash(p bitmapDevelopmentProfile) string {
-	if p.FingerprintSchema == bitmapCanonicalProfileSchema || p.FingerprintSchema == bitmapCanonicalV1ProfileSchema || p.FingerprintSchema == bitmapChainProfileSchema {
+	if bitmapBlocatorProfileSchema(p.FingerprintSchema) || p.FingerprintSchema == bitmapCanonicalV1ProfileSchema || p.FingerprintSchema == bitmapChainProfileSchema {
 		// Unlike the frozen legacy projections, every immutable canonical rule
 		// and its pinned source are authenticated. A display ID is not a rule.
 		p.ID = ""

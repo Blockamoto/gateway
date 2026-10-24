@@ -40,7 +40,8 @@ def main():
     shutil.copy2(ROOT / 'docs' / 'SPARSE-INDEXING-0.7.8.md', out / 'SPARSE-INDEXING-0.7.8.md')
     shutil.copy2(ROOT / 'docs' / 'VERIFICATION-0.7.8.md', out / 'VERIFICATION-0.7.8.md')
     performance_docs = ('APPROVED-PERFORMANCE-BRIEF-0.7.8.md', 'INDEX-REPLAY-PERFORMANCE.md',
-                        'TRANSACTION-LOCATOR-BATCHING.md', 'VERIFICATION-PERFORMANCE-0.7.8.md')
+                        'TRANSACTION-LOCATOR-BATCHING.md', 'VERIFICATION-PERFORMANCE-0.7.8.md',
+                        'APPROVED-DESIGN-BRIEF-0.7.8.md', 'VERIFICATION-DESIGN-0.7.8.md')
     for name in performance_docs:
         shutil.copy2(ROOT / 'docs' / name, out / name)
     shutil.copy2(ROOT / 'scripts' / 'portable-preview.ps1', out / 'Preview.ps1')

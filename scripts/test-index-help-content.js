@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const help = require('../ui/shell/index-help-content.js');
 const file = path.resolve(__dirname, '../ui/shell/index-help-content.js');
-const ids = ['group:blocks', 'group:txio', 'group:addresses', 'group:bitmap', 'headers', 'blocks', 'tx-locator', 'txio-links', 'txio-values', 'txio-scripts', 'utxo-state', 'txio-sat-ranges', 'address-state', 'address-history', 'inscriptions', 'bitmap-districts-canonical-v2', 'bitmap-parcels-canonical-v2', 'bitmap-chain', 'bitmap-district-chain-dev-v1', 'bitmap-parcel-chain-dev-v1'];
+const ids = ['group:blocks', 'group:txio', 'group:addresses', 'group:bitmap', 'headers', 'blocks', 'tx-locator', 'txio-links', 'txio-values', 'txio-scripts', 'utxo-state', 'txio-sat-ranges', 'address-state', 'address-history', 'inscriptions', 'bitmap-districts-standard-v1', 'bitmap-parcels-standard-v1', 'bitmap-chain', 'bitmap-district-chain-dev-v1', 'bitmap-parcel-chain-dev-v1'];
 const text = card => card.paragraphs.join(' ');
 const rows = id => help.dependencies(id).dependencies;
 const by = (id, name) => rows(id).find(row => row.name === name);
@@ -28,7 +28,7 @@ for (const id of ids) {
   }
 }
 
-const externalCards = ['address-state','bitmap-parcels-canonical-v2','group:addresses','group:bitmap'];
+const externalCards = ['address-state','bitmap-parcels-standard-v1','group:addresses','group:bitmap'];
 for (const id of externalCards) {
   const card = help.dependencies(id);
   assert.equal(card.showIndicator, true, id+' shows its real other-track dependency');
@@ -40,8 +40,8 @@ for (const id of ids.filter(id=>!externalCards.includes(id))) {
   assert(!card?.dependencies.some(row=>row.otherTrack===true),id+' does not misclassify input/own history as another track');
 }
 assert.equal(by('address-state','A complete matching UTXO snapshot').otherTrack,true);
-assert.equal(by('bitmap-parcels-canonical-v2','Matching Bitmap District results').otherTrack,true);
-assert.equal(by('bitmap-parcels-canonical-v2','Retained Sat evidence before the reveal').otherTrack,true);
+assert.equal(by('bitmap-parcels-standard-v1','Matching Bitmap District results').otherTrack,true);
+assert.equal(by('bitmap-parcels-standard-v1','Retained Sat evidence before the reveal').otherTrack,true);
 assert.equal(by('txio-links','Transaction Locator').otherTrack,undefined,'Optional locator help is not a dependency badge');
 assert.match(text(help.get('utxo-state')),/every block in order from the first Bitcoin block/,'Own state continuity remains discoverable in general help');
 assert.match(text(help.get('txio-sat-ranges')),/retention option is explicitly enabled/,'Own historical retention remains discoverable in general help');
@@ -81,14 +81,14 @@ assert(!rows('txio-sat-ranges').some(row => /UTXO/.test(row.name)));
 assert.equal(by('txio-sat-ranges', 'Keep historical output ranges').requirement, 'hard');
 assert.match(text(help.dependencies('txio-sat-ranges')), /Turning it on later does not recreate older range history/);
 
-assert.match(text(help.dependencies('bitmap-districts-canonical-v2')), /792435/);
-assert.match(text(help.dependencies('bitmap-districts-canonical-v2')), /does not require a separately retained Inscriptions index/);
-assert.equal(by('bitmap-parcels-canonical-v2', 'Matching Bitmap District results').requirement, 'hard');
-assert.match(by('bitmap-parcels-canonical-v2', 'Matching Bitmap District results').why, /same Bitcoin block.*same declared rule set/);
-assert.equal(by('bitmap-parcels-canonical-v2', 'Retained Sat evidence before the reveal').requirement, 'conditional');
-assert.match(text(help.dependencies('bitmap-parcels-canonical-v2')), /Merely turning Sats On does not establish the required historical state/);
-assert.match(text(help.dependencies('bitmap-parcels-canonical-v2')), /same reveal block.*unresolved/);
-assert(!rows('bitmap-parcels-canonical-v2').some(row => /owner/i.test(row.name)), 'No current-ownership prerequisite is invented');
+assert.match(text(help.dependencies('bitmap-districts-standard-v1')), /792435/);
+assert.match(text(help.dependencies('bitmap-districts-standard-v1')), /does not require a separately retained Inscriptions index/);
+assert.equal(by('bitmap-parcels-standard-v1', 'Matching Bitmap District results').requirement, 'hard');
+assert.match(by('bitmap-parcels-standard-v1', 'Matching Bitmap District results').why, /same Bitcoin block.*same declared rule set/);
+assert.equal(by('bitmap-parcels-standard-v1', 'Retained Sat evidence before the reveal').requirement, 'conditional');
+assert.match(text(help.dependencies('bitmap-parcels-standard-v1')), /Merely turning Sats On does not establish the required historical state/);
+assert.match(text(help.dependencies('bitmap-parcels-standard-v1')), /same reveal block.*unresolved/);
+assert(!rows('bitmap-parcels-standard-v1').some(row => /owner/i.test(row.name)), 'No current-ownership prerequisite is invented');
 for (const id of ['bitmap-chain', 'bitmap-district-chain-dev-v1', 'bitmap-parcel-chain-dev-v1']) {
   assert.match(text(help.get(id)), /disabled/);
   assert.equal(help.dependencies(id), null, 'Disabled chains have no prerequisites that can enable execution');

@@ -4,7 +4,7 @@ window.GatewayBitmapWorkspace = (() => {
   const known = n => Number.isSafeInteger(n) && n >= 0;
   const number = n => known(n) ? n.toLocaleString('en-GB') : 'Not established';
   const kindOf = value => value?.kind || (/^bitmap-parcels(?:-|$)/.test(value?.id || '') ? 'parcel' : /^bitmap-(?:district|parcel)-chain-dev-v1$|^bitmap-chain(?:-|$)/.test(value?.id || '') ? 'chain' : 'district');
-  const instanceID = value => typeof value === 'string' && /^(?:bitmap-(?:districts|parcels)(?:-canonical(?:-v2)?|-[0-9a-f]{32})?|bitmap-chain(?:-[0-9a-f]{32})?|bitmap-(?:district|parcel)-chain-dev-v1)$/.test(value);
+  const instanceID = value => typeof value === 'string' && /^(?:bitmap-(?:districts|parcels)(?:-canonical(?:-v2)?|-standard-v1|-[0-9a-f]{32})?|bitmap-chain(?:-[0-9a-f]{32})?|bitmap-(?:district|parcel)-chain-dev-v1)$/.test(value);
   const answerBits = (ids, values) => ids.map(id => values[id]).join('').replace(/0+$/, '');
   const customInstance = id => /^bitmap-(?:districts|parcels|chain)-[0-9a-f]{32}$/.test(id || '');
   const capabilities = value => value?.capabilities || value?.bitmap_capabilities || value?.bitmap?.capabilities || {};

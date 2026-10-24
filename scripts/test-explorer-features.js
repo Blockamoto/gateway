@@ -1,10 +1,11 @@
 'use strict';
 const assert=require('node:assert/strict'),features=require('../ui/shell/explorer-features.js');
-const hash='a'.repeat(64),ids=['headers','blocks','tx-locator','txo-spender','utxo-state','sat-state','address-state','address-history','inscriptions','bitmap-districts-canonical-v2','bitmap-parcels-canonical-v2'];
+const hash='a'.repeat(64),ids=['headers','blocks','tx-locator','txo-spender','utxo-state','sat-state','address-state','address-history','inscriptions','bitmap-districts-standard-v1','bitmap-parcels-standard-v1'];
 const state=()=>({definitions:ids.map(id=>({id,locked:false})),providers:[{id:'headers',queryable:true},{id:'inscriptions',provider:'gateway_known_id',queryable:true}],instances:[],timeline:{tip_known:true,tracks:[]},run:{prepared:{consumers:ids.map(index=>({index,armed:true}))}}});
 const row=(value,id)=>features.project(value).find(row=>row.id===id);
 let s=state();assert.equal(row(s,'sat-math').state,'ready');assert.equal(row(s,'block-browsing').state,'needs-source');assert.equal(row(s,'transaction-id').state,'needs-index');assert.equal(row(s,'address-current').state,'needs-index');assert.equal(row(s,'bitmap-chains').state,'unavailable');assert.equal(row(s,'sat-tracing').state,'unavailable');
 assert(!features.project(s).some(r=>r.state==='snapshot'||r.state==='scoped'),'Armed flags alone never establish usable coverage');
+s.providers.push({id:'bitmap-districts-canonical-v2',queryable:true,coverage:[{from:792435,to:792436}]});assert.equal(row(s,'bitmap-district').state,'needs-index','Saved earlier-generation outcomes are not silently relabelled as Standard V1');s.providers.push({id:'bitmap-districts-standard-v1',queryable:true,coverage:[{from:792435,to:792436}]});assert.equal(row(s,'bitmap-district').state,'scoped');s=state();
 s.providers.push({id:'blocks',provider:'gateway_cache',queryable:false,on_demand:true});
 for(const id of ['block-browsing','known-transaction','output-address','inscription-content'])assert.equal(row(s,id).state,'on-demand',id);
 assert.equal(row(s,'transaction-id').state,'needs-index','Bitcoin peers are not arbitrary transaction-ID location services');

@@ -10,7 +10,7 @@ const executablePath=[process.env.GATEWAY_TEST_BROWSER,pw.chromium.executablePat
 async function get(route){const response=await fetch(endpoint+route,{signal:AbortSignal.timeout(15000)});assert.equal(response.status,200,route);return response.json();}
 async function main(){
  const before=await get('/api/v1/index/status'),mapping=await get('/api/v1/bitmap/view?kind=district&district='+district);
- assert.equal(mapping.state,'selected','A saved selected canonical mapping is required');assert.equal(mapping.instance,'bitmap-districts-canonical-v2');
+ assert.equal(mapping.state,'selected','A saved selected canonical mapping is required');assert.equal(mapping.instance,'bitmap-districts-standard-v1');
  const blocator=mapping.result?.winner_blocator;assert.match(blocator,/^[0-9]+i[0-9]+\.[0-9]+$/);assert.equal(mapping.result.winner.blocator,blocator);
  fs.writeFileSync(path.join(args.out,'mapping.json'),JSON.stringify(mapping,null,2)+'\n');
  const browser=await pw.chromium.launch({headless:true,executablePath}),errors=[],requests=[],responses=[],contentResponses=[],result={endpoint,mocked_routes:false,district,blocator,reveal_height:mapping.result.winner.reveal_height};let page;

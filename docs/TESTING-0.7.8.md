@@ -25,6 +25,15 @@ The separate performance preview includes its approved scope and validation in
 Home's feature checklist describes available sources and saved evidence; its
 indicators are distinct from the optional tracks' Arm and Live-follow switches.
 
+The later design preview is documented in `APPROVED-DESIGN-BRIEF-0.7.8.md` and
+`VERIFICATION-DESIGN-0.7.8.md`. It keeps parent groups while giving every compact
+child its own labelled lane and independent expansion. Its active indexes are
+**Bitmap Districts Standard V1** (`bitmap-districts-standard-v1`) and **Bitmap
+Parcels Standard V1** (`bitmap-parcels-standard-v1`). These are fresh identities;
+older canonical stores remain separately readable and cannot resume execution.
+The Bitmap parent target band shows known claim targets; the children still
+show reveal-block indexing progress. Unmarked targets remain unknown.
+
 The fixed canonical District and Parcel tracks both start at **792435** and are
 siblings. Review a bounded range, arm the chosen normal tracks, then Start.
 Bitmap arming offers the existing Transaction Locators track as a companion.

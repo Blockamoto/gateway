@@ -204,7 +204,7 @@ func indexDefinitions() []indexDefinition {
 			d.LockReason = releaseLockReason(d.ID)
 		}
 	}
-	for _, id := range []string{bitmapCanonicalDistrictID, bitmapCanonicalParcelID, bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1"} {
+	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID, bitmapCanonicalV2DistrictID, bitmapCanonicalV2ParcelID, bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1"} {
 		if d, ok := bitmapFixedIndexDefinition(id); ok {
 			defs = append(defs, d)
 		}
@@ -229,6 +229,11 @@ func bitmapFixedIndexDefinition(id string) (indexDefinition, bool) {
 		SourceURL: i.Profile.ReferenceURL, SourceRevision: i.Profile.ReferenceRevision,
 		Metadata: i.Profile, CanonicalEncoding: i.Profile.FingerprintSchema,
 		Theory: "Fixed canonical Bitmap " + i.Kind + " rules. Source, implemented rules and authenticated implementation identity are available read-only. Ownership is separate."}
+	if i.Legacy {
+		d.Theory = "Preserved earlier Bitmap generation under its original authenticated identity. Saved evidence is available for inspection; this generation cannot execute or be resumed as Standard V1."
+	} else {
+		d.Theory = i.Label + " follows the pinned published rules from block 792435. Its own authenticated checkpoint identity is required; ownership is separate."
+	}
 	if i.Kind == "parcel" {
 		d.Dependencies = []string{i.DistrictInstance, "blocks"}
 	}

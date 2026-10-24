@@ -188,18 +188,18 @@ func readBitmapDevelopmentCommit(ctx context.Context, root, id, commit string) (
 	if h.Schema != 1 || h.Index != id || h.Height < h.SegmentStart || (!bitmapCanonicalChainID(id) && h.SegmentStart != instance.StartHeight) || h.Commitment != commit || bitmapDevelopmentDigest(h) != commit || h.ProfileHash != bitmapProfileHash(h.Profile) || h.ProfileHash != instance.ProfileHash || !validHash(h.BlockHash) || h.LastBlock.Height != h.Height || h.LastBlock.BlockHash != h.BlockHash || !h.LastBlock.BlockEvaluated || !h.LastBlock.CompleteScope || h.DistrictInstance != "" && h.DistrictInstance != instance.DistrictInstance {
 		return nil, fmt.Errorf("Bitmap checkpoint authentication/profile mismatch; explicit reviewed recovery required")
 	}
-	if instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+	if bitmapBlocatorProfileSchema(instance.Profile.FingerprintSchema) {
 		if h.LastBlock.WinnerBlocators == nil || len(h.LastBlock.OrderedWinnerIDs) != 0 {
-			return nil, fmt.Errorf("Bitmap v2 outcome reference generation mismatch; explicit rebuild required")
+			return nil, fmt.Errorf("Bitmap blocator outcome reference generation mismatch; explicit rebuild required")
 		}
 		for _, value := range h.LastBlock.WinnerBlocators {
 			c, ok := parseBODCoordinate(value)
 			if !ok || !bitmapValidInscriptionBlocator(value) || c.Height != h.Height {
-				return nil, fmt.Errorf("Bitmap v2 outcome blocator is invalid")
+				return nil, fmt.Errorf("Bitmap outcome blocator is invalid")
 			}
 		}
 	}
-	if !instance.Legacy && instance.Kind != "district" && h.DistrictInstance != instance.DistrictInstance {
+	if (!instance.Legacy || bitmapBlocatorProfileSchema(instance.Profile.FingerprintSchema)) && instance.Kind != "district" && h.DistrictInstance != instance.DistrictInstance {
 		return nil, fmt.Errorf("Bitmap checkpoint lost its exact District instance binding")
 	}
 	if h.DistrictReceiptRef != "" {
@@ -544,7 +544,7 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 	}
 	winners, candidates, targets, blocks := tree(h.WinnerRoot), tree(h.CandidateRoot), tree(h.TargetRoot), tree(h.BlockRoot)
 	row := bitmapDevelopmentBlock{Height: block.Height, BlockHash: block.Hash, BlockEvaluated: true, OrderedWinnerIDs: []string{}, CompleteScope: true, PreviousCommitment: h.Previous}
-	if s.instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+	if bitmapBlocatorProfileSchema(s.instance.Profile.FingerprintSchema) {
 		row.WinnerBlocators = []string{}
 	}
 	if bitmapConsumerKind(s.id) != "district" {
@@ -648,14 +648,14 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 			continue
 		}
 		c := bitmapDevelopmentCandidate{ID: o.ID, Kind: bitmapConsumerKind(s.id), RevealCoordinate: inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height), RevealHeight: block.Height, RevealHash: block.Hash, TxIndex: o.TxIndex, InscriptionIndex: o.Index, ContentHash: o.ContentSHA256, Eligibility: "ineligible", Selection: "not-selected", Reason: reason, Parents: append([]string(nil), o.Envelope.Parents...), Ownership: "unknown"}
-		if s.instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+		if bitmapBlocatorProfileSchema(s.instance.Profile.FingerprintSchema) {
 			c.Blocator = c.RevealCoordinate
 			c.DeclaredParentCount = len(c.Parents)
 		}
 		if len(text) <= 128 {
 			c.Content = text
 		}
-		if bitmapNamedSchema(s.instance.Profile.FingerprintSchema) || s.instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema || s.instance.Profile.FingerprintSchema == bitmapCanonicalV1ProfileSchema {
+		if bitmapNamedSchema(s.instance.Profile.FingerprintSchema) || bitmapBlocatorProfileSchema(s.instance.Profile.FingerprintSchema) || s.instance.Profile.FingerprintSchema == bitmapCanonicalV1ProfileSchema {
 			c.DecodeState = "pass"
 			if reason == "unresolved_charset" {
 				c.DecodeState = "unknown"
@@ -830,7 +830,7 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 		} else {
 			c.Selection = "selected"
 			c.Reason = "first_eligible_under_development_profile"
-			if s.instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema || s.instance.Profile.FingerprintSchema == bitmapCanonicalV1ProfileSchema {
+			if bitmapBlocatorProfileSchema(s.instance.Profile.FingerprintSchema) || s.instance.Profile.FingerprintSchema == bitmapCanonicalV1ProfileSchema {
 				c.Reason = "first_qualifying_canonical_reveal"
 			}
 			c.RuleResults = bitmapRuleAudits(s.instance.Profile, c)

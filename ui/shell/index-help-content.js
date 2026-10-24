@@ -117,14 +117,14 @@
         'Each processed block has its own coverage. Reveal position and content do not by themselves establish an inscription’s canonical number, current owner or present location.'
       ]
     },
-    'bitmap-districts-canonical-v2': {
+    'bitmap-districts-standard-v1': {
       title: 'Bitmap Districts',
       paragraphs: [
         'Keeps the selected District claim for each numbered Bitcoin block under the Bitmap rules shown in Rules. Use it to find the inscription selected for a block and inspect its reveal location.',
         'The claim result and its saved history are distinct from current inscription ownership. The exact Rules view governs claim selection; this help adds no eligibility conditions.'
       ]
     },
-    'bitmap-parcels-canonical-v2': {
+    'bitmap-parcels-standard-v1': {
       title: 'Bitmap Parcels',
       paragraphs: [
         'Keeps selected Parcel claim results under the Bitmap rules shown in Rules. Use it to inspect a parcel claim, its District and the referenced Bitcoin transaction position.',
@@ -193,11 +193,11 @@
     },
     'address-history': {paragraphs: [sourceParagraph, 'Historical Outputs can scan separate blocks without UTXO, Current Addresses, Positional links or global Sats. It reads supported destinations directly from output scripts.'], dependencies: bodyInputs},
     inscriptions: {paragraphs: [sourceParagraph, 'Reading reveals does not require a Transaction Locator, UTXO, global Sats or a Bitmap index. Numbering or present ownership uses separate evidence and is not established by a reveal scan.'], dependencies: bodyInputs},
-    'bitmap-districts-canonical-v2': {
+    'bitmap-districts-standard-v1': {
       paragraphs: [sourceParagraph, 'Fresh District processing starts at block 792435 and continues in order, or resumes its own checked saved result. Shared inscription reading does not require a separately retained Inscriptions index.'],
       dependencies: [{name: 'Earlier District results', requirement: 'hard', why: 'Consecutive evaluation from Bitmap’s starting block establishes the history used by later claim selections.'}, ...bodyInputs]
     },
-    'bitmap-parcels-canonical-v2': {
+    'bitmap-parcels-standard-v1': {
       paragraphs: [sourceParagraph, 'Parcel processing continues in order from block 792435, or resumes its own checked saved result. No prerequisite build starts automatically. A separately retained Inscriptions index is optional.', 'Merely turning Sats On does not establish the required historical state. If the exact earlier evidence is unavailable, or the parent moves within the same reveal block, the affected check remains unresolved.'],
       dependencies: [
         {name: 'Matching Bitmap District results', requirement: 'hard', otherTrack:true, why: 'Uses completed District results for the same Bitcoin block and the same declared rule set.'},
@@ -211,7 +211,7 @@
   };
 
   const aliases = {'group:transactions': 'group:txio', 'txo-spender': 'txio-links', 'sat-state': 'txio-sat-ranges'};
-  const temporarySources = new Set(['group:txio', 'tx-locator', 'txio-links', 'txio-values', 'txio-scripts', 'utxo-state', 'txio-sat-ranges', 'address-history', 'inscriptions', 'bitmap-districts-canonical-v2']);
+  const temporarySources = new Set(['group:txio', 'tx-locator', 'txio-links', 'txio-values', 'txio-scripts', 'utxo-state', 'txio-sat-ranges', 'address-history', 'inscriptions', 'bitmap-districts-standard-v1']);
   const ownContext = {
     'group:blocks': ['Headers are managed chain information. Raw can save complete blocks from an available local or remote source; it does not start derived indexing.'],
     headers: ['Gateway manages this checked header chain. Retaining full block bodies is a separate choice.'],
@@ -220,7 +220,7 @@
     'txio-links': ['An unknown creation position remains unresolved. The optional Transaction Locator can help when only a transaction ID is known; a known block-and-position address can be opened directly.'],
     'utxo-state': ['UTXO processes every block in order from the first Bitcoin block, or resumes its own checked saved state. An isolated later block cannot establish the complete unspent set.'],
     'txio-sat-ranges': ['Sats processes every block in order from the first Bitcoin block, or resumes its own checked saved state. This is separate from UTXO and Positional links.', 'Historical output ranges are saved only when their retention option is explicitly enabled. Turning it on later does not recreate older range history.'],
-    'bitmap-districts-canonical-v2': ['District processing starts at block 792435 and continues in order, or resumes its own checked saved result. Its shared inscription reading is separate from retaining the Inscriptions track.']
+    'bitmap-districts-standard-v1': ['District processing starts at block 792435 and continues in order, or resumes its own checked saved result. Its shared inscription reading is separate from retaining the Inscriptions track.']
   };
   const legacy = new Set(['bitmap', 'bitmap-districts', 'bitmap-parcels', 'bitmap-districts-canonical', 'bitmap-parcels-canonical', 'bitmap-compatibility']);
   function key(id) { return typeof id === 'string' ? id.trim() : ''; }

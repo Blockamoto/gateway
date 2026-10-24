@@ -70,8 +70,8 @@ func bitmapSnapshot(h *bitmapDevelopmentHead) *bitmapDevelopmentSnapshot {
 		return nil
 	}
 	verification := "saved_previous_bitmap_generation; header_anchored; full_consensus_deferred"
-	if h.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
-		verification = "locally_evaluated_canonical_bitmap_rules; header_anchored; full_consensus_deferred"
+	if h.Profile.FingerprintSchema == bitmapStandardProfileSchema {
+		verification = "locally_evaluated_bitmap_standard_v1; header_anchored; full_consensus_deferred"
 	} else if bitmapCanonicalChainID(h.Index) {
 		verification = "saved_chain_evidence; methodology_deferred; header_anchored; full_consensus_deferred"
 	}
@@ -118,7 +118,7 @@ func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, dis
 func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedProfile, snapshot string, district, transaction, height *uint64, cursor string, limit int, records bool) (bitmapDevelopmentView, error) {
 	out := bitmapNewView(kind)
 	if id == "" {
-		id = map[string]string{"district": bitmapCanonicalDistrictID, "parcel": bitmapCanonicalParcelID, "chain": "bitmap-district-chain-dev-v1"}[kind]
+		id = map[string]string{"district": bitmapStandardDistrictID, "parcel": bitmapStandardParcelID, "chain": "bitmap-district-chain-dev-v1"}[kind]
 	}
 	if kind != "district" && kind != "parcel" && kind != "chain" {
 		return out, fmt.Errorf("Bitmap kind must be district, parcel or chain")
@@ -256,7 +256,7 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 		}
 		out.State = "unclaimed_at_snapshot"
 		out.Result = map[string]any{"district": district, "transaction": transaction, "winner_id": nil, "ownership": "unknown"}
-		if instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+		if bitmapBlocatorProfileSchema(instance.Profile.FingerprintSchema) {
 			out.Result = map[string]any{"district": district, "transaction": transaction, "winner_blocator": nil, "ownership": "unknown"}
 		}
 		if have {
@@ -388,6 +388,7 @@ func bitmapQueryNumber(r *http.Request, key string) (*uint64, error) {
 }
 func (a *app) registerBitmapDevelopmentRoutes(mux *http.ServeMux) {
 	a.registerBitmapProfileRoutes(mux)
+	mux.HandleFunc("/api/v1/bitmap/target-coverage", a.handleBitmapTargetCoverage)
 	for _, path := range []string{"/api/v1/bitmap/view", "/api/v1/bitmap/records"} {
 		mux.HandleFunc(path, a.handleBitmapDevelopmentView)
 	}
@@ -477,7 +478,7 @@ func (a *app) bitmapDevelopmentInstancesContext(ctx context.Context) ([]indexIns
 			retention = view.Mode
 		}
 		completeness, provenance, note := "saved_previous_generation_evaluation", "locally_evaluated_saved_generation", instance.Note
-		if instance.Profile.FingerprintSchema == bitmapCanonicalProfileSchema {
+		if instance.Profile.FingerprintSchema == bitmapStandardProfileSchema {
 			completeness = "complete_consecutive_bitmap_evaluation"
 			provenance = "locally_evaluated_pinned_bitmap_rules"
 			note = "Fixed published Bitmap rules at the committed Bitcoin snapshot. Missing evidence never advances complete coverage. Parent receipts record local evaluation; replay requires retained context."

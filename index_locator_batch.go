@@ -92,7 +92,7 @@ func (s *indexStore) BeginLocatorBatch(ctx context.Context) error {
 		return err
 	}
 	if s.definition.ID != "tx-locator" {
-		return fmt.Errorf("physical locator batching belongs to the Transaction Locator executor")
+		return fmt.Errorf("physical locator batching belongs to the TX ID Locators executor")
 	}
 	if s.locatorBatch != nil {
 		return nil

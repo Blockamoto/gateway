@@ -60,16 +60,16 @@
       ]
     },
     'tx-locator': {
-      title: 'Transaction Locator',
+      title: 'TX ID Locators',
       paragraphs: [
         'Remembers the block and transaction position for each transaction ID it has processed. Use it to find a transaction quickly when you have its long Bitcoin transaction ID.',
         'This is a location lookup, not a second copy of every transaction. It does not establish amounts, spending status or a balance. A known block-and-position address, called a blocator, already tells Gateway where to look.'
       ]
     },
     'txio-links': {
-      title: 'Positional links',
+      title: 'IO Links',
       paragraphs: [
-        'Keeps known links from a transaction input to the earlier output it spends, and from an output to a spending input. Use these links to follow money through transactions.',
+        'IO means input and output. This track keeps known links from a transaction input to the earlier output it spends, and from an output to a spending input. Use these links to follow money through transactions.',
         'A missing link means the spend is not established by the available data. It does not prove an output is unspent. Amounts and payment conditions have their own tracks and can be saved separately.'
       ]
     },
@@ -77,14 +77,14 @@
       title: 'Values',
       paragraphs: [
         'Keeps the exact amount created in each saved transaction output, measured in sats. Use it to inspect an output’s amount after the complete source block is no longer saved.',
-        'Values records known amounts. It does not tell you whether an output has been spent, and it does not establish a current balance. Its switch and saved coverage are separate from Positional links and ScriptPubKeys.'
+        'Values records known amounts. It does not tell you whether an output has been spent, and it does not establish a current balance. Its switch and saved coverage are separate from IO Links and ScriptPubKeys.'
       ]
     },
     'txio-scripts': {
       title: 'ScriptPubKeys',
       paragraphs: [
         'Keeps each output’s exact payment conditions, called its scriptPubKey. Use it to inspect how an output can be spent or to display its address when those conditions have a supported address form.',
-        'Some outputs do not have a standard address. Saving their exact conditions still preserves useful evidence. This track does not establish whether an output is unspent; its switch and coverage are separate from Values and Positional links.'
+        'Some outputs do not have a standard address. Saving their exact conditions still preserves useful evidence. This track does not establish whether an output is unspent; its switch and coverage are separate from Values and IO Links.'
       ]
     },
     'utxo-state': {
@@ -160,7 +160,7 @@
     {name: 'A complete verified Bitcoin block', requirement: 'input', why: 'Supplies the transaction data to read. It can come from an available local or remote block source.'},
     {name: 'The selected Bitcoin chain', requirement: 'input', why: 'Gateway manages the checked headers used to identify the expected block. This is managed chain information, not an extra index you must start.'}
   ];
-  const locatorOptional = {name: 'Transaction Locator', requirement: 'optional', why: 'Helps find a transaction when only its Bitcoin transaction ID is known. A known block-and-position address can be read directly.'};
+  const locatorOptional = {name: 'TX ID Locators', requirement: 'optional', why: 'Helps find a transaction when only its Bitcoin transaction ID is known. A known block-and-position address can be read directly.'};
   const dependencyCards = {
     'group:blocks': {
       paragraphs: ['Headers are managed chain information. Raw uses an available complete block source to retain a verified body. Neither track automatically builds the derived tracks.'],
@@ -187,24 +187,24 @@
       dependencies: [{name: 'Bitcoin header source', requirement: 'input', why: 'Provides the headers Gateway checks to establish its selected chain.'}]
     },
     blocks: {paragraphs: [sourceParagraph], dependencies: bodyInputs},
-    'tx-locator': {paragraphs: [sourceParagraph, 'No Positional links, Values, ScriptPubKeys, UTXO or Sats index is needed to save these transaction positions.'], dependencies: bodyInputs},
-    'txio-links': {paragraphs: [sourceParagraph, 'Links can be saved independently. If the creation position of a spent output is still unknown, that part of the relationship stays unresolved.'], dependencies: [...bodyInputs, locatorOptional]},
-    'txio-values': {paragraphs: [sourceParagraph, 'Values can be retained without enabling Positional links, ScriptPubKeys, UTXO or an Addresses index.'], dependencies: bodyInputs},
-    'txio-scripts': {paragraphs: [sourceParagraph, 'ScriptPubKeys can be retained without enabling Positional links, Values, UTXO or an Addresses index. A supported address is derived from the script itself.'], dependencies: bodyInputs},
+    'tx-locator': {paragraphs: [sourceParagraph, 'No IO Links, Values, ScriptPubKeys, UTXO or Sats index is needed to save these transaction positions.'], dependencies: bodyInputs},
+    'txio-links': {paragraphs: [sourceParagraph, 'IO Links can be saved independently. If the creation position of a spent output is still unknown, that part of the relationship stays unresolved.'], dependencies: [...bodyInputs, locatorOptional]},
+    'txio-values': {paragraphs: [sourceParagraph, 'Values can be retained without enabling IO Links, ScriptPubKeys, UTXO or an Addresses index.'], dependencies: bodyInputs},
+    'txio-scripts': {paragraphs: [sourceParagraph, 'ScriptPubKeys can be retained without enabling IO Links, Values, UTXO or an Addresses index. A supported address is derived from the script itself.'], dependencies: bodyInputs},
     'utxo-state': {
-      paragraphs: [sourceParagraph, 'UTXO processes every block in order from the first Bitcoin block, or resumes its own checked saved state. A later block alone cannot establish the complete set. It does not require the Transaction Locator, Positional links or Sats indexes.'],
+      paragraphs: [sourceParagraph, 'UTXO processes every block in order from the first Bitcoin block, or resumes its own checked saved state. A later block alone cannot establish the complete set. It does not require TX ID Locators, IO Links or Sats indexes.'],
       dependencies: [{name: 'UTXO’s complete earlier state', requirement: 'hard', why: 'Each block removes spent outputs and adds new ones to the complete set. Missing earlier blocks cannot be skipped.'}, ...bodyInputs]
     },
     'txio-sat-ranges': {
-      paragraphs: [sourceParagraph, 'Sats processes every block in order from the first Bitcoin block, or resumes its own checked saved state. It does not require UTXO, Positional links or the Transaction Locator.', 'Historical output ranges are saved only when their retention option is explicitly enabled. Turning it on later does not recreate older range history.'],
+      paragraphs: [sourceParagraph, 'Sats processes every block in order from the first Bitcoin block, or resumes its own checked saved state. It does not require UTXO, IO Links or TX ID Locators.', 'Historical output ranges are saved only when their retention option is explicitly enabled. Turning it on later does not recreate older range history.'],
       dependencies: [{name: 'Sats’ complete earlier state', requirement: 'hard', why: 'Earlier output identities establish which sats enter each new transaction. Missing earlier context cannot be replaced by an isolated later block.'}, {name: 'Keep historical output ranges', requirement: 'hard', why: 'This explicit retention choice is needed to retain output range history in addition to the current Sats state.'}, ...bodyInputs]
     },
     'address-state': {
-      paragraphs: ['Current Addresses reads one complete UTXO snapshot for the same selected Bitcoin block. A stale or differently anchored address result cannot supply a current balance.', 'Enabling Current Addresses does not start a UTXO build. Historical Outputs, the Transaction Locator and global Sats are not prerequisites.'],
+      paragraphs: ['Current Addresses reads one complete UTXO snapshot for the same selected Bitcoin block. A stale or differently anchored address result cannot supply a current balance.', 'Enabling Current Addresses does not start a UTXO build. Historical Outputs, TX ID Locators and global Sats are not prerequisites.'],
       dependencies: [{name: 'A complete matching UTXO snapshot', requirement: 'hard', otherTrack:true, why: 'Provides the exact outputs still unspent at the block used by the address result.'}]
     },
-    'address-history': {paragraphs: [sourceParagraph, 'Historical Outputs can scan separate blocks without UTXO, Current Addresses, Positional links or global Sats. It reads supported destinations directly from output scripts.'], dependencies: bodyInputs},
-    inscriptions: {paragraphs: [sourceParagraph, 'Reading reveals does not require a Transaction Locator, UTXO, global Sats or a Bitmap index. Numbering or present ownership uses separate evidence and is not established by a reveal scan.'], dependencies: bodyInputs},
+    'address-history': {paragraphs: [sourceParagraph, 'Historical Outputs can scan separate blocks without UTXO, Current Addresses, IO Links or global Sats. It reads supported destinations directly from output scripts.'], dependencies: bodyInputs},
+    inscriptions: {paragraphs: [sourceParagraph, 'Reading reveals does not require TX ID Locators, UTXO, global Sats or a Bitmap index. Numbering or present ownership uses separate evidence and is not established by a reveal scan.'], dependencies: bodyInputs},
     'bitmap-districts-standard-v1': {
       paragraphs: [sourceParagraph, 'Fresh District processing starts at block 792435 and continues in order, or resumes its own checked saved result. Shared inscription reading does not require a separately retained Inscriptions index.'],
       dependencies: [{name: 'Earlier District results', requirement: 'hard', why: 'Consecutive evaluation from Bitmap’s starting block establishes the history used by later claim selections.'}, ...bodyInputs]
@@ -228,11 +228,11 @@
     'group:blocks': ['Headers are managed chain information. Raw can save complete blocks from an available local or remote source; it does not start derived indexing.'],
     headers: ['Gateway manages this checked header chain. Retaining full block bodies is a separate choice.'],
     blocks: ['With Raw Off, Gateway can still read verified blocks temporarily for other tracks. Raw coverage counts only the complete bodies actually retained here.'],
-    'group:txio': ['UTXO maintains its own checked state by processing blocks in order from the first Bitcoin block. Transaction locators, links, values and scripts keep their own independent facts.'],
+    'group:txio': ['UTXO maintains its own checked state by processing blocks in order from the first Bitcoin block. TX ID Locators, IO Links, Values and ScriptPubKeys keep their own independent facts.'],
     'group:ordinals': ['Sat Ranges and Inscriptions keep their existing consumers and stores. Opening this group starts no work and changes no scan, retention or history choice.'],
-    'txio-links': ['An unknown creation position remains unresolved. The optional Transaction Locator can help when only a transaction ID is known; a known block-and-position address can be opened directly.'],
+    'txio-links': ['An unknown creation position remains unresolved. The optional TX ID Locators track can help when only a transaction ID is known; a known block-and-position address can be opened directly.'],
     'utxo-state': ['UTXO processes every block in order from the first Bitcoin block, or resumes its own checked saved state. An isolated later block cannot establish the complete unspent set.'],
-    'txio-sat-ranges': ['Sats processes every block in order from the first Bitcoin block, or resumes its own checked saved state. This is separate from UTXO and Positional links.', 'Historical output ranges are saved only when their retention option is explicitly enabled. Turning it on later does not recreate older range history.'],
+    'txio-sat-ranges': ['Sats processes every block in order from the first Bitcoin block, or resumes its own checked saved state. This is separate from UTXO and IO Links.', 'Historical output ranges are saved only when their retention option is explicitly enabled. Turning it on later does not recreate older range history.'],
     'bitmap-districts-standard-v1': ['District processing starts at block 792435 and continues in order, or resumes its own checked saved result. Its shared inscription reading is separate from retaining the Inscriptions track.']
   };
   const legacy = new Set(['bitmap', 'bitmap-districts', 'bitmap-parcels', 'bitmap-districts-canonical', 'bitmap-parcels-canonical', 'bitmap-compatibility']);

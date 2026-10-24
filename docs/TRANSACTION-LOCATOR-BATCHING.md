@@ -1,6 +1,6 @@
-# Transaction Locator physical batching
+# TX ID Locators physical batching
 
-The full Transaction Locator coordinator can stage its normal per-block records in genesis-aligned logical windows of 336 blocks. Every Bitcoin transaction is retained, including transaction zero and coinbase transactions. The source block, transaction order, existing profile/rule identity, checkpoint calculation, immutable commit JSON, and previous-commit chain remain unchanged.
+The full TX ID Locators coordinator can stage its normal per-block records in genesis-aligned logical windows of 336 blocks. Every Bitcoin transaction is retained, including transaction zero and coinbase transactions. The source block, transaction order, existing profile/rule identity, checkpoint calculation, immutable commit JSON, and previous-commit chain remain unchanged.
 
 Physical staging has separate limits: 32 MiB of serialized commit JSON or 400,000 encoded locator records. Crossing a limit flushes the existing stage before admitting the next block. A single verified block may exceed a soft limit, but its serialized commit must fit the existing 64 MiB hard limit. Record payloads use flat buffers grouped by four hexadecimal digits. These are payload limits, not an RSS limit; Go maps and buffer capacity add overhead. Staging does not retain decoded blocks. Publication guards use independent, cancellable contexts containing only admission and source-anchor metadata.
 

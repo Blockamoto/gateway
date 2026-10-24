@@ -43,7 +43,7 @@ Indexes:
   gateway-client index live <index-id> <enable|pause|resume|disable> [--retention ephemeral|cache|retain]
   gateway-client index pause              Pause after the current source request
 
-Headers, Bitcoin Blocks, Inscriptions, Transaction Locator, TXIO, UTXO set and
+Headers, Bitcoin Blocks, Inscriptions, TX ID Locators, IO Links, UTXO set and
 Addresses are available in this development source. Current addresses builds
 from saved UTXO state; historical addresses use explicit sparse ranges.
 Satline, Bitmap analysis and Gateway peer sharing remain locked.

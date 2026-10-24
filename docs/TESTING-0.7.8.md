@@ -52,7 +52,7 @@ with a reserved blank disclosure slot and no expander.
 
 The fixed canonical District and Parcel tracks both start at **792435** and are
 siblings. Review a bounded range, arm the chosen normal tracks, then Start.
-Bitmap arming offers the existing Transaction Locators track as a companion.
+Bitmap arming offers the existing TX ID Locators track as a companion.
 Legacy/custom Bitmap profiles remain inspectable but cannot execute. Old
 checkpoints are not migrated into the new canonical identities. Both chains are
 disabled, including direct API and restored execution. Saved evidence is retained.
@@ -60,7 +60,7 @@ disabled, including direct API and restored execution. Saved evidence is retaine
 Already-armed capable tracks can retain facts from a complete verified block
 obtained by ordinary browsing. Sparse facts do not imply complete history or
 negative knowledge. Stateful tracks advance only on the exact next block.
-Values and Scripts can be selected independently of TXIO links. Sat historical
+Values and Scripts can be selected independently of IO Links. Sat historical
 ranges require their explicit existing retention option. Capability details are
 in `SPARSE-INDEXING-0.7.8.md`.
 

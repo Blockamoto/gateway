@@ -42,7 +42,7 @@ for (const id of ids.filter(id=>!externalCards.includes(id))) {
 assert.equal(by('address-state','A complete matching UTXO snapshot').otherTrack,true);
 assert.equal(by('bitmap-parcels-standard-v1','Matching Bitmap District results').otherTrack,true);
 assert.equal(by('bitmap-parcels-standard-v1','Retained Sat evidence before the reveal').otherTrack,true);
-assert.equal(by('txio-links','Transaction Locator').otherTrack,undefined,'Optional locator help is not a dependency badge');
+assert.equal(by('txio-links','TX ID Locators').otherTrack,undefined,'Optional locator help is not a dependency badge');
 assert.match(text(help.get('utxo-state')),/every block in order from the first Bitcoin block/,'Own state continuity remains discoverable in general help');
 assert.match(text(help.get('txio-sat-ranges')),/retention option is explicitly enabled/,'Own historical retention remains discoverable in general help');
 for(const id of ['tx-locator','txio-links','txio-values','txio-scripts','utxo-state','txio-sat-ranges','address-history','inscriptions']) assert.match(text(help.get(id)),/temporarily with Raw Off/,id+' source context remains available without a badge');
@@ -66,10 +66,10 @@ for (const id of sparse) {
   assert(!rows(id).some(row => row.requirement === 'hard'), id + ' has no invented retained-index prerequisite');
   assert(rows(id).some(row => row.requirement === 'input' && /complete verified Bitcoin block/.test(row.name)));
 }
-assert.equal(by('txio-links', 'Transaction Locator').requirement, 'optional');
-assert.match(by('txio-links', 'Transaction Locator').why, /known block-and-position address can be read directly/);
+assert.equal(by('txio-links', 'TX ID Locators').requirement, 'optional');
+assert.match(by('txio-links', 'TX ID Locators').why, /known block-and-position address can be read directly/);
 for (const id of ['txio-values', 'txio-scripts']) {
-  assert.match(text(help.dependencies(id)), /without enabling Positional links/);
+  assert.match(text(help.dependencies(id)), /without enabling IO Links/);
   assert.match(text(help.get(id)), /does not (?:tell you whether an output has been spent|establish whether an output is unspent)/);
 }
 assert.match(text(help.dependencies('txio-scripts')), /address is derived from the script itself/);
@@ -80,7 +80,7 @@ assert.equal(rows('address-state').filter(row => row.requirement === 'hard').len
 assert.match(text(help.dependencies('address-state')), /does not start a UTXO build/);
 for (const id of ['utxo-state', 'txio-sat-ranges']) {
   assert.match(text(help.dependencies(id)), /every block in order from the first Bitcoin block/);
-  assert(!rows(id).some(row => /Transaction Locator|Positional links/.test(row.name) && row.requirement === 'hard'));
+  assert(!rows(id).some(row => /TX ID Locators|IO Links/.test(row.name) && row.requirement === 'hard'));
 }
 assert(!rows('txio-sat-ranges').some(row => /UTXO/.test(row.name)));
 assert.equal(by('txio-sat-ranges', 'Keep historical output ranges').requirement, 'hard');

@@ -92,7 +92,7 @@ type relationshipReadiness struct {
 
 func (a *app) relationshipParentLocation(ctx context.Context, id string, before int64) (txLocation, string, bool) {
 	if loc, ok, err := a.committedTransactionLocation(ctx, id, "", false); err == nil && ok && loc.Height < before && loc.TxIndex >= 0 {
-		return loc, "saved Transaction Locators", true
+		return loc, "saved TX ID Locators", true
 	}
 	a.cacheMu.RLock()
 	loc, ok := a.cacheIndex.Tx[id]
@@ -132,7 +132,7 @@ func (a *app) relationshipReadinessFor(ctx context.Context, p relationshipTxProo
 
 func (a *app) relationshipReadinessPage(ctx context.Context, p relationshipTxProof, from int) relationshipReadiness {
 	ctx = context.WithValue(ctx, indexLocatorReadOnlyKey{}, true)
-	out := relationshipReadiness{Inputs: []relationshipAction{}, Outputs: []relationshipAction{}, SourcesChecked: []string{"saved TXIO relationships", "saved Transaction Locators and local locations"}, Note: "Bitcoin peers can fetch a known block; this check does not request historical locator hints from Gateway peers. Missing spend evidence does not prove unspentness."}
+	out := relationshipReadiness{Inputs: []relationshipAction{}, Outputs: []relationshipAction{}, SourcesChecked: []string{"saved IO Links", "saved TX ID Locators and local locations"}, Note: "Bitcoin peers can fetch a known block; this check does not request historical locator hints from Gateway peers. Missing spend evidence does not prove unspentness."}
 	parentCache := map[string]txLocation{}
 	parentSources := map[string]string{}
 	a.settingsMu.RLock()
@@ -151,7 +151,7 @@ func (a *app) relationshipReadinessPage(ctx context.Context, p relationshipTxPro
 		if ordinal >= end {
 			break
 		}
-		r := relationshipAction{Index: in.N, Reason: "Needs a saved TXIO input-to-output link or a Transaction Locators entry for this input's original transaction. A configured Bitcoin Core RPC txindex can also provide its location."}
+		r := relationshipAction{Index: in.N, Reason: "Needs a saved IO Links input-to-output relationship or a TX ID Locators entry for this input's original transaction. A configured Bitcoin Core RPC txindex can also provide its location."}
 		if in.Coinbase {
 			r.Reason = "Coinbase inputs have no original output."
 			out.Inputs = append(out.Inputs, r)
@@ -194,7 +194,7 @@ func (a *app) relationshipReadinessPage(ctx context.Context, p relationshipTxPro
 		out.Inputs = append(out.Inputs, r)
 	}
 	for n := from; n < p.Outputs && n < end; n++ {
-		r := relationshipAction{Index: n, Reason: "Needs a saved TXIO spending relationship covering this exact output, or positive confirmed-spender evidence from configured Bitcoin Core RPC. Transaction Locators alone cannot establish a spender; missing data is not proof of unspentness."}
+		r := relationshipAction{Index: n, Reason: "Needs a saved IO Links spending relationship covering this exact output, or positive confirmed-spender evidence from configured Bitcoin Core RPC. TX ID Locators alone cannot establish a spender; missing data is not proof of unspentness."}
 		pos := outputCoordinate(n, p.Index, p.Height)
 		if link, err := a.lookupTXIO(ctx, "output", pos); err == nil && link.State == "known" && len(link.Rows) == 1 && link.Rows[0].CreationBlockHash == p.Hash {
 			r.Available, r.Target, r.Source = true, link.Rows[0].Input, "saved TXIO positional link"

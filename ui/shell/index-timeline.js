@@ -107,7 +107,7 @@ window.GatewayIndexTimeline = (() => {
     const ends=[...checkpoints,...coverage.map(r=>r.to)];
     return {from,to:ends.length?Math.max(...ends):null,source:origins.length?'saved index origin':coverage.length?'saved local coverage':'definition start',ranges:coverage};
   }
-  const layers=[['txio-links','Positional links'],['txio-values','Values'],['txio-scripts','ScriptPubKeys'],['txio-sat-ranges','Sat Ranges']];
+  const layers=[['txio-links','IO Links'],['txio-values','Values'],['txio-scripts','ScriptPubKeys'],['txio-sat-ranges','Sat Ranges']];
   const trackColors={headers:['#517965','#96c9ad'],blocks:['#548496','#91bdcf'],'txio-links':['#6b5ba6','#b7a5ec'],'txio-values':['#9a6728','#e2b875'],'txio-scripts':['#247c78','#7acdc7'],'txio-sat-ranges':['#98673f','#ebbc83'],'utxo-state':['#3e719f','#8dbce8'],'address-state':['#9b596d','#ed9bb6'],'address-history':['#866f30','#d8c27d']};
   const trackColor=(id,dark)=> (trackColors[id]||trackColors.blocks)[dark?1:0];
   function childDefinitions(snapshot){return layers.flatMap(([id,name])=>{const owner=(snapshot.definitions||[]).find(d=>d.id===(id==='txio-sat-ranges'?'sat-state':'txo-spender'));return owner?[{...owner,id,name,owner:owner.id,theory:id==='txio-sat-ranges'?'Ordered Sat ranges for retained outputs. Selected output ranges do not establish full block coverage.':name+' retained by TXIO. This layer reports its own verified coverage.'}]:[];});}
@@ -171,7 +171,7 @@ window.GatewayIndexTimeline = (() => {
     const bitmapParent=d=>parcelParent(d)||chainParent(d);
     const groupName=id=>({blocks:'Blocks',txio:'Transactions',addresses:'Addresses',ordinals:'Ordinals',bitmap:'Bitmap'})[id];
     const trackName=d=>({headers:'Headers',blocks:'Raw blocks','address-state':'Current UTXOs','address-history':'Historical outputs'})[d.id]||d.name;
-    const miniName=d=>({'tx-locator':'Tx locators','txio-links':'Links','txio-values':'Values','txio-scripts':'Scripts','utxo-state':'UTXO','txio-sat-ranges':'Sat Ranges','bitmap-districts-standard-v1':'Districts','bitmap-parcels-standard-v1':'Parcels','address-state':'Current','address-history':'History'})[d.id]||trackName(d);
+    const miniName=d=>({'tx-locator':'TX ID Locators','txio-links':'IO Links','txio-values':'Values','txio-scripts':'Scripts','utxo-state':'UTXO','txio-sat-ranges':'Sat Ranges','bitmap-districts-standard-v1':'Districts','bitmap-parcels-standard-v1':'Parcels','address-state':'Current','address-history':'History'})[d.id]||trackName(d);
     const definitionFor=id=>childDefinitions(snapshot).find(d=>d.id===id)||(snapshot.definitions||[]).find(d=>d.id===id);
     function select(id,nextView){skipContext=id;const d=definitionFor(id);selectIndex(d?.owner||id,nextView);if(d?.owner){selected=id;skipContext=id;selection={id,kind:'track'};render();}}
     let trackHeight=Math.max(24,Math.min(220,Number(preferences.trackZoomHeight)||24)),spaceHeld=false,spaceDragged=false,drag=null,suppressClick=false,hovering=false;

@@ -174,7 +174,8 @@ func indexDefinitions() []indexDefinition {
 			d.Theory = "Verified positional inscription coordinates. Lean retains positions and block counts; Full additionally retains reveal content. Numbering and ownership require separate explicit historical work."
 		}
 		if d.ID == "tx-locator" {
-			d.Name = "Transaction Index"
+			// Refine only the public label after hashing the frozen recipe above.
+			d.Name = "TX ID Locators"
 		}
 		if d.ID == "sat-state" {
 			// The authenticated recipe above is frozen. Display terminology can

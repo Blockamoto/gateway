@@ -39,7 +39,7 @@ func releaseLockReason(id string) string {
 	if id == "satline" {
 		return "Satline is deferred in v0.7.7; forward and reverse traces and resume are unavailable. Saved trace data is retained. Sats indexing and saved range/location lookups remain available."
 	}
-	return fmt.Sprintf("%s is locked in this testing build. Headers, Bitcoin Blocks, Inscriptions, Transaction Index, TXIO, UTXO set, Addresses and Sats are available; additional features will be enabled after separate validation. Saved data is retained.", id)
+	return fmt.Sprintf("%s is locked in this testing build. Headers, Bitcoin Blocks, Inscriptions, TX ID Locators, IO Links, UTXO set, Addresses and Sats are available; additional features will be enabled after separate validation. Saved data is retained.", id)
 }
 
 func requireReleaseFeature(id string) error {
@@ -51,7 +51,7 @@ func requireReleaseFeature(id string) error {
 
 func requireReleaseIndexRequest(req indexBuildRequest) error {
 	if req.Index == "inscriptions" && req.ConventionalIDs != nil && *req.ConventionalIDs && !releaseInscriptionLocatorsAvailable() {
-		return fmt.Errorf("Related transaction locators are locked until the Transaction Index stage. Positional inscription indexing remains available.")
+		return fmt.Errorf("Related transaction locators are locked until the TX ID Locators stage. Positional inscription indexing remains available.")
 	}
 	if req.RetainSatHistory {
 		if err := requireReleaseFeature("sat-state"); err != nil {

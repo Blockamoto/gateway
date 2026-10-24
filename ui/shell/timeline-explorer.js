@@ -342,8 +342,8 @@ window.GatewayTimelineExplorer = (() => {
     }
     function explainHashLookup(query){
       if(!/^[0-9a-f]{64}(?:\.bitcoin)?$/i.test(query))return;
-      const box=element('section',undefined,'panel timeline-hash-requirements');box.append(element('h3','Transaction hash lookup'),element('p','If this is a transaction ID, its block location must be known. Raw block storage does not create new transaction-hash lookup entries. Existing saved location evidence or a capable Bitcoin Core txindex provider may resolve it.','small'),element('p','When you know the containing block, use a transaction/block position or txid.<block-height>.bitcoin. Otherwise, the optional Transaction Locator track can build lookup coverage over an explicitly chosen range. Opening its settings does not arm or build it.','small'));
-      const inspect=element('button','Inspect Transaction Locator');inspect.type='button';inspect.onclick=()=>doc.dispatchEvent(new win.CustomEvent('gateway:timeline-inspect-index',{detail:{id:'tx-locator'}}));box.append(inspect);explorer.append(box);
+      const box=element('section',undefined,'panel timeline-hash-requirements');box.append(element('h3','Transaction hash lookup'),element('p','If this is a transaction ID, its block location must be known. Raw block storage does not create new transaction-hash lookup entries. Existing saved location evidence or a capable Bitcoin Core txindex provider may resolve it.','small'),element('p','When you know the containing block, use a transaction/block position or txid.<block-height>.bitcoin. Otherwise, the optional TX ID Locators track can build lookup coverage over an explicitly chosen range. Opening its settings does not arm or build it.','small'));
+      const inspect=element('button','Inspect TX ID Locators');inspect.type='button';inspect.onclick=()=>doc.dispatchEvent(new win.CustomEvent('gateway:timeline-inspect-index',{detail:{id:'tx-locator'}}));box.append(inspect);explorer.append(box);
     }
     async function navigate(address,{blockHint}={}) {
       const query=String(address||'').trim();if(!query||dead)return;

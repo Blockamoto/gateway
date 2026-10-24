@@ -516,7 +516,7 @@ func (a *app) indexLiveView(id string, policy indexLivePolicy) indexLiveView {
 	if view.Lag > 0 {
 		view.State = "catching_up"
 	} else if a.liveOutputHistoryNeedsWork(id, policy, authority.Height) {
-		view.State, view.Reason = "catching_up", "Positional links are caught up; selected historical output layers still need processing."
+		view.State, view.Reason = "catching_up", "IO Links are caught up; selected historical output layers still need processing."
 	} else {
 		view.State = "synced"
 	}

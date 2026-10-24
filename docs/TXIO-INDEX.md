@@ -1,6 +1,6 @@
 # Transaction Input/Output (TXIO) index
 
-The Input index finds the original output consumed by a particular input. The Output index finds the input that consumed a particular output. Both lookup directions are built automatically from one committed set of spend facts. The compatible storage and API identifier remains `txo-spender`; the workspace calls the feature **TXIO index**.
+The Input index finds the original output consumed by a particular input. The Output index finds the input that consumed a particular output. Both lookup directions are built automatically from one committed set of spend facts. The compatible storage and API identifier remains `txo-spender`; the timeline calls the relationship track **IO Links**. The optional transaction-hash lookup track is **TX ID Locators** (`tx-locator`).
 
 Positions are zero based. Input `i1.2.840000` means input one (the second input) in transaction two of block 840000. Output `0.7.839999` means output zero in transaction seven of block 839999. A supplied position needs no transaction hash lookup. Transaction zero is coinbase, whose input has no previous output.
 

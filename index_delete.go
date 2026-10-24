@@ -166,14 +166,14 @@ func (a *app) indexDeleteReviewLocked(ctx context.Context, id string) (indexDele
 	}
 	r.Scope = append(r.Scope, "Saved "+r.Name+" index records, checkpoints and owned pages")
 	if id == "txio-values" || id == "txio-scripts" {
-		r.Note = "Clear this independently owned sparse fact layer and turn its retention flag Off. Positional links and sibling layers are preserved."
+		r.Note = "Clear this independently owned sparse fact layer and turn its retention flag Off. IO Links and sibling layers are preserved."
 		r.Retained = append(r.Retained, "Legacy authenticated parent-bound TXIO history remains owned by its original parent records; mandatory UTXO/Sat/recovery facts remain independently owned.")
 	}
 	if indexBrowseAvailable(id) {
 		r.Scope = append(r.Scope, "Saved singleton browse records for this index")
 	}
 	if id == "inscriptions" {
-		r.Scope = append(r.Scope, "Related inscription transaction locators derived from these inscription records; the independent Transaction Index is preserved")
+		r.Scope = append(r.Scope, "Related inscription transaction locators derived from these inscription records; the independent TX ID Locators index is preserved")
 	}
 	if id == "blocks" {
 		r.Scope = append(r.Scope, "Raw block bodies retained by the Blocks index; independent source caches remain")

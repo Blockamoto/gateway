@@ -8,6 +8,9 @@ local review candidate; release, installation, main merge and push are excluded.
 ## Approved changes
 
 The five houses are Blocks, Transactions, Addresses, Ordinals and Bitmap.
+Transactions displays **TX ID Locators**, **IO Links**, Values, Scripts and
+UTXO. The first two are display names; their existing machine IDs, stores and
+execution choices remain unchanged.
 Ordinals contains Sat Ranges and Inscriptions, with the same separate execution
 IDs, stores, arming, Live and history choices. This is a navigation move only.
 It changes no scanning, retention, format, lifecycle or efficiency policy.

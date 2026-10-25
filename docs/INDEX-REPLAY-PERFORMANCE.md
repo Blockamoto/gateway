@@ -95,3 +95,81 @@ Review `build/qa-078/performance-336/comparison-8/result.json`, the two replay d
 The final delivery executable (`c1e8d577d26ae487f2a4e94d38ab9d8059aa7b1fb0ebbf2d05319a848af83346`) was replayed again after all UI/recovery changes: 6.262 seconds for the same eight blocks, with strict baseline equality and unchanged physical counts above; OS process peak working set was 159,289,344 bytes. A separate 32-block local check retained all 64,767 transactions in 10.476 seconds with a 185,905,152-byte peak; its first eight payloads match the comparison sample. That larger run has no matched baseline and overlapped a network check.
 
 For a separate single-binary peer acceptance check, add `--peer-source --binary EXE` rather than a baseline/candidate pair. This copies selected headers only, configures no archive, keeps Core/mounts/Raw off, and lets ordinary Bitcoin peers provide the bodies. The final eight-block check took 180.151 seconds including source waiting; every durable payload matched the local run. Earlier checks varied with peer availability. No live baseline or network speed multiplier is established. Inspect `delivery-local-8`, `comparison-delivery-8`, `delivery-local-32`, `delivery-peer-8` and `VERIFICATION-PERFORMANCE-0.7.8.md` for final evidence.
+
+## Standard Bitmap storage and observation diagnosis (2026-10-25)
+
+A read-only live observation covered about 109 seconds: the two Bitmap tracks
+advanced five blocks, the locator staged three, and no locator flush occurred.
+The inclusive source counter added 10.864 seconds and Apply added 89.326 seconds.
+The download queue held 37 ready bodies, about 63 MB. A separate 43.5-second
+process sample recorded 23 CPU-seconds, about 102 MB read and 95 MB written.
+These overlapping observations identify substantial application/storage work;
+they are not a controlled replay or a per-track timing breakdown.
+
+The six immutable District commits selected by the saved observation contain
+109–1,689 candidates per block. At the last observed block the index held
+531,397 candidates and 458,312 winners. Normal application updates touched radix
+paths and leaves; it does not scan all those saved winners on every block.
+Scattered targets can touch more leaves than a dense fresh-state fixture.
+
+Raw retention governs future local reuse. Required block verification,
+inscription extraction and Bitmap evaluation still run with Raw off. Retained
+bodies can help later reads, including lagging consumers and Parcel dependency
+lookups. No Raw setting was changed during this diagnosis, and the ready queue
+does not support attributing the observed Apply cost to missing downloads.
+
+`TestBitmapPerformanceDiagnostic` isolates two normal Standard District Apply
+calls with 1,000 synthetic claims each, including 500 duplicate targets in the
+second block. It uses TempDir only, with no application worker or network. Its
+trace regions exclude page census and cleanup. It models real writer paths,
+not authenticated Bitcoin history, a populated 458,000-winner index, or network
+throughput. Run it with fresh output files, for example:
+
+```powershell
+go test -run '^TestBitmapPerformanceDiagnostic$' -count=1 -v -trace apply.trace -cpuprofile apply.cpu.pprof .
+go tool trace -pprof=syscall apply.trace > apply.syscall.pprof
+go tool pprof -top apply.syscall.pprof
+```
+
+The first trace attributes substantial delay to both file opens and writes:
+Apply accounts for 4.67 seconds of syscall delay, with 2.69 seconds under
+CreateFile, 0.75 seconds under file Sync and 0.57 seconds under rename. Stack
+totals overlap; do not sum them as separate elapsed stages. Windows CPU-profile
+`runtime.cgocall` samples include WinAPI waits and are not pure computation.
+
+Page reads now use one checked descriptor and a Stat-sized bounded buffer, with
+one extra byte to detect growth. Checksum, JSON, structure and extent checks
+remain mandatory. The first one-descriptor prototype used a growing ReadAll
+buffer; tracing showed extra read calls, so the final reader preallocates its
+bounded extent.
+
+The four Bitmap state trees flush with fixed concurrency, keeping separate
+mutable caches. All workers finish successfully before their roots are assigned
+and the existing commit/head publication begins. Per-file Sync, atomic page
+publication and required directory acknowledgements remain. A temporary shared
+set of 256 publication locks prevents concurrent identical-page read/rename
+races; it is released after all four workers finish. No page format, canonical
+encoding, profile identity, block commitment or saved prefix is changed.
+
+Three alternating structural pairs compared the one-descriptor serial writer
+with the concurrent writer. Median summed Apply time was 2.668 versus 2.211
+seconds; one concurrent pair was slower. Both commitments, all four roots,
+candidate/winner counts and every unique page count/byte total matched in all
+six runs. Traced Sync and rename counts were each 479 in the original pilot,
+one-descriptor pilot and concurrent pilot. These fixture observations do not
+establish a live throughput multiplier or a guaranteed memory bound.
+
+Visible target coverage previously missed its cache on every new committed
+District head. An isolated browser fixture measured 13 reads over 13.02 seconds
+with one-second head updates. A minimum five-second interval for the same view
+reduced this to three reads over 12.37 seconds. Geometry, profile and detected
+chain replacement invalidate immediately; a trailing refresh observes the last
+head, and hidden documents cancel pending observation. The UI labels retained
+results with their previous snapshot. This measures request reduction, not an
+indexing speedup.
+
+Evidence is retained under `build/qa-078/throughput-diagnosis` and
+`build/qa-078/ui-poll-audit`. The real 32-block Standard replay uses the existing
+owned-profile harness through a diagnostic wrapper that explicitly selects the
+current Standard IDs. Historical harness defaults and earlier measurements are
+preserved. Native-output equality is checked separately from timing.

@@ -166,3 +166,40 @@ is `build/Gateway-v0.7.8-performance-336-portable-preview-windows-amd64.zip`.
 can create a new offline profile. ZIP contents exclude profiles, logs and tokens.
 Updates are disabled at build time. Runtime state is local and separate from
 installed Gateway profiles.
+
+## Standard Bitmap I/O and target-query repair (2026-10-25)
+
+The follow-up diagnosis and its measurement limits are recorded in
+`INDEX-REPLAY-PERFORMANCE.md`. It found substantial page-open and page-write
+delay, plus visible target queries that missed their cache on each new head.
+Raw remained off throughout the read-only observation and disposable replays.
+
+The final focused Go suite passed in 102.987 seconds: ordinal page integrity and
+budget checks, concurrent Bitmap flush failures/cancellation/collisions,
+target coverage, frozen Standard identity, admission publication fences and
+exports. The collision regression first exposed a real Windows rename failure;
+bounded temporary publication locks fixed it without suppressing I/O errors.
+Failure and cancellation preserve the old head, drain every worker, and permit
+fresh reopen/replay. Even a structurally tested Tx0 shared-page case retains its
+native output; production parsing and eligibility were not changed.
+
+The final dense two-block diagnostic retained both commitments, all four roots,
+counts and unique page bytes. Repeated serial/concurrent measurements use
+structural fixtures and have timing variation. They are not a speed guarantee
+for the user's populated index. Every page Sync and existing commit/head fence
+remains required.
+
+All 19 focused browser cases and the help/category regression passed. Under
+one-second head changes, target request starts fell from 13 in 13.02 seconds to
+three in 12.37 seconds. The cap preserves immediate context invalidation,
+single-flight requests, exact global versus sampled counts, trailing refresh,
+and hidden-document cancellation. Spring geometry is unchanged.
+
+Evidence directories are `build/qa-078/throughput-diagnosis` and
+`build/qa-078/ui-poll-audit`. The portable candidate is
+`build/portable-v0.7.8-bitmap-throughput`, with archive
+`build/Gateway-v0.7.8-bitmap-throughput-portable-preview-windows-amd64.zip`.
+An active-profile handoff must wait for a locator physical checkpoint to avoid
+discarding substantial unpublished staging, then preserve the same profile,
+track choices, run interval and latest human running/paused intent. No Raw or
+Arm toggles are part of that handoff.

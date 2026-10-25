@@ -336,8 +336,8 @@ window.GatewayIndexTimeline = (() => {
       for(const d of defs){const id=groupOf(d.id),e=entries.get(d.id);e.row.hidden=false;e.row.classList.toggle('timeline-child-mini',!!id);e.row.classList.toggle('timeline-root-track',!id);e.head.setAttribute('aria-label','Select '+d.name);e.name.textContent=id?miniName(d):trackName(d);e.name.title=d.name;if(id){e.row.dataset.group=id;const g=groups.get(id)||makeGroup(id);if(!emitted.has(id)){emitted.add(id);rows.push(g.row);const children=defs.filter(child=>groupOf(child.id)===id);syncGroupSummaries(g,children);g.row.dataset.open=String(categoryOpen[id]);g.toggle.setAttribute('aria-expanded',String(categoryOpen[id]));g.toggle.setAttribute('aria-label',(categoryOpen[id]?'Collapse ':'Open ')+groupName(id)+' tracks');for(const child of children)g.minis.append(entries.get(child.id).row);g.minis.hidden=!categoryOpen[id];}}else{delete e.row.dataset.group;rows.push(e.row);}}
       addRow.hidden=true;rows.forEach((row,i)=>{if(tracks.children[i]!==row)tracks.insertBefore(row,tracks.children[i]||null);});queueBitmapTargets();
     }
-    let bitmapTargetTimer=null,bitmapTargetSerial=0,bitmapTargetPending='',bitmapTargetValue=null,bitmapTargetValueScope='',bitmapTargetKey='',bitmapTargetObserved=0,bitmapTargetErrorKey='',bitmapTargetRetryAt=0,bitmapTargetController=null,bitmapTargetPendingScope='',bitmapTargetStatus='unknown',bitmapTargetNote='',bitmapTargetChainEpoch=0;const bitmapTargetCache=new Map();
-    function bitmapTargetQuery(){const g=groups.get('bitmap');if(!g||trackArea.hidden||root.dataset.timelineCollapsed==='true')return null;const rect=g.bands.getBoundingClientRect(),viewport=trackViewport.getBoundingClientRect();if(rect.width<1||rect.bottom<viewport.top||rect.top>viewport.bottom)return null;const p=frame();if(p&&p.kind!=='block')return null;const v=navView(),query={axis:p?'transactions':'blocks',from:v.from,to:v.to,pixels:Math.min(1024,Math.max(1,Math.round(rect.width)))};if(p)query.district=p.height;return query;}
+    let bitmapTargetTimer=null,bitmapTargetRefreshTimer=null,bitmapTargetSerial=0,bitmapTargetPending='',bitmapTargetValue=null,bitmapTargetValueScope='',bitmapTargetKey='',bitmapTargetObserved=0,bitmapTargetErrorKey='',bitmapTargetRetryAt=0,bitmapTargetController=null,bitmapTargetPendingScope='',bitmapTargetStatus='unknown',bitmapTargetNote='',bitmapTargetChainEpoch=0;const bitmapTargetCache=new Map(),bitmapTargetRequestStarts=new Map();
+    function bitmapTargetQuery(){const g=groups.get('bitmap');if(doc.hidden||!g||trackArea.hidden||root.dataset.timelineCollapsed==='true')return null;const rect=g.bands.getBoundingClientRect(),viewport=trackViewport.getBoundingClientRect();if(rect.width<1||rect.bottom<viewport.top||rect.top>viewport.bottom)return null;const p=frame();if(p&&p.kind!=='block')return null;const v=navView(),query={axis:p?'transactions':'blocks',from:v.from,to:v.to,pixels:Math.min(1024,Math.max(1,Math.round(rect.width)))};if(p)query.district=p.height;return query;}
     function queueBitmapTargets(){if(bitmapTargetTimer)doc.defaultView.clearTimeout(bitmapTargetTimer);bitmapTargetTimer=doc.defaultView.setTimeout(readBitmapTargets,140);}
     function bitmapTargetContext(query){
       if(!query)return null;const ids=query.axis==='blocks'?['bitmap-districts-standard-v1']:['bitmap-districts-standard-v1','bitmap-parcels-standard-v1'],definitions=(snapshot.definitions||[]).filter(d=>ids.includes(d.id)).sort((a,b)=>a.id.localeCompare(b.id)),instances=(snapshot.instances||[]).filter(i=>ids.includes(i.definition)).sort((a,b)=>a.definition.localeCompare(b.definition)),run=(snapshot.run?.run?.consumers||[]).filter(c=>ids.includes(c.index)&&c.commitment).sort((a,b)=>a.index.localeCompare(b.index));
@@ -357,15 +357,22 @@ window.GatewayIndexTimeline = (() => {
       return true;
     }
     function cancelBitmapTargetRequest(){bitmapTargetSerial++;bitmapTargetController?.abort();bitmapTargetController=null;bitmapTargetPending='';bitmapTargetPendingScope='';}
+    function cancelBitmapTargetRefresh(){if(bitmapTargetRefreshTimer)doc.defaultView.clearTimeout(bitmapTargetRefreshTimer);bitmapTargetRefreshTimer=null;}
+    doc.addEventListener('visibilitychange',()=>{if(doc.hidden){if(bitmapTargetTimer)doc.defaultView.clearTimeout(bitmapTargetTimer);bitmapTargetTimer=null;cancelBitmapTargetRefresh();cancelBitmapTargetRequest();bitmapTargetKey='';}else queueBitmapTargets();});
     async function readBitmapTargets(){
-      bitmapTargetTimer=null;const query=bitmapTargetQuery(),context=bitmapTargetContext(query);
+      bitmapTargetTimer=null;cancelBitmapTargetRefresh();const query=bitmapTargetQuery(),context=bitmapTargetContext(query);
       if(!context||context.unsafe){cancelBitmapTargetRequest();bitmapTargetValue=null;bitmapTargetValueScope='';bitmapTargetKey='';bitmapTargetStatus=context?.unsafe?'stale':'unknown';bitmapTargetNote=context?.unsafe?'Saved target evidence needs chain revalidation.':'';drawGroups();return;}
       const {key,scope}=context,now=Date.now(),cached=bitmapTargetCache.get(key),requestQuery={...query};
       if(bitmapTargetPending&&bitmapTargetPendingScope===scope||bitmapTargetKey===key&&now-bitmapTargetObserved<5000)return;
       if(key===bitmapTargetErrorKey&&now<bitmapTargetRetryAt)return;
-      cancelBitmapTargetRequest();bitmapTargetKey=key;const ticket=bitmapTargetSerial;
-      if(cached&&now-cached.observed<5000){bitmapTargetValue=cached.value;bitmapTargetValueScope=scope;bitmapTargetObserved=cached.observed;bitmapTargetStatus='current';bitmapTargetNote='';drawGroups();return;}
+      cancelBitmapTargetRequest();
+      if(cached&&now-cached.observed<5000){bitmapTargetKey=key;bitmapTargetValue=cached.value;bitmapTargetValueScope=scope;bitmapTargetObserved=cached.observed;bitmapTargetStatus='current';bitmapTargetNote='';drawGroups();return;}
       if(bitmapTargetValueScope!==scope){bitmapTargetValue=cached?.value||null;bitmapTargetValueScope=bitmapTargetValue?scope:'';}
+      // A new committed head may arrive every progress poll. Keep its pinned
+      // predecessor visible while coalescing this same view into one read/5s.
+      const wait=5000-(now-(bitmapTargetRequestStarts.get(scope)??-Infinity));
+      if(wait>0){bitmapTargetStatus='updating';bitmapTargetNote='Waiting to refresh the saved target snapshot.';bitmapTargetRefreshTimer=doc.defaultView.setTimeout(readBitmapTargets,wait);drawGroups();return;}
+      bitmapTargetKey=key;const ticket=bitmapTargetSerial;bitmapTargetRequestStarts.delete(scope);bitmapTargetRequestStarts.set(scope,now);while(bitmapTargetRequestStarts.size>16)bitmapTargetRequestStarts.delete(bitmapTargetRequestStarts.keys().next().value);
       bitmapTargetStatus='updating';bitmapTargetNote='Revalidating the saved target snapshot.';bitmapTargetPending=key;bitmapTargetPendingScope=scope;const controller=doc.defaultView.AbortController?new doc.defaultView.AbortController():null;bitmapTargetController=controller;drawGroups();
       const current=()=>{const latest=bitmapTargetContext(bitmapTargetQuery());return ticket===bitmapTargetSerial&&key===bitmapTargetKey&&latest?.scope===scope&&!latest.unsafe;};
       try{
@@ -376,7 +383,7 @@ window.GatewayIndexTimeline = (() => {
         if(['ready','partial'].includes(value.state)){bitmapTargetValue=value;bitmapTargetValueScope=scope;bitmapTargetStatus='current';bitmapTargetErrorKey='';bitmapTargetCache.set(key,{value,observed:bitmapTargetObserved});while(bitmapTargetCache.size>16)bitmapTargetCache.delete(bitmapTargetCache.keys().next().value);}
         else{bitmapTargetValue=null;bitmapTargetValueScope='';bitmapTargetStatus=value.state||'unknown';bitmapTargetCache.delete(key);bitmapTargetErrorKey=key;bitmapTargetRetryAt=bitmapTargetObserved+5000;}
       }catch(error){if(current()&&error.name!=='AbortError'){bitmapTargetStatus=bitmapTargetValue?'stale':'unavailable';bitmapTargetNote=error.message;bitmapTargetCache.delete(key);bitmapTargetErrorKey=key;bitmapTargetRetryAt=Date.now()+5000;}}
-      finally{if(ticket===bitmapTargetSerial){bitmapTargetController=null;bitmapTargetPending='';bitmapTargetPendingScope='';drawGroups();}}
+      finally{if(ticket===bitmapTargetSerial){bitmapTargetController=null;bitmapTargetPending='';bitmapTargetPendingScope='';drawGroups();const latest=bitmapTargetContext(bitmapTargetQuery());if(latest&&!latest.unsafe&&latest.scope===scope&&latest.key!==key)queueBitmapTargets();}}
     }
     function drawBitmapTargets(g){
       const canvas=g.targetCanvas;if(!canvas)return;

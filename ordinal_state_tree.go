@@ -38,6 +38,7 @@ type ordinalTree struct {
 	changes          map[string]json.RawMessage
 	cache            map[string]ordinalPage
 	dirtyDirectories map[string]bool
+	writeLocks       *[256]sync.Mutex
 }
 
 func newOrdinalTree(dir, root string) *ordinalTree {
@@ -83,12 +84,22 @@ func (t *ordinalTree) read(hash string) (ordinalPage, error) {
 	}
 	defer f.Close()
 	info, e := f.Stat()
-	if e != nil || info.Size() > ordinalPageMaxBytes {
+	if e != nil || info.Size() < 0 || info.Size() > ordinalPageMaxBytes {
 		return ordinalPage{}, fmt.Errorf("ordinal state page exceeds budget")
 	}
-	b, e := os.ReadFile(path)
-	if e != nil {
+	// Pin the checked descriptor and preallocate its bounded extent. One extra
+	// byte detects growth without repeated buffer expansion or another open.
+	b := make([]byte, int(info.Size())+1)
+	n, e := io.ReadFull(f, b)
+	if e != nil && e != io.EOF && e != io.ErrUnexpectedEOF {
 		return ordinalPage{}, e
+	}
+	b = b[:n]
+	if len(b) > ordinalPageMaxBytes {
+		return ordinalPage{}, fmt.Errorf("ordinal state page exceeds budget")
+	}
+	if int64(n) != info.Size() {
+		return ordinalPage{}, fmt.Errorf("ordinal state page extent changed during read")
 	}
 	sum := sha256.Sum256(b)
 	if hex.EncodeToString(sum[:]) != hash {
@@ -139,6 +150,16 @@ func (t *ordinalTree) write(p ordinalPage) (string, error) {
 	}
 	sum := sha256.Sum256(b)
 	hash := hex.EncodeToString(sum[:])
+	if t.writeLocks != nil {
+		// Independent trees can generate the same page. Serialize publication
+		// of that hash so an existing-page reader cannot overlap its rename.
+		lock := &t.writeLocks[sum[0]]
+		lock.Lock()
+		defer lock.Unlock()
+		if e := t.ctx.Err(); e != nil {
+			return "", e
+		}
+	}
 	path := t.pagePath(hash)
 	if _, e = os.Stat(path); os.IsNotExist(e) {
 		if e = atomicWriteBytes(path, b); e != nil {

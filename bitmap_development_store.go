@@ -515,6 +515,50 @@ func (s *bitmapRunConsumer) pending(ctx context.Context, block blockView, rows [
 	return fmt.Errorf("%w: %s", ErrBitmapEvidenceRequired, note)
 }
 
+// Each tree owns its pending changes, read cache and durability receipts. Join
+// every writer before returning an error or exposing any of the new roots.
+func flushBitmapTrees(trees [4]*ordinalTree) ([4]string, error) {
+	for i, tree := range trees {
+		if tree == nil {
+			return [4]string{}, fmt.Errorf("Bitmap flush requires four independent trees")
+		}
+		for j := 0; j < i; j++ {
+			if tree == trees[j] {
+				return [4]string{}, fmt.Errorf("Bitmap flush trees must not share mutable state")
+			}
+		}
+	}
+	// Keep coordination bounded while protecting shared content-addressed
+	// pages. Other ordinal users retain their normal independent write path.
+	locks := new([256]sync.Mutex)
+	var previous [4]*[256]sync.Mutex
+	for i, tree := range trees {
+		previous[i], tree.writeLocks = tree.writeLocks, locks
+	}
+	defer func() {
+		for i, tree := range trees {
+			tree.writeLocks = previous[i]
+		}
+	}()
+	var roots [4]string
+	var failures [4]error
+	var writers sync.WaitGroup
+	writers.Add(len(trees))
+	for i, tree := range trees {
+		go func(i int, tree *ordinalTree) {
+			defer writers.Done()
+			roots[i], failures[i] = tree.flush()
+		}(i, tree)
+	}
+	writers.Wait()
+	for _, err := range failures {
+		if err != nil {
+			return [4]string{}, err
+		}
+	}
+	return roots, nil
+}
+
 func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared *inscriptionBlockResult) error {
 	bitmapDevelopmentMu.Lock()
 	defer bitmapDevelopmentMu.Unlock()
@@ -870,15 +914,11 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 	if err := s.lockProfileEvidence(ctx); err != nil {
 		return err
 	}
-	for _, pair := range []struct {
-		t    *ordinalTree
-		root *string
-	}{{winners, &h.WinnerRoot}, {candidates, &h.CandidateRoot}, {targets, &h.TargetRoot}, {blocks, &h.BlockRoot}} {
-		*pair.root, err = pair.t.flush()
-		if err != nil {
-			return err
-		}
+	roots, err := flushBitmapTrees([4]*ordinalTree{winners, candidates, targets, blocks})
+	if err != nil {
+		return err
 	}
+	h.WinnerRoot, h.CandidateRoot, h.TargetRoot, h.BlockRoot = roots[0], roots[1], roots[2], roots[3]
 	return s.publish(ctx, h)
 }
 

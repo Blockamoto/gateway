@@ -2,13 +2,95 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestOrdinalTreeReadEvidenceBoundsAndReopen(t *testing.T) {
+	for _, test := range []struct {
+		name, raw, wantError string
+		damagedHash          bool
+		oversized            bool
+	}{
+		{name: "valid", raw: `{"entries":[{"key":"01","value":{"n":7}}]}`},
+		{name: "checksum", raw: `{"entries":[{"key":"01","value":7}]}`, damagedHash: true, wantError: "checksum mismatch"},
+		{name: "authenticated_truncated_json", raw: `{"entries":[`, wantError: "unexpected end of JSON"},
+		{name: "invalid_key", raw: `{"entries":[{"key":"UPPER","value":7}]}`, wantError: "invalid ordinal leaf"},
+		{name: "invalid_branch", raw: `{"children":[""]}`, wantError: "invalid ordinal branch"},
+		{name: "oversized_extent", raw: `{}`, oversized: true, wantError: "exceeds budget"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			tree := newOrdinalTree(filepath.Join(t.TempDir(), "pages"), "")
+			raw := []byte(test.raw)
+			hash := fmt.Sprintf("%x", sha256.Sum256(raw))
+			if test.damagedHash {
+				hash = indexDigest("a different ordinal page")
+			}
+			path := tree.pagePath(hash)
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if test.oversized {
+				file, err := os.OpenFile(path, os.O_WRONLY, 0600)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = file.Truncate(ordinalPageMaxBytes + 1)
+				closeErr := file.Close()
+				if err != nil || closeErr != nil {
+					t.Fatal(err, closeErr)
+				}
+			}
+			for attempt := 0; attempt < 2; attempt++ {
+				page, err := newOrdinalTree(tree.dir, hash).read(hash)
+				if test.wantError != "" {
+					if err == nil || !strings.Contains(err.Error(), test.wantError) {
+						t.Fatal("invalid page accepted or wrong failure", page, err)
+					}
+				} else if err != nil || len(page.Entries) != 1 || page.Entries[0].Key != "01" || string(page.Entries[0].Value) != `{"n":7}` {
+					t.Fatal("valid page changed", page, err)
+				}
+				// Both success and early rejection must release the read handle.
+				// Reopen through a fresh tree so its cache cannot hide disk access.
+				if err := os.Rename(path, path+".moved"); err != nil {
+					t.Fatal("page read left its file unavailable for rename", err)
+				}
+				if err := os.Rename(path+".moved", path); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+	t.Run("exact_byte_budget", func(t *testing.T) {
+		prefix, suffix := `{"entries":[{"key":"01","value":"`, `"}]}`
+		raw := []byte(prefix + strings.Repeat("x", ordinalPageMaxBytes-len(prefix)-len(suffix)) + suffix)
+		if len(raw) != ordinalPageMaxBytes {
+			t.Fatal("boundary fixture size", len(raw))
+		}
+		tree := newOrdinalTree(filepath.Join(t.TempDir(), "pages"), "")
+		hash := fmt.Sprintf("%x", sha256.Sum256(raw))
+		path := tree.pagePath(hash)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		page, err := tree.read(hash)
+		if err != nil || len(page.Entries) != 1 || len(page.Entries[0].Value) != len(raw)-len(prefix)-len(suffix)+2 {
+			t.Fatal("maximum legal page rejected or truncated", err)
+		}
+	})
+}
 
 func TestOrdinalTreePagedCopyOnWriteAndPredecessor(t *testing.T) {
 	tree := newOrdinalTree(filepath.Join(t.TempDir(), "pages"), "")

@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const inscriptionLocatorIndex = "inscription-tx-locator"
@@ -152,6 +154,42 @@ func inscriptionBatchMode(b indexBatch) string {
 	}
 	return b.InscriptionBlock.Mode
 }
+
+var inscriptionInventoryRecipes struct {
+	sync.Once
+	current, legacy indexDefinition
+}
+
+// Coverage belongs to an authenticated whole-block extraction recipe, not to
+// the presence of one or more known inscription identities. V1 Full scans keep
+// their original recipe and bytes even though they predate the denominator.
+func inscriptionBatchInventoryComplete(b indexBatch) bool {
+	inscriptionInventoryRecipes.Do(func() {
+		inscriptionInventoryRecipes.current, _ = findIndexDefinition("inscriptions")
+		inscriptionInventoryRecipes.legacy = legacyIndexDefinition(inscriptionInventoryRecipes.current)
+	})
+	c := b.Checkpoint
+	d := inscriptionInventoryRecipes.current
+	if c.Version == 1 {
+		d = inscriptionInventoryRecipes.legacy
+	}
+	if c.Definition != "inscriptions" || c.Version != d.Version || c.RuleHash != d.RuleHash || c.Schema != d.CheckpointSchema || c.Network != d.Network || c.DependencyFingerprint != indexDigest(struct{ Block, Parser, Reference string }{c.BlockHash, inscriptionParserProfile, inscriptionReferenceCommit}) {
+		return false
+	}
+	if b.InscriptionBlock != nil {
+		return (b.InscriptionBlock.Mode == "lean" || b.InscriptionBlock.Mode == "full") && b.InscriptionBlock.TransactionCount > 0
+	}
+	if c.Version != 1 || b.TransactionLocator != nil || b.Bitcoin != nil || b.Sats != nil || b.Spenders != nil || len(b.Bitmap) != 0 {
+		return false
+	}
+	for i, occurrence := range b.Inscriptions {
+		if occurrence.BlockOrder != i || occurrence.BlockHeight != c.Height || occurrence.BlockHash != c.BlockHash || occurrence.ParserProfile != inscriptionParserProfile || !validHash(occurrence.TxID) || occurrence.ID != fmt.Sprintf("%si%d", occurrence.TxID, occurrence.Index) {
+			return false
+		}
+	}
+	return true
+}
+
 func validateInscriptionPayload(b indexBatch) error {
 	if b.InscriptionBlock == nil {
 		if b.Checkpoint.Version >= 2 || len(b.InscriptionCoordinates) != 0 {
@@ -273,7 +311,7 @@ func (a *app) indexQueryBlock(ctx context.Context, id string, height int64, limi
 	if err != nil {
 		return nil, err
 	}
-	result := map[string]any{"definition": s.definition, "checkpoint": s.checkpoint, "rows": []any{}, "total": 0, "total_known": false, "truncated": false, "scanned": false, "known": false, "transaction_count_known": false, "chain_state": a.indexChainState(s.checkpoint), "inspected_blocks": 0, "block_height": height}
+	result := map[string]any{"definition": s.definition, "checkpoint": s.checkpoint, "rows": []any{}, "total": 0, "total_known": false, "truncated": false, "scanned": false, "known": false, "inventory_complete": false, "known_occurrences": 0, "transaction_count_known": false, "chain_state": a.indexChainState(s.checkpoint), "inspected_blocks": 0, "block_height": height}
 	hash, err := a.canonicalHashAtHeight(height)
 	if err != nil {
 		return result, nil
@@ -295,13 +333,15 @@ func (a *app) indexQueryBlock(ctx context.Context, id string, height int64, limi
 	if visible == nil {
 		visible = []string{}
 	}
-	row := map[string]any{"inscriptions": visible, "block_height": height, "mode": inscriptionBatchMode(b)}
+	complete := inscriptionBatchInventoryComplete(b)
+	row := map[string]any{"inscriptions": visible, "block_height": height, "mode": inscriptionBatchMode(b), "inventory_complete": complete}
 	if count := inscriptionBatchCount(b); count != nil {
 		row["transaction_count"] = *count
 		result["transaction_count"], result["transaction_count_known"] = *count, true
 	}
-	result["rows"], result["total"], result["total_known"] = []any{row}, len(coordinates), true
-	result["scanned"], result["known"], result["inspected_blocks"] = true, true, 1
+	result["rows"], result["total"], result["total_known"] = []any{row}, len(coordinates), complete
+	result["scanned"], result["known"], result["inspected_blocks"] = complete, complete, 1
+	result["inventory_complete"], result["known_occurrences"] = complete, len(coordinates)
 	return result, nil
 }
 func transactionLocatorFromBlock(block blockView) *transactionLocatorPayload {
@@ -420,16 +460,27 @@ func (a *app) committedInscriptionBatch(ctx context.Context, height int64, hash 
 	if s.checkpoint == nil || height < s.checkpoint.From || height > s.checkpoint.Height {
 		return a.browsedBatchContext(ctx, "inscriptions", height, hash)
 	}
-	if err = s.ensureIndexLocators(ctx); err != nil {
+	var b indexBatch
+	if err = s.ensureIndexLocators(ctx); errors.Is(err, errIndexLocatorsReadOnly) {
+		var available bool
+		b, available, err = s.locatorReadOnlyBatchAt(ctx, height)
+		if err != nil {
+			return b, false, err
+		}
+		if !available {
+			return a.browsedBatchContext(ctx, "inscriptions", height, hash)
+		}
+	} else if err != nil {
 		return indexBatch{}, false, err
-	}
-	commit, ready, err := s.activeLocatorCommitContext(ctx, height)
-	if err != nil || !ready || commit == "" {
-		return indexBatch{}, false, err
-	}
-	b, err := s.readBatch(commit)
-	if err != nil {
-		return b, false, err
+	} else {
+		commit, ready, e := s.activeLocatorCommitContext(ctx, height)
+		if e != nil || !ready || commit == "" {
+			return indexBatch{}, false, e
+		}
+		b, err = s.readBatch(commit)
+		if err != nil {
+			return b, false, err
+		}
 	}
 	if b.Checkpoint.BlockHash != hash {
 		return a.browsedBatchContext(ctx, "inscriptions", height, hash)
@@ -440,6 +491,55 @@ func (a *app) committedInscriptionBatch(ctx context.Context, height int64, hash 
 		return sparse, true, nil
 	}
 	return b, true, nil
+}
+
+func (a *app) readOnlyCommittedTransactionLocations(ctx context.Context, s *indexStore, txid, blockHash string) ([]txLocation, error) {
+	locations := []txLocation{}
+	complete, err := walkExplorerIndex(ctx, s, func(batch indexBatch) error {
+		if blockHash != "" && blockHash != batch.Checkpoint.BlockHash {
+			return nil
+		}
+		entries := transactionBatchEntries(batch)
+		matched := false
+		for _, entry := range entries {
+			matched = matched || entry.TxID == txid
+		}
+		if !matched {
+			return nil
+		}
+		selected, err := a.canonicalHashAtHeight(batch.Checkpoint.Height)
+		if err != nil {
+			return err
+		}
+		if selected != batch.Checkpoint.BlockHash {
+			return nil
+		}
+		if s.definition.ID == inscriptionLocatorIndex {
+			source, available, err := a.committedInscriptionBatch(ctx, batch.Checkpoint.Height, batch.Checkpoint.BlockHash)
+			if err != nil {
+				return err
+			}
+			if !available || source.Checkpoint.Commitment != batch.TransactionLocator.SourceCommitment {
+				return nil
+			}
+			if err := validateSparseInscriptionSource(batch.TransactionLocator, source); err != nil {
+				return err
+			}
+		}
+		for _, entry := range entries {
+			if entry.TxID == txid {
+				locations = append(locations, txLocation{TxID: txid, Height: batch.Checkpoint.Height, BlockHash: batch.Checkpoint.BlockHash, TxIndex: int(entry.TxIndex)})
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !complete && blockHash == "" {
+		return nil, errIndexLookupIncomplete
+	}
+	return locations, nil
 }
 
 // Location only: this deliberately does not invoke the network or use the
@@ -461,6 +561,16 @@ func (a *app) committedTransactionLocation(ctx context.Context, txid, blockHash 
 		return a.publishedTransactionLocation(ctx, txid, blockHash)
 	}
 	var match *txLocation
+	rememberLocations := func(locations []txLocation) error {
+		for _, location := range locations {
+			if match != nil && (match.BlockHash != location.BlockHash || match.Height != location.Height || match.TxIndex != location.TxIndex) {
+				return fmt.Errorf("historical transaction ID is ambiguous; supply its containing block")
+			}
+			copy := location
+			match = &copy
+		}
+		return nil
+	}
 	if !publishedOnly {
 		locations, err := a.browsedTransactionLocations(ctx, txid, blockHash, -1)
 		if err != nil {
@@ -483,7 +593,16 @@ func (a *app) committedTransactionLocation(ctx context.Context, txid, blockHash 
 			continue
 		}
 		if id != "blocks" {
-			if err = s.ensureIndexLocators(ctx); err != nil {
+			if err = s.ensureIndexLocators(ctx); errors.Is(err, errIndexLocatorsReadOnly) {
+				locations, err := a.readOnlyCommittedTransactionLocations(ctx, s, txid, blockHash)
+				if err != nil {
+					return txLocation{}, false, err
+				}
+				if err := rememberLocations(locations); err != nil {
+					return txLocation{}, true, err
+				}
+				continue
+			} else if err != nil {
 				return txLocation{}, false, err
 			}
 		}
@@ -493,7 +612,16 @@ func (a *app) committedTransactionLocation(ctx context.Context, txid, blockHash 
 		} else {
 			records, err = s.bitcoinLocatorRecords(ctx, txid)
 		}
-		if err != nil {
+		if errors.Is(err, errIndexLocatorsReadOnly) {
+			locations, err := a.readOnlyCommittedTransactionLocations(ctx, s, txid, blockHash)
+			if err != nil {
+				return txLocation{}, false, err
+			}
+			if err := rememberLocations(locations); err != nil {
+				return txLocation{}, true, err
+			}
+			continue
+		} else if err != nil {
 			return txLocation{}, false, err
 		}
 		for _, record := range records {

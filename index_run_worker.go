@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -38,11 +39,17 @@ type indexRunConsumer struct {
 	authority            chainAuthorityView
 	locatorStats         indexLocatorWriteStats
 	locatorGuardReleases []func()
+	pointAckFlushes      int64
+	pointAckCommit       string
 }
 type indexRunPreparedKey struct{}
 type indexRunPublicationKey struct{}
 type indexRunAddressProjectionKey struct{}
 type indexRunSourceOwnershipKey struct{}
+type indexRunCoordinatorSourceKey struct{}
+type indexRunCohortOwnersKey struct{}
+type indexRunBlockConsumersKey struct{}
+type indexRunBlockConsumer func(context.Context) error
 type indexRunSourceOwnership struct {
 	RunID  string
 	Height int64
@@ -55,6 +62,11 @@ var errIndexRunAdmissionChanged = errors.New("the track's active admission chang
 func checkIndexRunPublication(ctx context.Context) error {
 	if ctx == nil {
 		return nil
+	}
+	if queue, ok := ctx.Value(resolvedIngestionKey{}).(*resolvedIngestionQueue); ok {
+		if err := queue.err(); err != nil {
+			return err
+		}
 	}
 	if guard, ok := ctx.Value(indexRunPublicationKey{}).(func() error); ok {
 		return guard()
@@ -115,14 +127,18 @@ func (a *app) indexRunConsumerContext(ctx context.Context, index string, admitte
 }
 
 type indexRunPrepared struct {
-	cacheBytes        int
-	rawProduced       bool
-	block             blockView
-	extraction        *inscriptionBlockResult
-	extractionCounted bool
-	refs              map[string]map[string]outputFactRef
-	prevouts          map[string]utxoCoin
-	owner             indexRunSourceOwnership
+	factsMu             sync.Mutex
+	prevoutsMu          sync.RWMutex
+	extractionErr       error
+	extractionAttempted bool
+	cacheBytes          int
+	rawProduced         bool
+	block               blockView
+	extraction          *inscriptionBlockResult
+	extractionCounted   bool
+	refs                map[string]map[string]outputFactRef
+	prevouts            map[string]utxoCoin
+	owner               indexRunSourceOwnership
 }
 
 func (a *app) ensurePreparedRawProducer(ctx context.Context, p *indexRunPrepared) error {
@@ -230,12 +246,19 @@ func runPrepared(ctx context.Context) *indexRunPrepared {
 }
 func runRememberPrevout(ctx context.Context, tx, vin int, coin utxoCoin) {
 	if p := runPrepared(ctx); p != nil {
+		p.prevoutsMu.Lock()
+		if p.prevouts == nil {
+			p.prevouts = map[string]utxoCoin{}
+		}
 		p.prevouts[fmt.Sprintf("%d:%d", tx, vin)] = coin
+		p.prevoutsMu.Unlock()
 	}
 }
 func runPrevout(ctx context.Context, tx, vin int) (utxoCoin, bool) {
 	if p := runPrepared(ctx); p != nil {
+		p.prevoutsMu.RLock()
 		c, ok := p.prevouts[fmt.Sprintf("%d:%d", tx, vin)]
+		p.prevoutsMu.RUnlock()
 		return c, ok
 	}
 	return utxoCoin{}, false
@@ -684,6 +707,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		return
 	}
 	record := d.Run
+	pointSession := newIndexRunPointSession(a, ctx, id, d)
+	baseRunCtx := ctx
+	ctx = pointSession.context(baseRunCtx)
+	defer func() { pointSession.session.Abort() }()
 	consumers := []*indexRunConsumer{}
 	counts := record.Counts
 	for _, p := range record.Consumers {
@@ -722,15 +749,45 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 	}()
 	target, targetHash := record.TargetHeight, record.TargetHash
 	finish := func(state, reason string) {
+		stopIntent := func() bool {
+			current := a.indexRunSnapshot().Run
+			if current != nil && current.ID == id && (current.State == "pausing" || current.State == "paused" || current.State == "cancelled") {
+				state, reason = "paused", current.Reason
+				return true
+			}
+			if ctx.Err() != nil {
+				state, reason = "paused", "Paused; committed records are retained."
+				return true
+			}
+			return false
+		}
+		stopIntent()
+		var pointFlushErr error
+		if state == "complete" && ctx.Err() == nil {
+			pointFlushErr = pointSession.session.Flush(ctx)
+			if errors.Is(pointFlushErr, errBrowseTXPointInvalidated) || browseTXPointExpectedInvalidation(pointFlushErr) || errors.Is(pointFlushErr, context.Canceled) {
+				pointSession.session.Abort()
+				pointFlushErr = nil
+			}
+			stopIntent()
+		} else {
+			pointSession.session.Abort()
+		}
 		for _, c := range consumers {
 			if c.store == nil || c.selection.Index != "tx-locator" {
 				continue
 			}
 			if state == "complete" && ctx.Err() == nil {
 				if err := c.store.FlushLocatorBatch(ctx); err != nil {
-					state, reason = "complete_with_errors", "Locator staging was discarded; durable prefix retained: "+err.Error()
-					c.progress.State, c.progress.Reason = "failed", reason
+					if stopIntent() {
+						c.progress.State, c.progress.Reason = "paused", reason
+					} else {
+						state, reason = "complete_with_errors", "Locator staging was discarded; durable prefix retained: "+err.Error()
+						c.progress.State, c.progress.Reason = "failed", reason
+					}
 					c.abortLocatorBatch()
+				} else {
+					a.noteRunLocatorPublication(ctx, id, c, true)
 				}
 			} else {
 				c.abortLocatorBatch()
@@ -765,6 +822,22 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				reason = "Committed state retained; shared reclamation is deferred: " + err.Error()
 			}
 		}
+		if pointFlushErr != nil {
+			if state == "complete_with_errors" && reason != "" {
+				reason += "; future TX point batch publication failed: " + pointFlushErr.Error()
+			} else {
+				reason = "Independent native checkpoints are retained; future TX point batch publication failed: " + pointFlushErr.Error()
+			}
+			if state != "paused" {
+				state = "complete_with_errors"
+			}
+		}
+		stopIntent()
+		if state == "complete" {
+			if current := a.indexRunSnapshot().Run; current != nil && current.ID == id && len(current.SourceFactErrors) > 0 {
+				state, reason = "complete_with_errors", "Selected checkpoints are retained; some armed source-fact owners could not publish. See source_fact_errors for bounded anchors and details."
+			}
+		}
 		if err := a.saveRunProgress(id, state, reason, consumers, counts, target, targetHash); err != nil {
 			a.indexRunMu.Lock()
 			if r := a.indexRunState.Run; r != nil && r.ID == id {
@@ -793,6 +866,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		// scheduled source is owned by this coordinator's durable adapters.
 		if p := runPrepared(callCtx); p == nil || p.block.Hash == target.HashDisplay {
 			callCtx = context.WithValue(callCtx, indexRunSourceOwnershipKey{}, indexRunSourceOwnership{id, target.Height, target.HashDisplay})
+			callCtx = context.WithValue(callCtx, indexRunCoordinatorSourceKey{}, true)
 		}
 		return source(callCtx, target, retention)
 	}
@@ -803,12 +877,26 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 	peerWindow := &indexRunDownloadWindow{a: a, ctx: ctx}
 	defer peerWindow.Reset()
 	admissionRevision := effectiveIndexRunAdmissionRevision(record)
+	var loadMu sync.Mutex
 	var load func(context.Context, int64) (*indexRunPrepared, error)
 	load = func(callCtx context.Context, h int64) (*indexRunPrepared, error) {
+		loadMu.Lock()
+		defer loadMu.Unlock()
 		authority := a.currentChainAuthority()
 		t, err := a.utxoSelectedTarget(callCtx, authority, h)
 		if err != nil {
 			return nil, err
+		}
+		if parent := runPrepared(callCtx); parent == nil || parent.block.Hash == t.HashDisplay {
+			callCtx = context.WithValue(callCtx, indexRunSourceOwnershipKey{}, indexRunSourceOwnership{id, t.Height, t.HashDisplay})
+			callCtx = context.WithValue(callCtx, indexRunCoordinatorSourceKey{}, true)
+		}
+		// A dependency requesting the active cohort's own body reads its
+		// frozen facts directly. Do not mutate owner/raw/count state while
+		// the TX lane's publication guard is reading that same prepared body.
+		if parent := runPrepared(callCtx); parent != nil && parent.block.Height == h && parent.block.Hash == t.HashDisplay {
+			counts.CacheHits++
+			return parent, nil
 		}
 		if p := cache[t.HashDisplay]; p != nil {
 			if parent := runPrepared(callCtx); parent == nil || parent.block.Hash == p.block.Hash {
@@ -828,9 +916,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		started := time.Now()
 		b, elapsed, queued, err := prefetch.Take(callCtx, t)
 		if !queued {
-			// A different frontier won the fair scheduling turn. Do not leave
-			// an obsolete request occupying the only speculative source slot.
-			prefetch.Reset()
+			// Another track can win this turn at a different frontier. Keep
+			// the single already acquired upcoming body for its later owner;
+			// discarding it here would reacquire/decode it on that next turn.
 			b, err = ownedSource(callCtx, t, retention)
 			elapsed = time.Since(started)
 		}
@@ -912,6 +1000,8 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			finish("paused", record.Reason)
 			return
 		}
+		pointSession.refresh(d)
+		ctx = pointSession.context(baseRunCtx)
 		// Admit new members only between complete cohorts. A later Off/Stop is
 		// still enforced by each consumer's final publication guard.
 		for _, p := range record.Consumers {
@@ -1149,6 +1239,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 						failed = true
 						continue
 					}
+					a.noteRunLocatorPublication(consumerCtx, id, c, true)
 				}
 				c.progress.State = "complete"
 				c.progress.Reason = "Committed coverage satisfies this run target."
@@ -1204,6 +1295,64 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		if err := a.setIndexRunFrontier(id, h, true); err != nil {
 			finish("paused", "The current stop intent was preserved.")
 			return
+		}
+
+		// Catch up a TX prefix from a complete committed point island without
+		// acquiring/decoding/extracting its body again. Other same-height
+		// consumers still require their own actual body source below.
+		txOnly := -1
+		sameHeight := 0
+		for _, i := range eligible {
+			if nexts[i] == h {
+				sameHeight++
+				if consumers[i].selection.Index == "tx-locator" {
+					txOnly = i
+				}
+			}
+		}
+		if txOnly >= 0 && sameHeight == 1 {
+			c := consumers[txOnly]
+			selected, selectErr := hashAt(h)
+			if selectErr == nil {
+				lean, release := a.indexRunLocatorBatchGuard(ctx, id, c.selection, c.progress, h, selected, false)
+				promoteCtx := context.WithValue(lean, indexLocatorBatchGuardKey{}, lean)
+				promoteCtx = pointSession.context(promoteCtx)
+				started := time.Now()
+				promoted, promoteErr := a.promoteRunTransactionPoint(promoteCtx, c, h, selected, runRawRetention(record.Request))
+				counts.ApplyMilliseconds += time.Since(started).Milliseconds()
+				if promoted || promoteErr != nil {
+					if promoteErr != nil {
+						// Automatic flush can fail after staging the incoming
+						// block. Abort before cancelling its guard; the saved
+						// point remains available for exact zero-body replay.
+						release()
+					} else if promoted {
+						c.locatorGuardReleases = append(c.locatorGuardReleases, release)
+					} else {
+						release()
+					}
+					countLocatorWrites(c, &counts)
+					if promoteErr != nil {
+						c.progress.State = "waiting"
+						c.progress.Reason = promoteErr.Error()
+						c.retryAfter = time.Now().Add(time.Second)
+					} else {
+						c.progress.AddedBlocks++
+						c.progress.Height = h
+						next := h + 1
+						c.progress.NextRequiredHeight = &next
+						c.progress.Reason = ""
+						a.noteRunLocatorPublication(promoteCtx, id, c, false)
+					}
+					_ = a.setIndexRunFrontier(id, h+1, false)
+					if err := a.saveRunProgress(id, "running", "", consumers, counts, target, targetHash); err != nil {
+						finish("failed", err.Error())
+						return
+					}
+					continue
+				}
+				release()
+			}
 		}
 		// A Chain over retained completed outcomes has no Bitcoin-body input.
 		// Do not route it through load(), even when the body is unavailable.
@@ -1361,96 +1510,152 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		peerWindow.Update(a.currentChainAuthority(), peerRanges)
 		if upcoming >= 0 {
 			if candidate, e := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), upcoming); e == nil && cache[candidate.HashDisplay] == nil {
-				prefetch.Schedule(candidate)
-			}
-		}
-		needsExtraction := false
-		for _, i := range eligible {
-			if nexts[i] == h && (consumers[i].selection.Index == "inscriptions" || consumers[i].selection.Index == "sat-state" || bitmapConsumerID(consumers[i].selection.Index) && bitmapConsumerKind(consumers[i].selection.Index) != "chain") {
-				needsExtraction = true
-			}
-		}
-		if needsExtraction && p.extraction == nil {
-			started := time.Now()
-			x, e := extractInscriptionOccurrences(p.block)
-			counts.ExtractionMilliseconds += time.Since(started).Milliseconds()
-			counts.InscriptionExtractions++
-			if e != nil {
+				// A known TX point can satisfy this upcoming step without a body.
+				// Do not let speculation defeat its zero-acquisition promotion.
+				bodyNeeded := timelineRawBlocksOn(a.dataDir)
 				for _, i := range eligible {
-					if nexts[i] == h && consumers[i].selection.Index != "utxo-state" {
-						consumers[i].progress.State = "failed"
-						consumers[i].progress.Reason = e.Error()
+					next := nexts[i]
+					if next == h {
+						next++
+					}
+					if next == upcoming && consumers[i].selection.Index != "tx-locator" {
+						bodyNeeded = true
 					}
 				}
-			} else {
-				p.extraction = &x
-				p.extractionCounted = true
+				if !bodyNeeded {
+					_, known, err := a.runTransactionPoint(ctx, upcoming, candidate.HashDisplay)
+					bodyNeeded = err != nil || !known
+				}
+				if bodyNeeded {
+					prefetch.Schedule(candidate)
+				}
 			}
 		}
-		blockCtx := context.WithValue(ctx, indexRunPreparedKey{}, p)
+
+		extractionStarted := time.Now()
+		wasAttempted := p.extractionAttempted || p.extraction != nil
+		prepareSharedBlockInventory(p, a.indexRunSnapshot())
+		if !wasAttempted && p.extractionAttempted {
+			counts.ExtractionMilliseconds += time.Since(extractionStarted).Milliseconds()
+		}
+		countPreparedExtraction(p, &counts)
+		owners := map[string]bool{}
+		for _, i := range eligible {
+			if nexts[i] == h {
+				owners[consumers[i].selection.Index] = true
+			}
+		}
+		// Exact already-staged anchors have one native TX owner too. This is
+		// deliberately not a reservation for the rest of its admitted range.
+		for _, c := range consumers {
+			if c.store != nil && c.selection.Index == "tx-locator" && c.store.locatorBatch != nil {
+				for _, staged := range c.store.locatorBatch.commits {
+					if staged.checkpoint.Height == h && staged.checkpoint.BlockHash == p.block.Hash {
+						owners["tx-locator"] = true
+						break
+					}
+				}
+			}
+		}
+		blockCtx := context.WithValue(pointSession.context(ctx), indexRunPreparedKey{}, p)
+		blockCtx = preparedSourceContext(blockCtx, p)
+		blockCtx = context.WithValue(blockCtx, indexRunCoordinatorSourceKey{}, true)
+		blockCtx = context.WithValue(blockCtx, indexRunCohortOwnersKey{}, owners)
+		blockCtx, drain := a.withDeferredBlockIngestion(blockCtx)
+		rawErr := a.ensurePreparedRawProducer(blockCtx, p) // frozen before either worker lane
+		type consumerResult struct {
+			attempted bool
+			err       error
+			elapsed   time.Duration
+			outcome   bool
+		}
+		results := make([]consumerResult, len(consumers))
+		operations := map[string]indexRunBlockConsumer{}
 		for _, i := range eligible {
 			if nexts[i] != h {
 				continue
 			}
-			c := consumers[i]
-			if c.progress.State == "failed" {
+			i, c := i, consumers[i]
+			operations[c.selection.Index] = func(sharedCtx context.Context) error {
+				result := &results[i]
+				result.attempted = true
+				if rawErr != nil {
+					result.err = rawErr
+					return result.err
+				}
+				if p.extractionErr != nil && resolvedNeedsInventory(c.selection.Index) {
+					result.err = p.extractionErr
+					return result.err
+				}
+				consumerCtx := a.indexRunBoundConsumerContext(sharedCtx, c.progress)
+				publishCtx := context.WithValue(consumerCtx, indexRunPublicationKey{}, func() error {
+					if err := checkIndexRunPublication(consumerCtx); err != nil {
+						return err
+					}
+					if err := a.checkPreparedRawProducer(consumerCtx, p); err != nil {
+						return err
+					}
+					current, err := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), h)
+					if err != nil {
+						return err
+					}
+					if current.HashDisplay != p.block.Hash {
+						return satPublicationAnchorError077{fmt.Errorf("selected block changed before consumer publication")}
+					}
+					return nil
+				})
+				if c.selection.Index == "tx-locator" {
+					lean, release := a.indexRunLocatorBatchGuard(ctx, id, c.selection, c.progress, h, p.block.Hash, p.rawProduced)
+					c.locatorGuardReleases = append(c.locatorGuardReleases, release)
+					publishCtx = context.WithValue(publishCtx, indexLocatorBatchGuardKey{}, lean)
+				}
+				started := time.Now()
+				if outcome, ok := c.external.(indexRunOutcomeConsumer); ok && bitmapConsumerKind(c.selection.Index) == "chain" {
+					result.outcome = true
+					result.err = outcome.ApplyRetainedOutcome(publishCtx, h)
+				} else {
+					result.err = a.applyRunConsumer(publishCtx, c, p, authority, runRawRetention(record.Request))
+				}
+				result.elapsed = time.Since(started)
+				if result.err == nil {
+					a.noteRunLocatorPublication(publishCtx, id, c, false)
+				}
+				return result.err
+			}
+		}
+		blockCtx = context.WithValue(blockCtx, indexRunBlockConsumersKey{}, operations)
+		var offered []indexBrowseResult
+		if rawErr == nil {
+			offered = a.ingestArmedResolvedBlock(blockCtx, p.block)
+		}
+		// Every native/point writer has joined and released its store gates.
+		// Only now may dependency bodies enter their own all-armed plans.
+		drain()
+		failures := sourceFactFailures(h, p.block.Hash, offered)
+		if queue, ok := blockCtx.Value(resolvedIngestionKey{}).(*resolvedIngestionQueue); ok {
+			failures = append(failures, queue.fanoutErrors...)
+		}
+		fanoutReason := a.recordRunSourceFactFailures(id, failures)
+		for _, i := range eligible {
+			if nexts[i] != h {
 				continue
 			}
-			latest := a.indexRunSnapshot()
-			active, ok := runSelection(latest.Prepared, c.selection.Index)
-			if !ok || !indexRunSelectionEnabled(active) || ctx.Err() != nil {
-				continue
-			}
-			selected, e := hashAt(h)
-			if e != nil || selected != p.block.Hash {
-				prefetch.Reset()
-				cache = map[string]*indexRunPrepared{}
-				order = nil
-				cacheBytes = 0
-				c.progress.State = "waiting"
-				c.progress.Reason = "Selected branch changed before publication."
-				continue
-			}
-			consumerCtx := a.indexRunBoundConsumerContext(blockCtx, c.progress)
-			if e := a.ensurePreparedRawProducer(consumerCtx, p); e != nil {
-				c.progress.State, c.progress.Reason = "waiting", e.Error()
-				c.retryAfter = time.Now().Add(time.Second)
-				continue
-			}
-			countPreparedExtraction(p, &counts)
-			publishCtx := context.WithValue(consumerCtx, indexRunPublicationKey{}, func() error {
-				if err := checkIndexRunPublication(consumerCtx); err != nil {
-					return err
+			c, result := consumers[i], results[i]
+			if !result.attempted {
+				result.err = rawErr
+				if result.err == nil {
+					result.err = blockUnavailableError{fmt.Errorf("shared selected source dispatch was unavailable")}
 				}
-				if err := a.checkPreparedRawProducer(consumerCtx, p); err != nil {
-					return err
-				}
-				current, e := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), h)
-				if e != nil {
-					return e
-				}
-				if current.HashDisplay != p.block.Hash {
-					return satPublicationAnchorError077{fmt.Errorf("selected block changed before consumer publication")}
-				}
-				return nil
-			})
-			if c.selection.Index == "tx-locator" {
-				lean, release := a.indexRunLocatorBatchGuard(ctx, id, c.selection, c.progress, h, p.block.Hash, p.rawProduced)
-				c.locatorGuardReleases = append(c.locatorGuardReleases, release)
-				publishCtx = context.WithValue(publishCtx, indexLocatorBatchGuardKey{}, lean)
 			}
-			started := time.Now()
-			if outcome, ok := c.external.(indexRunOutcomeConsumer); ok && bitmapConsumerKind(c.selection.Index) == "chain" {
+			counts.ApplyMilliseconds += result.elapsed.Milliseconds()
+			if result.outcome {
 				counts.OutcomeReads++
-				err = outcome.ApplyRetainedOutcome(publishCtx, h)
-				if err == nil {
+				if result.err == nil {
 					counts.ChainSteps++
 				}
-			} else {
-				err = a.applyRunConsumer(publishCtx, c, p, authority, runRawRetention(record.Request))
 			}
-			counts.ApplyMilliseconds += time.Since(started).Milliseconds()
 			countLocatorWrites(c, &counts)
+			err := result.err
 			if err != nil {
 				c.progress.State = "failed"
 				if errors.Is(err, errIndexRunConsumerStopped) {
@@ -1494,11 +1699,16 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				c.progress.Height = h
 				next := h + 1
 				c.progress.NextRequiredHeight = &next
+				c.progress.Reason = ""
 			}
+		}
+		if queue, ok := blockCtx.Value(resolvedIngestionKey{}).(*resolvedIngestionQueue); ok && queue.err() != nil {
+			finish("failed", "Deferred verified source fanout failed; independently committed checkpoints are retained: "+queue.err().Error())
+			return
 		}
 		_ = a.setIndexRunFrontier(id, h+1, false)
 		started := time.Now()
-		if e := a.saveRunProgress(id, "running", "", consumers, counts, target, targetHash); e != nil {
+		if e := a.saveRunProgress(id, "running", fanoutReason, consumers, counts, target, targetHash); e != nil {
 			finish("failed", e.Error())
 			return
 		}

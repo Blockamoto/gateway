@@ -110,21 +110,28 @@ type indexRunCounts struct {
 	InscriptionExtractions         int64 `json:"inscription_extractions"`
 	CacheHits                      int64 `json:"cache_hits"`
 }
+type indexRunSourceFactError struct {
+	Index     string `json:"index"`
+	Height    int64  `json:"height"`
+	BlockHash string `json:"block_hash"`
+	Reason    string `json:"reason"`
+}
 type indexRunRecord struct {
-	AdmissionRevision   uint64             `json:"admission_revision,omitempty"`
-	FrontierHeight      int64              `json:"frontier_height,omitempty"`
-	FrontierEpoch       uint64             `json:"frontier_epoch,omitempty"`
-	Phase               string             `json:"phase,omitempty"`
-	InitialTargetHeight int64              `json:"initial_target_height"`
-	ID                  string             `json:"id"`
-	State               string             `json:"state"`
-	Reason              string             `json:"reason,omitempty"`
-	Request             indexRunRequest    `json:"request"`
-	TargetHeight        int64              `json:"target_height"`
-	TargetHash          string             `json:"target_hash"`
-	Consumers           []indexRunProgress `json:"consumers"`
-	Counts              indexRunCounts     `json:"counts"`
-	Updated             string             `json:"updated"`
+	SourceFactErrors    []indexRunSourceFactError `json:"source_fact_errors,omitempty"`
+	AdmissionRevision   uint64                    `json:"admission_revision,omitempty"`
+	FrontierHeight      int64                     `json:"frontier_height,omitempty"`
+	FrontierEpoch       uint64                    `json:"frontier_epoch,omitempty"`
+	Phase               string                    `json:"phase,omitempty"`
+	InitialTargetHeight int64                     `json:"initial_target_height"`
+	ID                  string                    `json:"id"`
+	State               string                    `json:"state"`
+	Reason              string                    `json:"reason,omitempty"`
+	Request             indexRunRequest           `json:"request"`
+	TargetHeight        int64                     `json:"target_height"`
+	TargetHash          string                    `json:"target_hash"`
+	Consumers           []indexRunProgress        `json:"consumers"`
+	Counts              indexRunCounts            `json:"counts"`
+	Updated             string                    `json:"updated"`
 }
 type indexRunDocument struct {
 	Schema     int             `json:"schema"`

@@ -156,6 +156,7 @@ func (a *app) indexStatus() indexStatusView {
 	} else {
 		out.Live = live
 	}
+	inscriptionInventoryUnknown := false
 	for _, id := range []string{"blocks", "tx-locator", "inscriptions", "bitmap", "txo-spender", "sat-state", "utxo-state"} {
 		s, e := indexStoreHead(a.dataDir, id)
 		if e != nil {
@@ -173,6 +174,21 @@ func (a *app) indexStatus() indexStatusView {
 		}
 		out.Instances = append(out.Instances, indexInstance{Mode: s.head.Mode, Definition: id, Version: s.definition.Version, Network: s.definition.Network, Coverage: []heightInterval{{s.checkpoint.From, s.checkpoint.Height}}, Gaps: []heightInterval{}, Completeness: "recorded_contiguous_range; history_rechecked_on_resume", Verification: "locally_derived; " + a.indexChainState(s.checkpoint), Provenance: "Bitcoin block and witness evidence", Retention: s.head.Retention, Queryable: true, Serveable: a.indexPublicationMatches(id, s.checkpoint), Checkpoint: s.checkpoint, Note: a.indexInstanceNote(s)})
 		out.Instances[len(out.Instances)-1].RetainSatHistory = retainHistory
+		if id == "inscriptions" {
+			// Point-source recipes remain readable, but a native head alone
+			// does not turn their known identities into complete inventory.
+			// A bounded, process-cached ancestry check also excludes a complete
+			// newest batch above older point-only records. Writer admission
+			// independently validates the full prefix before extending it.
+			if !inscriptionInventoryPrefixComplete(context.Background(), s) {
+				instance := &out.Instances[len(out.Instances)-1]
+				instance.Coverage = []heightInterval{}
+				instance.Completeness = "known_occurrences_only; complete_block_inventory_unknown"
+				instance.Serveable = false
+				instance.Note = "Known inscription reveal locations remain readable. Complete block inventory has not been established for this saved source; missing occurrences and empty-block status remain unknown."
+				inscriptionInventoryUnknown = true
+			}
+		}
 		if id == "utxo-state" {
 			instance := &out.Instances[len(out.Instances)-1]
 			instance.Completeness = "complete_genesis_prefix_at_snapshot"
@@ -207,6 +223,22 @@ func (a *app) indexStatus() indexStatusView {
 		instance.Note = out.Sats.Note
 	}
 	out.Timeline = a.indexTimeline(out.Definitions, out.Providers, out.Instances, out.Errors...)
+	if inscriptionInventoryUnknown {
+		for i := range out.Timeline.Tracks {
+			track := &out.Timeline.Tracks[i]
+			if track.ID == "inscriptions" {
+				track.CoverageComplete = false
+				track.Gaps = []heightInterval{}
+				track.Note = "Known inscription reveal locations are separate from complete block inventory. Missing occurrences and empty-block status remain unknown outside independently complete inventory coverage."
+				for j := range track.Sources {
+					if track.Sources[j].Kind == "committed_records" {
+						track.Sources[j].Complete = false
+						track.Sources[j].Note = track.Note
+					}
+				}
+			}
+		}
+	}
 	return out
 }
 

@@ -101,6 +101,9 @@ func openIndexStoreContext(ctx context.Context, root, id string) (*indexStore, e
 		if e := ctx.Err(); e != nil {
 			return e
 		}
+		if id == "inscriptions" && !inscriptionBatchInventoryComplete(batch) {
+			return fmt.Errorf("saved inscription receipts lack a complete block-inventory recipe; cannot resume whole-block indexing")
+		}
 		for _, r := range batch.Bitmap {
 			if r.Accepted && r.District != nil {
 				s.winners[*r.District] = r.Inscription
@@ -116,6 +119,9 @@ func openIndexStoreContext(ctx context.Context, root, id string) (*indexStore, e
 	})
 	if e != nil {
 		return nil, e
+	}
+	if id == "inscriptions" {
+		rememberValidatedInscriptionInventoryPrefix(s)
 	}
 	if e = s.ensureIndexLocators(ctx); e != nil {
 		return nil, e
@@ -516,6 +522,11 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 				return e
 			}
 		}
+		if s.definition.ID == "inscriptions" {
+			if err := validateCompleteInscriptionInventory(block, &extracted); err != nil {
+				return err
+			}
+		}
 	}
 	b := indexBatch{PreviousBlockHash: block.PreviousBlockHash, Diagnostics: extracted.Diagnostics}
 	if s.definition.ID == "txo-spender" {
@@ -661,6 +672,7 @@ func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash s
 	}
 	s.head = head
 	s.checkpoint = &c
+	rememberInscriptionInventoryAppend(s, b)
 	for _, r := range b.Bitmap {
 		if r.Accepted && r.District != nil {
 			s.winners[*r.District] = r.Inscription

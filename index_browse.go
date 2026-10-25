@@ -140,14 +140,21 @@ func (a *app) setIndexBrowsePolicy(ctx context.Context, req indexBrowseRequest) 
 	}
 	return indexBrowsePolicy{Index: req.Index, Enabled: *req.Enabled, Available: true, Capability: "sparse", Reason: "Verified observed blocks only; no predecessor scan."}, nil
 }
-func (a *app) browseStore(id string) (*indexStore, indexBrowseHead, error) {
-	d, err := findIndexDefinition(id)
-	if err != nil || !indexBrowseAvailable(id) {
+func (a *app) newBrowseStore(id string) *indexStore {
+	d, _ := findIndexDefinition(id)
+	s := &indexStore{profileRoot: a.dataDir, dir: filepath.Join(a.dataDir, "indexes", "browse", id), definition: d, head: indexHead{Mode: "lean"}}
+	if id == "tx-locator" {
+		s.head.LocatorLayout = indexLocatorPackedLayout
+	}
+	return s
+}
+func (a *app) rawBrowseStore(id string) (*indexStore, indexBrowseHead, error) {
+	if !indexBrowseAvailable(id) {
 		return nil, indexBrowseHead{}, fmt.Errorf("unsupported browsed index")
 	}
-	s := &indexStore{profileRoot: a.dataDir, dir: filepath.Join(a.dataDir, "indexes", "browse", id), definition: d, head: indexHead{Mode: "lean"}}
+	s := a.newBrowseStore(id)
 	head := indexBrowseHead{Schema: 1, Blocks: map[string]string{}}
-	err = boundedBrowseJSON(filepath.Join(s.dir, "head.json"), &head)
+	err := boundedBrowseJSON(filepath.Join(s.dir, "head.json"), &head)
 	if os.IsNotExist(err) {
 		err = nil
 	}
@@ -164,6 +171,30 @@ func (a *app) browseStore(id string) (*indexStore, indexBrowseHead, error) {
 		}
 	}
 	return s, head, nil
+}
+func (a *app) browseStore(id string) (*indexStore, indexBrowseHead, error) {
+	s, head, err := a.rawBrowseStore(id)
+	if err == nil && id == "tx-locator" {
+		remaining := indexBrowseBudget
+		for height, commit := range head.Blocks {
+			remaining -= int64(128 + len(height) + len(commit))
+		}
+		if remaining < 0 {
+			return s, head, fmt.Errorf("TX point membership projection exceeds its memory budget; availability is unknown")
+		}
+		err = walkBrowseTXPoints(context.Background(), a.dataDir, func(point indexBrowseTXPoint) error {
+			key := strconv.FormatInt(point.Height, 10)
+			if _, exists := head.Blocks[key]; !exists {
+				remaining -= int64(128 + len(key) + len(point.Commitment))
+				if remaining < 0 {
+					return fmt.Errorf("TX point membership projection exceeds its memory budget; availability is unknown")
+				}
+			}
+			head.Blocks[key] = point.Commitment
+			return nil
+		})
+	}
+	return s, head, err
 }
 func singletonBrowseBatch(id string, block blockView, extracted *inscriptionBlockResult) (indexBatch, error) {
 	return singletonBrowseBatchMode(indexRunSelection{Index: id, indexRunOptions: indexRunOptions{Mode: "lean", ConventionalIDs: boolPointer(false)}}, block, extracted)
@@ -193,8 +224,8 @@ func singletonBrowseBatchMode(choice indexRunSelection, block blockView, extract
 			}
 			extracted = &result
 		}
-		if extracted.BlockHeight != block.Height || extracted.BlockHash != block.Hash || extracted.ParserProfile != inscriptionParserProfile {
-			return b, fmt.Errorf("inscription extraction does not match browsed block")
+		if err := validateCompleteInscriptionInventory(block, extracted); err != nil {
+			return b, err
 		}
 		mode := choice.Mode
 		if mode == "" {
@@ -237,6 +268,9 @@ func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (
 	if err := checkTimelineTrackArmed(ctx, a.dataDir, id); err != nil {
 		return false, err
 	}
+	if id == "tx-locator" {
+		return a.persistBrowseTXPointBatch(ctx, a.newBrowseStore(id), b)
+	}
 	s, head, err := a.browseStore(id)
 	if err != nil {
 		return false, err
@@ -254,55 +288,6 @@ func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (
 	}
 	if err = syncDirectory(filepath.Join(s.dir, "commits")); err != nil {
 		return false, err
-	}
-	// TX acceleration is advisory. The immutable batch and head membership are
-	// validated on every lookup, so interrupted new pointers are invisible.
-	if id == "tx-locator" {
-		groups := map[string][]indexLocatorRecord{}
-		for _, entry := range transactionBatchEntries(b) {
-			prefix := entry.TxID[:2]
-			groups[prefix] = append(groups[prefix], indexLocatorRecord{TxID: entry.TxID, Commit: b.Checkpoint.Commitment, Height: b.Checkpoint.Height, TxIndex: int(entry.TxIndex)})
-		}
-		prefixes := []string{}
-		for prefix := range groups {
-			prefixes = append(prefixes, prefix)
-		}
-		sort.Strings(prefixes)
-		for _, prefix := range prefixes {
-			if err = ctx.Err(); err != nil {
-				return false, err
-			}
-			path := filepath.Join(s.dir, "locators", prefix+".json")
-			rows := []indexLocatorRecord{}
-			err = boundedBrowseJSON(path, &rows)
-			if err != nil && !os.IsNotExist(err) {
-				return false, err
-			}
-			seen := map[string]bool{}
-			for _, r := range rows {
-				seen[fmt.Sprintf("%s:%s:%d", r.TxID, r.Commit, r.TxIndex)] = true
-			}
-			for _, r := range groups[prefix] {
-				k := fmt.Sprintf("%s:%s:%d", r.TxID, r.Commit, r.TxIndex)
-				if !seen[k] {
-					rows = append(rows, r)
-					seen[k] = true
-				}
-			}
-			data, e := json.Marshal(rows)
-			if e != nil {
-				return false, e
-			}
-			if int64(len(data)) > indexBrowseBudget {
-				return false, fmt.Errorf("browsed transaction shard exceeds budget")
-			}
-			if err = atomicWriteBytes(path, data); err != nil {
-				return false, err
-			}
-		}
-		if err = syncDirectory(filepath.Join(s.dir, "locators")); err != nil {
-			return false, err
-		}
 	}
 	if err = ctx.Err(); err != nil {
 		return false, err
@@ -334,6 +319,14 @@ func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (
 	return true, nil
 }
 func (a *app) indexBrowsedBlock(ctx context.Context, block blockView, extracted *inscriptionBlockResult) []indexBrowseResult {
+	if extracted != nil {
+		if err := validateCompleteInscriptionInventory(block, extracted); err != nil {
+			return []indexBrowseResult{{Index: "inscriptions", State: "unavailable", Error: err.Error()}}
+		}
+	}
+	if validateCompleteInscriptionInventory(block, block.inscriptionExtraction) != nil {
+		block.inscriptionExtraction = extracted
+	}
 	return a.ingestResolvedVerifiedBlock(ctx, block)
 }
 
@@ -362,17 +355,25 @@ func (a *app) completeIndexedBrowseBlock(ctx context.Context, id string, block b
 	if id == "tx-locator" {
 		return b.TransactionLocator != nil && b.TransactionLocator.Selection == "all" || b.Bitcoin != nil && block.TransactionCount > 0 && uint64(len(b.Bitcoin.TxIDs)) == block.TransactionCount, nil
 	}
-	return id == "inscriptions" && inscriptionBatchCount(b) != nil, nil
+	return id == "inscriptions" && inscriptionBatchInventoryComplete(b), nil
 }
 func (a *app) browsedBatchContext(ctx context.Context, id string, height int64, hash string) (indexBatch, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return indexBatch{}, false, err
 	}
-	s, head, err := a.browseStore(id)
+	var s *indexStore
+	var commit, pointHash string
+	var err error
+	if id == "tx-locator" {
+		s, commit, pointHash, err = a.browseTXPointCommit(ctx, height)
+	} else {
+		var head indexBrowseHead
+		s, head, err = a.browseStore(id)
+		commit = head.Blocks[strconv.FormatInt(height, 10)]
+	}
 	if err != nil {
 		return indexBatch{}, false, err
 	}
-	commit := head.Blocks[strconv.FormatInt(height, 10)]
 	if commit == "" {
 		return indexBatch{}, false, nil
 	}
@@ -382,6 +383,9 @@ func (a *app) browsedBatchContext(ctx context.Context, id string, height int64, 
 	}
 	if b.Checkpoint.Height != height || b.Checkpoint.From != height || b.Checkpoint.PreviousCommitment != "" {
 		return b, false, fmt.Errorf("invalid browsed singleton receipt")
+	}
+	if pointHash != "" && b.Checkpoint.BlockHash != pointHash {
+		return b, false, fmt.Errorf("TX point receipt differs from its committed block")
 	}
 	if hash == "" {
 		hash, err = a.canonicalHashAtHeight(height)
@@ -398,35 +402,59 @@ func (a *app) browsedTransactionLocations(ctx context.Context, txid, hash string
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	s, head, err := a.browseStore("tx-locator")
-	if err != nil {
-		return nil, err
-	}
+	s := a.newBrowseStore("tx-locator")
 	rows := []indexLocatorRecord{}
-	err = boundedBrowseJSON(filepath.Join(s.dir, "locators", txid[:2]+".json"), &rows)
-	if os.IsNotExist(err) {
-		return a.browsedInscriptionIDLocations(ctx, txid, hash, before)
+	err := boundedBrowseJSON(filepath.Join(s.dir, "locators", txid[:2]+".json"), &rows)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
 	}
+	packed, err := s.bitcoinLocatorRecordsReadOnly(ctx, txid)
 	if err != nil {
 		return nil, err
 	}
+	rows = append(rows, packed...)
 	matches := []txLocation{}
+	seen := map[string]bool{}
 	for _, r := range rows {
-		if r.TxID != txid || head.Blocks[strconv.FormatInt(r.Height, 10)] != r.Commit || before >= 0 && r.Height > before {
+		if r.TxID != txid || before >= 0 && r.Height > before {
 			continue
 		}
 		b, current, e := a.browsedBatchContext(ctx, "tx-locator", r.Height, "")
 		if e != nil {
 			return nil, e
 		}
-		if !current || hash != "" && hash != b.Checkpoint.BlockHash {
+		if !current || b.Checkpoint.Commitment != r.Commit || hash != "" && hash != b.Checkpoint.BlockHash {
 			continue
 		}
 		entries := transactionBatchEntries(b)
 		if r.TxIndex < 0 || r.TxIndex >= len(entries) || entries[r.TxIndex].TxID != txid {
 			return nil, fmt.Errorf("browsed transaction pointer differs from committed position")
 		}
-		matches = append(matches, txLocation{TxID: txid, Height: r.Height, BlockHash: b.Checkpoint.BlockHash, TxIndex: r.TxIndex})
+		key := fmt.Sprintf("%s:%d", r.Commit, r.TxIndex)
+		if !seen[key] {
+			if len(matches) >= 128 {
+				return nil, fmt.Errorf("transaction has too many point incarnations; use its containing block")
+			}
+			seen[key] = true
+			matches = append(matches, txLocation{TxID: txid, Height: r.Height, BlockHash: b.Checkpoint.BlockHash, TxIndex: r.TxIndex})
+		}
+	}
+	future, err := a.browseTXFutureLocations(ctx, txid, hash, before)
+	if err != nil {
+		return nil, err
+	}
+	for _, location := range future {
+		key := fmt.Sprintf("%d:%s:%d", location.Height, location.BlockHash, location.TxIndex)
+		duplicate := false
+		for _, prior := range matches {
+			if key == fmt.Sprintf("%d:%s:%d", prior.Height, prior.BlockHash, prior.TxIndex) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			matches = append(matches, location)
+		}
 	}
 	additional, err := a.browsedInscriptionIDLocations(ctx, txid, hash, before)
 	return append(matches, additional...), err
@@ -441,6 +469,9 @@ func (a *app) browsedInscriptionIDLocations(ctx context.Context, txid, hash stri
 	n := 0
 	for _, commit := range head.Blocks {
 		if n >= indexExplorerMaxBatches {
+			if hash == "" {
+				return nil, errIndexLookupIncomplete
+			}
 			break
 		}
 		n++
@@ -495,6 +526,11 @@ func (a *app) browseTimelineSource(id string, h *timelineLocalReader) (indexTime
 		}
 		if b.Checkpoint.Height != n || b.Checkpoint.From != n || b.Checkpoint.PreviousCommitment != "" {
 			return out, fmt.Errorf("invalid browsed coverage receipt")
+		}
+		if id == "inscriptions" && !inscriptionBatchInventoryComplete(b) {
+			out.Complete = false
+			out.Note = "Known inscription occurrences without a complete block-inventory recipe do not establish block coverage."
+			continue
 		}
 		if h.matches(n, b.Checkpoint.BlockHash) {
 			out.Ranges = append(out.Ranges, heightInterval{n, n})
@@ -575,11 +611,12 @@ func (a *app) browseQueryRows(ctx context.Context, id string, limit int, seen ma
 		} else {
 			coordinates := inscriptionBatchCoordinates(b)
 			rows = append(rows, struct {
-				Inscriptions     []string `json:"inscriptions"`
-				Height           int64    `json:"block_height"`
-				TransactionCount *uint32  `json:"transaction_count,omitempty"`
-				Mode             string   `json:"mode"`
-			}{coordinates, height, inscriptionBatchCount(b), "lean"})
+				Inscriptions      []string `json:"inscriptions"`
+				Height            int64    `json:"block_height"`
+				TransactionCount  *uint32  `json:"transaction_count,omitempty"`
+				Mode              string   `json:"mode"`
+				InventoryComplete bool     `json:"inventory_complete"`
+			}{coordinates, height, inscriptionBatchCount(b), inscriptionBatchMode(b), inscriptionBatchInventoryComplete(b)})
 			total += len(coordinates)
 		}
 	}

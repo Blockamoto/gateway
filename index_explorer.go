@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+var errIndexLookupIncomplete = errors.New("bounded saved-history lookup is incomplete; supply the containing block to resolve transaction identity")
 
 func (a *app) indexLookupContext(ctx context.Context) (context.Context, func()) {
 	if a.network == nil {
@@ -156,9 +159,13 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 		if s.checkpoint == nil || a.indexChainState(s.checkpoint) != "selected_chain" {
 			continue
 		}
+		readOnlyWalk := false
 		if id != "blocks" {
 			if err = s.ensureIndexLocators(ctx); err != nil {
-				return txResolutionView{}, false, err
+				if !errors.Is(err, errIndexLocatorsReadOnly) {
+					return txResolutionView{}, false, err
+				}
+				readOnlyWalk = true
 			}
 		}
 		var candidate *txLocation
@@ -203,16 +210,21 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 			return nil
 		}
 		var records []indexLocatorRecord
-		if id == "blocks" {
+		if readOnlyWalk {
+			err = nil
+		} else if id == "blocks" {
 			records, err = s.bitcoinLocatorRecordsReadOnly(ctx, txid)
 		} else {
 			records, err = s.bitcoinLocatorRecords(ctx, txid)
+		}
+		if errors.Is(err, errIndexLocatorsReadOnly) {
+			readOnlyWalk, records, err = true, nil, nil
 		}
 		if err != nil {
 			return txResolutionView{}, false, err
 		}
 		complete := true
-		if len(records) == 0 && id != "blocks" {
+		if (readOnlyWalk || len(records) == 0) && id != "blocks" {
 			// Auxiliary fallback for old/repairable preview data; new commits
 			// persist the compact pointer before publishing their head.
 			complete, err = walkExplorerIndex(ctx, s, visit)
@@ -246,7 +258,12 @@ func (a *app) indexedTransactionBeforeContext(ctx context.Context, txid string, 
 		if ambiguous {
 			return txResolutionView{}, true, fmt.Errorf("historical transaction ID is ambiguous; supply its containing block")
 		}
-		if !complete || candidate == nil {
+		if !complete {
+			// An earlier browse match cannot establish global uniqueness while
+			// unread native history may contain another incarnation.
+			return txResolutionView{}, false, errIndexLookupIncomplete
+		}
+		if candidate == nil {
 			continue
 		}
 		if location != nil && (location.BlockHash != candidate.BlockHash || location.TxIndex != candidate.TxIndex || location.Height != candidate.Height) {
@@ -340,8 +357,12 @@ func (a *app) indexedInscription(ctx context.Context, id string) (ordRecord, boo
 	if s.head.Mode == "lean" {
 		return ordRecord{}, false, nil
 	}
+	readOnlyWalk := false
 	if err = s.ensureIndexLocators(ctx); err != nil {
-		return ordRecord{}, false, err
+		if !errors.Is(err, errIndexLocatorsReadOnly) {
+			return ordRecord{}, false, err
+		}
+		readOnlyWalk = true
 	}
 	var found *ordRecord
 	visit := func(b indexBatch) error {
@@ -371,12 +392,20 @@ func (a *app) indexedInscription(ctx context.Context, id string) (ordRecord, boo
 		return nil
 	}
 	sum := sha256.Sum256([]byte(id))
-	records, err := s.bitcoinLocatorRecords(ctx, hex.EncodeToString(sum[:]))
+	var records []indexLocatorRecord
+	if readOnlyWalk {
+		err = nil
+	} else {
+		records, err = s.bitcoinLocatorRecords(ctx, hex.EncodeToString(sum[:]))
+	}
+	if errors.Is(err, errIndexLocatorsReadOnly) {
+		readOnlyWalk, records, err = true, nil, nil
+	}
 	if err != nil {
 		return ordRecord{}, false, err
 	}
 	complete := true
-	if len(records) == 0 {
+	if readOnlyWalk || len(records) == 0 {
 		complete, err = walkExplorerIndex(ctx, s, visit)
 	} else {
 		for _, record := range records {
@@ -404,7 +433,10 @@ func (a *app) indexedInscription(ctx context.Context, id string) (ordRecord, boo
 	if err != nil {
 		return ordRecord{}, false, err
 	}
-	if !complete || found == nil {
+	if !complete {
+		return ordRecord{}, false, errIndexLookupIncomplete
+	}
+	if found == nil {
 		return ordRecord{}, false, nil
 	}
 	if err = ctx.Err(); err != nil {

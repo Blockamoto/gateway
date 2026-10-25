@@ -91,8 +91,8 @@ func makeBlockMap(block blockView, extracted inscriptionBlockResult) (blockMapVi
 	if !integrityVerified(block) || len(block.Transactions) == 0 || uint64(len(block.Transactions)) != block.TransactionCount {
 		return blockMapView{}, fmt.Errorf("block map requires complete verified transactions")
 	}
-	if extracted.BlockHash != block.Hash || extracted.BlockHeight != block.Height || extracted.ParserProfile != inscriptionParserProfile {
-		return blockMapView{}, fmt.Errorf("block map extraction mismatch")
+	if err := validateCompleteInscriptionInventory(block, &extracted); err != nil {
+		return blockMapView{}, err
 	}
 	out := blockMapView{Height: block.Height, Hash: block.Hash, Total: len(block.Transactions), TransactionCount: len(block.Transactions), Transactions: make([]blockMapTransaction, 0, len(block.Transactions)), Indexing: []indexBrowseResult{}, Verification: block.Verification, VerificationState: block.VerificationState}
 	for i, tx := range block.Transactions {
@@ -123,17 +123,21 @@ func (a *app) handleIndexBlockMap(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 400, err)
 		return
 	}
-	extracted, err := extractInscriptionOccurrences(block)
+	extracted := block.inscriptionExtraction
+	if extracted == nil {
+		complete, extractErr := extractInscriptionOccurrences(block)
+		if extractErr != nil {
+			jsonError(w, 400, extractErr)
+			return
+		}
+		extracted = &complete
+	}
+	result, err := makeBlockMap(block, *extracted)
 	if err != nil {
 		jsonError(w, 400, err)
 		return
 	}
-	result, err := makeBlockMap(block, extracted)
-	if err != nil {
-		jsonError(w, 400, err)
-		return
-	}
-	result.Indexing = a.indexBrowsedBlock(r.Context(), block, &extracted)
+	result.Indexing = a.indexBrowsedBlock(r.Context(), block, extracted)
 	encoded, err := json.Marshal(result)
 	if err != nil || len(encoded) > 16<<20 {
 		jsonError(w, 400, fmt.Errorf("block map exceeds the bounded summary budget"))

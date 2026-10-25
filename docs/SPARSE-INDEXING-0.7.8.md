@@ -72,3 +72,74 @@ local verified bodies with Raw Off, independent child-only shared runs,
 ownership through collection and Off, sparse TXIO translation gaps, deferred
 dependency ingestion, exact-next state, Full-mode retention, and late-Off
 publication fencing.
+
+## Shared source and inventory follow-up
+
+Each complete verified body consumed by the coordinated worker is offered to
+all applicable armed tracks. Only the actual same-height native cohort and
+already staged same-body TX anchors reserve that body; a distant admitted
+frontier does not suppress sparse capture. TX work can overlap the ordered
+stateful group. UTXO precedes IO derivation, District precedes Parcel, Parcel
+uses the pre-transition Sat context, and Sats advance afterward. Every worker
+joins and releases its store gates before dependency bodies drain.
+
+Dependency facts share the already decoded body and sealed extraction. The
+operation retains at most eight resident bodies within a 32 MiB serialized-fact
+budget, spilling excess facts into an owned private temporary directory outside the data
+profile. Checksums, identities, raw verification receipts and extraction
+receipts are checked when restoring facts. Cancellation and errors clean up
+the spill. Queued facts have a 1 GiB aggregate operation quota, and failed
+spills or consumer publication errors are reported rather than silently
+dropping a body. Independently committed checkpoints remain valid.
+
+A complete saved TX point may supply only its exact next native prefix block.
+Promotion checks its full ordered transaction payload against the selected
+header Merkle root and ancestry, then computes normal native commitments.
+The singleton commitment is never used as a range checkpoint. Promotion
+preserves the point receipt while the native batch is awaiting durable save.
+Raw On still requires the normal body-retention path. Queued dependencies
+re-establish the actual idempotent producer acknowledgement before fanout;
+verified bytes alone never stand in for retained Raw membership.
+
+Future TX points share a bounded batch in the genesis-aligned 336-block window,
+with at most 16 MiB of serialized facts and 120,000 transaction rows. The batch
+retains no decoded bodies. Its private pending lookup can supply native catch-up,
+but public queries and Available coverage see only acknowledged saved points.
+Immutable per-block records are flushed before one checksummed window manifest
+publishes the group. Pause or Off discards volatile facts and preserves saved
+windows. The native TX prefix keeps its existing 336-block, 32 MiB, 400,000-row
+limits and its independent durable checkpoint.
+
+Ordinary point captures retain their packed reverse hints. Coordinator future
+batches avoid the per-body packed-bucket flushes, historical transaction-array
+rewrites and whole-history membership rewrites. Old point maps, height receipts
+and locator shards remain readable. A bounded read-only fallback reports
+uncertainty when it cannot exclude duplicate transaction identities. A proved
+durable native ancestor can discharge covered reverse-lookup work, while all
+saved point records remain separately inspectable and deletable. Staging or a
+failed native flush cannot create that acknowledgement. Range and whole-data
+deletion reviews bind the relevant window and shadowed height receipts.
+
+Inscriptions coverage represents a complete envelope inventory. Lean retains
+all recognized positions; Full additionally retains their content. Prepared
+inventories require the actual extractor's sealed receipt, so a known positive
+occurrence or Bitmap claim cannot publish whole-block coverage. Authenticated
+legacy Full v1 scan recipes remain readable without changing their bytes or
+requiring a denominator they never stored.
+
+Inscriptions export review and download enforce the same inventory predicate
+on every emitted range and browse batch, including older batches under a
+complete head. A positive-only source cannot produce a complete inventory
+attachment or advertise complete export coverage. This check uses the export's
+existing source walk. Home uses a bounded, process-cached prefix certificate;
+it never performs an unbounded history scan or writes an Off-side repair.
+Transient read failures retry after a bounded backoff. A successful explicit
+writer/resume walk can certify a longer prefix without changing legacy bytes.
+
+Off queries may read existing locator acceleration or use a bounded,
+authenticated immutable history walk. They do not rebuild missing locator
+sidecars. Explicit known-ID content caching under the separate ord viewer
+cache remains available. The TX details distinguish saved progress from
+processed blocks awaiting batch save; pending work never fills Available
+coverage and is discarded by Pause or Off according to the existing batch
+policy.

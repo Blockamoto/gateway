@@ -136,6 +136,11 @@ func storeBlockOutputFactsContext(ctx context.Context, root string, block blockV
 }
 func storeBlockOutputFactLayersContext(ctx context.Context, root string, block blockView, values, scripts bool) (map[string]outputFactRef, error) {
 	if p := runPrepared(ctx); p != nil && p.block.Hash == block.Hash {
+		p.factsMu.Lock()
+		defer p.factsMu.Unlock()
+		if p.refs == nil {
+			p.refs = map[string]map[string]outputFactRef{}
+		}
 		key := fmt.Sprintf("%t:%t", values, scripts)
 		if refs, ok := p.refs[key]; ok {
 			return refs, nil

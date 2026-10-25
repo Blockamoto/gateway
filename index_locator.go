@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -701,7 +702,7 @@ func (s *indexStore) appendBitcoinLocatorRecords(path string, records [][]byte) 
 // Validation/cancellation failures leave the original shard and head unchanged.
 // Callers hold indexLocatorMu throughout repair and publication.
 func (s *indexStore) rebuildIndexLocatorShard(ctx context.Context, path string) error {
-	if err := ctx.Err(); err != nil {
+	if err := s.checkIndexLocatorRepair(ctx); err != nil {
 		return err
 	}
 	if err := s.requireVisibleLocatorHead(); err != nil {
@@ -728,7 +729,7 @@ func (s *indexStore) rebuildIndexLocatorShard(ctx context.Context, path string) 
 	h := sha256.New()
 	length := int64(0)
 	err = s.walk(func(b indexBatch) error {
-		if err := ctx.Err(); err != nil {
+		if err := s.checkIndexLocatorRepair(ctx); err != nil {
 			return err
 		}
 		keys, err := s.indexBatchLocatorKeys(b)
@@ -764,7 +765,7 @@ func (s *indexStore) rebuildIndexLocatorShard(ctx context.Context, path string) 
 	if err != nil {
 		return err
 	}
-	if err = ctx.Err(); err != nil {
+	if err = s.checkIndexLocatorRepair(ctx); err != nil {
 		return err
 	}
 	if err = f.Sync(); err != nil {
@@ -781,11 +782,17 @@ func (s *indexStore) rebuildIndexLocatorShard(ctx context.Context, path string) 
 	if err = updateapply.CheckPath(path); err != nil {
 		return err
 	}
+	if err = s.checkIndexLocatorRepair(ctx); err != nil {
+		return err
+	}
 	if err = replaceLocatorFile(name, path); err != nil {
 		return err
 	}
 	delete(indexLocatorVerifiedPrefixes, path)
 	if err = s.syncLocatorDirectory(filepath.Dir(path)); err != nil {
+		return err
+	}
+	if err = s.checkIndexLocatorRepair(ctx); err != nil {
 		return err
 	}
 	return s.writeLocatorReceipt(path+".receipt.json", r)
@@ -843,6 +850,70 @@ func unwrittenIndexLocatorRecords(path string, records [][]byte) ([][]byte, erro
 // pointer backfill is harmless and is retried before a ready table is published.
 type indexLocatorReadOnlyKey struct{}
 
+var errIndexLocatorsReadOnly = errors.New("saved locator acceleration is unavailable; read-only or Off lookups do not reconstruct historical sidecars")
+
+// Published inventory remains readable with its track Off. Reconstructing its
+// acceleration is a write, governed by the current owner choice just like new
+// derived data. Legacy explicit workflows keep their existing stop policy.
+func (s *indexStore) checkIndexLocatorRepair(ctx context.Context) error {
+	if err := checkIndexRunPublication(ctx); err != nil {
+		return err
+	}
+	if readOnly, _ := ctx.Value(indexLocatorReadOnlyKey{}).(bool); readOnly {
+		return errIndexLocatorsReadOnly
+	}
+	root := s.profileRoot
+	if root == "" {
+		root = filepath.Dir(filepath.Dir(s.dir))
+	}
+	owner := s.definition.ID
+	if owner == inscriptionLocatorIndex {
+		owner = "inscriptions"
+	}
+	d, err := readIndexRunDocument(root)
+	if err != nil {
+		return err
+	}
+	if d.Configured {
+		choice, ok := runSelection(d.Prepared, owner)
+		if !ok || !choice.Armed || s.definition.ID == inscriptionLocatorIndex && !inscriptionIDsEnabled(choice.ConventionalIDs) {
+			return errIndexLocatorsReadOnly
+		}
+		return nil
+	}
+	live, err := readIndexLiveState(root)
+	if err != nil {
+		return err
+	}
+	choice := live.Policies[owner]
+	if choice.Stopped || s.definition.ID == inscriptionLocatorIndex && !inscriptionIDsEnabled(choice.ConventionalIDs) {
+		return errIndexLocatorsReadOnly
+	}
+	return nil
+}
+
+// A point lookup can authenticate ancestry from the visible head without
+// repairing an active table. Reuse the existing bounded explorer walk; a
+// truncated walk remains unknown. No locator, receipt or head is written.
+func (s *indexStore) locatorReadOnlyBatchAt(ctx context.Context, height int64) (indexBatch, bool, error) {
+	if s.checkpoint == nil || height < s.checkpoint.From || height > s.checkpoint.Height {
+		return indexBatch{}, false, nil
+	}
+	var found indexBatch
+	stop := errors.New("authenticated requested index batch")
+	_, err := walkExplorerIndex(ctx, s, func(batch indexBatch) error {
+		if batch.Checkpoint.Height == height {
+			found = batch
+			return stop
+		}
+		return nil
+	})
+	if errors.Is(err, stop) {
+		return found, true, nil
+	}
+	return indexBatch{}, false, err
+}
+
 func (s *indexStore) ensureIndexLocators(ctx context.Context) error {
 	if s.checkpoint == nil || (s.definition.ID != "blocks" && s.definition.ID != "tx-locator" && s.definition.ID != inscriptionLocatorIndex && s.definition.ID != "inscriptions" && s.definition.ID != "txo-spender" && s.definition.ID != "sat-state") {
 		return nil
@@ -850,14 +921,14 @@ func (s *indexStore) ensureIndexLocators(ctx context.Context) error {
 	if _, ready, err := s.activeLocatorCommitContext(ctx, s.checkpoint.Height); err == nil && ready {
 		return nil
 	}
-	if readOnly, _ := ctx.Value(indexLocatorReadOnlyKey{}).(bool); readOnly {
-		return fmt.Errorf("saved locator acceleration is unavailable; automatic availability checks do not reconstruct historical sidecars")
+	if err := s.checkIndexLocatorRepair(ctx); err != nil {
+		return err
 	}
 	if err := lockIndexLocators(ctx); err != nil {
 		return err
 	}
 	defer indexLocatorMu.Unlock()
-	if err := ctx.Err(); err != nil {
+	if err := s.checkIndexLocatorRepair(ctx); err != nil {
 		return err
 	}
 	if err := s.requireVisibleLocatorHead(); err != nil {
@@ -880,12 +951,15 @@ func (s *indexStore) ensureIndexLocators(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		f.Close()
+		os.Remove(path + ".repair")
+	}()
 	if err = f.Truncate(length); err != nil {
 		return err
 	}
 	err = s.walk(func(b indexBatch) error {
-		if err := ctx.Err(); err != nil {
+		if err := s.checkIndexLocatorRepair(ctx); err != nil {
 			return err
 		}
 		if err := s.writeIndexLocatorRows(b, true); err != nil {
@@ -904,7 +978,7 @@ func (s *indexStore) ensureIndexLocators(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err = ctx.Err(); err != nil {
+	if err = s.checkIndexLocatorRepair(ctx); err != nil {
 		return err
 	}
 	if err = f.Sync(); err != nil {
@@ -937,6 +1011,9 @@ func (s *indexStore) ensureIndexLocators(ctx context.Context) error {
 	if err = f.Close(); err != nil {
 		return err
 	}
+	if err = s.checkIndexLocatorRepair(ctx); err != nil {
+		return err
+	}
 	if err = replaceLocatorFile(path+".repair", path); err != nil {
 		return err
 	}
@@ -944,6 +1021,9 @@ func (s *indexStore) ensureIndexLocators(ctx context.Context) error {
 		return err
 	}
 	delete(indexLocatorVerifiedPrefixes, path)
+	if err = s.checkIndexLocatorRepair(ctx); err != nil {
+		return err
+	}
 	if err = s.writeLocatorReceipt(path+".receipt.json", r); err != nil {
 		return err
 	}

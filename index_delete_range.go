@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 
 	"./internal/updateapply"
@@ -18,9 +20,43 @@ type indexDeleteGenericRange struct {
 	Removed    []indexBatch
 }
 type indexDeleteBrowseRange struct {
-	Store   *indexStore
-	Head    indexBrowseHead
-	Removed []string
+	Store        *indexStore
+	Head         indexBrowseHead
+	OriginalHead indexBrowseHead
+	WriteHead    bool
+	Points       []indexBrowseTXPoint
+	AbsentPoints []int64
+	Windows      []indexDeleteBrowseTXWindow
+	Removed      []string
+}
+
+type indexDeleteBrowseTXWindow struct {
+	Height   int64
+	Present  bool
+	Original indexBrowseTXWindow
+	Retained indexBrowseTXWindow
+	Write    bool
+}
+
+func indexDeleteBrowseLegacyHead(s *indexStore) (indexBrowseHead, error) {
+	head := indexBrowseHead{Schema: 1, Blocks: map[string]string{}}
+	err := boundedBrowseJSON(filepath.Join(s.dir, "head.json"), &head)
+	if os.IsNotExist(err) {
+		err = nil
+	}
+	if err != nil {
+		return head, err
+	}
+	if head.Schema != 1 || head.Blocks == nil {
+		return head, fmt.Errorf("unsupported browsed index head")
+	}
+	for raw, commit := range head.Blocks {
+		h, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || h < 0 || strconv.FormatInt(h, 10) != raw || !validHash(commit) {
+			return head, fmt.Errorf("invalid browsed index membership")
+		}
+	}
+	return head, nil
 }
 
 func (a *app) planIndexDeleteBrowse(ctx context.Context, act *indexDeleteAction, requested *indexDeleteRange) error {
@@ -48,18 +84,116 @@ func (a *app) planIndexDeleteBrowse(ctx context.Context, act *indexDeleteAction,
 	if r == nil {
 		return nil
 	}
-	b := &indexDeleteBrowseRange{Store: s, Head: head}
+	b := &indexDeleteBrowseRange{Store: s, Head: head, WriteHead: true}
+	if act.Item.Index == "tx-locator" {
+		// The union is a read projection. Its point leaves must never be
+		// materialized into the independently retained legacy head by deletion.
+		b.Head, e = indexDeleteBrowseLegacyHead(s)
+		if e != nil {
+			return e
+		}
+		b.OriginalHead = indexBrowseHead{Schema: b.Head.Schema, Blocks: map[string]string{}}
+		for h, commit := range b.Head.Blocks {
+			b.OriginalHead.Blocks[h] = commit
+		}
+		b.WriteHead = false
+	}
+	removed, heights := map[string]bool{}, 0
+	windows := map[string]*indexDeleteBrowseTXWindow{}
 	for raw, commit := range head.Blocks {
 		h, _ := strconv.ParseInt(raw, 10, 64)
 		if h >= r.From && h <= r.To {
-			b.Removed = append(b.Removed, commit)
+			heights++
+			removed[commit] = true
+			if act.Item.Index == "tx-locator" {
+				path := browseTXWindowPath(a.dataDir, h)
+				window := windows[path]
+				if window == nil {
+					original, present, err := readBrowseTXWindow(ctx, a.dataDir, h)
+					if err != nil {
+						return err
+					}
+					retained := original
+					retained.Points = append([]indexBrowseTXPoint(nil), original.Points...)
+					window = &indexDeleteBrowseTXWindow{Height: h, Present: present, Original: original, Retained: retained}
+					windows[path] = window
+				}
+				if h < window.Height {
+					window.Height = h
+				}
+				ownedByWindow := false
+				for i, member := range window.Retained.Points {
+					if member.Height == h {
+						if member.Commitment != commit {
+							return fmt.Errorf("transaction window changed; review deletion again")
+						}
+						ownedByWindow, window.Write = true, true
+						window.Retained.Points = append(window.Retained.Points[:i], window.Retained.Points[i+1:]...)
+						break
+					}
+				}
+				// Capture a shadowed old leaf too: removing the current window
+				// member must not make an older receipt visible again.
+				point, have, err := readBrowseTXPointLeaf(ctx, a.dataDir, h)
+				if err != nil {
+					return err
+				}
+				if have {
+					if !ownedByWindow && point.Commitment != commit {
+						return fmt.Errorf("transaction point changed; review deletion again")
+					}
+					if ownedByWindow && point.Commitment != commit {
+						shadow, err := s.readBatch(point.Commitment)
+						if err != nil {
+							return err
+						}
+						c := shadow.Checkpoint
+						if c.Height != h || c.From != h || c.BlockHash != point.BlockHash || c.PreviousCommitment != "" {
+							return fmt.Errorf("transaction shadow point does not own its commit")
+						}
+					}
+					b.Points = append(b.Points, point)
+					removed[point.Commitment] = true
+				} else {
+					b.AbsentPoints = append(b.AbsentPoints, h)
+				}
+				if legacy, haveLegacy := b.Head.Blocks[raw]; haveLegacy {
+					removed[legacy] = true
+					b.WriteHead = true
+				} else if !have && !ownedByWindow {
+					return fmt.Errorf("transaction browse membership changed; review deletion again")
+				}
+			}
 			delete(b.Head.Blocks, raw)
 		}
 	}
+	for commit := range removed {
+		b.Removed = append(b.Removed, commit)
+	}
+	for _, window := range windows {
+		// A deterministic representative binds absent windows too, independent
+		// of map iteration or the selected member order.
+		if window.Write {
+			window.Retained.Digest = browseTXWindowDigest(window.Retained)
+		}
+		b.Windows = append(b.Windows, *window)
+	}
+	sort.Strings(b.Removed)
+	sort.Slice(b.Points, func(i, j int) bool { return b.Points[i].Height < b.Points[j].Height })
+	sort.Slice(b.AbsentPoints, func(i, j int) bool { return b.AbsentPoints[i] < b.AbsentPoints[j] })
+	sort.Slice(b.Windows, func(i, j int) bool { return b.Windows[i].Height < b.Windows[j].Height })
 	if len(b.Removed) > 0 {
+		if act.Item.Index == "tx-locator" {
+			act.Review = indexDigest(struct {
+				Base         string
+				Points       []indexBrowseTXPoint
+				AbsentPoints []int64
+				Windows      []indexDeleteBrowseTXWindow
+			}{act.Review, b.Points, b.AbsentPoints, b.Windows})
+		}
 		act.Browse = b
 		act.Item.Noop = false
-		act.Item.Scope = append(act.Item.Scope, fmt.Sprintf("%d independently saved browse blocks in [%d, %d]", len(b.Removed), r.From, r.To))
+		act.Item.Scope = append(act.Item.Scope, fmt.Sprintf("%d independently saved browse blocks in [%d, %d]", heights, r.From, r.To))
 		if act.Item.Range == nil {
 			act.Item.Range = r
 		}
@@ -67,12 +201,71 @@ func (a *app) planIndexDeleteBrowse(ctx context.Context, act *indexDeleteAction,
 	return ctx.Err()
 }
 func (a *app) applyIndexDeleteBrowse(ctx context.Context, b *indexDeleteBrowseRange, backup func(string) error, move func(string) error) error {
-	head := filepath.Join(b.Store.dir, "head.json")
-	if e := backup(head); e != nil {
-		return e
+	if b.Store.definition.ID == "tx-locator" {
+		current, err := indexDeleteBrowseLegacyHead(b.Store)
+		if err != nil {
+			return err
+		}
+		if indexDigest(current) != indexDigest(b.OriginalHead) {
+			return fmt.Errorf("transaction browse head changed; review deletion again")
+		}
+		for _, expected := range b.Points {
+			current, have, err := readBrowseTXPointLeaf(ctx, a.dataDir, expected.Height)
+			if err != nil {
+				return err
+			}
+			if !have || current != expected {
+				return fmt.Errorf("transaction point changed; review deletion again")
+			}
+		}
+		for _, height := range b.AbsentPoints {
+			if _, have, err := readBrowseTXPointLeaf(ctx, a.dataDir, height); err != nil {
+				return err
+			} else if have {
+				return fmt.Errorf("transaction point changed; review deletion again")
+			}
+		}
+		for _, expected := range b.Windows {
+			current, have, err := readBrowseTXWindow(ctx, a.dataDir, expected.Height)
+			if err != nil {
+				return err
+			}
+			if have != expected.Present || (have && indexDigest(current) != indexDigest(expected.Original)) {
+				return fmt.Errorf("transaction window changed; review deletion again")
+			}
+		}
 	}
-	if e := indexDeleteWriteJSON(head, b.Head); e != nil {
-		return e
+	if b.WriteHead {
+		head := filepath.Join(b.Store.dir, "head.json")
+		if e := backup(head); e != nil {
+			return e
+		}
+		if e := indexDeleteWriteJSON(head, b.Head); e != nil {
+			return e
+		}
+	}
+	for _, window := range b.Windows {
+		if !window.Write {
+			continue
+		}
+		path := browseTXWindowPath(a.dataDir, window.Height)
+		if len(window.Retained.Points) == 0 {
+			if err := move(path); err != nil {
+				return err
+			}
+		} else {
+			if err := backup(path); err != nil {
+				return err
+			}
+			if err := indexDeleteWriteJSON(path, window.Retained); err != nil {
+				return err
+			}
+		}
+	}
+	for _, point := range b.Points {
+		if e := move(browseTXPointPath(a.dataDir, point.Height)); e != nil {
+			return e
+		}
 	}
 	for _, commit := range b.Removed {
 		if e := move(filepath.Join(b.Store.dir, "commits", commit+".json")); e != nil {

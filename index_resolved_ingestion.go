@@ -13,6 +13,7 @@ import (
 type resolvedIngestionKey struct{}
 
 var errResolvedAlreadyIndexed = errors.New("resolved block already indexed")
+var errResolvedNotApplicable = errors.New("resolved block is not the next applicable transition")
 
 func prepareResolvedBlockExtraction(ctx context.Context, root string, b *blockView) {
 	if b.inscriptionExtraction != nil || ctx.Err() != nil {
@@ -33,10 +34,21 @@ func prepareResolvedBlockExtraction(ctx context.Context, root string, b *blockVi
 }
 
 type resolvedIngestionQueue struct {
-	mu      sync.Mutex
-	blocks  []blockView
-	seen    map[string]bool
-	results []indexBrowseResult
+	drainMu           sync.Mutex
+	mu                sync.Mutex
+	blocks            []resolvedQueuedBlock
+	seen              map[string]bool
+	results           []indexBrowseResult
+	fanoutErrors      []indexRunSourceFactError
+	problem           error
+	closed            bool
+	spoolDir          string
+	maxResidentBlocks int
+	maxResidentBytes  int64
+	residentBlocks    int
+	residentBytes     int64
+	maxQueuedBytes    int64
+	queuedBytes       int64
 }
 
 // Dependency fetches made while deriving a consumer enqueue their completed
@@ -48,42 +60,65 @@ func (a *app) withDeferredBlockIngestion(ctx context.Context) (context.Context, 
 	}
 	q := &resolvedIngestionQueue{seen: map[string]bool{}}
 	work := context.WithValue(ctx, resolvedIngestionKey{}, q)
-	return work, func() { a.drainResolvedBlockIngestion(work, q) }
-}
-func queueResolvedBlock(q *resolvedIngestionQueue, block blockView) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	key := fmt.Sprintf("%d:%s", block.Height, block.Hash)
-	if !q.seen[key] {
-		q.seen[key] = true
-		q.blocks = append(q.blocks, block)
+	return work, func() {
+		a.drainResolvedBlockIngestion(work, q)
+		if err := q.close(); err != nil {
+			q.fail(err)
+			q.addResults(indexBrowseResult{"resolved", "unavailable", err.Error()})
+		}
 	}
 }
 func (a *app) ingestResolvedVerifiedBlock(ctx context.Context, block blockView) []indexBrowseResult {
 	if ctx.Err() != nil || !integrityVerified(block) || block.Height < 0 || len(block.Transactions) == 0 || block.TransactionCount != uint64(len(block.Transactions)) || (!block.Verification.HeaderChainMatch && !block.Verification.ConsensusValidated) {
 		return nil
 	}
+	// Speculation and source loading never publish before the coordinator
+	// has built the exact per-body owner plan. Dependency bodies do not match.
+	if deferred, _ := ctx.Value(indexRunCoordinatorSourceKey{}).(bool); deferred {
+		if owner, ok := ctx.Value(indexRunSourceOwnershipKey{}).(indexRunSourceOwnership); ok && owner.Height == block.Height && owner.Hash == block.Hash {
+			return nil
+		}
+	}
 	if q, ok := ctx.Value(resolvedIngestionKey{}).(*resolvedIngestionQueue); ok {
-		queueResolvedBlock(q, block)
+		if err := queueResolvedBlock(q, block); err != nil {
+			return []indexBrowseResult{{"resolved", "unavailable", err.Error()}}
+		}
 		return nil
 	}
 	q := &resolvedIngestionQueue{seen: map[string]bool{}}
-	queueResolvedBlock(q, block)
+	if err := queueResolvedBlock(q, block); err != nil {
+		_ = q.close()
+		return []indexBrowseResult{{"resolved", "unavailable", err.Error()}}
+	}
 	a.drainResolvedBlockIngestion(context.WithValue(ctx, resolvedIngestionKey{}, q), q)
+	if err := q.close(); err != nil {
+		q.addResults(indexBrowseResult{"resolved", "unavailable", err.Error()})
+	}
 	return q.results
 }
 func (a *app) drainResolvedBlockIngestion(ctx context.Context, q *resolvedIngestionQueue) {
+	q.drainMu.Lock()
+	defer q.drainMu.Unlock()
 	for ctx.Err() == nil {
-		q.mu.Lock()
-		if len(q.blocks) == 0 {
-			q.mu.Unlock()
+		block, have, err := q.next()
+		if err != nil {
+			q.fail(err)
+			q.addResults(indexBrowseResult{"resolved", "unavailable", err.Error()})
 			break
 		}
-		block := q.blocks[0]
-		q.blocks = q.blocks[1:]
+		if !have {
+			break
+		}
+		rows := a.ingestArmedResolvedBlock(ctx, block)
+		q.addResults(rows...)
+		q.mu.Lock()
+		q.fanoutErrors = append(q.fanoutErrors, sourceFactFailures(block.Height, block.Hash, rows)...)
+		if len(q.fanoutErrors) > 32 {
+			q.fanoutErrors = append([]indexRunSourceFactError(nil), q.fanoutErrors[len(q.fanoutErrors)-32:]...)
+		}
 		q.mu.Unlock()
-		q.results = append(q.results, a.ingestArmedResolvedBlock(ctx, block)...)
 	}
+
 }
 
 func resolvedSelectionEnabled(c indexRunSelection, id string) bool {
@@ -147,7 +182,16 @@ func resolvedOwnedByCoordinator(ctx context.Context, d indexRunDocument, id stri
 	if block.Height < p.From || (d.Run.Request.Out != nil || !selection.Live) && block.Height > p.To {
 		return false
 	}
-	return true
+	if owners, ok := ctx.Value(indexRunCohortOwnersKey{}).(map[string]bool); ok {
+		return owners[resolvedSelectionOwner(id)]
+	}
+	// Older callers have no explicit plan. Reserve only their exact next
+	// transition, never every future body inside the admitted range.
+	next := max(p.From, p.Height+1)
+	if p.StagedHeight != nil {
+		next = *p.StagedHeight + 1
+	}
+	return block.Height == next
 }
 func resolvedSelectionContext(ctx context.Context, root, id string, captured indexRunSelection, hashAt func(int64) (string, error), block blockView) context.Context {
 	return context.WithValue(ctx, indexRunPublicationKey{}, func() error {
@@ -201,27 +245,44 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 	for _, c := range d.Prepared.Consumers {
 		choices[c.Index] = c
 	}
+	native, _ := ctx.Value(indexRunBlockConsumersKey{}).(map[string]indexRunBlockConsumer)
 	prepared := runPrepared(ctx)
+	if prepared == nil || prepared.block.Height != block.Height || prepared.block.Hash != block.Hash {
+		native = nil
+	}
 	if prepared == nil || prepared.block.Hash != block.Hash {
 		prepared = &indexRunPrepared{block: block, extraction: block.inscriptionExtraction, refs: map[string]map[string]outputFactRef{}, prevouts: map[string]utxoCoin{}}
 	}
-	if prepared.refs == nil {
-		prepared.refs = map[string]map[string]outputFactRef{}
-	}
-	if prepared.prevouts == nil {
-		prepared.prevouts = map[string]utxoCoin{}
-	}
-	for _, c := range d.Prepared.Consumers {
-		if prepared.extraction == nil && c.Armed && (c.Index == "inscriptions" || c.Index == "sat-state" || bitmapConsumerID(c.Index)) {
-			if x, e := extractInscriptionOccurrences(block); e == nil {
-				prepared.extraction = &x
-			}
-			break
+	// A queued dependency preserves verified facts, but its new prepared view
+	// has no producer acknowledgement. Re-establish real Raw membership through
+	// the normal idempotent producer before either lane captures that scalar.
+	// A verification receipt alone does not prove durable retention.
+	if !prepared.rawProduced && timelineRawBlocksOn(a.dataDir) {
+		prepared.rawProduced, err = a.rawProducerReceiptContext(ctx, block)
+		if err != nil {
+			return []indexBrowseResult{{Index: "resolved", State: "unavailable", Error: err.Error()}}
 		}
 	}
+	prepareSharedBlockInventory(prepared, d)
 	ctx = context.WithValue(ctx, indexRunPreparedKey{}, prepared)
+
 	out := []indexBrowseResult{}
+	var resultsMu sync.Mutex
+	appendResult := func(row indexBrowseResult) { resultsMu.Lock(); out = append(out, row); resultsMu.Unlock() }
 	apply := func(id string, fn func(context.Context, indexRunSelection) error) {
+		// The actual cohort owns exactly this body. An unrelated admitted future
+		// interval is not ownership and still receives a committed point fact.
+		if operation := native[id]; operation != nil {
+			err := operation(ctx)
+			if errors.Is(err, errIndexRunConsumerStopped) || errors.Is(err, errIndexRunAdmissionChanged) || errors.Is(err, context.Canceled) {
+				appendResult(indexBrowseResult{id, "off", err.Error()})
+			} else if err != nil {
+				appendResult(indexBrowseResult{id, "unavailable", err.Error()})
+			} else {
+				appendResult(indexBrowseResult{Index: id, State: "indexed"})
+			}
+			return
+		}
 		c, ok := choices[resolvedSelectionOwner(id)]
 		if !ok || !resolvedSelectionEnabled(c, id) || !releaseFeatureAvailable(resolvedSelectionOwner(id)) {
 			return
@@ -231,34 +292,113 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 		}
 		work := resolvedSelectionContext(ctx, a.dataDir, id, c, hashAt, block)
 		if err := checkIndexRunPublication(work); err != nil {
-			out = append(out, indexBrowseResult{id, "error", err.Error()})
+			state := "error"
+			if errors.Is(err, errIndexRunConsumerStopped) || errors.Is(err, errIndexRunAdmissionChanged) {
+				state = "off"
+			}
+			appendResult(indexBrowseResult{id, state, err.Error()})
+			return
+		}
+		if prepared.extractionErr != nil && resolvedNeedsInventory(id) {
+			appendResult(indexBrowseResult{id, "unavailable", prepared.extractionErr.Error()})
 			return
 		}
 		err := fn(work, c)
-		if errors.Is(err, errResolvedAlreadyIndexed) {
-			out = append(out, indexBrowseResult{Index: id, State: "already_indexed"})
+		if errors.Is(err, errBrowseTXPointStaged) {
+			appendResult(indexBrowseResult{Index: id, State: "staged"})
+		} else if errors.Is(err, errResolvedNotApplicable) {
+			appendResult(indexBrowseResult{id, "not_applicable", err.Error()})
+		} else if errors.Is(err, errIndexRunConsumerStopped) || errors.Is(err, errIndexRunAdmissionChanged) || errors.Is(err, context.Canceled) {
+			appendResult(indexBrowseResult{id, "off", err.Error()})
+		} else if errors.Is(err, errResolvedAlreadyIndexed) {
+			appendResult(indexBrowseResult{Index: id, State: "already_indexed"})
 		} else if err != nil {
-			out = append(out, indexBrowseResult{id, "unavailable", err.Error()})
+			appendResult(indexBrowseResult{id, "unavailable", err.Error()})
 		} else {
-			out = append(out, indexBrowseResult{Index: id, State: "indexed"})
+			appendResult(indexBrowseResult{Index: id, State: "indexed"})
 		}
 	}
-	// A single point-receipt writer serializes sparse head updates. Nested
-	// fetches only queue while this lock is held.
-	if err := lockIndexBrowse(ctx); err != nil {
-		return []indexBrowseResult{{Index: "resolved", State: "error", Error: err.Error()}}
-	}
-	for _, id := range []string{"tx-locator", "inscriptions", "txo-spender"} {
-		id := id
-		apply(id, func(work context.Context, c indexRunSelection) error { return a.ingestSparseBatch(work, c, block) })
-	}
-	for _, id := range []string{"txio-values", "txio-scripts"} {
-		id := id
+	sparse := func(id string) {
 		apply(id, func(work context.Context, c indexRunSelection) error {
-			return a.ingestSparseOutputLayer(work, id, block)
+			if err := lockIndexBrowse(work); err != nil {
+				return err
+			}
+			defer indexBrowseMu.Unlock()
+			return a.ingestSparseBatch(work, c, block)
 		})
 	}
-	indexBrowseMu.Unlock()
+	// A single TX owner overlaps the existing ordered stateful group. Every
+	// worker joins before returning, releasing gates or draining dependencies.
+	txDone := make(chan struct{})
+	go func() { defer close(txDone); sparse("tx-locator") }()
+	if native["blocks"] != nil {
+		apply("blocks", nil)
+	}
+	apply("utxo-state", func(work context.Context, c indexRunSelection) error {
+		s, err := openUTXOStoreContext(work, a.dataDir)
+		if err != nil {
+			return err
+		}
+		next := int64(0)
+		if h := s.Head(); h != nil {
+			if h.Height == block.Height && h.BlockHash == block.Hash {
+				return nil
+			}
+			next = h.Height + 1
+			if block.Height == next && block.PreviousBlockHash != h.BlockHash {
+				return fmt.Errorf("UTXO awaits its exact next selected transition")
+			}
+		}
+		if block.Height != next {
+			return fmt.Errorf("%w: UTXO requires next block %d", errResolvedNotApplicable, next)
+		}
+		return s.ApplyBlock(work, block)
+	})
+
+	sparse("txo-spender")
+	if native["txo-spender"] == nil {
+		for _, id := range []string{"txio-values", "txio-scripts"} {
+			id := id
+			apply(id, func(work context.Context, _ indexRunSelection) error {
+				if err := lockIndexBrowse(work); err != nil {
+					return err
+				}
+				defer indexBrowseMu.Unlock()
+				return a.ingestSparseOutputLayer(work, id, block)
+			})
+		}
+	}
+	sparse("inscriptions")
+	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID} {
+		id := id
+		apply(id, func(work context.Context, _ indexRunSelection) error {
+			work = context.WithValue(work, bitmapIngestOnlyKey{}, id)
+			return a.ingestArmedBitmapBlock(work, block, prepared.extraction)
+		})
+	}
+	apply("sat-state", func(work context.Context, c indexRunSelection) error {
+		s, err := indexStoreHead(a.dataDir, "sat-state")
+		if err != nil {
+			return err
+		}
+		next := int64(0)
+		if s.checkpoint != nil {
+			if s.checkpoint.Height == block.Height && s.checkpoint.BlockHash == block.Hash {
+				return nil
+			}
+			next = s.checkpoint.Height + 1
+			if block.Height == next && block.PreviousBlockHash != s.checkpoint.BlockHash {
+				return fmt.Errorf("Sats awaits its exact next selected transition")
+			}
+		}
+		if block.Height != next {
+			return fmt.Errorf("%w: Sats requires next block %d", errResolvedNotApplicable, next)
+		}
+		s.locatorContext = work
+		s.head.Mode = "lean"
+		s.retainSatHistory = c.RetainSatHistory
+		return appendSatSelectedBlock077(work, s, block, 0, "ephemeral", prepared.extraction, hashAt)
+	})
 	apply("address-history", func(work context.Context, c indexRunSelection) error {
 		s, err := openAddressHistoryStoreContext(work, a.dataDir)
 		if err != nil {
@@ -272,51 +412,6 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 		}
 		return s.CommitBlockContext(work, block, hashAt)
 	})
-	// Complete-state stores consume only their exact next transition. No
-	// reconciliation, predecessor reconstruction, or hidden backfill is done.
-	apply("utxo-state", func(work context.Context, c indexRunSelection) error {
-		s, err := openUTXOStoreContext(work, a.dataDir)
-		if err != nil {
-			return err
-		}
-		next := int64(0)
-		if h := s.Head(); h != nil {
-			if h.Height == block.Height && h.BlockHash == block.Hash {
-				return nil
-			}
-			next = h.Height + 1
-			if block.PreviousBlockHash != h.BlockHash {
-				return fmt.Errorf("UTXO awaits its exact next selected transition")
-			}
-		}
-		if block.Height != next {
-			return fmt.Errorf("UTXO requires next block %d", next)
-		}
-		return s.ApplyBlock(work, block)
-	})
-	apply("sat-state", func(work context.Context, c indexRunSelection) error {
-		s, err := indexStoreHead(a.dataDir, "sat-state")
-		if err != nil {
-			return err
-		}
-		next := int64(0)
-		if s.checkpoint != nil {
-			if s.checkpoint.Height == block.Height && s.checkpoint.BlockHash == block.Hash {
-				return nil
-			}
-			next = s.checkpoint.Height + 1
-			if block.PreviousBlockHash != s.checkpoint.BlockHash {
-				return fmt.Errorf("Sats awaits its exact next selected transition")
-			}
-		}
-		if block.Height != next {
-			return fmt.Errorf("Sats requires next block %d", next)
-		}
-		s.locatorContext = work
-		s.head.Mode = "lean"
-		s.retainSatHistory = c.RetainSatHistory
-		return appendSatSelectedBlock077(work, s, block, 0, "ephemeral", prepared.extraction, hashAt)
-	})
 	apply("address-state", func(work context.Context, c indexRunSelection) error {
 		u, err := utxoStoreHead(a.dataDir)
 		if err != nil {
@@ -324,7 +419,7 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 		}
 		h := u.Head()
 		if h == nil || h.Height != block.Height || h.BlockHash != block.Hash {
-			return fmt.Errorf("Current Addresses requires matching complete UTXO context")
+			return fmt.Errorf("%w: Current Addresses requires matching complete UTXO context", errResolvedNotApplicable)
 		}
 		prior, err := readAddressStateContext(work, a.dataDir)
 		if err != nil {
@@ -338,17 +433,57 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 			return nil
 		}
 		if prior.Height+1 != block.Height {
-			return fmt.Errorf("Current Addresses requires its exact next projection")
+			return fmt.Errorf("%w: Current Addresses requires its exact next projection", errResolvedNotApplicable)
 		}
 		return resumeAddressStateContext(work, a.dataDir)
 	})
-	if err := a.ingestArmedBitmapBlock(ctx, block, prepared.extraction); err != nil {
-		out = append(out, indexBrowseResult{Index: "bitmap", State: "unavailable", Error: err.Error()})
-	}
+
+	<-txDone
+	sort.Slice(out, func(i, j int) bool { return out[i].Index < out[j].Index })
 	return out
 }
 
+func resolvedNeedsInventory(id string) bool {
+	return id == "inscriptions" || id == "sat-state" || bitmapConsumerID(id)
+}
+func prepareSharedBlockInventory(p *indexRunPrepared, d indexRunDocument) {
+	if p.extractionAttempted {
+		return
+	}
+	needed := false
+	for _, c := range d.Prepared.Consumers {
+		if c.Armed && resolvedNeedsInventory(c.Index) && resolvedAdmissionAllowed(d, c.Index, p.block.Height) == nil {
+			needed = true
+			break
+		}
+	}
+	if !needed {
+		return
+	}
+	p.extractionAttempted = true
+	if p.extraction == nil {
+		x, err := extractInscriptionOccurrences(p.block)
+		p.extractionErr = err
+		if err == nil {
+			p.extraction = &x
+		}
+	}
+	if p.extraction != nil {
+		p.extractionErr = validateCompleteInscriptionInventory(p.block, p.extraction)
+		if p.extractionErr == nil {
+			// A later dependency/cache offer carries the same frozen complete
+			// inventory, rather than parsing the already consumed body again.
+			p.block.inscriptionExtraction = p.extraction
+		}
+	}
+}
+
 func (a *app) ingestSparseBatch(ctx context.Context, c indexRunSelection, block blockView) error {
+	if c.Index == "tx-locator" {
+		if point, ok := ctx.Value(indexRunPointSessionKey{}).(*indexRunPointSession); ok {
+			ctx = point.context(ctx)
+		}
+	}
 	if c.Index != "txo-spender" {
 		if complete, err := a.completeIndexedBrowseBlock(ctx, c.Index, block); err != nil {
 			return err
@@ -391,6 +526,11 @@ func (a *app) ingestSparseBatch(ctx context.Context, c indexRunSelection, block 
 			}
 		}
 		added, err := a.persistBrowseBatch(ctx, c.Index, b)
+		if c.Index == "tx-locator" && errors.Is(err, errBrowseTXPointInvalidated) {
+			if point, ok := ctx.Value(indexRunPointSessionKey{}).(*indexRunPointSession); ok {
+				point.reset()
+			}
+		}
 		if err == nil && !added {
 			return errResolvedAlreadyIndexed
 		}

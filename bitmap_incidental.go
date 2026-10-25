@@ -7,6 +7,8 @@ import (
 	"strconv"
 )
 
+type bitmapIngestOnlyKey struct{}
+
 // Refresh an adapter after the shared verified-block hook has published the
 // same height. The writer always adopts the authenticated durable head; it
 // cannot overwrite a newer incidental publication with its earlier snapshot.
@@ -42,7 +44,11 @@ func (a *app) ingestArmedBitmapBlock(ctx context.Context, block blockView, prepa
 		return nil
 	}
 	var failures []error
+	only, _ := ctx.Value(bitmapIngestOnlyKey{}).(string)
 	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID} {
+		if only != "" && only != id {
+			continue
+		}
 		on, err := timelineTrackArmed(a.dataDir, id)
 		if err != nil {
 			return err
@@ -106,6 +112,9 @@ func (a *app) ingestArmedBitmapBlock(ctx context.Context, block blockView, prepa
 			}
 		}
 		if block.Height != s.NextHeight() {
+			if only != "" {
+				return fmt.Errorf("%w: Bitmap requires next block %d", errResolvedNotApplicable, s.NextHeight())
+			}
 			continue
 		}
 		s.SetBlockSource(func(loadCtx context.Context, height int64) (blockView, error) {

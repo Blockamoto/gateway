@@ -25,6 +25,7 @@ const indexExportMaxRecordBytes = 8 << 20
 
 var errIndexExportBusy = errors.New("index export snapshot is busy; retry")
 var errIndexExportSnapshotChanged = errors.New("committed export snapshot changed; review again")
+var errIndexExportInventoryIncomplete = errors.New("complete inscription block inventory is unknown for this saved source")
 
 type indexExportRequest struct {
 	Index          string `json:"index"`
@@ -155,7 +156,7 @@ func (a *app) writeIndexExport(ctx context.Context, q indexExportRequest, w io.W
 		return s.meta, err
 	}
 	if err := s.capture(); err != nil {
-		return s.meta, err
+		return s.failed(err)
 	}
 	if len(s.meta.Coverage) == 0 {
 		s.meta.Note = "No committed index coverage is available to export. Pending and staged work is excluded."
@@ -187,7 +188,7 @@ func (a *app) writeIndexExport(ctx context.Context, q indexExportRequest, w io.W
 		err = s.bitmapRows(e)
 	}
 	if err != nil {
-		return s.meta, err
+		return s.failed(err)
 	}
 	// hashAt validates the captured selected-chain tip on every read. Recheck it
 	// at completion as the ancestry fence, without retaining a map of all blocks.
@@ -207,6 +208,26 @@ func (a *app) writeIndexExport(ctx context.Context, q indexExportRequest, w io.W
 	}
 	s.meta.Ready, s.meta.Complete = true, true
 	return s.meta, nil
+}
+
+func (s *indexExportSession) failed(err error) (indexExportMetadata, error) {
+	if errors.Is(err, errIndexExportInventoryIncomplete) {
+		// A private export spool can encounter an older incomplete recipe
+		// after processing valid blocks. Its error metadata must not advertise
+		// that captured range as complete inventory, or offer a partial file.
+		s.meta.Coverage = []heightInterval{}
+		s.meta.Rows, s.meta.Blocks = 0, 0
+		s.meta.Ready, s.meta.Complete = false, false
+		s.meta.Note = "Complete inscription block inventory is unknown for a saved source. Known occurrences remain queryable; no complete inventory export is available."
+	}
+	return s.meta, err
+}
+
+func requireExportInscriptionInventory(b indexBatch) error {
+	if !inscriptionBatchInventoryComplete(b) {
+		return fmt.Errorf("%w at height %d", errIndexExportInventoryIncomplete, b.Checkpoint.Height)
+	}
+	return nil
 }
 func (s *indexExportSession) charge(path string) error {
 	if err := s.ctx.Err(); err != nil {
@@ -513,6 +534,9 @@ func exportObject(v any) (map[string]any, error) {
 func (s *indexExportSession) inscriptions(e *indexExportEncoder) error {
 	seen := map[string]bool{}
 	emit := func(b indexBatch) error {
+		if err := requireExportInscriptionInventory(b); err != nil {
+			return err
+		}
 		key := strconv.FormatInt(b.Checkpoint.Height, 10)
 		if seen[key] {
 			return fmt.Errorf("duplicate export block membership")
@@ -615,6 +639,11 @@ func (s *indexExportSession) browseBatch(view *indexExportBrowse, height int64) 
 	return b, nil
 }
 func exportCoherentInscriptionBatch(primary, viewed indexBatch) (indexBatch, error) {
+	for _, b := range []indexBatch{primary, viewed} {
+		if err := requireExportInscriptionInventory(b); err != nil {
+			return primary, err
+		}
+	}
 	if primary.Checkpoint.Height != viewed.Checkpoint.Height || primary.Checkpoint.BlockHash != viewed.Checkpoint.BlockHash || !reflect.DeepEqual(inscriptionBatchCoordinates(primary), inscriptionBatchCoordinates(viewed)) {
 		return primary, fmt.Errorf("range and viewed-block inscription occurrences disagree at height %d", primary.Checkpoint.Height)
 	}

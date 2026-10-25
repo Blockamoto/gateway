@@ -288,7 +288,7 @@ func TestIndexLocatorBatchLeanGuardsReleaseHeavyPreparedBlocks(t *testing.T) {
 			prepared.block.Transactions[0].Inputs = []inputView{{Witness: []string{strings.Repeat("x", 4<<20)}}}
 			runtime.SetFinalizer(prepared, func(*indexRunPrepared) { released <- struct{}{} })
 			heavy := context.WithValue(base, indexRunPreparedKey{}, prepared)
-			heavy = context.WithValue(heavy, resolvedIngestionKey{}, &resolvedIngestionQueue{blocks: []blockView{prepared.block}})
+			heavy = context.WithValue(heavy, resolvedIngestionKey{}, &resolvedIngestionQueue{blocks: []resolvedQueuedBlock{{block: &prepared.block}}})
 			lean := context.WithValue(base, indexRunPublicationKey{}, func() error { return nil })
 			s.locatorContext = context.WithValue(heavy, indexLocatorBatchGuardKey{}, lean)
 			if err := s.appendBlock(prepared.block, 0, "ephemeral"); err != nil {

@@ -107,8 +107,12 @@ func (a *app) indexProviderViews() []indexProviderView {
 		local.SatSnapshot = &chainSnapshot{Network: "mainnet", Height: sat.Checkpoint.Height, Hash: sat.Checkpoint.BlockHash, Source: "gateway_sat_index"}
 	}
 	if store, err := indexStoreHead(a.dataDir, "inscriptions"); err == nil && store.checkpoint != nil && a.indexChainState(store.checkpoint) == "selected_chain" {
-		if state, checkpoint, err := store.numberingView(); err == nil && state != nil && checkpoint != nil {
-			local.NumberingSnapshot = &chainSnapshot{Network: "mainnet", Height: checkpoint.Height, Hash: checkpoint.BlockHash, Source: "gateway_inscriptions"}
+		// A point-only ancestor cannot supply whole-prefix readiness. A first
+		// read is bounded; later heads extend process-local writer certificates.
+		if inscriptionInventoryPrefixComplete(context.Background(), store) {
+			if state, checkpoint, err := store.numberingView(); err == nil && state != nil && checkpoint != nil {
+				local.NumberingSnapshot = &chainSnapshot{Network: "mainnet", Height: checkpoint.Height, Hash: checkpoint.BlockHash, Source: "gateway_inscriptions"}
+			}
 		}
 	}
 	st := a.getStatus()

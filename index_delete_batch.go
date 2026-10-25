@@ -167,7 +167,7 @@ func (a *app) planIndexDeletionLocked(ctx context.Context, request indexDeleteRe
 		}
 	}
 	for _, id := range q.Indices {
-		base, e := a.indexDeleteReviewLocked(ctx, id)
+		base, e := a.indexDeleteReviewLocked(ctx, id, q.Range)
 		if e != nil {
 			return out, e
 		}

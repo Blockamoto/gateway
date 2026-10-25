@@ -79,6 +79,12 @@ func (p *indexRunPrefetch) Take(ctx context.Context, target blockTarget) (blockV
 	p.mu.Lock()
 	e := p.current
 	if e == nil || e.target.Height != target.Height || e.target.HashDisplay != target.HashDisplay || !bytes.Equal(e.target.ExpectedHeader, target.ExpectedHeader) {
+		if e != nil && e.target.Height == target.Height {
+			// A different selected block at the same height invalidates this
+			// speculative result. A different frontier does not invalidate it.
+			e.cancel()
+			p.current = nil
+		}
 		p.mu.Unlock()
 		return blockView{}, 0, false, nil
 	}

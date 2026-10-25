@@ -203,3 +203,61 @@ An active-profile handoff must wait for a locator physical checkpoint to avoid
 discarding substantial unpublished staging, then preserve the same profile,
 track choices, run interval and latest human running/paused intent. No Raw or
 Arm toggles are part of that handoff.
+
+## Shared source and bounded TX batches follow-up (2026-10-25)
+
+The coordinated source now offers each consumed verified body to every armed
+applicable owner. One TX lane overlaps the ordered stateful group. Actual
+cohort/staged ownership, exact-next state dependencies and publication guards
+remain independent. Future TX facts use bounded genesis-aligned 336-block
+windows (16 MiB / 120,000 rows); the native TX prefix retains its existing
+336-block, 32 MiB / 400,000-row batching. Neither pending point facts nor native
+staging advertise saved coverage. Dependency spills are authenticated, bounded
+and cleaned up; Raw-On dependencies establish real producer retention before
+fanout. Complete Lean and Full inscription inventory, legacy Full recipes,
+Off nonmutating reads and conservative prefix readiness have focused evidence.
+
+The authentic mainnet fixture covers blocks 792435–792466 and 64,767
+transactions. A disposable profile first built Districts/Parcels sixteen
+blocks ahead, then ran TX plus both Bitmap tracks over all32 blocks. The
+compiled client and the Go trace replay each obtained exactly32 source reads,
+32 Bitcoin decodes and32 inscription extractions. Sixteen future TX points
+retained34,117 ordered rows; the native TX range completed with one batch flush.
+All final native commit payloads and roots match the prior `a49522f` replay,
+and the external replay archive remained unchanged.
+
+The final unmodified-code Go trace counts actual Windows file FlushFileBuffers
+call attempts during the skewed run: future points used16 immutable record
+flushes and one shared window-manifest flush, plus one native-ack descriptor.
+They caused no per-body packed-bucket flushes. The independent native TX batch
+used1,059 file flushes (including fresh bucket initialization and receipts),
+amortized over32 blocks. These are call counts, not a hardware durability or
+network-speed guarantee. Concurrent local test load varied elapsed time, so
+no live throughput multiplier is claimed.
+
+Focused suites cover native promotion without refetch, exact commitment
+equivalence, native gap protection, legacy-point fallback, pending abort/retry,
+late Pause/admission/Raw fences, post-rename acknowledgement replay, and more
+than512 future points followed by durable native catch-up. Window and shadow
+receipt deletion, complete/partial legacy inventory, mixed-prefix readiness,
+transient readiness recovery and desktop/narrow pending-progress rendering
+also pass. The affected-family run completed in495.049 seconds with one stale
+Raw retry fixture expectation: shared fanout had already committed UTXO through
+a fresh store. The fixture now verifies native-adapter adoption of that exact
+saved transition; all Raw producer/dependency cases pass on the corrected
+rerun (6.124 seconds). Production publication guards were not relaxed.
+
+`go vet` and Linux test-binary compilation pass. A full repository invocation
+hit its ten-minute limit while constructing the older explorer integration
+fixture; it is not counted as a full-suite pass. Windows race execution is
+unavailable because the required C compiler is absent. Focused source review,
+bounded regressions, real-block compiled replay and actual browser acceptance
+provide this preview's delivery evidence.
+
+Evidence is under `build/qa-078/shared-fanout-diagnosis` and
+`build/qa-078/shared-fanout`. The portable output is
+`build/portable-v0.7.8-shared-fanout`; its separate archive is
+`build/Gateway-v0.7.8-shared-fanout-portable-preview-windows-amd64.zip`.
+The active human profile has not been opened or controlled by these tests.
+Final handoff must preserve its latest paused/Off choices and use the existing
+profile; it does not imply Arm, Resume or a new run interval.

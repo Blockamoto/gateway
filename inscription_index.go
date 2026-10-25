@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -62,6 +64,74 @@ type inscriptionBlockResult struct {
 	Occurrences          []inscriptionOccurrence           `json:"occurrences"`
 	Diagnostics          []inscriptionExtractionDiagnostic `json:"diagnostics,omitempty"`
 	CanonicalNumberKnown bool                              `json:"canonical_number_known"`
+	inventoryReceipt     *inscriptionInventoryReceipt
+}
+
+// This process-local receipt is issued only after the complete block extractor
+// succeeds. Consumer-specific claim subsets and decoded JSON have no receipt.
+// It never changes persisted inscription bytes, recipe hashes or checkpoints.
+type inscriptionInventoryReceipt struct {
+	TransactionCount uint64
+	OccurrenceCount  int
+	DiagnosticCount  int
+	Digest           string
+}
+
+func inscriptionInventoryDigest(result inscriptionBlockResult) string {
+	h := sha256.New()
+	var number [8]byte
+	putNumber := func(value uint64) {
+		binary.LittleEndian.PutUint64(number[:], value)
+		_, _ = h.Write(number[:])
+	}
+	putText := func(value string) { putNumber(uint64(len(value))); _, _ = io.WriteString(h, value) }
+	putText("gateway-complete-inscription-inventory-v1")
+	putNumber(uint64(result.BlockHeight))
+	putText(result.BlockHash)
+	putText(result.ParserProfile)
+	putText(result.ReferenceCommit)
+	putNumber(uint64(len(result.Occurrences)))
+	for _, occurrence := range result.Occurrences {
+		putText(occurrence.ID)
+		putText(occurrence.TxID)
+		putText(occurrence.WTxID)
+		putNumber(uint64(occurrence.Index))
+		putNumber(uint64(occurrence.TxIndex))
+		putNumber(uint64(occurrence.BlockOrder))
+		putNumber(uint64(occurrence.InputIndex))
+		putNumber(uint64(occurrence.EnvelopeIndex))
+		putNumber(uint64(occurrence.WitnessScriptIndex))
+		putNumber(uint64(occurrence.ScriptOffset))
+		putNumber(uint64(occurrence.BlockHeight))
+		putText(occurrence.BlockHash)
+		putText(occurrence.ParserProfile)
+		putText(occurrence.ScriptSHA256)
+		putText(occurrence.ContentSHA256)
+	}
+	putNumber(uint64(len(result.Diagnostics)))
+	for _, diagnostic := range result.Diagnostics {
+		putNumber(uint64(diagnostic.TxIndex))
+		putNumber(uint64(diagnostic.InputIndex))
+		putNumber(uint64(diagnostic.ScriptOffset))
+		putText(diagnostic.Code)
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func validateCompleteInscriptionInventory(block blockView, result *inscriptionBlockResult) error {
+	if result == nil || result.inventoryReceipt == nil || result.BlockHeight != block.Height || result.BlockHash != block.Hash || result.ParserProfile != inscriptionParserProfile || result.ReferenceCommit != inscriptionReferenceCommit {
+		return fmt.Errorf("complete inscription inventory requires its full-block extraction receipt")
+	}
+	receipt := result.inventoryReceipt
+	if receipt.TransactionCount != block.TransactionCount || receipt.TransactionCount != uint64(len(block.Transactions)) || receipt.OccurrenceCount != len(result.Occurrences) || receipt.DiagnosticCount != len(result.Diagnostics) || receipt.Digest != inscriptionInventoryDigest(*result) {
+		return fmt.Errorf("complete inscription inventory differs from its full-block extraction receipt")
+	}
+	for _, occurrence := range result.Occurrences {
+		if occurrence.TxIndex < 0 || occurrence.TxIndex >= len(block.Transactions) || occurrence.TxID != block.Transactions[occurrence.TxIndex].TxID {
+			return fmt.Errorf("complete inscription inventory differs from its source transactions")
+		}
+	}
+	return nil
 }
 
 type inscriptionParsedEnvelope struct {
@@ -177,6 +247,7 @@ func extractInscriptionOccurrences(block blockView) (inscriptionBlockResult, err
 			}
 		}
 	}
+	result.inventoryReceipt = &inscriptionInventoryReceipt{TransactionCount: uint64(len(block.Transactions)), OccurrenceCount: len(result.Occurrences), DiagnosticCount: len(result.Diagnostics), Digest: inscriptionInventoryDigest(result)}
 	return result, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -143,7 +144,7 @@ func indexDeleteStamp(root, path string) (indexDeletePathStamp, error) {
 }
 
 // Caller owns indexLiveControlMu, indexMu and indexRunMu, in that order.
-func (a *app) indexDeleteReviewLocked(ctx context.Context, id string) (indexDeleteReview, error) {
+func (a *app) indexDeleteReviewLocked(ctx context.Context, id string, rangeScope ...*indexDeleteRange) (indexDeleteReview, error) {
 	id = indexDeleteOwner(strings.TrimSpace(id))
 	r := indexDeleteReview{Index: id, Name: id, Scope: []string{}, Retained: []string{"Track and ruleset definitions", "Shared output facts and independent recovery archives", "Bitcoin headers, settings, source caches and external block files"}, Dependencies: []indexDeleteDependency{}, Blockers: []string{}, Note: "Delete saved index data. The track remains available to rebuild; nothing is reindexed automatically."}
 	if d, e := findIndexDefinition(id); e == nil {
@@ -241,6 +242,26 @@ func (a *app) indexDeleteReviewLocked(ctx context.Context, id string) (indexDele
 	if err != nil {
 		return r, err
 	}
+	var points []indexBrowseTXPoint
+	var windows []indexBrowseTXWindow
+	if id == "tx-locator" && (len(rangeScope) == 0 || rangeScope[0] == nil) {
+		// Bind physical receipts, including shadowed leaves: a union projection
+		// would omit a changed old generation or a changed window membership.
+		if err := walkBrowseTXPointLeaves(ctx, a.dataDir, func(point indexBrowseTXPoint) error {
+			points = append(points, point)
+			return nil
+		}); err != nil {
+			return r, err
+		}
+		sort.Slice(points, func(i, j int) bool { return points[i].Height < points[j].Height })
+		if err := walkBrowseTXWindows(ctx, a.dataDir, func(window indexBrowseTXWindow) error {
+			windows = append(windows, window)
+			return nil
+		}); err != nil {
+			return r, err
+		}
+		sort.Slice(windows, func(i, j int) bool { return windows[i].Window < windows[j].Window })
+	}
 	r.Ready = len(r.Blockers) == 0
 	r.ReviewID = indexDigest(struct {
 		Index          string
@@ -250,7 +271,9 @@ func (a *app) indexDeleteReviewLocked(ctx context.Context, id string) (indexDele
 		Policy         indexLivePolicy
 		Dependencies   []indexDeleteDependency
 		ProfileBinding string
-	}{id, stamps, cloneIndexRunDocument(a.indexRunState), a.indexQueue, policies[id], r.Dependencies, profileBinding})
+		PointReceipts  []indexBrowseTXPoint
+		WindowReceipts []indexBrowseTXWindow
+	}{id, stamps, cloneIndexRunDocument(a.indexRunState), a.indexQueue, policies[id], r.Dependencies, profileBinding, points, windows})
 	return r, nil
 }
 

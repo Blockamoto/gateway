@@ -720,7 +720,14 @@ func TestRawProducerOnDuringApplyWaitsBeforeDerivedHead(t *testing.T) {
 		t.Fatal(receipt, e)
 	}
 	u.commitHook = nil
-	if e = u.ApplyBlock(ctx, body); e != nil {
-		t.Fatal("prepared retry did not publish after Raw receipt", e)
+	// The completed-source hook has already offered this retained body to the
+	// armed UTXO owner. The native adapter must adopt that durable head rather
+	// than applying the same transition through this earlier store snapshot.
+	consumer := &indexRunConsumer{selection: indexRunSelection{Index: "utxo-state", Armed: true}, utxo: u}
+	if e = a.applyRunConsumer(ctx, consumer, p, a.currentChainAuthority(), "ephemeral"); e != nil {
+		t.Fatal("prepared retry did not adopt shared committed state after Raw receipt", e)
+	}
+	if h := consumer.utxo.Head(); h == nil || h.Height != body.Height || h.BlockHash != body.Hash {
+		t.Fatal("prepared retry did not retain the exact UTXO transition", h)
 	}
 }

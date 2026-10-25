@@ -47,26 +47,28 @@ var errBitmapTargetBudget = errors.New("visible target evidence exceeds this req
 var errBitmapTargetBinBudget = errors.New("visible pixel bin contains more selected winners than its sample budget")
 
 type bitmapTargetCoverageView struct {
-	State           string                     `json:"state"`
-	Axis            string                     `json:"axis"`
-	Instance        string                     `json:"instance"`
-	From            uint64                     `json:"from"`
-	To              uint64                     `json:"to"`
-	Pixels          int                        `json:"pixels"`
-	District        *uint64                    `json:"district,omitempty"`
-	Bins            []bitmapTargetCoverageBin  `json:"bins"`
-	Snapshot        *bitmapDevelopmentSnapshot `json:"snapshot"`
-	Chain           chainAuthorityView         `json:"chain"`
-	CacheKey        string                     `json:"cache_key"`
-	CacheHit        bool                       `json:"cache_hit"`
-	QueryComplete   bool                       `json:"query_complete"`
-	Truncated       bool                       `json:"truncated"`
-	ExaminedWinners int                        `json:"examined_winners"`
-	ReadPages       int                        `json:"read_pages"`
-	ReadBytes       int64                      `json:"read_bytes"`
-	AnchorChecks    int                        `json:"anchor_checks"`
-	Limits          bitmapTargetCoverageLimits `json:"limits"`
-	Note            string                     `json:"note"`
+	State             string                     `json:"state"`
+	Axis              string                     `json:"axis"`
+	Instance          string                     `json:"instance"`
+	From              uint64                     `json:"from"`
+	To                uint64                     `json:"to"`
+	Pixels            int                        `json:"pixels"`
+	District          *uint64                    `json:"district,omitempty"`
+	Bins              []bitmapTargetCoverageBin  `json:"bins"`
+	Snapshot          *bitmapDevelopmentSnapshot `json:"snapshot"`
+	Chain             chainAuthorityView         `json:"chain"`
+	CacheKey          string                     `json:"cache_key"`
+	CacheHit          bool                       `json:"cache_hit"`
+	QueryComplete     bool                       `json:"query_complete"`
+	Truncated         bool                       `json:"truncated"`
+	TotalWinners      uint64                     `json:"total_winners"`
+	TotalWinnersKnown bool                       `json:"total_winners_known"`
+	ExaminedWinners   int                        `json:"examined_winners"`
+	ReadPages         int                        `json:"read_pages"`
+	ReadBytes         int64                      `json:"read_bytes"`
+	AnchorChecks      int                        `json:"anchor_checks"`
+	Limits            bitmapTargetCoverageLimits `json:"limits"`
+	Note              string                     `json:"note"`
 }
 type bitmapTargetReadBudget struct {
 	ctx     context.Context
@@ -254,17 +256,12 @@ func bitmapTargetCachePut(v bitmapTargetCoverageView) {
 	bitmapTargetCache.rows[v.CacheKey] = bitmapTargetClone(v)
 	bitmapTargetCache.order = append(bitmapTargetCache.order, v.CacheKey)
 }
-func bitmapTargetCurrentPointer(ctx context.Context, root, id string) (string, error) {
-	var pointer struct {
-		Commitment string `json:"commitment"`
+func (a *app) bitmapTargetSnapshotSelected(ctx context.Context, h *bitmapDevelopmentHead, chain chainAuthorityView) bool {
+	instance, err := bitmapResolvedInstance(ctx, a.dataDir, h.Index)
+	if err != nil || instance.ProfileHash != h.ProfileHash {
+		return false
 	}
-	if err := utxoReadJSON(ctx, filepath.Join(bitmapDevelopmentDir(root, id), "head.json"), 4096, &pointer); err != nil {
-		return "", err
-	}
-	if !validHash(pointer.Commitment) {
-		return "", fmt.Errorf("invalid Bitmap head pointer")
-	}
-	return pointer.Commitment, nil
+	return a.utxoSelectedChainState(ctx, &utxoCheckpoint{Height: h.Height, BlockHash: h.BlockHash}, chain) == "selected_chain"
 }
 func (a *app) bitmapTargetWinner(ctx context.Context, b *bitmapTargetReadBudget, dir string, h *bitmapDevelopmentHead, q bitmapTargetCoverageQuery, kv ordinalKV, hashAt func(int64) (string, error)) (uint64, error) {
 	var c bitmapDevelopmentCandidate
@@ -373,7 +370,7 @@ func (a *app) bitmapTargetCoverageWithLimits(parent context.Context, q bitmapTar
 	}
 	out.Snapshot = bitmapSnapshot(h)
 	out.Chain = a.currentChainAuthority()
-	if a.utxoSelectedChainState(ctx, &utxoCheckpoint{Height: h.Height, BlockHash: h.BlockHash}, out.Chain) != "selected_chain" {
+	if !a.bitmapTargetSnapshotSelected(ctx, h, out.Chain) {
 		out.State = "stale"
 		out.Note = "Saved Bitmap source is stale or cannot be anchored; targets remain unknown."
 		return out, nil
@@ -383,20 +380,23 @@ func (a *app) bitmapTargetCoverageWithLimits(parent context.Context, q bitmapTar
 		out.Note = "The current Bitmap snapshot changed; request its visible target range again."
 		return out, nil
 	}
+	// This count covers the entire authenticated snapshot, not just the bounded
+	// winner samples inspected for the visible pixel bins below.
+	out.TotalWinners, out.TotalWinnersKnown = h.WinnerCount, true
 	out.CacheKey = indexDigest(struct {
-		Version                       int
-		Root, Instance, Head, Profile string
-		Chain                         chainAuthorityView
-		Query                         bitmapTargetCoverageQuery
-		Limits                        bitmapTargetCoverageLimits
-	}{1, a.dataDir, out.Instance, h.Commitment, h.ProfileHash, out.Chain, q, limits})
+		Version                                 int
+		Root, Instance, Head, Profile, Provider string
+		Query                                   bitmapTargetCoverageQuery
+		Limits                                  bitmapTargetCoverageLimits
+	}{2, a.dataDir, out.Instance, h.Commitment, h.ProfileHash, out.Chain.Source, q, limits})
 	if cached, ok := bitmapTargetCacheGet(out.CacheKey); ok {
-		current, err := bitmapTargetCurrentPointer(ctx, a.dataDir, out.Instance)
 		chain := a.currentChainAuthority()
-		if err == nil && current == h.Commitment && chain.Source == out.Chain.Source && chain.Height == out.Chain.Height && chain.Hash == out.Chain.Hash {
+		if a.bitmapTargetSnapshotSelected(ctx, h, chain) {
+			cached.Chain = chain
 			return cached, nil
 		}
-		out.State, out.Note = "changed", "The Bitmap or selected-chain context changed; request the visible target range again."
+		out.TotalWinners, out.TotalWinnersKnown = 0, false
+		out.State, out.Note = "changed", "The pinned Bitmap source or profile is no longer anchored to the selected chain; request the visible target range again."
 		return out, nil
 	}
 	budget := &bitmapTargetReadBudget{ctx: ctx, limits: limits, anchors: map[int64]string{}, trees: map[string]*ordinalTree{}}
@@ -441,15 +441,20 @@ func (a *app) bitmapTargetCoverageWithLimits(parent context.Context, q bitmapTar
 	}
 	finishCtx, finishCancel := context.WithTimeout(parent, 250*time.Millisecond)
 	defer finishCancel()
-	current, pointerErr := bitmapTargetCurrentPointer(finishCtx, a.dataDir, out.Instance)
 	chain := a.currentChainAuthority()
-	if pointerErr != nil || current != h.Commitment || chain.Source != out.Chain.Source || chain.Height != out.Chain.Height || chain.Hash != out.Chain.Hash {
+	// The read lease keeps this head's immutable pages alive. A new head or a
+	// later selected tip does not invalidate that pinned evidence. Revalidate
+	// its actual block hash and profile instead; a reorg or lost anchor must
+	// still discard every sampled winner and the snapshot-wide count.
+	if !a.bitmapTargetSnapshotSelected(finishCtx, h, chain) {
 		out.State = "changed"
 		out.QueryComplete = false
 		out.Bins = bitmapTargetBins(q)
-		out.Note = "The Bitmap or selected-chain context changed during this query; targets remain unknown."
+		out.TotalWinners, out.TotalWinnersKnown = 0, false
+		out.Note = "The pinned Bitmap source or profile is no longer anchored to the selected chain; targets remain unknown."
 		return out, nil
 	}
+	out.Chain = chain
 	if parent.Err() != nil {
 		return out, parent.Err()
 	}

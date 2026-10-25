@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -44,7 +46,7 @@ func TestBitmapTargetCoverageDistrictAxisCommittedOutcomeAndCache(t *testing.T) 
 		t.Fatal(err)
 	}
 	v, err := a.bitmapTargetCoverageContext(context.Background(), q)
-	if err != nil || v.State != "ready" || !v.QueryComplete || v.CacheHit || len(v.Bins) != 3 || v.Snapshot.Height != 792435 {
+	if err != nil || v.State != "ready" || !v.QueryComplete || v.CacheHit || len(v.Bins) != 3 || v.Snapshot.Height != 792435 || !v.TotalWinnersKnown || v.TotalWinners != 3 {
 		t.Fatal(v, err)
 	}
 	for i, bin := range v.Bins {
@@ -81,7 +83,7 @@ func TestBitmapTargetCoveragePixelWorkAndVisibleRangePruning(t *testing.T) {
 	a, _, _ := bitmapTargetFixture(t, claims...)
 	one, err := a.bitmapTargetCoverageContext(context.Background(), bitmapTargetCoverageQuery{Axis: "blocks", From: 0, To: 159, Pixels: 1})
 	winners, unknown := bitmapTargetSum(one)
-	if err != nil || one.State != "partial" || one.QueryComplete || !one.Truncated || one.ExaminedWinners > 4 || winners != 4 || unknown != 156 || one.Limits.Winners != 4 {
+	if err != nil || one.State != "partial" || one.QueryComplete || !one.Truncated || one.ExaminedWinners > 4 || winners != 4 || unknown != 156 || one.Limits.Winners != 4 || !one.TotalWinnersKnown || one.TotalWinners != 160 {
 		t.Fatal("one pixel enumerated a winner set", one, err)
 	}
 	four, err := a.bitmapTargetCoverageContext(context.Background(), bitmapTargetCoverageQuery{Axis: "blocks", From: 0, To: 159, Pixels: 4})
@@ -98,6 +100,138 @@ func TestBitmapTargetCoveragePixelWorkAndVisibleRangePruning(t *testing.T) {
 		t.Fatal("visible radix lookup scanned unrelated winners", point, err)
 	}
 }
+
+// The RPC boundary lets these tests publish or replace selected-chain evidence
+// after the query has captured its immutable head, without sleeps or production
+// test hooks. Only disposable fixture directories are written.
+func bitmapTargetMovingAuthority(t *testing.T, a *app, initial blockView, changeAt int, change func() blockView) func() int {
+	t.Helper()
+	var mu sync.Mutex
+	blocks := map[int64]string{initial.Height: initial.Hash}
+	tip, calls := initial.Height, 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Method string            `json:"method"`
+			Params []json.RawMessage `json:"params"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&request)
+		mu.Lock()
+		defer mu.Unlock()
+		var result any
+		switch request.Method {
+		case "getblockchaininfo":
+			result = map[string]any{"blocks": tip, "headers": tip, "bestblockhash": blocks[tip], "initialblockdownload": false}
+		case "getindexinfo":
+			result = map[string]any{}
+		case "getblockhash":
+			calls++
+			if calls == changeAt {
+				next := change()
+				blocks[next.Height], tip = next.Hash, next.Height
+				a.settingsMu.RLock()
+				s := a.settings
+				a.settingsMu.RUnlock()
+				key, _ := json.Marshal([]any{s.CoreDisabled, s.BitcoinDataDir, s.RPCPort, s.RPCAuthMode, s.RPCUser, s.RPCPassword})
+				coreStatusCache.Lock()
+				delete(coreStatusCache.entries, string(key))
+				coreStatusCache.Unlock()
+			}
+			var height int64
+			_ = json.Unmarshal(request.Params[0], &height)
+			if height > tip {
+				_ = json.NewEncoder(w).Encode(map[string]any{"result": nil, "error": map[string]any{"code": -8, "message": "height out of range"}, "id": "bod"})
+				return
+			}
+			result = blocks[height]
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"result": result, "error": nil, "id": "bod"})
+	}))
+	t.Cleanup(server.Close)
+	a.settingsMu.Lock()
+	a.settings = testRPCSettings050(t, server.URL)
+	a.settingsMu.Unlock()
+	return func() int { mu.Lock(); defer mu.Unlock(); return calls }
+}
+
+func TestBitmapTargetCoveragePinnedSnapshotSurvivesAppendAndCacheReuse(t *testing.T) {
+	for _, cacheHit := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cache_hit_%t", cacheHit), func(t *testing.T) {
+			a, s, first := bitmapTargetFixture(t, "0.bitmap")
+			pinned := s.head.Commitment
+			next := bitmapDevelopmentFixtureBlock(first.Height+1, first.Hash, "1.bitmap")
+			var applyErr error
+			changeAt := 3 // after the initial two selected-head anchor checks
+			if cacheHit {
+				// A complete uncached query performs six hash checks. The third
+				// check on the second query is its cache-reuse revalidation.
+				changeAt += 6
+			}
+			calls := bitmapTargetMovingAuthority(t, a, first, changeAt, func() blockView {
+				applyErr = s.Apply(context.Background(), next, nil)
+				return next
+			})
+			q := bitmapTargetCoverageQuery{Axis: "blocks", From: 0, To: 2, Pixels: 3, Snapshot: pinned}
+			if cacheHit {
+				warm, err := a.bitmapTargetCoverageContext(context.Background(), q)
+				if err != nil || warm.State != "ready" || warm.CacheHit || calls() != 6 {
+					t.Fatal("cache fixture", warm, calls(), err)
+				}
+			}
+			view, err := a.bitmapTargetCoverageContext(context.Background(), q)
+			winners, _ := bitmapTargetSum(view)
+			if err != nil || applyErr != nil || calls() < changeAt || s.head.Commitment == pinned || view.State != "ready" || !view.QueryComplete || view.CacheHit != cacheHit || winners != 1 || !view.TotalWinnersKnown || view.TotalWinners != 1 || view.Snapshot.Commitment != pinned {
+				t.Fatal("normal append discarded pinned selected winners", view, calls(), err, applyErr)
+			}
+			if _, err := os.Stat(filepath.Join(s.dir, "commits", pinned[:2], pinned+".json")); err != nil {
+				t.Fatal("pinned committed data lost", err)
+			}
+		})
+	}
+}
+
+func TestBitmapTargetCoverageReorgDuringFinalValidationDiscardsSamples(t *testing.T) {
+	for _, rollback := range []bool{false, true} {
+		t.Run(fmt.Sprintf("height_rollback_%t", rollback), func(t *testing.T) {
+			a, s, first := bitmapTargetFixture(t, "0.bitmap")
+			pinned := s.head.Commitment
+			// The first four checks validate the head and the sampled reveal.
+			// Change selection only at the final snapshot revalidation.
+			calls := bitmapTargetMovingAuthority(t, a, first, 5, func() blockView {
+				height := first.Height
+				if rollback {
+					height--
+				}
+				return blockView{Height: height, Hash: indexDigest("replacement selected Bitcoin block")}
+			})
+			view, err := a.bitmapTargetCoverageContext(context.Background(), bitmapTargetCoverageQuery{Axis: "blocks", From: 0, To: 2, Pixels: 3})
+			winners, unknown := bitmapTargetSum(view)
+			if err != nil || calls() < 5 || view.State != "changed" || view.QueryComplete || view.TotalWinnersKnown || winners != 0 || unknown != 3 || view.Snapshot.Commitment != pinned || view.ExaminedWinners != 1 {
+				t.Fatal("reorg retained sampled winners or authoritative count", view, calls(), err)
+			}
+		})
+	}
+}
+
+func TestBitmapTargetCoveragePinnedSnapshotRejectsProfileAndLostAnchor(t *testing.T) {
+	a, s, _ := bitmapTargetFixture(t, "0.bitmap")
+	ctx := context.Background()
+	chain := a.currentChainAuthority()
+	changed := *s.head
+	changed.ProfileHash = indexDigest("a different Bitmap profile")
+	if a.bitmapTargetSnapshotSelected(ctx, &changed, chain) {
+		t.Fatal("changed profile accepted for pinned snapshot")
+	}
+	chain.Height = -1
+	if a.bitmapTargetSnapshotSelected(ctx, s.head, chain) {
+		t.Fatal("lost selected anchor accepted for pinned snapshot")
+	}
+	a.setStatus(func(status *appStatus) { status.HeaderHeight, status.HeaderCount = -1, 0 })
+	view, err := a.bitmapTargetCoverageContext(ctx, bitmapTargetCoverageQuery{Axis: "blocks", From: 0, To: 2, Pixels: 3})
+	if err != nil || view.State != "stale" || view.TotalWinnersKnown {
+		t.Fatal("unanchored snapshot exposed an authoritative total", view, err)
+	}
+}
+
 func TestBitmapTargetCoverageTransientMissingPageRetriesSameHead(t *testing.T) {
 	claims := []string{}
 	for n := 0; n < 90; n++ {
@@ -216,7 +350,7 @@ func TestBitmapTargetCoveragePendingMissingHeadSnapshotAndReorgStayUnknown(t *te
 		t.Fatal("pending candidate became selected or absent", v, err)
 	}
 	changed, err := a.bitmapTargetCoverageContext(ctx, bitmapTargetCoverageQuery{Axis: "blocks", From: 0, To: 2, Pixels: 3, Snapshot: old})
-	if err != nil || changed.State != "changed" {
+	if err != nil || changed.State != "changed" || changed.TotalWinnersKnown {
 		t.Fatal(changed, err)
 	}
 	_, unknown = bitmapTargetSum(changed)
@@ -237,7 +371,7 @@ func TestBitmapTargetCoveragePendingMissingHeadSnapshotAndReorgStayUnknown(t *te
 		t.Fatal(err)
 	}
 	v, err = a.bitmapTargetCoverageContext(ctx, bitmapTargetCoverageQuery{Axis: "blocks", From: 0, To: 2, Pixels: 3})
-	if err != nil || v.State != "stale" {
+	if err != nil || v.State != "stale" || v.TotalWinnersKnown {
 		t.Fatal(v, err)
 	}
 	winners, unknown = bitmapTargetSum(v)
@@ -246,7 +380,7 @@ func TestBitmapTargetCoveragePendingMissingHeadSnapshotAndReorgStayUnknown(t *te
 	}
 	fresh := runTestApp(t)
 	v, err = fresh.bitmapTargetCoverageContext(ctx, bitmapTargetCoverageQuery{Axis: "blocks", From: 0, To: 1, Pixels: 2})
-	if err != nil || v.State != "not_built" || v.Snapshot != nil {
+	if err != nil || v.State != "not_built" || v.Snapshot != nil || v.TotalWinnersKnown {
 		t.Fatal(v, err)
 	}
 	winners, unknown = bitmapTargetSum(v)

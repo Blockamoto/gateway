@@ -56,13 +56,19 @@ for deep winner/outcome paths. Counters exclude fixed snapshot authentication.
 Quota truncation leaves the remainder explicitly unknown.
 
 The server caches at most 16 immutable summaries by authenticated head, profile,
-selected-chain context, view and limits, and rechecks current metadata before a
-cache hit. Complete and deterministic quota results may be cached; transient
-I/O, missing/corrupt evidence, anchor failures and deadlines are retryable with
-the same head. Frontend requests are coalesced/debounced, visible-range only,
-include fresh durable run-head observations, and revalidate metadata after five
-seconds. Failure clears old positives and uses bounded retry. Painting starts
-no index, scan, reindex, dependency, Chain or block fetch.
+selected-chain context, view and limits. Normal appends may finish against the
+pinned head while its source anchor remains selected and its profile remains
+compatible. Reorgs and changed profiles invalidate those results. Complete and
+deterministic quota results may be cached; transient I/O, missing/corrupt evidence,
+anchor failures and deadlines are retryable with the same head.
+
+Frontend requests are coalesced/debounced and visible-range only. A refresh may
+retain validated markers for the same view and source context, explicitly marked
+Updating or Stale. Superseded requests cannot overwrite the current view. Unknown
+mapping is not displayed as zero. Exact saved winner totals are separate from
+the visible validated sample, which is labelled as a lower bound when the query
+is incomplete. Painting starts no index, scan, reindex, dependency, Chain or block
+fetch. The timeline spring and its navigation geometry are unchanged.
 
 ## Standard V1 identity transition
 
@@ -179,3 +185,28 @@ The new directory is `build/portable-v0.7.8-design-pass`; the archive is
 `Stop-Preview.cmd` verifies and stops only that profile's runtime. The ZIP uses
 an explicit file allowlist and excludes profiles, logs and runtime tokens.
 Installed and unrelated profiles are untouched.
+
+## Live admission and target refresh repair, 25 October 2026
+
+The locator regression first reproduced the publication error with a real staged
+batch and a legal Live amendment. Both Live directions failed before the fix.
+After the fix, the locator guard/batch suite passed in 80.410 s: byte and record
+flush limits publish and reopen the durable head, another consumer continues,
+and changes to Arm, options, run, admission boundary or Out still reject the stage.
+Existing cancellation, Raw receipt, selected-anchor and crash/reorg checks passed.
+
+The complete target-coverage suite passed in 122.179 s; final pinned-snapshot,
+cache, reorg/rollback and lost-anchor cases passed in 4.890 s. Browser fixtures
+passed 15 refresh/cache/identity/count cases, the parent help suite and the
+Standard Bitmap workspace suite. They cover delayed success and failure after
+cache reuse, same-view refresh retention, monotonic progress during a query,
+profile/chain invalidation, exact empty results, global totals versus bounded
+viewport samples, and observation without indexing mutations. Bitmap overview
+links use the same spaced action row as individual settings.
+
+The replacement portable is `build/portable-v0.7.8-index-recovery`; its archive is
+`build/Gateway-v0.7.8-index-recovery-portable-preview-windows-amd64.zip`. Runtime
+QA and handoff records are kept in `build/qa-078/timeline-recovery`. Any upgrade of
+the existing export-preview folder preserves its original archive, backs up the
+portable files, and retains the same data directory and the user's paused intent.
+It does not Resume the indexing run. Spring navigation geometry is unchanged.

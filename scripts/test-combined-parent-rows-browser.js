@@ -92,7 +92,7 @@ async function verifyLocatorConsent(browser,origin){
     if(u.pathname==='/api/v1/bitmap/target-coverage'){
       const from=Number(u.searchParams.get('from')),to=Number(u.searchParams.get('to'));
       res.setHeader('Content-Type','application/json');
-      return res.end(JSON.stringify({state:'ready',axis:u.searchParams.get('axis'),...(u.searchParams.has('district')?{district:Number(u.searchParams.get('district'))}:{}),from,to,bins:[{from,to:from,targets:1,winners:1,unknown:0}],note:'Disposable target fixture'}));
+      return res.end(JSON.stringify({state:'ready',instance:u.searchParams.get('axis')==='blocks'?'bitmap-districts-standard-v1':'bitmap-parcels-standard-v1',pixels:Number(u.searchParams.get('pixels')),snapshot:{height:792435,block_hash:'b'.repeat(64),commitment:'c'.repeat(64),profile_hash:'d'.repeat(64)},chain:{source:'bod_headers',height:999999,hash:'a'.repeat(64)},cache_key:'e'.repeat(64),total_winners:1,total_winners_known:true,query_complete:true,truncated:false,axis:u.searchParams.get('axis'),...(u.searchParams.has('district')?{district:Number(u.searchParams.get('district'))}:{}),from,to,bins:[{from,to:from,targets:1,winners:1,unknown:0}],note:'Disposable target fixture'}));
     }
     if(u.pathname==='/favicon.ico'){res.writeHead(204);return res.end();}
     const file=path.resolve(root,'ui','.'+u.pathname);

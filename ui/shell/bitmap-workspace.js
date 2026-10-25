@@ -92,7 +92,7 @@ window.GatewayBitmapWorkspace = (() => {
       for(const source of [...(registry.instances||[]),...(registry.drafts||[])]){
         const active=source.execution_available===true,card=el('article',undefined,'panel bitmap-index-definition');card.append(el('h2',source.kind==='chain'?'Bitmap '+(source.id.includes('parcel')?'Parcel':'District')+' Chain':source.label||source.id),el('p',source.kind==='chain'?'Bitmap Chain methodology is being developed':active?'Canonical standard · fixed rules':'Legacy saved definition · inspection only','small'));
         metadata(card,[['Profile hash',source.profile_hash],['Pinned source revision',source.profile?.reference_revision],['Exact outcome producer',source.district_instance]],el);
-        sourceLink(card,source.profile,el);card.append(button('Inspect rules and saved state',()=>onInspect?.(source.id),'text-button'));(active?current:legacy).append(card);
+        const actions=el('div',undefined,'actions');sourceLink(actions,source.profile,el);actions.append(button('Inspect rules and saved state',()=>onInspect?.(source.id),'text-button'));card.append(actions);(active?current:legacy).append(card);
       }
       legacy.hidden=legacy.children.length===1;status.textContent=registry.note||'Select an index to inspect its fixed rules. Indexing controls are on the timeline.';
       viewport?.message?.('Canonical Bitmap indexes. Chain methodology is being developed.','bitmap');onResolved?.('bitmap.gateway',{state:'canonical_preview'});

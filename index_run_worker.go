@@ -165,12 +165,20 @@ func (a *app) checkPreparedRawReceipt(ctx context.Context, produced bool) error 
 	return nil
 }
 
+// Live changes future scheduling, not the build identity of blocks already
+// admitted into a physical batch. Keep every publication fence except that
+// scheduling flag: Armed, options, run, admission boundary, Out, Raw and anchor.
+func indexRunLocatorBuildSelectionHash(selection indexRunSelection) string {
+	selection.Live = false
+	return indexDigest(selection)
+}
+
 func (a *app) indexRunLocatorBatchGuard(ctx context.Context, runID string, selection indexRunSelection, progress indexRunProgress, height int64, hash string, rawProduced bool) (context.Context, func()) {
 	// This guard outlives Apply until a physical flush. Its context and closure
 	// contain only run intent and anchor scalars, never prepared body/queue data.
 	lean, cancel := context.WithCancel(context.Background())
 	stop := context.AfterFunc(ctx, cancel)
-	index, selectionHash := selection.Index, indexDigest(selection)
+	index, selectionHash := selection.Index, indexRunLocatorBuildSelectionHash(selection)
 	hasBoundary, boundary := progress.EffectiveFrom != nil, int64(0)
 	if hasBoundary {
 		boundary = *progress.EffectiveFrom
@@ -187,11 +195,11 @@ func (a *app) indexRunLocatorBatchGuard(ctx context.Context, runID string, selec
 			return errIndexRunConsumerStopped
 		}
 		prepared, ok := runSelection(d.Prepared, index)
-		if !ok || !prepared.Armed || indexDigest(prepared) != selectionHash {
+		if !ok || !prepared.Armed || indexRunLocatorBuildSelectionHash(prepared) != selectionHash {
 			return errIndexRunAdmissionChanged
 		}
 		requested, ok := runSelection(d.Run.Request, index)
-		if !ok || indexDigest(requested) != selectionHash {
+		if !ok || indexRunLocatorBuildSelectionHash(requested) != selectionHash {
 			return errIndexRunAdmissionChanged
 		}
 		current, ok := indexRunProgressFor(d.Run, index)

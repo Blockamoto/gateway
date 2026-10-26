@@ -137,6 +137,9 @@ func resolvedSelectionOwner(id string) string {
 	return id
 }
 func resolvedAdmissionAllowed(d indexRunDocument, id string, height int64) error {
+	if bitmapParcelExecutionDeferred(resolvedSelectionOwner(id)) {
+		return errBitmapParcelsDeferred
+	}
 	if d.Run == nil {
 		return nil
 	}
@@ -270,6 +273,9 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 	var resultsMu sync.Mutex
 	appendResult := func(row indexBrowseResult) { resultsMu.Lock(); out = append(out, row); resultsMu.Unlock() }
 	apply := func(id string, fn func(context.Context, indexRunSelection) error) {
+		if !releaseIndexExecutionAvailable(resolvedSelectionOwner(id)) {
+			return
+		}
 		// The actual cohort owns exactly this body. An unrelated admitted future
 		// interval is not ownership and still receives a committed point fact.
 		if operation := native[id]; operation != nil {
@@ -284,7 +290,7 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 			return
 		}
 		c, ok := choices[resolvedSelectionOwner(id)]
-		if !ok || !resolvedSelectionEnabled(c, id) || !releaseFeatureAvailable(resolvedSelectionOwner(id)) {
+		if !ok || !resolvedSelectionEnabled(c, id) {
 			return
 		}
 		if resolvedOwnedByCoordinator(ctx, d, id, block) {

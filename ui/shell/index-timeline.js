@@ -5,6 +5,8 @@ window.GatewayIndexTimeline = (() => {
   const height = n => Number.isSafeInteger(n) && n >= 0 && n < Number.MAX_SAFE_INTEGER;
   const format = n => height(n) ? n.toLocaleString('en-GB') : 'Unknown';
   const blockCount = n => format(n) + (n === 1 ? ' block' : ' blocks');
+  const parcelDefinition = definition => definition?.kind === 'parcel' || definition?.producer_kind === 'parcel' || /^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(definition?.id || '');
+  function parcelVisible(definition){return !parcelDefinition(definition);}
   const count = ranges => ranges.reduce((n, r) => n + r.to - r.from + 1, 0);
   const labelRange = r => r.from === r.to ? format(r.from) : format(r.from) + '–' + format(r.to);
   function normalizeRanges(ranges) {
@@ -267,7 +269,7 @@ window.GatewayIndexTimeline = (() => {
     viewport.append(fullscreen,viewportBody);upper.append(inspector,viewport);
     editor.append(controlBar,rulerRow,compact,trackArea,scrollbarRow,footer,tooltip);root.append(upper,editor);
     function setCollapsed(value,focusControl=true){closeRevealPicker();value=Boolean(value);if(value&&focusControl){skipContext=null;selectedTracks.clear();trackSelectionAnchor=null;paintTrackSelection();}preferences.collapsed=value;save();root.dataset.timelineCollapsed=String(value);compact.hidden=!value;trackArea.hidden=footer.hidden=value;collapse.title=value?'Expand index tracks':'Collapse index tracks';collapse.setAttribute('aria-label',collapse.title);collapse.setAttribute('aria-expanded',String(!value));doc.defaultView.dispatchEvent(new doc.defaultView.Event('gateway:timeline-layout'));draw();if(focusControl)collapse.focus({preventScroll:true});}
-    function allDefinitions(){return [...(snapshot.definitions||[])].sort((a,b)=>a.id==='headers'?-1:b.id==='headers'?1:0);}
+    function allDefinitions(){return [...(snapshot.definitions||[])].filter(d=>parcelVisible(d,snapshot)).sort((a,b)=>a.id==='headers'?-1:b.id==='headers'?1:0);}
     function ordered(){
       const defs=allDefinitions().filter(d=>d.id!=='satline'&&(!d.locked||customBitmap(d.id))&&!chainParent(d)).flatMap(d=>['txo-spender','sat-state'].includes(d.id)?childDefinitions(snapshot).filter(child=>child.owner===d.id):[d]);
       const order=['headers','blocks','tx-locator','txio-links','txio-values','txio-scripts','utxo-state','address-state','address-history','txio-sat-ranges','inscriptions','bitmap-districts'],position=id=>{const n=order.indexOf(id);return n<0?order.length:n;},top=defs.filter(d=>!parcelParent(d)).sort((a,b)=>position(a.id)-position(b.id)),units=[...new Set(top.map(d=>groupOf(d.id)?'group:'+groupOf(d.id):d.id))],result=[];
@@ -339,7 +341,7 @@ window.GatewayIndexTimeline = (() => {
       addRow.hidden=true;rows.forEach((row,i)=>{if(tracks.children[i]!==row)tracks.insertBefore(row,tracks.children[i]||null);});queueBitmapTargets();
     }
     let bitmapTargetTimer=null,bitmapTargetRefreshTimer=null,bitmapTargetSerial=0,bitmapTargetPending='',bitmapTargetValue=null,bitmapTargetValueScope='',bitmapTargetKey='',bitmapTargetObserved=0,bitmapTargetErrorKey='',bitmapTargetRetryAt=0,bitmapTargetController=null,bitmapTargetPendingScope='',bitmapTargetStatus='unknown',bitmapTargetNote='',bitmapTargetChainEpoch=0;const bitmapTargetCache=new Map(),bitmapTargetRequestStarts=new Map();
-    function bitmapTargetQuery(){const g=groups.get('bitmap');if(doc.hidden||!g||trackArea.hidden||root.dataset.timelineCollapsed==='true')return null;const rect=g.bands.getBoundingClientRect(),viewport=trackViewport.getBoundingClientRect();if(rect.width<1||rect.bottom<viewport.top||rect.top>viewport.bottom)return null;const p=frame();if(p&&p.kind!=='block')return null;const v=navView(),query={axis:p?'transactions':'blocks',from:v.from,to:v.to,pixels:Math.min(1024,Math.max(1,Math.round(rect.width)))};if(p)query.district=p.height;return query;}
+    function bitmapTargetQuery(){const g=groups.get('bitmap');if(doc.hidden||!g||trackArea.hidden||root.dataset.timelineCollapsed==='true')return null;const rect=g.bands.getBoundingClientRect(),viewport=trackViewport.getBoundingClientRect();if(rect.width<1||rect.bottom<viewport.top||rect.top>viewport.bottom)return null;const p=frame();if(p)return null;const v=navView(),query={axis:p?'transactions':'blocks',from:v.from,to:v.to,pixels:Math.min(1024,Math.max(1,Math.round(rect.width)))};if(p)query.district=p.height;return query;}
     function queueBitmapTargets(){if(bitmapTargetTimer)doc.defaultView.clearTimeout(bitmapTargetTimer);bitmapTargetTimer=doc.defaultView.setTimeout(readBitmapTargets,140);}
     function bitmapTargetContext(query){
       if(!query)return null;const ids=query.axis==='blocks'?['bitmap-districts-standard-v1']:['bitmap-districts-standard-v1','bitmap-parcels-standard-v1'],definitions=(snapshot.definitions||[]).filter(d=>ids.includes(d.id)).sort((a,b)=>a.id.localeCompare(b.id)),instances=(snapshot.instances||[]).filter(i=>ids.includes(i.definition)).sort((a,b)=>a.definition.localeCompare(b.definition)),run=(snapshot.run?.run?.consumers||[]).filter(c=>ids.includes(c.index)&&c.commitment).sort((a,b)=>a.index.localeCompare(b.index));
@@ -389,12 +391,12 @@ window.GatewayIndexTimeline = (() => {
     }
     function drawBitmapTargets(g){
       const canvas=g.targetCanvas;if(!canvas)return;
-      const p=frame(),axis=p?.kind==='block'?'transactions':!p?'blocks':null,v=navView(),context=bitmapTargetContext(bitmapTargetQuery()),value=bitmapTargetValue;
+      const p=frame(),axis=!p?'blocks':null,v=navView(),context=bitmapTargetContext(bitmapTargetQuery()),value=bitmapTargetValue;
       const matching=context&&!context.unsafe&&bitmapTargetValueScope===context.scope&&axis&&value?.axis===axis&&value.from===v.from&&value.to===v.to&&(!p||value.district===p.height);
       const known=matching?value.bins.reduce((sum,b)=>sum+(height(b.winners)?b.winners:0),0):null;
       const updating=!!context&&(bitmapTargetStatus==='updating'&&bitmapTargetKey===context.key||matching&&bitmapTargetKey!==context.key),stale=matching&&bitmapTargetStatus==='stale';
       const exact=matching&&value.query_complete===true&&!value.truncated&&!updating&&!stale,pinnedTotal=matching&&value.total_winners_known===true&&height(value.total_winners)?value.total_winners:null,total=updating||stale?null:pinnedTotal;
-      const note=axis?(axis==='blocks'?'District targets':'Parcel targets · block '+format(p.height)):'Target mapping is available at block and transaction scope';
+      canvas.hidden=!!p;const note='District targets';
       const visible=known===null?'mapping unknown':(updating||stale?'previous view: ':'view: ')+(exact?'':'at least ')+format(known);
       const totalText=pinnedTotal!==null?' · '+format(pinnedTotal)+' global total at '+(updating||stale?'previous ':'')+'snapshot'+(height(value.snapshot?.height)?' block '+format(value.snapshot.height):''):'';
       const summary=note+totalText+' · '+visible+(updating?' · updating':stale?' · stale':''),state=matching?(updating?'updating':stale?'stale':value.state):context?.unsafe?'stale':axis&&context?.key===bitmapTargetKey?bitmapTargetStatus:'unknown';
@@ -608,7 +610,7 @@ window.GatewayIndexTimeline = (() => {
       const bodyAvailable=s.kind==='block'&&blockDefinition&&trackModel(blockDefinition,snapshot).coverage.some(r=>r.from<=s.from&&r.to>=s.from);
       if(s.kind==='block'&&!bodyAvailable)inspect.textContent='Fetch & open in Explorer';else inspect.textContent='Open in Explorer';
       advanced.hidden=m.locked;summary.textContent='Advanced settings and evidence';if(workspace)workspace.hidden=m.locked;
-      notice.textContent=m.locked?d.lock_reason||'This index is locked while Headers and Blocks are tested.':!healthy?'Showing the last known coverage. Controls are paused until local status is available.':d.id==='headers'?'Headers link the chain together. They do not contain the transactions inside each block.':d.id==='blocks'?'Filled ranges show block files available on this computer. Processing a block does not always keep its source file. Files are checked again when opened.':m.note||'Filled ranges show committed local results. They do not imply that source block files are retained.';
+      notice.textContent=parcelDefinition(d)?d.lock_reason||'Parcels processing is temporarily disabled pending Ordinals and provenance validation. Saved records and exports remain available.':m.locked?d.lock_reason||'This index is locked while Headers and Blocks are tested.':!healthy?'Showing the last known coverage. Controls are paused until local status is available.':d.id==='headers'?'Headers link the chain together. They do not contain the transactions inside each block.':d.id==='blocks'?'Filled ranges show block files available on this computer. Processing a block does not always keep its source file. Files are checked again when opened.':m.note||'Filled ranges show committed local results. They do not imply that source block files are retained.';
       if(m.staged)notice.textContent+=' '+m.staged.note;
       if(!m.locked&&!m.complete)notice.textContent+=' Coverage is partial: blank areas may contain data that has not been mapped yet.';
       if(isTrack&&coveragePartitionRows(m).length>1)notice.textContent+=' Committed run coverage and viewed block facts may overlap; Available locally counts each block once.';
@@ -677,7 +679,7 @@ window.GatewayIndexTimeline = (() => {
       paintTrackSelection();empty.hidden=defs.length>0;root.dataset.healthy=String(healthy);renderPicker();draw();transport?.update(snapshot);loadProfileLayout();
     }
     async function change(control,checked) {
-      const m=current();if(!m||!healthy||busy||m.locked){renderInspector();return;}
+      const m=current();if(!m||!healthy||busy||m.locked||!m.definition.buildable||parcelDefinition(m.definition)){renderInspector();return;}
       const id=m.definition.owner||m.definition.id;busy=true;renderInspector();try{const action=control==='on'?(checked?'start':'stop'):(checked?'enable':'disable'),result=await api('live',{index:id,action});snapshot={...snapshot,live:[...(snapshot.live||[]).filter(p=>p.index!==id),result]};notify(control==='live'?(checked?'Following new blocks. Gateway will catch up from saved progress.':'Following new blocks is off. Saved data remains available.'):(checked?'Indexing is on. Choose a range, or follow new blocks.':'Indexing stopped. Saved data remains available.'));await refresh();}catch(error){notify(error.message,true);}finally{busy=false;render();}
     }
     const Resize=doc.defaultView?.ResizeObserver;if(Resize){const observer=new Resize(()=>{if(!drawing){drawing=true;doc.defaultView.requestAnimationFrame(()=>{drawing=false;queueBitmapTargets();draw();});}});observer.observe(ruler);observer.observe(trackViewport);}
@@ -686,7 +688,7 @@ window.GatewayIndexTimeline = (() => {
     const result={getSelectedTracks:()=>[...selectedTracks],requestSelectedDeletion,cancelPendingNavigation,acceptResource,syncResource,zoomIntoFocus,returnParent,setCollapsed,redraw,
       setBitmapComparison:()=>{},expandDistrict:(id,expanded=true)=>{districtExpanded[id]=!!expanded;save();render();},
       skipNotch,getSkipState,createHandleRange,getHierarchy:()=>hierarchy.map(p=>({kind:p.kind,height:p.height,txIndex:p.txIndex,outputIndex:p.outputIndex,count:p.count,view:{...p.view},focused:p.focused})),render,health:(ok,{render:paint=true}={})=>{healthy=ok;if(paint)render();},
-      select:id=>{id=id==='txo-spender'?'txio-links':id==='sat-state'?'txio-sat-ranges':id;const changed=selected!==id;selected=id;skipContext=id;if(!selectingLabels){selectedTracks.clear();if(id)selectedTracks.add(id);trackSelectionAnchor=id||null;}selection=id?{id,kind:'track'}:null;if(changed)advanced.open=false;render();},
+      select:id=>{if(parcelDefinition(definitionFor(id)||{id}))return;id=id==='txo-spender'?'txio-links':id==='sat-state'?'txio-sat-ranges':id;const changed=selected!==id;selected=id;skipContext=id;if(!selectingLabels){selectedTracks.clear();if(id)selectedTracks.add(id);trackSelectionAnchor=id||null;}selection=id?{id,kind:'track'}:null;if(changed)advanced.open=false;render();},
       model:id=>trackModel(definitionFor(id)||{id},snapshot),getView:()=>({...navView(),fit:fit&&!frame()}),getSelection:id=>selectedRanges(id).map(r=>({...r})),getPlayhead:()=>playhead,focus:focusHeight,removeTrack,
       getNavigationPoint:()=>{const index=frame()?(frame().focused??navView().from):(playhead??navView().from);return {...childEntity(index),block_hash:frame()?.block_hash||resourceAnchors.get(frame()?.height??index)};},
       pointAt:index=>({...childEntity(index),block_hash:frame()?.block_hash||resourceAnchors.get(frame()?.height??index)}),
@@ -696,5 +698,5 @@ window.GatewayIndexTimeline = (() => {
     if(window.GatewayIndexTransport){transport=window.GatewayIndexTransport.mount({document:doc,root,timeline:result,api,refresh,notify,getSnapshot:()=>snapshot,inspect:(id,options)=>{selectIndex(id,'advanced');if(options)doc.dispatchEvent(new doc.defaultView.CustomEvent('gateway:timeline-inspect-index',{detail:{id,options}}));}});Object.assign(result,transport);}
     return result;
   }
-  return {normalizeRanges,subtractRanges,coveragePartitionRows,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,indexBounds,established,rulerStep,rulerNotch,rulerMarks,mount};
+  return {normalizeRanges,subtractRanges,coveragePartitionRows,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,indexBounds,established,parcelVisible,rulerStep,rulerNotch,rulerMarks,mount};
 })();

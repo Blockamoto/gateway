@@ -5,6 +5,12 @@ window.GatewayWorkspace = (() => {
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const num=v=>typeof v==='number'?v.toLocaleString('en-GB'):String(v??'unknown');
  const route=(address,label,primary=false)=>`<button class="${primary?'primary':'quiet'}" data-route="${esc(address)}">${esc(label)}</button>`;
+ const hiddenIndex=(value,definitions=[])=>{const id=typeof value==='string'?value:value?.index||value?.definition||value?.id||'',definition=definitions.find(d=>d.id===id);return value?.kind==='parcel'||value?.producer_kind==='parcel'||definition?.kind==='parcel'||definition?.producer_kind==='parcel'||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(id)||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(value?.district_instance||definition?.district_instance||'');};
+ const visibleIndexText=value=>/parcel/i.test(String(value||''))?'Saved work is unavailable in this build.':value;
+ function visibleIndexStatus(value={}){
+  const definitions=value.definitions||[],visible=row=>!hiddenIndex(row,definitions),job=row=>!row||!visible(row)?{}:{...row,error:visibleIndexText(row.error),waiting_reason:visibleIndexText(row.waiting_reason)};
+  return {...value,definitions:definitions.filter(visible),instances:(value.instances||[]).filter(visible),live:(value.live||[]).filter(visible),jobs:(value.jobs||[]).filter(visible).map(job),job:job(value.job),errors:(value.errors||[]).filter(message=>!/parcel/i.test(String(message)))};
+ }
  function servingStatus(view){
   if(!view)return '';
   const port=Number.isSafeInteger(view.listen_port)&&view.listen_port>0?view.listen_port:0;
@@ -26,13 +32,13 @@ window.GatewayWorkspace = (() => {
   }
   return peerAliases.get(key);
  }
- function jobCard(j){return `<section class="panel current-work"><div><div class="eyebrow">${j.id?'LATEST INDEX JOB':'READY WHEN YOU ARE'}</div><h2>${j.id?esc(({'blocks':'Bitcoin Blocks','bitmap':'Bitmap districts','inscriptions':'Inscriptions','sat-state':'Sats','txo-spender':'IO Links','tx-locator':'TX ID Locators','transaction-locator':'TX ID Locators'})[j.index]||j.index)+' <span class="badge">'+esc(j.state)+'</span>':'No index job started'}</h2><p class="muted">${j.id?'Blocks '+num(j.from)+'–'+num(j.to)+' · new raw bodies follow Raw Blocks · '+(j.height>=j.from?'Committed through '+num(j.height):'No block committed yet'):'Choose a bounded range. Reviewing a plan does not fetch data.'}</p>${j.error?'<p class="small muted">'+esc(j.error)+'</p>':''}</div><div class="actions">${route('indexes.gateway',j.id?(j.state==='complete'?'Inspect results':'Review job & resume'):'Review a plan →',true)}</div></section>`;}
+ function jobCard(j={}){j=hiddenIndex(j)?{}:{...j,error:visibleIndexText(j.error)};return `<section class="panel current-work"><div><div class="eyebrow">${j.id?'LATEST INDEX JOB':'READY WHEN YOU ARE'}</div><h2>${j.id?esc(({'blocks':'Bitcoin Blocks','bitmap':'Bitmap districts','inscriptions':'Inscriptions','sat-state':'Sats','txo-spender':'IO Links','tx-locator':'TX ID Locators','transaction-locator':'TX ID Locators'})[j.index]||j.index)+' <span class="badge">'+esc(j.state)+'</span>':'No index job started'}</h2><p class="muted">${j.id?'Blocks '+num(j.from)+'–'+num(j.to)+' · new raw bodies follow Raw Blocks · '+(j.height>=j.from?'Committed through '+num(j.height):'No block committed yet'):'Choose a bounded range. Reviewing a plan does not fetch data.'}</p>${j.error?'<p class="small muted">'+esc(j.error)+'</p>':''}</div><div class="actions">${route('indexes.gateway',j.id?(j.state==='complete'?'Inspect results':'Review job & resume'):'Review a plan →',true)}</div></section>`;}
  function retentionCards(){return `<div class="grid two mb retention-cards"><section class="panel"><div class="eyebrow">RAW BLOCKS OFF</div><h3>Use new bodies temporarily</h3><p class="muted">Explorer and index requests can read verified block sources. Newly fetched bodies are discarded after use; existing saved data remains.</p></section><section class="panel"><div class="eyebrow">RAW BLOCKS ON</div><h3>Retain requested block bodies</h3><p class="muted">The same timeline control saves newly fetched bodies for browsing and indexing. Turning it on does not start a historical scan.</p></section></div><p class="small muted">Derived results, mandatory recovery facts and optional historical ranges have separate lifetimes. External Core files stay read-only.</p><div class="actions mb">${route('indexes.gateway','Manage the Raw Blocks track',true)}${route('settings.gateway','Privacy & serving settings')}</div>`;}
  async function home(v){const {root,api,heading,isCurrent,schedule}=v;
   root.innerHTML=heading('GATEWAY','What is live right now.','Resolve from the address bar. Maintain only what you choose.')+`
    <section id="home-state" class="panel home-state" aria-live="polite"><span class="loader"></span>Reading current state…</section>
    <div class="home-doorways grid two mt"><button class="tile" data-route="indexes.gateway"><span class="tile-symbol">▦</span><h3>Indexes</h3><p>What you have, what you keep live, and what you can get.</p><small>OPEN INDEXES →</small></button><button class="tile" data-route="peers.gateway"><span class="tile-symbol">⋈</span><h3>Peers</h3><p>Your connections and the data they can provide.</p><small>OPEN PEERS →</small></button></div>`;
-  async function load(){try{const [ix,p,n]=await Promise.all([api('/api/v1/index/status'),api('/api/v1/settings'),api('/api/v1/network')]);if(!isCurrent())return;
+  async function load(){try{const [rawIndexes,p,n]=await Promise.all([api('/api/v1/index/status'),api('/api/v1/settings'),api('/api/v1/network')]);if(!isCurrent())return;const ix=visibleIndexStatus(rawIndexes);
    const h=n.headers||{}, settings=p.settings||{}, live=(ix.live||[]).filter(x=>x.enabled), gateway=n.gateway_connected||0, bitcoin=n.connected||0;
    const headerState=h.header_state||'unknown';
    const headerFresh=headerState==='current'&&n.enabled===true&&bitcoin>0&&!settings.headers_paused&&!h.syncing&&!h.error;
@@ -82,5 +88,5 @@ window.GatewayWorkspace = (() => {
   groups.forEach((g,i)=>{const b=document.createElement('button');b.type='button';b.textContent=labels[i]||'Advanced';if(g.dataset.settingsSection)b.dataset.settingsSection=g.dataset.settingsSection;b.onclick=()=>select(i);nav.appendChild(b)});
   body.prepend(nav);select(0);
  }
- return {home,connections,jobCard,retentionCards,organizeSettings,servingStatus};
+ return {home,connections,jobCard,visibleIndexStatus,retentionCards,organizeSettings,servingStatus};
 })();

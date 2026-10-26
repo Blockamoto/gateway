@@ -171,7 +171,9 @@ func readIndexLiveState(root string) (indexLiveState, error) {
 		}
 		if policy.InitialFrom != nil {
 			d, err := findIndexDefinition(id)
-			if err != nil || !d.Buildable || *policy.InitialFrom < d.StartHeight || (!d.ArbitraryStart && *policy.InitialFrom != d.StartHeight) {
+			// Stored Parcel intent stays readable after execution is withdrawn;
+			// release admission prevents the scheduler from using it.
+			if err != nil || !d.Buildable && !bitmapParcelExecutionDeferred(id) || *policy.InitialFrom < d.StartHeight || (!d.ArbitraryStart && *policy.InitialFrom != d.StartHeight) {
 				return indexLiveState{}, fmt.Errorf("invalid initial live-index range for %s", id)
 			}
 		}
@@ -234,7 +236,7 @@ func (a *app) pauseLivePolicyForJob(index string) error {
 }
 
 func (a *app) setIndexLivePolicy(req indexLiveRequest) (indexLiveView, error) {
-	if err := requireReleaseFeature(strings.ToLower(strings.TrimSpace(req.Index))); err != nil {
+	if err := requireReleaseIndexExecution(strings.ToLower(strings.TrimSpace(req.Index))); err != nil {
 		return indexLiveView{}, err
 	}
 	// Serialize the policy snapshot through scheduling/cancellation. A paused

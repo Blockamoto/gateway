@@ -40,7 +40,7 @@
     'group:bitmap': {
       title: 'Bitmap',
       paragraphs: [
-        'Districts and Parcels keep Bitmap claim results and connect them to their Bitcoin blocks and inscription reveal locations. Use them to inspect the claim selected for a numbered block or parcel.',
+        'Districts keep Bitmap claim results and connect them to their Bitcoin blocks and inscription reveal locations. Use them to inspect the claim selected for a numbered block.',
         'The Rules view contains the exact claim rules. This help explains what the tracks store; it does not add claim rules or establish current inscription ownership.',
         'Bitmap Chains are disabled while their method is being developed. Existing saved Chain evidence remains available for inspection.'
       ]
@@ -135,6 +135,7 @@
     'bitmap-parcels-standard-v1': {
       title: 'Bitmap Parcels',
       paragraphs: [
+        'Parcels processing is temporarily disabled pending Ordinals and provenance validation. Existing saved Parcel records and exports remain available.',
         'Keeps selected Parcel claim results under the Bitmap rules shown in Rules. Use it to inspect a parcel claim, its District and the referenced Bitcoin transaction position.',
         'An unresolved result means the evidence has not established an answer. It is not a completed empty result. The exact Rules view governs claim selection; this help adds no ownership or eligibility condition.'
       ]
@@ -143,7 +144,7 @@
       title: 'Bitmap Chains',
       paragraphs: [
         'Bitmap Chains are disabled in this version while their method is being developed. Existing saved Chain evidence can be inspected; new Chain processing is unavailable.',
-        'Their intended purpose is to summarize completed District or Parcel results in an ordered history. A summary alone does not establish that the underlying claims are correct or identify an inscription’s current owner.'
+        'Their intended purpose is to summarize completed District results in an ordered history. A summary alone does not establish that the underlying claims are correct or identify an inscription’s current owner.'
       ]
     },
     satline: {
@@ -179,8 +180,8 @@
       dependencies: [{name: 'Matching UTXO snapshot — Current Addresses only', requirement: 'hard', otherTrack:true, why: 'Establishes which outputs are unspent at the exact block used for the address balance.'}, ...bodyInputs]
     },
     'group:bitmap': {
-      paragraphs: [sourceParagraph, 'District and Parcel processing continues in order from Bitmap’s starting block, 792435. Parcels also use matching District results and the particular earlier evidence needed to check a candidate. Enabling a track never starts its prerequisites automatically. Chains remain disabled.'],
-      dependencies: [{name: 'Matching District results — Parcels only', requirement: 'hard', otherTrack:true, why: 'Parcels use District results for the same Bitcoin block and rule set.'}, {name: 'Retained Sat evidence before a reveal — when needed', requirement: 'conditional', otherTrack:true, why: 'Some Parcel checks need the exact earlier Sat context. Turning Sats On now does not promise that historical context is retained.'}, ...bodyInputs]
+      paragraphs: [sourceParagraph, 'District processing continues in order from Bitmap’s starting block, 792435. Enabling a track never starts its prerequisites automatically. Chains remain disabled.'],
+      dependencies: bodyInputs
     },
     headers: {
       paragraphs: ['Gateway obtains and checks headers as part of its managed Bitcoin chain information. Saving full blocks or building transaction tracks is a separate choice.'],
@@ -210,7 +211,7 @@
       dependencies: [{name: 'Earlier District results', requirement: 'hard', why: 'Consecutive evaluation from Bitmap’s starting block establishes the history used by later claim selections.'}, ...bodyInputs]
     },
     'bitmap-parcels-standard-v1': {
-      paragraphs: [sourceParagraph, 'Parcel processing continues in order from block 792435, or resumes its own checked saved result. No prerequisite build starts automatically. A separately retained Inscriptions index is optional.', 'Merely turning Sats On does not establish the required historical state. If the exact earlier evidence is unavailable, or the parent moves within the same reveal block, the affected check remains unresolved.'],
+      paragraphs: ['Parcels processing is temporarily disabled pending Ordinals and provenance validation. Saved records and exports remain available. These requirements describe the retained implementation and saved evidence; processing and resume are unavailable.', 'The retained Parcel implementation evaluates consecutive results from block 792435 using matching District results. A separately retained Inscriptions index is optional.', 'Merely turning Sats On does not establish the historical state needed to validate saved Parcel evidence. If the exact earlier evidence is unavailable, or the parent moves within the same reveal block, the affected check remains unresolved.'],
       dependencies: [
         {name: 'Matching Bitmap District results', requirement: 'hard', otherTrack:true, why: 'Uses completed District results for the same Bitcoin block and the same declared rule set.'},
         {name: 'The referenced District block', requirement: 'input', why: 'Its verified transaction count establishes whether the Parcel’s transaction position exists.'},
@@ -243,8 +244,10 @@
   function copy(card, title) {
     return {title: title || card.title, paragraphs: [...card.paragraphs], ...(card.dependencies ? {dependencies: card.dependencies.map(row => ({...row}))} : {})};
   }
+  const hiddenIndex=(id,definition)=>definition?.kind==='parcel'||definition?.producer_kind==='parcel'||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(id||'');
   function get(id, definition) {
     id = key(id); id = aliases[id] || id;
+    if(hiddenIndex(id,definition))return {title:'Unavailable index',paragraphs:['This index is unavailable in this version. Its retained data and rules are unchanged.','Opening this help cannot enable processing or modify saved records.']};
     if (isChain(id, definition)) return copy(purposes['bitmap-chain']);
     if (purposes[id]) {
       const card = copy(purposes[id]);
@@ -253,12 +256,13 @@
       return card;
     }
     const title = name(definition, 'Saved track');
-    if (frozenBitmap(id, definition)) return {title, paragraphs: ['This saved definition is available for inspection only in this version. Use it to inspect its retained results and their own recorded coverage.', 'Earlier or custom Bitmap results keep their own saved interpretation. They are not silently replaced with the current District or Parcel rules.']};
+    if (frozenBitmap(id, definition)) return {title, paragraphs: ['This saved definition is available for inspection only in this version. Use it to inspect its retained results and their own recorded coverage.', 'Earlier or custom Bitmap results keep their own saved interpretation. They are not silently replaced with the current rules.']};
     if (definition?.locked === true || definition?.buildable === false) return {title, paragraphs: ['This saved definition is available for inspection only in this version. Use it to inspect its retained results and their own recorded coverage.', 'Opening help does not enable processing or change the saved definition.']};
     return {title, paragraphs: ['This track’s saved definition describes the data it records. Inspect its details and reported coverage to see which results are available.', 'A track’s position in a group does not establish that it contains another track’s data. Missing coverage remains unknown.']};
   }
   function dependencies(id, definition) {
     id = key(id); id = aliases[id] || id;
+    if(hiddenIndex(id,definition))return null;
     if (isChain(id, definition)) return null;
     if (dependencyCards[id]) {
       const card = copy(dependencyCards[id], (purposes[id]?.title || name(definition, 'Track')) + ' dependencies');

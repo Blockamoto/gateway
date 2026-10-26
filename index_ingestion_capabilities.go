@@ -29,7 +29,7 @@ func resolvedIngestionCapabilities(d indexRunDocument) []indexBrowsePolicy {
 	add("address-history", "sparse", "Authenticated output history for supported destinations, including an explicit empty scanned block.", true)
 	add("inscriptions", "sparse", "Current Lean/Full and conventional-ID choices apply to this block's own envelope extraction.", true)
 	add(bitmapStandardDistrictID, "exact_next", "Bitmap Districts Standard V1 from its authenticated origin; no skipped prefix or custom execution.", true)
-	add(bitmapStandardParcelID, "exact_next_with_district_evidence", "Bitmap Parcels Standard V1 at its exact next block with selected District/provenance evidence already available; no prerequisite build.", true)
+	add(bitmapStandardParcelID, "disabled", errBitmapParcelsDeferred.Error(), false)
 	add("bitmap-district-chain-dev-v1", "disabled", "Chain execution is disabled while its draft codec is reviewed; saved state remains inspectable.", false)
 	add("bitmap-parcel-chain-dev-v1", "disabled", "Chain execution is disabled while its draft codec is reviewed; saved state remains inspectable.", false)
 	return rows

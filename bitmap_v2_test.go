@@ -169,7 +169,7 @@ func TestBitmapV2ResolvedAdmissionBlocksPrefixAndRechecksPublication(t *testing.
 	a := runTestApp(t)
 	block := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "", "0.bitmap")
 	installRunProtocolHeader(t, a, &block)
-	request := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}, {Index: bitmapCanonicalParcelID, Armed: true}}}
+	request := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}}}
 	if _, err := a.prepareIndexRun(request); err != nil {
 		t.Fatal(err)
 	}

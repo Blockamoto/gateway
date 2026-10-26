@@ -244,8 +244,8 @@ func bitmapFixedIndexDefinition(id string) (indexDefinition, bool) {
 		d.Theory = errBitmapChainDeferred.Error()
 	}
 	d.Buildable = bitmapBuiltinExecutionAvailable(id)
-	d.Locked = !d.Buildable
-	if d.Locked {
+	d.Locked = !releaseFeatureAvailable(id)
+	if !d.Buildable {
 		d.LockReason = releaseLockReason(id)
 	}
 	return d, true

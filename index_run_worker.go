@@ -86,6 +86,9 @@ func checkIndexConsumerPublication(ctx context.Context, root, index string) erro
 
 func (a *app) indexRunConsumerContext(ctx context.Context, index string, admitted ...indexRunProgress) context.Context {
 	return context.WithValue(ctx, indexRunPublicationKey{}, func() error {
+		if bitmapParcelExecutionDeferred(index) {
+			return errBitmapParcelsDeferred
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}

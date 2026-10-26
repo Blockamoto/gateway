@@ -280,7 +280,7 @@ func indexRunBitmapHead(ctx context.Context, a *app, id string) (*indexCheckpoin
 	return s.Checkpoint(), nil
 }
 func openBitmapRunConsumer(ctx context.Context, a *app, id string) (indexRunExternalConsumer, error) {
-	if err := requireReleaseFeature(id); err != nil {
+	if err := requireReleaseIndexExecution(id); err != nil {
 		return nil, err
 	}
 	return openBitmapStoredConsumer(ctx, a, id)

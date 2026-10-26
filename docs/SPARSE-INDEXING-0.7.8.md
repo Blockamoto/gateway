@@ -7,6 +7,13 @@ Only tracks already armed in the saved prepared timeline may publish. No
 operation arms another track, starts a preceding scan, or treats a gap as an
 empty result. Raw may remain Off while derived facts are retained.
 
+Parcels execution is disabled in the October 26 availability follow-up pending
+further Ordinals and parent-provenance validation. Its track is omitted from
+the normal interface, including saved-index cards and status selections. All
+canonical, legacy and custom Parcel versions remain off. Existing definitions,
+rules, identities and saved records are preserved, with passive backend read
+and export compatibility; restored choices cannot enable hidden work.
+
 | UI lane | Ingestion capability | Required context |
 |---|---|---|
 | Headers | Selected header authority | Header subsystem validates its own prefix; a body does not fabricate missing headers. |
@@ -21,7 +28,7 @@ empty result. Raw may remain Off while derived facts are retained.
 | Historical address outputs | Sparse scanned block | Complete verified output facts; explicit empty scans are retained too. |
 | Inscriptions | Sparse Lean or Full | Current mode and conventional-ID choice; extraction uses the block's own inscription envelopes. |
 | Bitmap Districts | Exact-next fixed-standard state | Its distinct authenticated implementation identity and required preceding claim state. |
-| Bitmap Parcels | Exact-next fixed-standard state | Matching District outcomes, target-block evidence, and checked parent provenance; missing dependencies remain gaps. |
+| Bitmap Parcels | Disabled | Implementation and saved results retained for later Ordinals and parent-provenance validation. |
 | District Chain | Disabled | Saved chain artifacts remain inspectable; this preview does not execute the provisional codec. |
 | Parcel Chain | Disabled | Saved chain artifacts remain inspectable; this preview does not execute the provisional codec. |
 
@@ -79,8 +86,9 @@ Each complete verified body consumed by the coordinated worker is offered to
 all applicable armed tracks. Only the actual same-height native cohort and
 already staged same-body TX anchors reserve that body; a distant admitted
 frontier does not suppress sparse capture. TX work can overlap the ordered
-stateful group. UTXO precedes IO derivation, District precedes Parcel, Parcel
-uses the pre-transition Sat context, and Sats advance afterward. Every worker
+stateful group. UTXO precedes IO derivation. The retained Parcel implementation
+orders District before Parcel and uses the pre-transition Sat context; Parcel
+execution is currently disabled. Sats advance afterward. Every worker
 joins and releases its store gates before dependency bodies drain.
 
 Dependency facts share the already decoded body and sealed extraction. The

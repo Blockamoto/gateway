@@ -190,7 +190,7 @@ func TestBitmapStandardOnlySavedCustomReadsStopAndExecutionFences(t *testing.T) 
 	}
 }
 
-func TestBitmapCanonicalOnlyFixedRunRemainsAvailable(t *testing.T) {
+func TestBitmapCanonicalDistrictFixedRunRemainsAvailable(t *testing.T) {
 	a := runTestApp(t)
 	ctx := context.Background()
 	b := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "", "0.bitmap")
@@ -198,7 +198,7 @@ func TestBitmapCanonicalOnlyFixedRunRemainsAvailable(t *testing.T) {
 	var calls atomic.Int64
 	a.indexRunSourceBlock = func(context.Context, blockTarget, string) (blockView, error) { calls.Add(1); return b, nil }
 	from, to := b.Height, b.Height
-	req := indexRunRequest{In: &from, Out: &to, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}, {Index: bitmapCanonicalParcelID, Armed: true}}}
+	req := indexRunRequest{In: &from, Out: &to, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}}}
 	plan, err := a.planIndexRun(ctx, req)
 	if err != nil || !plan.Ready {
 		t.Fatal(plan, err)

@@ -330,6 +330,9 @@ func runRawRetention(req indexRunRequest) string {
 // A missing new policy preserves legacy explicit consent. Once the transport is
 // configured, Off also governs optional browse/cache/projection writers.
 func indexRunOptionalWorkAllowed(root, id string) bool {
+	if bitmapParcelExecutionDeferred(id) {
+		return false
+	}
 	d, err := readIndexRunDocument(root)
 	if err != nil {
 		return false

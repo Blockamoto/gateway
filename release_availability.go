@@ -9,7 +9,20 @@ import (
 // state. Upgrading a profile cannot opt a testing build into unreleased work.
 // Experimental Sat state has an explicitly versioned profile for reviewed rebuild.
 func releaseFeatureAvailable(id string) bool {
-	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state" || id == "address-state" || id == "address-history" || id == "sat-state" || bitmapBuiltinExecutionAvailable(id)
+	// Standard Parcel saved results remain readable independently of whether
+	// this build permits new indexing work.
+	return id == "headers" || id == "blocks" || id == "inscriptions" || id == "tx-locator" || id == "txo-spender" || id == "txio" || id == "utxo-state" || id == "address-state" || id == "address-history" || id == "sat-state" || id == bitmapStandardParcelID || bitmapBuiltinExecutionAvailable(id)
+}
+
+func releaseIndexExecutionAvailable(id string) bool {
+	return releaseFeatureAvailable(id) && !bitmapParcelExecutionDeferred(id)
+}
+
+func requireReleaseIndexExecution(id string) error {
+	if !releaseIndexExecutionAvailable(id) {
+		return fmt.Errorf("%s", releaseLockReason(id))
+	}
+	return nil
 }
 
 // Related inscription transaction locators ship with the transaction stage,
@@ -21,12 +34,15 @@ func releaseInscriptionLocatorsAvailable() bool {
 func releaseAvailability() map[string]bool {
 	available := map[string]bool{"gateway-peerhood": false}
 	for _, d := range indexDefinitions() {
-		available[d.ID] = releaseFeatureAvailable(d.ID)
+		available[d.ID] = releaseIndexExecutionAvailable(d.ID)
 	}
 	return available
 }
 
 func releaseLockReason(id string) string {
+	if bitmapParcelExecutionDeferred(id) {
+		return errBitmapParcelsDeferred.Error()
+	}
 	if bitmapConsumerID(id) {
 		if bitmapConsumerKind(id) == "chain" {
 			return errBitmapChainDeferred.Error()
@@ -66,7 +82,7 @@ func requireReleaseIndexRequest(req indexBuildRequest) error {
 		}
 	}
 	for _, id := range append([]string{req.Index}, req.Outputs...) {
-		if err := requireReleaseFeature(id); err != nil {
+		if err := requireReleaseIndexExecution(id); err != nil {
 			return err
 		}
 	}

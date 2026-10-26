@@ -56,6 +56,28 @@ async function run() {
   assert.match(state.innerHTML, /source &lt;unavailable&gt;/);
   assert.match(state.innerHTML, /policy &lt;error&gt;/);
 
+  const hiddenIDs=['bitmap-parcels','bitmap-parcels-canonical','bitmap-parcels-canonical-v2','bitmap-parcels-standard-v1','bitmap-parcels-'+'1'.repeat(32),'bitmap-parcel-chain-dev-v1'];
+  for(const index of hiddenIDs){
+    ix.live=[{index,enabled:true,state:'synced',tip_fresh:true,lag_known:true,lag:0}];
+    ix.job={id:'retained-job',index,state:'paused',height:792435,error:'Saved Parcel work'};
+    ix.errors=['Parcels unavailable','ordinary source error'];
+    await next();
+    assert.doesNotMatch(state.innerHTML,/parcel/i,'Saved generations and restored Live jobs never appear on Home');
+    assert.match(state.innerHTML,/Nothing is being maintained yet/);assert.match(state.innerHTML,/ordinary source error/);
+    assert.doesNotMatch(sandbox.window.GatewayWorkspace.jobCard(ix.job),/parcel/i,'Activity job cards hide every saved generation');
+  }
+  ix.definitions=[{id:'saved-custom-alias',kind:'parcel'}];
+  ix.live=[{index:'saved-custom-alias',enabled:true,state:'catching_up'}];
+  ix.job={id:'retained-alias-job',index:'saved-custom-alias',state:'paused'};
+  ix.jobs=[ix.job,{id:'kept',index:'tx-locator',state:'paused'}];
+  ix.instances=[{definition:'saved-custom-alias',coverage:[{from:792435,to:792435}]},{definition:'tx-locator'}];
+  const unchanged=JSON.stringify(ix),visible=sandbox.window.GatewayWorkspace.visibleIndexStatus(ix);
+  assert.equal(visible.job.id,undefined);assert.equal(visible.jobs.length,1);assert.equal(visible.instances.length,1);assert.equal(visible.definitions.length,0);
+  assert.equal(JSON.stringify(ix),unchanged,'UI filtering leaves saved API documents untouched');
+  await next();assert.doesNotMatch(state.innerHTML,/saved-custom-alias|parcel/i,'Metadata-defined aliases stay hidden');
+  ix.job={id:'parent',index:'blocks',state:'paused',height:792435,error:'Hidden Parcel output unavailable'};
+  await next();assert.match(state.innerHTML,/blocks job paused/);assert.doesNotMatch(state.innerHTML,/parcel/i,'Parent error text never advertises hidden work');
+
   fail = true;
   await next();
   assert.match(state.innerHTML, /Status unavailable/);

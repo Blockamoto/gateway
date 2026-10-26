@@ -32,9 +32,13 @@ indicators are distinct from the optional tracks' Arm and Live-follow switches.
 
 The later design preview is documented in `APPROVED-DESIGN-BRIEF-0.7.8.md` and
 `VERIFICATION-DESIGN-0.7.8.md`. It keeps parent groups while giving every compact
-child its own labelled lane and independent expansion. Its active indexes are
-**Bitmap Districts Standard V1** (`bitmap-districts-standard-v1`) and **Bitmap
-Parcels Standard V1** (`bitmap-parcels-standard-v1`). These are fresh identities;
+child its own labelled lane and independent expansion. The active Bitmap index is
+**Bitmap Districts Standard V1** (`bitmap-districts-standard-v1`). **Bitmap
+Parcels Standard V1** (`bitmap-parcels-standard-v1`) and every older/custom Parcel
+version are disabled and omitted from the normal interface pending further
+Ordinals and parent-provenance validation. Its implementation, rules, identities
+and saved records remain intact, with passive backend read/export compatibility.
+These are fresh identities;
 older canonical stores remain separately readable and cannot resume execution.
 The Bitmap parent target band shows known claim targets; the children still
 show reveal-block indexing progress. Unmarked targets remain unknown.
@@ -50,12 +54,21 @@ a child shows upper details rather than expanding it. Controls are on the right,
 and the existing track zoom enlarges lanes. Inscriptions matches parent styling
 with a reserved blank disclosure slot and no expander.
 
-The fixed canonical District and Parcel tracks both start at **792435** and are
-siblings. Review a bounded range, arm the chosen normal tracks, then Start.
+The fixed canonical District and retained Parcel identities both start at
+**792435**. Review a bounded range, arm the available tracks, then Start.
 Bitmap arming offers the existing TX ID Locators track as a companion.
-Legacy/custom Bitmap profiles remain inspectable but cannot execute. Old
+Individual, parent, default and restored choices cannot start hidden Parcels.
+Legacy/custom District profiles remain inspectable but cannot execute. Old
 checkpoints are not migrated into the new canonical identities. Both chains are
 disabled, including direct API and restored execution. Saved evidence is retained.
+
+The October 26 availability checks cover every Parcel generation and custom
+alias, individual and parent requests, restored Run/Prepared choices, queued
+work and Live policies, shared fanout, and the final publication boundary.
+UI checks cover hidden timeline/catalog/settings/export entries, Home/Activity,
+related-resource links and transaction-level target mapping. A separate compiled
+check uses a disposable copy of earlier QA data with saved Parcel records;
+the existing user profile and running application are not used for acceptance.
 
 Already-armed capable tracks can retain facts from a complete verified block
 obtained by ordinary browsing. Sparse facts do not imply complete history or

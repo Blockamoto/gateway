@@ -25,6 +25,9 @@ func TestSharedBlockModernSkewDiagnostic(t *testing.T) {
 	if fixture == "" {
 		t.Skip("set GATEWAY_MODERN_POINT_FIXTURE to an authenticated32-block fixture for the TempDir-only trace diagnostic")
 	}
+	if !bitmapBuiltinExecutionAvailable(bitmapStandardParcelID) {
+		t.Skip("this retained diagnostic measures the earlier Parcel-enabled cohort; Parcels execution is disabled pending Ordinals/provenance validation")
+	}
 	var manifest struct {
 		Network   string `json:"network"`
 		HeaderSHA string `json:"header_sha256"`

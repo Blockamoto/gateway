@@ -46,6 +46,9 @@ func (a *app) ingestArmedBitmapBlock(ctx context.Context, block blockView, prepa
 	var failures []error
 	only, _ := ctx.Value(bitmapIngestOnlyKey{}).(string)
 	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID} {
+		if !releaseIndexExecutionAvailable(id) {
+			continue
+		}
 		if only != "" && only != id {
 			continue
 		}
@@ -76,7 +79,7 @@ func (a *app) ingestArmedBitmapBlock(ctx context.Context, block blockView, prepa
 			if err := checkIndexRunPublication(ctx); err != nil {
 				return err
 			}
-			if err := requireReleaseFeature(id); err != nil {
+			if err := requireReleaseIndexExecution(id); err != nil {
 				return err
 			}
 			armed, err := timelineTrackArmed(a.dataDir, id)

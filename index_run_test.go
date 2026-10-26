@@ -417,7 +417,7 @@ func installRunProtocolHeader(t *testing.T, a *app, block *blockView) {
 	})
 }
 
-func TestTimelineRunBitmapSharedExtractionAndIndependentWaiting(t *testing.T) {
+func TestTimelineRunBitmapSharedExtractionAndRetainedParcelProvenanceWait(t *testing.T) {
 	a := runTestApp(t)
 	b0 := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "", "792435.bitmap")
 	installRunProtocolHeader(t, a, &b0)
@@ -440,7 +440,7 @@ func TestTimelineRunBitmapSharedExtractionAndIndependentWaiting(t *testing.T) {
 		return a.indexSourceBlock(ctx, target, retention)
 	}
 	first, last := b0.Height, b0.Height
-	req := indexRunRequest{In: &first, Out: &last, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}, {Index: bitmapCanonicalParcelID, Armed: true}}}
+	req := indexRunRequest{In: &first, Out: &last, Consumers: []indexRunSelection{{Index: bitmapCanonicalDistrictID, Armed: true}}}
 	p, err := a.planIndexRun(context.Background(), req)
 	if err != nil || !p.Ready {
 		t.Fatal(p, err)
@@ -457,6 +457,12 @@ func TestTimelineRunBitmapSharedExtractionAndIndependentWaiting(t *testing.T) {
 			t.Fatal(c)
 		}
 	}
+	// Retained Parcel implementation semantics remain testable without enabling
+	// the unavailable public track or giving it scheduler consent.
+	parcel := bitmapTestConsumer(t, a.dataDir, bitmapCanonicalParcelID)
+	if err = parcel.Apply(context.Background(), b0, nil); err != nil {
+		t.Fatal(err)
+	}
 	last = b1.Height
 	p, err = a.planIndexRun(context.Background(), req)
 	if err != nil || !p.Ready {
@@ -465,24 +471,13 @@ func TestTimelineRunBitmapSharedExtractionAndIndependentWaiting(t *testing.T) {
 	if _, err = a.startIndexRun(context.Background(), req, p.PlanID); err != nil {
 		t.Fatal(err)
 	}
-	waiting := waitRunCondition(t, a, func(d indexRunDocument) bool {
-		if d.Run == nil {
-			return false
-		}
-		states := map[string]indexRunProgress{}
-		for _, c := range d.Run.Consumers {
-			states[c.Index] = c
-		}
-		return states[bitmapCanonicalDistrictID].Height == b1.Height && states[bitmapCanonicalParcelID].State == "waiting" && states[bitmapCanonicalParcelID].Height == b0.Height
-	})
-	if waiting.Run.Counts.InscriptionExtractions != 1 || waiting.Run.Counts.SourceReads != 2 {
-		t.Fatal("shared reveal or referenced block read was repeated", waiting.Run.Counts)
+	done = waitRun(t, a)
+	if done.Run.State != "complete" || done.Run.Counts.InscriptionExtractions != 1 || done.Run.Counts.SourceReads != 1 {
+		t.Fatal("enabled District repeated shared facts", done.Run)
 	}
-	if _, err = a.controlIndexRun(context.Background(), waiting.Run.ID, "pause"); err != nil {
-		t.Fatal(err)
+	if err = parcel.Apply(context.Background(), b1, nil); !errors.Is(err, ErrBitmapEvidenceRequired) {
+		t.Fatal("retained Parcel lost its unresolved provenance fence", err)
 	}
-	waitRun(t, a)
-	parcel := bitmapTestConsumer(t, a.dataDir, bitmapCanonicalParcelID)
 	pending, err := readBitmapPending(context.Background(), a.dataDir, bitmapCanonicalParcelID, parcel.head)
 	if err != nil || pending == nil || len(pending.Candidates) != 1 || pending.Candidates[0].Eligibility != "unresolved" {
 		t.Fatal(pending, err)

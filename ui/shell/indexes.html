@@ -158,6 +158,8 @@ function syncRetainedStart() {
   }
 }
 function selectIndex(id, view, initialLive = false) {
+ if(id&&!definitions.some(d=>d.id===id))return;
+ if(window.GatewayIndexTransport.parcelDefinition((status?.definitions||[]).find(d=>d.id===id)||{id}))return;
  resources?.closeBitmapSettings?.();
  indexExport?.update({index:id==='inscriptions'?id:'',status});
  if(view==='advanced')view='build';
@@ -322,7 +324,7 @@ async function refresh({progressOnly=false}={}) {
       const result = await api(action);
       if (revision !== statusRevision) { refreshAgain=true; fullRefreshPending=true; continue; } // A pending control superseded this status read.
       const terminalRefresh=observeTerminalWork(status,result,action==='progress');
-      status = result; definitions = status.definitions || [];
+      status = window.GatewayIndexTransport.visibleSnapshot(result); definitions = status.definitions || [];
       if(terminalRefresh){fullRefreshPending=true;refreshAgain=true;}
       $('status-json').textContent = pretty(status);
       const healthy=!(status.errors || []).some(x => String(x).startsWith('live:'));
@@ -516,7 +518,7 @@ function publishFocus(value){if(Number.isSafeInteger(value.height)&&value.height
 function syncFocusedEntity(value){if(!value||!Number.isSafeInteger(value.height)||value.height<0)return;movingEntity=true;try{timeline.syncResource(value,value.metadata);timeline.acceptGlobalResource?.(value);}finally{movingEntity=false;}publishFocus(value);}
 function focusEntity(value,options={}){if(!value?.address)return;indexExport?.update({index:''});resources?.closeBitmapSettings?.();navigationContext={id:null,historyMode:'replace',focus:false,published:false};if(value.kind==='satpoint'){explorer.entity(value);return;}explorer.navigate(value.address).catch(error=>message(error.message,true));}
 function isInscriptionAddress(value){return /^(?:[0-9]+|[0-9a-f]{64})(?:\.)?i[0-9]+(?:\.[0-9]+(?:\.bitcoin)?)?$/i.test(value)||value.endsWith('.ord');}
-function inspectIndex(id,options={}){selectIndex(id,'advanced');if(options.rebuild_snapshot&&addressPanel?.reviewRebuild(options.rebuild_snapshot)===false)return;if(Object.keys(options).length)timeline.setConsumerOptions?.(id,options);}
+function inspectIndex(id,options={}){if(!definitions.some(d=>d.id===id))return;if(window.GatewayIndexTransport.parcelDefinition((status?.definitions||[]).find(d=>d.id===id)||{id}))return;selectIndex(id,'advanced');if(options.rebuild_snapshot&&addressPanel?.reviewRebuild(options.rebuild_snapshot)===false)return;if(Object.keys(options).length)timeline.setConsumerOptions?.(id,options);}
 function resourceIntent(){indexExport?.update({index:''});resources?.closeBitmapSettings?.();timeline?.cancelPendingNavigation();navigationContext={id:null,historyMode:'push',focus:false,published:false};}
 async function navigateWorkspace(value,options={}){
  const address=String(typeof value==='string'?value:value?.address||value?.query||'').trim();if(!address||address.length>1024||/[\x00-\x1f]/.test(address))return;if(!workspaceReady){pendingAddress={address,options};return;}

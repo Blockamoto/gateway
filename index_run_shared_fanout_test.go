@@ -153,6 +153,10 @@ func TestSharedBlockWorkerDifferentFrontiersSharesCompleteFactsAndPromotesFuture
 	}
 	district.Close()
 	parcel.Close()
+	parcelBefore, err := os.ReadFile(filepath.Join(parcel.dir, "head.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	var mu sync.Mutex
 	calls := map[int64]int{}
 	a.indexRunSourceBlock = func(ctx context.Context, target blockTarget, _ string) (blockView, error) {
@@ -172,7 +176,7 @@ func TestSharedBlockWorkerDifferentFrontiersSharesCompleteFactsAndPromotesFuture
 		return blockView{}, fmt.Errorf("unexpected source height %d", target.Height)
 	}
 	first, last := blocks[0].Height, blocks[2].Height
-	req := indexRunRequest{In: &first, Out: &last, Consumers: []indexRunSelection{{Index: "tx-locator", Armed: true}, {Index: "inscriptions", Armed: true, indexRunOptions: indexRunOptions{ConventionalIDs: boolPointer(false)}}, {Index: bitmapStandardDistrictID, Armed: true}, {Index: bitmapStandardParcelID, Armed: true}}}
+	req := indexRunRequest{In: &first, Out: &last, Consumers: []indexRunSelection{{Index: "tx-locator", Armed: true}, {Index: "inscriptions", Armed: true, indexRunOptions: indexRunOptions{ConventionalIDs: boolPointer(false)}}, {Index: bitmapStandardDistrictID, Armed: true}}}
 	if _, err = a.startIndexRun(context.Background(), req, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +194,7 @@ func TestSharedBlockWorkerDifferentFrontiersSharesCompleteFactsAndPromotesFuture
 			t.Fatal("source reacquired", b.Height, calls)
 		}
 	}
-	// The future body was offered to TX while Inscriptions/District/Parcel
+	// The future body was offered to TX while Inscriptions/District
 	// owned it. Its durable point survives native staged catch-up and remains
 	// readable; the normal contiguous native prefix is independently complete.
 	if _, have, err := a.browsedBatchContext(context.Background(), "tx-locator", last, blocks[2].Hash); err != nil || !have {
@@ -201,7 +205,7 @@ func TestSharedBlockWorkerDifferentFrontiersSharesCompleteFactsAndPromotesFuture
 			t.Fatal("cohort/staged native owner also captured point", b.Height, have, err)
 		}
 	}
-	for _, id := range []string{"tx-locator", "inscriptions", bitmapStandardDistrictID, bitmapStandardParcelID} {
+	for _, id := range []string{"tx-locator", "inscriptions", bitmapStandardDistrictID} {
 		if bitmapConsumerID(id) {
 			c := bitmapTestConsumer(t, a.dataDir, id)
 			if c.head == nil || c.head.Height != last {
@@ -214,6 +218,9 @@ func TestSharedBlockWorkerDifferentFrontiersSharesCompleteFactsAndPromotesFuture
 				t.Fatal(id, s, err)
 			}
 		}
+	}
+	if after, err := os.ReadFile(filepath.Join(parcel.dir, "head.json")); err != nil || string(after) != string(parcelBefore) {
+		t.Fatal("disabled saved Parcel advanced or changed", err)
 	}
 	point, have, err := a.browsedBatchContext(context.Background(), "inscriptions", last, blocks[2].Hash)
 	if err != nil {
@@ -260,7 +267,7 @@ func TestSharedBlockTransactionPointCannotSkipNativeGap(t *testing.T) {
 func sharedBitmapDispatchFixture(t *testing.T) (*app, blockView, *bitmapRunConsumer, *bitmapRunConsumer, *indexStore, *indexRunPrepared) {
 	t.Helper()
 	a := runTestApp(t)
-	if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "tx-locator", Armed: true}, {Index: bitmapStandardDistrictID, Armed: true}, {Index: bitmapStandardParcelID, Armed: true}}}); err != nil {
+	if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "tx-locator", Armed: true}, {Index: bitmapStandardDistrictID, Armed: true}}}); err != nil {
 		t.Fatal(err)
 	}
 	block := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "", "0.bitmap")
@@ -284,7 +291,7 @@ func sharedBitmapDispatchFixture(t *testing.T) (*app, blockView, *bitmapRunConsu
 	return a, block, district, parcel, tx, prepared
 }
 
-func TestSharedBlockTXLaneOverlapsDistrictAndOrdersParcel(t *testing.T) {
+func TestSharedBlockTXLaneOverlapsDistrictAndSkipsDisabledParcel(t *testing.T) {
 	a, block, district, parcel, tx, prepared := sharedBitmapDispatchFixture(t)
 	txEntered, districtEntered, districtDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	operations := map[string]indexRunBlockConsumer{
@@ -325,8 +332,8 @@ func TestSharedBlockTXLaneOverlapsDistrictAndOrdersParcel(t *testing.T) {
 			t.Fatal(result)
 		}
 	}
-	if district.head == nil || parcel.head == nil || district.head.Height != block.Height || parcel.head.DependencyCommitment != district.head.Commitment {
-		t.Fatal("ordered stateful results missing")
+	if district.head == nil || district.head.Height != block.Height || parcel.head != nil {
+		t.Fatal("enabled District missing or disabled Parcel executed")
 	}
 	if n, _, _ := tx.LocatorBatchStats(); n != 1 || tx.DurableCheckpoint() != nil {
 		t.Fatal("shared dispatch corrupted TX staging", n)
@@ -356,7 +363,7 @@ func TestSharedBlockFailedTXDoesNotCancelBitmapGroup(t *testing.T) {
 			t.Fatal(result)
 		}
 	}
-	if !failed || district.head == nil || parcel.head == nil {
+	if !failed || district.head == nil || parcel.head != nil {
 		t.Fatal("independent error cancelled successful state", failed, district.head, parcel.head)
 	}
 }

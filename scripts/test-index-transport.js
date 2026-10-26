@@ -33,3 +33,18 @@ assert.equal(next.consumers.find(c=>c.index==='txo-spender').live,false,'Mixed r
 assert.deepEqual(plain(prepared),unchanged,'Review does not mutate source request');
 assert.throws(()=>executionRequest(prepared,'record',definitions),/Use Play/);
 console.log('Index transport staging checks PASS: one Play preserves per-track Live, hard Out/hash boundaries and unarmed recovery choices.');
+
+const parcel={id:'bitmap-parcels-standard-v1',kind:'parcel',buildable:true};
+assert.equal(context.window.GatewayIndexTransport.processingAvailable(parcel),false,'Even a stale catalog cannot enable Parcels');
+assert.equal(context.window.GatewayIndexTransport.processingAvailable({...parcel,id:'bitmap-parcels-canonical-v2'}),false);
+assert.equal(context.window.GatewayIndexTransport.processingAvailable({id:'bitmap-districts-standard-v1',buildable:true}),true,'Districts remain available');
+assert.throws(()=>executionRequest({consumers:[{index:parcel.id,armed:true}]},'play',[parcel]),/This saved work is unavailable/);
+assert.throws(()=>executionRequest({consumers:[{index:'bitmap-parcels-old',armed:true}]},'play',[]),/This saved work is unavailable/,'Missing definitions cannot hide a restored Parcel');
+console.log('Parcel transport guard PASS: canonical, legacy and missing-definition activation rejected; Districts remain available.');
+
+const rawSnapshot={definitions:[{id:'alias',kind:'parcel',buildable:true},{id:'bitmap-parcel-chain-dev-v1',producer_kind:'parcel'},{id:'bitmap-districts-standard-v1',buildable:true}],instances:[{definition:'alias',coverage:[{from:1,to:1}]},{definition:'bitmap-parcels-canonical-v2',checkpoint:{height:1}}],live:[{index:'alias',on:true,enabled:true}],providers:[{id:'bitmap-parcels'}],jobs:[{id:'old',index:'alias',state:'paused'}],job:{id:'old',index:'alias'},run:{prepared:{consumers:[{index:'alias',armed:true}]},run:{id:'mixed',state:'paused',request:{consumers:[{index:'alias',armed:true},{index:'bitmap-districts-standard-v1',armed:true}]},consumers:[{index:'alias',state:'paused'}]}},timeline:{tracks:[{id:'alias'},{id:'bitmap-parcels-standard-v1'}]}};
+const rawCopy=plain(rawSnapshot),visible=plain(context.window.GatewayIndexTransport.visibleSnapshot(rawSnapshot));
+assert.deepEqual(plain(rawSnapshot),rawCopy,'UI filtering never mutates backend evidence');
+assert.equal(visible.definitions.length,1);for(const key of ['instances','live','providers','jobs'])assert.equal(visible[key].length,0,key);assert.equal(visible.job,null);assert.equal(visible.timeline.tracks.length,0);assert.equal(visible.run.prepared.consumers.length,0);assert.equal(visible.run.run.consumers.length,0);assert.equal(visible.run.run.request.consumers.length,1);assert.equal(visible.run.run.hidden_processing_unavailable,true,'Filtered old run cannot silently resume hidden work');
+assert.equal(context.window.GatewayIndexTransport.parcelDefinition({id:'alias'}),true,'Custom Parcel aliases remain known after their UI row is removed');
+console.log('Parcel hidden UI projection PASS: all generations, aliases, related chains, saved evidence, live/jobs/run/status hidden without altering API data.');

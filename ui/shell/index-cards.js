@@ -33,8 +33,10 @@ window.GatewayIndexCards = (() => {
     else if (!retained && on && !policy?.enabled && !active(job) && !['queued','catching_up','failed'].includes(job?.state)) state = 'Ready to build';
     if (!definition.buildable) state = definition.id === 'bitmap-compatibility' ? 'Limited eligibility analysis' : ['address-history','inscription-numbering'].includes(definition.id) ? 'Not implemented' : ['sat-state','satline'].includes(definition.id) ? 'On-demand derivation; coverage required' : providers.some(x => x.queryable) ? 'Resolver enabled; check coverage' : 'Needs coverage or provider';
     const locked = Boolean(definition.locked);
+    const processingDisabled = definition.kind === 'parcel' || /^bitmap-parcels(?:-|$)/.test(definition.id || '');
     if (locked) state = '🔒 Locked for testing';
-    return {definition, instance, policy, job, providers, retained, on:!locked && on, live:!locked && Boolean(policy?.enabled), initialFrom:initialFrom(definition, policy), state, locked};
+    else if(processingDisabled) state = 'Processing disabled';
+    return {definition, instance, policy, job, providers, retained, on:!locked && !processingDisabled && on, live:!locked && !processingDisabled && Boolean(policy?.enabled), initialFrom:initialFrom(definition, policy), state, locked};
   }
   function mount({document:doc, primary, other, workspace, api, refresh, select, notify}) {
     const entries = new Map();
@@ -80,7 +82,7 @@ window.GatewayIndexCards = (() => {
     }
     function render(value = snapshot) {
       snapshot = value;
-      for (const definition of snapshot.definitions || []) {
+      for (const definition of (snapshot.definitions || []).filter(d=>d.kind!=='parcel'&&d.producer_kind!=='parcel'&&!/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(d.id||''))) {
         const e = entries.get(definition.id) || create(definition), m = model(definition, snapshot);
         const expanded=selected===definition.id;
         e.article.dataset.selected = String(expanded);e.expansion.hidden=!expanded;e.open.setAttribute('aria-expanded',String(expanded));
@@ -100,8 +102,8 @@ window.GatewayIndexCards = (() => {
           e.progress.hidden = true;
           e.progressText.textContent = 'Live target: follow the chain tip · tip ' + format(m.policy?.tip_height) + (m.policy?.tip_fresh ? ' (fresh)' : ' (freshness unknown)') + (j?.id ? ' · Current job boundary: ' + format(j.to) + ' · Committed through ' + format(j.height) : ' · Waiting for the next processing batch');
         }
-        e.on.disabled = !healthy || busy || !definition.buildable;
-        e.live.disabled = !healthy || busy || !definition.buildable;
+        e.on.disabled = !healthy || busy || !definition.buildable || /^bitmap-parcels(?:-|$)/.test(definition.id||'') || definition.kind==='parcel';
+        e.live.disabled = e.on.disabled;
         e.help.textContent = !definition.buildable ? 'Provider-managed capability' : !m.retained ? 'Live catches up all applicable history from block ' + format(m.initialFrom) + '. New source bodies follow the Raw Blocks track; results stay private.' : !m.on ? 'Saved records remain readable. Switch On to allow new work.' : m.live ? 'Live continues from saved progress and follows new blocks. Results stay private.' : 'On, with Live off: build only the ranges you choose.';
         e.error.textContent = m.policy?.error || m.job?.error || ''; e.error.hidden=false;
         e.open.textContent = expanded ? 'Close details' : definition.buildable ? m.retained ? 'Details & records' : 'Review a build' : 'Inspect capability';
@@ -124,7 +126,7 @@ window.GatewayIndexCards = (() => {
       }
     }
     async function change(definition, control, checked) {
-      if (!healthy || busy || definition.locked) { render(); return; }
+      if (!healthy || busy || definition.locked || definition.kind==='parcel' || /^bitmap-parcels(?:-|$)/.test(definition.id||'')) { render(); return; }
       const m = model(definition, snapshot), e = entries.get(definition.id);
       render(); // Do not display an unacknowledged preference as saved.
       busy = true; render();

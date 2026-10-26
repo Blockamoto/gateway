@@ -6,6 +6,9 @@ import "context"
 // ordinary explorer reads. A legacy cache setting, caller-specific retention
 // string, or an unconfigured profile never implicitly arms a storage consumer.
 func timelineTrackArmed(root, id string) (bool, error) {
+	if bitmapParcelExecutionDeferred(id) {
+		return false, nil
+	}
 	d, err := readIndexRunDocument(root)
 	if err != nil {
 		return false, err

@@ -19,8 +19,8 @@ func Test074IndexReleaseAvailability(t *testing.T) {
 		if d.Locked == available || releaseFeatureAvailable(d.ID) != available {
 			t.Fatalf("wrong release availability: %+v", d)
 		}
-		if available {
-			if d.ID == bitmapCanonicalDistrictID || d.ID == bitmapCanonicalParcelID {
+		if available && d.ID != bitmapStandardParcelID {
+			if d.ID == bitmapCanonicalDistrictID {
 				for _, start := range []func(indexBuildRequest) (indexJob, error){a.startIndexBuild, func(req indexBuildRequest) (indexJob, error) { return a.startIndexBuildID(req, false, "") }} {
 					if _, err := start(indexBuildRequest{Index: d.ID}); err == nil || !strings.Contains(err.Error(), "coordinated timeline run") {
 						t.Fatal("canonical Bitmap consumer entered the legacy executor", d.ID, err)
@@ -51,7 +51,7 @@ func Test074IndexReleaseAvailability(t *testing.T) {
 		if _, err := a.setIndexLivePolicy(indexLiveRequest{Index: d.ID, Action: "enable"}); err == nil {
 			t.Fatal("Live bypass", d.ID)
 		}
-		if _, err := a.indexQuery(d.ID, 50); err == nil {
+		if _, err := a.indexQuery(d.ID, 50); err == nil && d.ID != bitmapStandardParcelID {
 			t.Fatal("query bypass", d.ID)
 		}
 		if _, err := a.runIndexCLI([]string{"plan", d.ID}); err == nil {

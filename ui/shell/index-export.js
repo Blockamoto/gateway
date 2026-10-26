@@ -1,7 +1,7 @@
 'use strict';
 // Export changes the downloaded representation, never the saved index or run scope.
 window.GatewayIndexExport=(()=>{
-  const supported=index=>['inscriptions','bitmap-districts-standard-v1','bitmap-parcels-standard-v1'].includes(index);
+  const supported=index=>['inscriptions','bitmap-districts-standard-v1'].includes(index);
   const height=value=>Number.isSafeInteger(value)&&value>=0;
   const detailLimit=20;
   const format=value=>Number.isSafeInteger(value)?value.toLocaleString('en-GB'):String(value??'Unknown');

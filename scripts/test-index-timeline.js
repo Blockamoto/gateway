@@ -150,3 +150,11 @@ assert.equal(indexBounds({...startDef,id:'txio-values',owner:'range-index'},{ins
 console.log('Contextual index bounds PASS: saved origins, sparse local coverage, provider exclusion, declared fallback, genesis and exact owner.');
 
 for(const state of [{queryable:false,verification:'selected_chain'},{queryable:true,verification:'unavailable'},{queryable:true,verification:'stale_reorg'},{queryable:true,verification:'anchor_unavailable'}])for(const projected of [false,true])assert.deepEqual(plain(indexBounds(startDef,{instances:[{definition:'range-index',coverage:[{from:900000,to:900100}],checkpoint:{from:900000,height:900100},...state}],...(projected?{timeline:{tracks:[{id:'range-index',coverage:[{from:900000,to:900100}]}]}}:{})})),{from:10,to:null,source:'definition start',ranges:[]},'Unavailable instance coverage cannot establish local boundaries');
+
+const parcelDefinition={id:'bitmap-parcels-standard-v1',kind:'parcel',buildable:false};
+assert.equal(sandbox.window.GatewayIndexTimeline.parcelVisible(parcelDefinition,{live:[{index:parcelDefinition.id,on:true,enabled:true}]}),false,'Old active policy never restores an empty disabled Parcel track');
+assert.equal(sandbox.window.GatewayIndexTimeline.parcelVisible(parcelDefinition,{jobs:[{id:'old',index:parcelDefinition.id,state:'paused'}]}),false,'Old work never restores an empty disabled Parcel track');
+assert.equal(sandbox.window.GatewayIndexTimeline.parcelVisible(parcelDefinition,{instances:[{definition:parcelDefinition.id,checkpoint:{height:792435}}]}),false,'Saved Parcel records remain absent from the timeline');
+const disabledParcelModel=trackModel(parcelDefinition,{live:[{index:parcelDefinition.id,on:true,enabled:true}]});
+assert.equal(disabledParcelModel.on,false);assert.equal(disabledParcelModel.live,false);assert.equal(disabledParcelModel.state,'Processing disabled');
+console.log('Parcel timeline availability PASS: empty policies/jobs hidden; saved data hidden from timeline; stale active status remains disabled.');

@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "id": "fixture-utxo-v1",
+  "scope": "transactions-in-block-order",
+  "ops": ["consume_inputs", "create_outputs"]
+}

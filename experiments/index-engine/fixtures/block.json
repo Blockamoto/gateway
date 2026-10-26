@@ -1,0 +1,16 @@
+{
+  "block": {
+    "Height": 800000,
+    "Hash": "fixture-only-block-anchor",
+    "Transactions": [
+      {"ID": "coinbase", "Inputs": [{"Coinbase": true}]},
+      {"ID": "spend", "Inputs": [
+        {"PreviousTxID": "known", "PreviousOutput": 2},
+        {"PreviousTxID": "missing", "PreviousOutput": 3}
+      ]}
+    ]
+  },
+  "locations": {
+    "known": {"Value": "4.700000", "Evidence": {"block_hash": "fixture-only-prior-anchor"}}
+  }
+}

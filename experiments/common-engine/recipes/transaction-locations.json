@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "id": "transaction-locations",
+  "state": "none",
+  "operations": [{"op": "emit", "fields": ["tx.id", "tx.position"]}]
+}

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "id": "spend-references",
+  "source": "inputs",
+  "columns": [
+    {"name": "spending_input", "type": "text", "field": "input.blocator"},
+    {"name": "previous_txid", "type": "text", "field": "input.previous_txid"},
+    {"name": "previous_output", "type": "uint", "field": "input.previous_output"},
+    {"name": "creation_transaction", "type": "text", "lookup": {"table": "tx-position", "key": "input.previous_txid"}}
+  ]
+}

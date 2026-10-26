@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "id": "fixture-ordinary-transaction-fifo-v1",
+  "scope": "ordinary-transaction",
+  "ops": ["concatenate-input-ranges", "allocate-outputs-fifo", "retain-fee-remainder"]
+}

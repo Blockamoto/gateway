@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "id": "transaction-locations",
+  "source": "transactions",
+  "columns": [
+    {"name": "txid", "type": "text", "field": "tx.id"},
+    {"name": "position", "type": "text", "field": "tx.blocator"}
+  ]
+}

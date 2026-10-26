@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "id": "utxo-fixture",
+  "state": "utxo",
+  "operations": [
+    {"op": "consume-inputs"},
+    {"op": "create-outputs"},
+    {"op": "emit", "fields": ["tx.id", "tx.position"]}
+  ]
+}

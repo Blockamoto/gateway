@@ -26,6 +26,7 @@ type indexStatusPollCache struct {
 	buildMu    sync.Mutex
 	raw        []byte
 	at         time.Time
+	completed  time.Time // cooldown is measured separately from the observation age
 	err        error
 	refreshing bool
 	done       chan struct{}
@@ -76,6 +77,9 @@ func (a *app) indexStatusSnapshot() indexStatusView {
 		err = fmt.Errorf("detailed index status exceeds the bounded progress snapshot budget")
 	}
 	c.mu.Lock()
+	// A slow build must not be immediately due again. Preserve its start time
+	// as the honest age of the observed details, even when publication fails.
+	c.completed = time.Now()
 	if err == nil {
 		c.raw = raw
 		c.at = at
@@ -106,12 +110,13 @@ func (a *app) indexProgressStatus(ctx context.Context) (indexStatusView, error) 
 		}
 		c.mu.Lock()
 		if len(c.raw) == 0 {
-			if c.err != nil {
+			if c.err != nil && time.Since(c.completed) < indexStatusDetailInterval {
 				err := c.err
 				c.mu.Unlock()
 				return indexStatusView{}, err
 			}
 			if !c.refreshing {
+				c.err = nil
 				a.startIndexStatusRefreshLocked()
 			}
 			done := c.done
@@ -123,7 +128,7 @@ func (a *app) indexProgressStatus(ctx context.Context) (indexStatusView, error) 
 				continue
 			}
 		}
-		if time.Since(c.at) >= indexStatusDetailInterval && !c.refreshing {
+		if time.Since(c.completed) >= indexStatusDetailInterval && !c.refreshing {
 			a.startIndexStatusRefreshLocked()
 		}
 		raw, at, refreshing := c.raw, c.at, c.refreshing

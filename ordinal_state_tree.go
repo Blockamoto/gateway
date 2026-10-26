@@ -5,6 +5,7 @@ package main
 // become visible only through its existing atomic index head. Interrupted page
 // writes are unreachable and cannot advance a snapshot.
 import (
+	"container/list"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -37,12 +38,14 @@ type ordinalTree struct {
 	root             string
 	changes          map[string]json.RawMessage
 	cache            map[string]ordinalPage
+	cacheOrder       *list.List
+	cacheEntries     map[string]*list.Element
 	dirtyDirectories map[string]bool
 	writeLocks       *[256]sync.Mutex
 }
 
 func newOrdinalTree(dir, root string) *ordinalTree {
-	return &ordinalTree{ctx: context.Background(), dir: dir, root: root, changes: map[string]json.RawMessage{}, cache: map[string]ordinalPage{}, dirtyDirectories: map[string]bool{}}
+	return &ordinalTree{ctx: context.Background(), dir: dir, root: root, changes: map[string]json.RawMessage{}, cache: map[string]ordinalPage{}, cacheOrder: list.New(), cacheEntries: map[string]*list.Element{}, dirtyDirectories: map[string]bool{}}
 }
 func (t *ordinalTree) withContext(ctx context.Context) *ordinalTree {
 	if ctx != nil {
@@ -75,6 +78,7 @@ func (t *ordinalTree) read(hash string) (ordinalPage, error) {
 		return ordinalPage{}, fmt.Errorf("invalid ordinal state page reference")
 	}
 	if p, ok := t.cache[hash]; ok {
+		t.cacheOrder.MoveToFront(t.cacheEntries[hash])
 		return p, nil
 	}
 	path := t.pagePath(hash)
@@ -129,9 +133,14 @@ func (t *ordinalTree) read(hash string) (ordinalPage, error) {
 		}
 	}
 	if len(t.cache) >= 512 {
-		t.cache = map[string]ordinalPage{}
+		oldest := t.cacheOrder.Back()
+		key := oldest.Value.(string)
+		delete(t.cache, key)
+		delete(t.cacheEntries, key)
+		t.cacheOrder.Remove(oldest)
 	}
 	t.cache[hash] = p
+	t.cacheEntries[hash] = t.cacheOrder.PushFront(hash)
 	return p, nil
 }
 func (t *ordinalTree) write(p ordinalPage) (string, error) {

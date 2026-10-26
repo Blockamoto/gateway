@@ -1,5 +1,48 @@
 # Local 0.7.8 performance preview verification
 
+## Populated status inspection and refresh cooldown (2026-10-26)
+
+The later portable indexing audit identified two authenticated browse-TX
+coverage scans within each detailed status build and a separate scheduling
+problem: the 30-second refresh interval was measured from the observation's
+start. A build taking longer than that interval could therefore be followed
+immediately by another automatic build. The progress cache now measures the
+automatic cooldown from completion, including unsuccessful builds, while
+retaining the original observation time and honest age. If the first build
+fails, progress retries after the cooldown. Explicit full-status requests still
+perform detailed builds and serialize; they are not coalesced by this change.
+
+`TestIndexProgress` passed all five focused tests (7.037 seconds), including
+single-flight progress, honest older detail age, slow-build cooldown, bounded
+snapshot failure and recovery after the initial failure. A separate owned
+synthetic diagnostic constructs 3,000 retained browse records with two
+transactions each and synthetic selected headers, then checks that both
+independent authenticated projections report the same 0–2999 coverage:
+
+```powershell
+$env:GO111MODULE = 'off'
+$env:GATEWAY_STATUS_DIAGNOSTIC = '1'
+go test -run '^TestIndexStatusPopulatedDiagnostic$' -count=1 -v -timeout=10m .
+```
+
+One Windows run passed in 67.61 seconds. The provider scan took 51.945 seconds;
+the immediately following timeline scan took 1.111 seconds. These are ordered
+single observations with uncontrolled OS cache and concurrent QA load, not a
+before/after comparison. The fixture uses a legacy browse membership head and
+small synthetic records, not real modern block payloads or the live profile.
+It demonstrates a populated detail scan exceeding the old refresh interval;
+the focused cooldown test models the scheduling outcome. It does not establish
+the fraction of live indexing time spent in status, a speedup, or sustained
+Bitcoin throughput with the UI active.
+
+Both full authenticated payload scans still occur. Reusing a projection based
+only on header identity was rejected because saved browse membership can change
+between the provider and timeline reads. A safe reduction needs a reliable
+store snapshot or invalidation mechanism that also respects deletion,
+corruption, fork and Off/read-only semantics. Populated real-block replay with
+normal UI polling remains necessary to measure the broader slowdown and its
+effect on completion time.
+
 This is a separate local portable preview on branch `v0.7.8`, based on reviewed
 commit `cfde4c9b488b3c14456b9e54556d6b4e6a01daee`. No Gateway main push, merge,
 release, updater promotion, installation or Gears modification was performed.
@@ -261,3 +304,23 @@ Evidence is under `build/qa-078/shared-fanout-diagnosis` and
 The active human profile has not been opened or controlled by these tests.
 Final handoff must preserve its latest paused/Off choices and use the existing
 profile; it does not imply Arm, Resume or a new run interval.
+
+## District-only replay and candidate checks (2026-10-26)
+
+A fresh-profile local archive replay compared `efc5b13` with the candidate on
+32 authenticated blocks, heights 792435–792466, selecting TX ID Locators Full
+and Districts Standard V1 Lean with Raw Off. A diagnostic wrapper changed the
+historical replay harness selection to those two current identities. All 64
+per-block durable commit payloads, final heads, output counts and coverage
+matched; the archive was unchanged. Baseline elapsed was 58.131 seconds and
+candidate elapsed was 23.440 seconds. These were single runs with uncontrolled
+concurrent load and OS cache; they are not evidence of a 2.48x indexing speedup
+or a populated-history/live throughput result. The owned evidence is under
+`build/qa-current/{baseline,candidate,comparison}`.
+
+The focused Go status, ordinal, Bitmap tree/target and Parcel-availability
+checks passed, as did `go vet`, Index workspace and card checks, and nine update
+packaging tests. The exact user-facing candidate is a local preview with updates
+disabled and a separate new profile. It is not public-release acceptance.
+Sustained indexing with normal UI polling and thousands of future points remains
+unverified; the authenticated detail scans still need a safe scalable solution.

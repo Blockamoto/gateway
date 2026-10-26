@@ -40,8 +40,8 @@ Ordinals and parent-provenance validation. Its implementation, rules, identities
 and saved records remain intact, with passive backend read/export compatibility.
 These are fresh identities;
 older canonical stores remain separately readable and cannot resume execution.
-The Bitmap parent target band shows known claim targets; the children still
-show reveal-block indexing progress. Unmarked targets remain unknown.
+The Bitmap parent target band shows known claim targets; the District track
+shows reveal-block indexing progress. Unmarked targets remain unknown.
 
 The combined-track correction is documented in `COMBINED-TRACKS-0.7.8.md`.
 Compact children are stacked inside one parent row; only an individual child's
@@ -59,8 +59,8 @@ The fixed canonical District and retained Parcel identities both start at
 Bitmap arming offers the existing TX ID Locators track as a companion.
 Individual, parent, default and restored choices cannot start hidden Parcels.
 Legacy/custom District profiles remain inspectable but cannot execute. Old
-checkpoints are not migrated into the new canonical identities. Both chains are
-disabled, including direct API and restored execution. Saved evidence is retained.
+checkpoints are not migrated into the new canonical identities. The District
+and Parcel chains are both disabled, including direct API and restored execution. Saved evidence is retained.
 
 The October 26 availability checks cover every Parcel generation and custom
 alias, individual and parent requests, restored Run/Prepared choices, queued

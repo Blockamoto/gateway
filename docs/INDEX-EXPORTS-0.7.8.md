@@ -1,9 +1,11 @@
 # Saved index exports in 0.7.8
 
-In **Index settings**, Inscriptions, Bitmap Districts Standard V1 and Bitmap
-Parcels Standard V1 offer **Export saved index**. Choose **Native blocators** or
-**Conventional inscription IDs**, prepare the export, inspect its committed
-snapshot and saved coverage, then download the file.
+In **Index settings**, Inscriptions and Bitmap Districts Standard V1 offer
+**Export saved index**. Choose **Native blocators** or **Conventional inscription
+IDs**, prepare the export, inspect its committed snapshot and saved coverage,
+then download the file. Parcel execution and its normal interface entries are
+disabled pending validation; saved Parcel records retain passive backend export
+compatibility.
 
 Exporting changes the file representation. It does not change an index's native
 references, rules, profile, checkpoints, retention, Arm, Live or shared range.

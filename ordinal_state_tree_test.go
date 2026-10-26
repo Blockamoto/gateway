@@ -12,6 +12,46 @@ import (
 	"time"
 )
 
+func TestOrdinalTreeCacheRetainsHotPagesAndBoundsEntries(t *testing.T) {
+	tree := newOrdinalTree(filepath.Join(t.TempDir(), "pages"), "")
+	writePage := func(value int) string {
+		t.Helper()
+		raw := []byte(fmt.Sprintf(`{"entries":[{"key":"01","value":%d}]}`, value))
+		hash := fmt.Sprintf("%x", sha256.Sum256(raw))
+		path := tree.pagePath(hash)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		return hash
+	}
+	hot := writePage(-1)
+	first := ""
+	for i := 0; i < 520; i++ {
+		if _, err := tree.read(hot); err != nil {
+			t.Fatal(err)
+		}
+		hash := writePage(i)
+		if i == 0 {
+			first = hash
+		}
+		if _, err := tree.read(hash); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(tree.cache) != 512 || len(tree.cacheEntries) != 512 || tree.cacheOrder.Len() != 512 {
+		t.Fatal("cache exceeded its bound or lost entries")
+	}
+	if _, ok := tree.cache[hot]; !ok {
+		t.Fatal("frequently used page was evicted")
+	}
+	if _, ok := tree.cache[first]; ok {
+		t.Fatal("least recently used page was not evicted")
+	}
+}
+
 func TestOrdinalTreeReadEvidenceBoundsAndReopen(t *testing.T) {
 	for _, test := range []struct {
 		name, raw, wantError string

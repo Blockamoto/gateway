@@ -173,3 +173,33 @@ Evidence is retained under `build/qa-078/throughput-diagnosis` and
 owned-profile harness through a diagnostic wrapper that explicitly selects the
 current Standard IDs. Historical harness defaults and earlier measurements are
 preserved. Native-output equality is checked separately from timing.
+
+## Populated radix lookup cache (2026-10-26)
+
+The ordinal page cache used to discard all 512 entries on reaching its limit.
+The current writer instead evicts the least recently used page while retaining
+that same bound. Frequently visited branch pages can stay cached across scattered
+lookups. The cache is private to a tree; page checks, encodings, roots and
+durable publication are unchanged.
+
+`BenchmarkOrdinalTreeScatteredReads` builds 50,000 synthetic numeric-key
+entries in a fresh temporary tree, then times 5,000 deterministic scattered
+lookups with a new reader. Fixture creation and writes are outside the timer.
+On this Windows machine, the prior implementation took 54.511 seconds and the
+candidate took 24.521 seconds. These are single samples under uncontrolled
+concurrent machine load, with a synthetic tree smaller than the observed Bitmap
+index. They diagnose this read pattern and do not establish live or whole-run
+indexing throughput, nor prove the reported stall resolved. No live profile was
+opened. The baseline command requested two samples; its owned process was
+stopped after the first sample to avoid rebuilding the large fixture a second
+time. The candidate ran once. Commands (using the same Go toolchain) were:
+
+```powershell
+$env:GO111MODULE='off'; $env:CGO_ENABLED='0'
+go test -run '^$' -bench '^BenchmarkOrdinalTreeScatteredReads$' -benchtime=1x -count=2 . # prior cache; stopped after first sample
+go test -run '^$' -bench '^BenchmarkOrdinalTreeScatteredReads$' -benchtime=1x -count=1 . # LRU cache
+```
+
+The focused cache test verifies the 512-page bound, retention of a hot page,
+and eviction of the least recently used page. The existing checked-page
+reopen/integrity test also passed with the new cache.

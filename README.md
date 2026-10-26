@@ -3,7 +3,8 @@
 Gateway is a Bitcoin block explorer that retrieves the blocks you ask for. Explore blocks, transactions, inputs, outputs and positions within outputs without downloading the whole blockchain. Bitcoin Core is optional.
 
 This branch is **0.7.8, a local portable development preview** with fixed canonical
-Bitmap Districts and Parcels and independent optional chains. Use the
+Bitmap Districts Standard V1. Parcels and Bitmap chains are disabled pending
+further validation. Use the
 [portable testing guide](docs/TESTING-0.7.8.md). The preview starts a separate
 profile, supports ordinary live Bitcoin block acquisition, and disables
 application updates at build time. No installer or release publication is needed.
@@ -38,7 +39,7 @@ The Peers page uses aliases until you reveal an address. Aliases are a display c
 
 Gateway verifies block identity, proof of work, transaction and witness commitments and selected-chain context. It does not replace Bitcoin Core's full script and UTXO consensus validation. Missing data is not proof of nonexistence, and a position inside an output is not proof of current ownership.
 
-Lean positional inscription records and optional Full reveal records alone do not infer global inscription numbers, sat identity, current ownership or parent-child provenance. Sats supplies additional identity and location evidence; known inscription joins still disclose their coverage. Transaction-ID lookup uses available locators; missing locations remain unresolved. TXIO unknown results do not prove an output is unspent. Historical received totals are not current balances. Sats is enabled in this development source. Satline history tracing is deferred; saved Sat locations and ranges remain available. Gateway peerhood, Bitmap and **Bitmap: Terrain Claim Chains** remain gated. The [roadmap](docs/GATEWAY-ROADMAP.md) separates available work from future work without promising release dates.
+Lean positional inscription records and optional Full reveal records alone do not infer global inscription numbers, sat identity, current ownership or parent-child provenance. Sats supplies additional identity and location evidence; known inscription joins still disclose their coverage. Transaction-ID lookup uses available locators; missing locations remain unresolved. TXIO unknown results do not prove an output is unspent. Historical received totals are not current balances. Sats is enabled in this development source. Satline history tracing is deferred; saved Sat locations and ranges remain available. Gateway peerhood, Bitmap Parcels and **Bitmap: Terrain Claim Chains** remain gated; Bitmap Districts Standard V1 is available. The [roadmap](docs/GATEWAY-ROADMAP.md) separates available work from future work without promising release dates.
 
 ## Test, contribute and build
 

@@ -182,6 +182,10 @@ class PackagingTests(unittest.TestCase):
                 readme = archive.read(package_root + '/README.txt').decode()
                 self.assertIn('prerelease', readme)
                 self.assertNotIn('internal development', readme)
+                self.assertIn('Bitmap Districts Standard V1', readme)
+                self.assertIn('Parcels are disabled pending Ordinals and parent-provenance', readme)
+                self.assertIn('Bitmap chains are disabled', readme)
+                self.assertIn('TX ID Locators is a separate opt-in', ' '.join(readme.split()))
                 self.assertIsNone(archive.testzip())
                 for name in archive.namelist():
                     self.assertNotIn('/data/', name)

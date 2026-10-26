@@ -116,8 +116,9 @@ source change waits for staged-update or recovery work to retain its original
 verification authority. Access credentials are configured only in Settings.
 No publisher signing secrets or GitHub credentials belong in a client package.
 
-This prerelease enables Headers, Bitcoin Blocks, Inscriptions, Transaction Index,
-TXIO (Transaction Input/Output), the UTXO set index, Addresses and Sats. Unknown TXIO
+This prerelease enables Headers, Bitcoin Blocks, Inscriptions, TX ID Locators,
+TXIO (Transaction Input/Output), the UTXO set index, Addresses, Sats and
+Bitmap Districts Standard V1. Unknown TXIO
 results do not prove unspentness. UTXO processing starts at genesis, retains exact
 live output facts and 288 reversible transitions, and supports Pruned raw-body retention.
 Its state is header-anchored; full consensus validation remains a later release.
@@ -132,7 +133,7 @@ ranges plus the newest two savepoints
 at multiples of 12 and the newest two at multiples of 144, sharing retained pages.
 Recovery uses an eligible selected-chain savepoint and replay; this is not an
 unconditional 288-block Sat recovery guarantee. Historical output ranges are
-optional. The Sat ranges child under TXIO, Sat explorer, address UTXO ranges and
+optional. The Sat ranges track under Ordinals, Sat explorer, address UTXO ranges and
 known inscription holdings report their own coverage and saved checkpoints.
 Satline history tracing is disabled in this version. New and resumed traces are
 blocked; existing evidence is retained. Saved Sat locations, ordered output ranges
@@ -141,13 +142,19 @@ The Sat-aware collector preserves live, savepoint and archived shared-fact owner
 while reclaiming otherwise unowned data. Older experimental Sat state requires
 a reviewed rebuild and is preserved. Known inscription holdings are partial;
 missing evidence does not establish a known zero or complete history.
-Blocks retain verified serialized raw bodies and compact transaction metadata;
-compatible migration retains legacy copies without automatic deletion.
-Related inscription transaction locator construction is also available. The
+Raw Blocks can retain verified serialized bodies and compact transaction metadata;
+compatible migration retains legacy copies without automatic deletion. TX ID
+Locators is a separate opt-in reverse transaction lookup; retaining Raw bodies
+alone does not construct it. Related inscription transaction locator construction
+is also available. The
 shared workspace includes complete block maps, transaction flow and an isolated
-positional inscription viewport. Transaction and Inscription indexing as you
-browse are separate choices and initially off. Gateway-to-Gateway peerhood and
+positional inscription viewport. The respective TX ID Locators and Inscriptions
+Arm choices govern sparse capture from browsed blocks. Gateway-to-Gateway peerhood and
 later index stages remain gated until separately promoted.
+Bitmap Districts starts at block 792435 and advances in order under its fixed
+standard rules. Parcels are disabled pending Ordinals and parent-provenance
+validation, and Bitmap chains are disabled. Earlier definitions and saved
+evidence remain available; old checkpoints are not silently migrated.
 Ordinary Bitcoin peer header and block access remains available.
 Read TESTING-{version}.md for the QA checklist, including browser registration
 and typing .bitcoin resource addresses in your browser's address bar.

@@ -5,11 +5,11 @@
 The `v0.7.8` branch starts from current Gateway `origin/main` at
 `7e1d1d9b731b689586309df8f287316a614e1934`. It adapts the existing timeline,
 shared acquisition, authenticated outcome history and retention machinery for
-new fixed canonical Bitmap identities. Legacy experimental state remains
-inspectable under its original identity and cannot execute. Canonical truth
-begins at genesis; each optional chain begins at the selected valid `0.bitmap`
-reveal and identifies its replaceable development codec. See
-[indexing](INDEXING.md), [codec details](BITMAP-CHAIN-DEV-V1.md), and
+the fixed Bitmap Districts Standard V1 identity. Fresh District processing
+begins at block 792435; legacy state remains inspectable under its original
+identity and cannot execute. Parcel execution is disabled pending Ordinals and
+parent-provenance validation, and both Bitmap chains are disabled. Saved Parcel
+and chain evidence remains available. See [indexing](INDEXING.md) and
 [portable testing](TESTING-0.7.8.md).
 
 This is a local user-testing branch. No installation, main push/merge, release

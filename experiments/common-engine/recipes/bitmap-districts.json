@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "id": "bitmap-districts-fixture-v1",
+  "state": "bitmap-districts",
+  "operations": [
+    {"op": "select-bitmap-district-winner"}
+  ]
+}

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"mime"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -46,6 +48,8 @@ func (p Recipe) Validate() error {
 		required = []string{"emit"}
 	case "utxo":
 		required = []string{"consume-inputs", "create-outputs", "emit"}
+	case "bitmap-districts":
+		required = []string{"select-bitmap-district-winner"}
 	default:
 		return errors.New("unsupported state model")
 	}
@@ -91,6 +95,14 @@ type Transaction struct {
 	Coinbase bool
 	Inputs   []Outpoint
 	Outputs  []Coin
+	// Reveals are in transaction-wide inscription-envelope order. Completeness
+	// is required by the District recipe; false never means an empty scan.
+	RevealsComplete bool
+	Reveals         []Reveal
+}
+type Reveal struct {
+	ContentType string
+	Body        []byte
 }
 type Block struct {
 	Height       uint64
@@ -186,7 +198,16 @@ func cloneReceipt(r Receipt) Receipt {
 func (e *Engine) View() (View, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.backend.View(e.instance, e.recipeHash)
+	v, err := e.backend.View(e.instance, e.recipeHash)
+	if err != nil {
+		return View{}, err
+	}
+	if e.recipe.State == "bitmap-districts" {
+		if _, err := priorDistrictWinners(v); err != nil {
+			return View{}, err
+		}
+	}
+	return v, nil
 }
 
 // Apply evaluates all operations against tentative state in physical block and
@@ -222,10 +243,13 @@ func (e *Engine) Apply(b Block) (Receipt, error) {
 		}
 		return Receipt{}, errors.New("block already committed")
 	}
-	if e.recipe.State == "utxo" {
+	if e.recipe.State == "utxo" || e.recipe.State == "bitmap-districts" {
 		if snapshot.View.Head == nil {
-			if b.Height != 0 || b.ParentHash != "" {
+			if e.recipe.State == "utxo" && (b.Height != 0 || b.ParentHash != "") {
 				return Receipt{}, errors.New("genesis required")
+			}
+			if e.recipe.State == "bitmap-districts" && (b.Height != bitmapDistrictOrigin || b.ParentHash == "") {
+				return Receipt{}, errors.New("District scan requires its configured origin and parent")
 			}
 		} else if snapshot.View.Head.Height == math.MaxUint64 || b.Height != snapshot.View.Head.Height+1 || b.ParentHash != snapshot.View.Head.Hash {
 			return Receipt{}, errors.New("block is not exact next anchored successor")
@@ -233,6 +257,14 @@ func (e *Engine) Apply(b Block) (Receipt, error) {
 	}
 	next := cloneCoins(snapshot.View.Coins)
 	receipt := Receipt{Height: b.Height, Hash: b.Hash, Rows: []Row{}}
+	winners := map[string]bool{}
+	if e.recipe.State == "bitmap-districts" {
+		var err error
+		winners, err = priorDistrictWinners(snapshot.View)
+		if err != nil {
+			return Receipt{}, err
+		}
+	}
 	seenTX := map[string]bool{}
 	seenInputs := map[Outpoint]bool{}
 	for ti, tx := range b.Transactions {
@@ -242,6 +274,21 @@ func (e *Engine) Apply(b Block) (Receipt, error) {
 		seenTX[tx.ID] = true
 		for _, operation := range e.recipe.Operations {
 			switch operation.Op {
+			case "select-bitmap-district-winner":
+				if !tx.RevealsComplete {
+					return Receipt{}, errors.New("incomplete inscription envelope extraction")
+				}
+				for ri, reveal := range tx.Reveals {
+					district, ok := qualifyingDistrict(reveal, b.Height)
+					if !ok || winners[district] {
+						continue
+					}
+					winners[district] = true
+					receipt.Rows = append(receipt.Rows, Row{Cells: []Cell{
+						{Field: "district", Value: district},
+						{Field: "inscription.blocator", Value: fmt.Sprintf("%di%d.%d", ti, ri, b.Height)},
+					}})
+				}
 			case "consume-inputs":
 				if tx.Coinbase && (ti != 0 || len(tx.Inputs) != 0) {
 					return Receipt{}, errors.New("invalid fixture coinbase")
@@ -292,7 +339,7 @@ func (e *Engine) Apply(b Block) (Receipt, error) {
 	// No tentative rows, state or coverage escape before this boundary.
 	candidate := cloneView(snapshot.View)
 	candidate.Coins = next
-	if e.recipe.State == "utxo" {
+	if e.recipe.State == "utxo" || e.recipe.State == "bitmap-districts" {
 		candidate.Head = &Head{Height: b.Height, Hash: b.Hash}
 	}
 	candidate.Receipts[b.Height] = receipt
@@ -301,4 +348,106 @@ func (e *Engine) Apply(b Block) (Receipt, error) {
 	}
 	published = true
 	return cloneReceipt(receipt), nil
+}
+
+// bitmapDistrictOrigin is the current Gateway 0.7.8 start policy, not an
+// upstream Bitmap rule. A real implementation must authenticate coverage.
+const bitmapDistrictOrigin uint64 = 792435
+
+func qualifyingDistrict(reveal Reveal, height uint64) (string, bool) {
+	media, _, err := mime.ParseMediaType(reveal.ContentType)
+	if err != nil || !strings.EqualFold(media, "text/plain") {
+		return "", false
+	}
+	body := string(reveal.Body)
+	if !strings.HasSuffix(body, ".bitmap") {
+		return "", false
+	}
+	digits := strings.TrimSuffix(body, ".bitmap")
+	if len(digits) == 0 || (len(digits) > 1 && digits[0] == '0') {
+		return "", false
+	}
+	for _, c := range []byte(digits) {
+		if c < '0' || c > '9' {
+			return "", false
+		}
+	}
+	value, err := strconv.ParseUint(digits, 10, 64)
+	if err != nil || value > height {
+		return "", false
+	}
+	return digits, true
+}
+
+// This scans every committed receipt to reconstruct first winners. It is a
+// correctness experiment, not a scalable storage design. Reject incomplete
+// prefix state rather than treating a missing receipt as an empty block.
+func priorDistrictWinners(view View) (map[string]bool, error) {
+	winners := make(map[string]bool)
+	if view.Head == nil {
+		if len(view.Receipts) != 0 {
+			return nil, errors.New("District receipts without head")
+		}
+		return winners, nil
+	}
+	if view.Head.Height < bitmapDistrictOrigin || uint64(len(view.Receipts)) != view.Head.Height-bitmapDistrictOrigin+1 {
+		return nil, errors.New("incomplete District prefix")
+	}
+	for height := bitmapDistrictOrigin; ; height++ {
+		r, ok := view.Receipts[height]
+		if !ok || r.Height != height || r.Hash == "" || (height == view.Head.Height && r.Hash != view.Head.Hash) {
+			return nil, errors.New("incomplete District receipt")
+		}
+		var lastTX, lastReveal uint64
+		haveLast := false
+		for _, row := range r.Rows {
+			if len(row.Cells) != 2 || row.Cells[0].Field != "district" || row.Cells[1].Field != "inscription.blocator" || row.Cells[1].Value == "" || winners[row.Cells[0].Value] {
+				return nil, errors.New("invalid District winner state")
+			}
+			if _, ok := qualifyingDistrict(Reveal{ContentType: "text/plain", Body: []byte(row.Cells[0].Value + ".bitmap")}, height); !ok {
+				return nil, errors.New("invalid District winner state")
+			}
+			tx, reveal, ok := districtWinnerPosition(row.Cells[1].Value, height)
+			if !ok || (haveLast && (tx < lastTX || (tx == lastTX && reveal <= lastReveal))) {
+				return nil, errors.New("invalid District winner position or order")
+			}
+			lastTX, lastReveal, haveLast = tx, reveal, true
+			winners[row.Cells[0].Value] = true
+		}
+		if height == view.Head.Height {
+			break
+		}
+	}
+	return winners, nil
+}
+
+// This validates only the coordinate's syntax and receipt height. Proving the
+// referenced envelope exists and qualified requires retained source evidence.
+func districtWinnerPosition(coordinate string, height uint64) (uint64, uint64, bool) {
+	stem, block, ok := strings.Cut(coordinate, ".")
+	if !ok || block != strconv.FormatUint(height, 10) {
+		return 0, 0, false
+	}
+	tx, reveal, ok := strings.Cut(stem, "i")
+	if !ok || !canonicalPositionDecimal(tx) || !canonicalPositionDecimal(reveal) {
+		return 0, 0, false
+	}
+	txNumber, err := strconv.ParseUint(tx, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	revealNumber, err := strconv.ParseUint(reveal, 10, 64)
+	return txNumber, revealNumber, err == nil
+}
+
+func canonicalPositionDecimal(s string) bool {
+	if len(s) == 0 || (len(s) > 1 && s[0] == '0') {
+		return false
+	}
+	for _, c := range []byte(s) {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

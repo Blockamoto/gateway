@@ -128,7 +128,7 @@ func (a *app) saveIndexJob(j indexJob) error {
 	return a.updateQueuedJobLocked(j)
 }
 func (a *app) indexStatus() indexStatusView {
-	out := indexStatusView{Definitions: indexDefinitions(), Providers: a.indexProviderViews(), Instances: []indexInstance{}, Live: []indexLiveView{}, Job: a.indexJobSnapshot()}
+	out := indexStatusView{Definitions: indexDefinitions(), Providers: a.indexProviderViewsWithBrowse(false), Instances: []indexInstance{}, Live: []indexLiveView{}, Job: a.indexJobSnapshot()}
 	out.BitmapCapabilities = bitmapCapabilities()
 	if custom, err := bitmapRuntimeDefinitions(context.Background(), a.dataDir); err != nil {
 		out.Errors = append(out.Errors, "Bitmap profiles: "+err.Error())
@@ -222,7 +222,9 @@ func (a *app) indexStatus() indexStatusView {
 		instance.Queryable = out.Sats.State == "ready" && instance.Checkpoint.Commitment == out.Sats.ProcessedCommitment
 		instance.Note = out.Sats.Note
 	}
-	out.Timeline = a.indexTimeline(out.Definitions, out.Providers, out.Instances, out.Errors...)
+	browseSources := make(map[string]indexTimelineSource)
+	out.Timeline = a.indexTimelineWithBrowseSources(out.Definitions, out.Providers, out.Instances, browseSources, out.Errors...)
+	applyStatusBrowseSources(out.Providers, browseSources)
 	if inscriptionInventoryUnknown {
 		for i := range out.Timeline.Tracks {
 			track := &out.Timeline.Tracks[i]

@@ -9,7 +9,13 @@ start. A build taking longer than that interval could therefore be followed
 immediately by another automatic build. The progress cache now measures the
 automatic cooldown from completion, including unsuccessful builds, while
 retaining the original observation time and honest age. If the first build
-fails, progress retries after the cooldown. Explicit full-status requests still
+fails, progress retries after the cooldown. The full status builder now uses
+the timeline's single authenticated browse inspection for both its provider
+and timeline coverage. It retains the existing per-record integrity and
+selected-header checks. A bounded process-local TX cache reuses validation only
+when the current full payload bytes have the same SHA-256 as a previously
+validated payload; every inspection still rereads those bytes, re-enumerates
+membership, and rechecks header anchors. Explicit full-status requests still
 perform detailed builds and serialize; they are not coalesced by this change.
 
 `TestIndexProgress` passed all five focused tests (7.037 seconds), including
@@ -35,13 +41,22 @@ the focused cooldown test models the scheduling outcome. It does not establish
 the fraction of live indexing time spent in status, a speedup, or sustained
 Bitcoin throughput with the UI active.
 
-Both full authenticated payload scans still occur. Reusing a projection based
-only on header identity was rejected because saved browse membership can change
-between the provider and timeline reads. A safe reduction needs a reliable
-store snapshot or invalidation mechanism that also respects deletion,
-corruption, fork and Off/read-only semantics. Populated real-block replay with
-normal UI polling remains necessary to measure the broader slowdown and its
-effect on completion time.
+With `GATEWAY_STATUS_DIAGNOSTIC_COUNT=4100`, the same diagnostic passed after
+the single-observation change. Both views reported the newest 4,096 records and
+an incomplete projection. An independent provider scan took 56.163 seconds,
+its following timeline scan 0.921 seconds, and a subsequent unified full
+status 1.251 seconds. This ordered run also had uncontrolled cache and
+concurrent load, so those values do not establish a speed ratio. The focused
+status test additionally checks matching independent coverage, selected-header
+changes, corrupt or missing payloads, unavailable headers, and read-only access.
+
+The remaining single inspection still enumerates saved membership and
+authenticates up to 4,096 full payloads. Its two consumers use the same
+observation, rather than reusing a prior result based only on header identity.
+It is not an atomic browse-store snapshot: concurrent mutation can make an
+observation stale or cause an incomplete/error result, as with the existing
+scanner. Populated real-block replay with normal UI polling remains necessary
+to measure the broader slowdown and its effect on completion time.
 
 This is a separate local portable preview on branch `v0.7.8`, based on reviewed
 commit `cfde4c9b488b3c14456b9e54556d6b4e6a01daee`. No Gateway main push, merge,
@@ -305,6 +320,75 @@ The active human profile has not been opened or controlled by these tests.
 Final handoff must preserve its latest paused/Off choices and use the existing
 profile; it does not imply Arm, Resume or a new run interval.
 
+## Populated browse-status and indexing replay (2026-10-26)
+
+Three separately started compiled clients each received a fresh owned profile,
+the same copied selected headers and a verified external archive of Bitcoin
+blocks 792435–792466. Full TX locators and Standard Districts were armed; Raw
+was off. To exercise populated detail scans, each profile also received 3,000
+**synthetic** legacy browse-point commits, each containing 500 ordered invented
+transaction IDs and a real selected-header anchor. The point commits total
+114,233,670 bytes. They are test data, not authenticated Bitcoin transaction
+history or a packed-window fixture. These 32 genuine blocks contain 64,767
+transactions but only three District candidates and winners; this does not
+represent a populated 458,000-winner District tree.
+
+The harness models the visible workspace's request sequence: a first full
+status after startup, an explicit Start, a full status immediately afterward,
+then sequential progress requests at one-second active intervals, with a full
+status after the terminal transition. It does not render a browser. Startup,
+fixture creation/copying and the first status are outside the replay timer;
+the timer runs from Start admission to 200 ms polling observation of durable
+completion. The operating-system cache was not flushed and fixture copies and
+hashing may warm it. First status is cold for the application, not necessarily
+for disk. Initial setup overlapped other diagnostics; timed samples were run
+sequentially with no Go test or build processes observed. These are single
+samples in a fixed order, not a statistical speed guarantee.
+
+| Executable | Replay | First status | Post-Start status | Terminal status | Process reads / bytes during replay | Peak working set |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Prior candidate | 67.884 s | 54.476 s | 13.575 s | 20.362 s | 176,147 / 511,641,546 | 193,368,064 B |
+| Single-scan candidate | 13.445 s | 57.102 s | 11.156 s | 8.867 s | 49,883 / 167,514,113 | 239,464,448 B |
+| Cache prototype | 9.364 s | 38.533 s | 1.147 s | 0.948 s | 49,883 / 167,513,077 | 248,467,456 B |
+
+The prior candidate's longer replay crossed the automatic detail-refresh
+interval; progress first reported a background refresh at approximately 44 s,
+30 s after its post-Start full status completed. Both shorter runs completed
+before that interval. Thus the timed observation windows and amount of UI work
+are not equivalent. Process I/O is whole-process activity, not a count of disk
+flushes; near-identical read counters in the latter two runs do not establish a
+cache-caused read reduction. Peak working set includes process startup. These
+results do not measure peer download speed or prove the reported live stall is
+resolved.
+
+The shared fixture manifest SHA-256 was
+`b38c68009a5e2c25982e620d5d76131c858813576573cf44af1cd818398301b9`, the
+header SHA-256 `534eea7cc69ef24fc359141cd030bd4f8d7e788a1f7634f15402d05a5cf77155`,
+and the synthetic point inventory digest
+`0513c4510986790c6474c0f5adbb0e0bba7163503e77212fb14915d46d45e023`.
+Executable hashes in table order were
+`7858405c24ac0997c815c429a281f8001a7e529720c882ff4e59d0cadbc8ffa4`,
+`a7c48db9bbfac6a77345e8c7abe1175d9ed40cd5c6238460f9a7a2228d824137`, and
+`8ad65e046285b4d34478abf5a4d68cdd83adbaed6e419439928030f611b9317e`.
+All three runs completed with identical native TX and District heads and
+per-block commit payload digests, including all 64,767 TX positions.
+
+The following commands reproduce the fixture and one sample. Use **new** owned
+paths for every output and a separately supplied matching fixture and binary;
+the generator and replay refuse an existing output directory. The optional gate
+holds after setup and the first status until a new marker file appears, so a
+reviewer can keep heavy tests away from the timed phase. The recorded profiles,
+requests, progress, metrics and outputs remain under `build/sustained-078`.
+
+```powershell
+$env:GO111MODULE='off'; $env:CGO_ENABLED='0'
+$env:GATEWAY_SYNTHETIC_POINTS_HEADERS='C:\path\to\fixture\headers.bin'
+$env:GATEWAY_SYNTHETIC_POINTS_OUT='C:\path\to\new-owned-points'
+$env:GATEWAY_SYNTHETIC_POINTS_ROWS='500'
+go test -run '^TestGenerateSustainedStatusFixture$' -count=1 -v .
+python scripts/benchmark-sustained-status-replay.py --binary C:/path/to/GatewayClient.exe --fixture C:/path/to/fixture --points C:/path/to/new-owned-points --out C:/path/to/new-owned-result
+```
+
 ## District-only replay and candidate checks (2026-10-26)
 
 A fresh-profile local archive replay compared `efc5b13` with the candidate on
@@ -322,5 +406,6 @@ The focused Go status, ordinal, Bitmap tree/target and Parcel-availability
 checks passed, as did `go vet`, Index workspace and card checks, and nine update
 packaging tests. The exact user-facing candidate is a local preview with updates
 disabled and a separate new profile. It is not public-release acceptance.
-Sustained indexing with normal UI polling and thousands of future points remains
-unverified; the authenticated detail scans still need a safe scalable solution.
+At that prior checkpoint, sustained indexing with normal UI polling and
+thousands of future points remained unverified. The subsequent synthetic-history
+replay and its limits are recorded in the preceding section.

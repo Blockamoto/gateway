@@ -282,23 +282,36 @@ func batchRecordsHash(b indexBatch) string {
 	}{b.PreviousBlockHash, normalized, b.Bitmap, b.Diagnostics})
 }
 func checkpointHash(c indexCheckpoint) string { c.Commitment = ""; return indexDigest(c) }
-func (s *indexStore) readBatch(commit string) (indexBatch, error) {
-	var b indexBatch
+func (s *indexStore) readBatchBytes(commit string) ([]byte, error) {
 	if !validHash(commit) {
-		return b, fmt.Errorf("invalid checkpoint identity")
+		return nil, fmt.Errorf("invalid checkpoint identity")
 	}
-	f, e := os.Open(filepath.Join(s.dir, "commits", commit+".json"))
-	if e != nil {
-		return b, e
+	f, err := os.Open(filepath.Join(s.dir, "commits", commit+".json"))
+	if err != nil {
+		return nil, err
 	}
 	defer f.Close()
-	data, e := io.ReadAll(io.LimitReader(f, (64<<20)+1))
-	if e != nil {
-		return b, e
+	data, err := io.ReadAll(io.LimitReader(f, (64<<20)+1))
+	if err != nil {
+		return nil, err
 	}
 	if len(data) > 64<<20 {
-		return b, fmt.Errorf("index batch exceeds budget")
+		return nil, fmt.Errorf("index batch exceeds budget")
 	}
+	return data, nil
+}
+
+func (s *indexStore) readBatch(commit string) (indexBatch, error) {
+	data, err := s.readBatchBytes(commit)
+	if err != nil {
+		return indexBatch{}, err
+	}
+	return s.validateBatchBytes(commit, data)
+}
+
+func (s *indexStore) validateBatchBytes(commit string, data []byte) (indexBatch, error) {
+	var b indexBatch
+	var e error
 	if e = json.Unmarshal(data, &b); e != nil {
 		return b, e
 	}

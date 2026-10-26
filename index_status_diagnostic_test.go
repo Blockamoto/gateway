@@ -15,7 +15,14 @@ func TestIndexStatusPopulatedDiagnostic(t *testing.T) {
 	if os.Getenv("GATEWAY_STATUS_DIAGNOSTIC") == "" {
 		t.Skip("set GATEWAY_STATUS_DIAGNOSTIC for the owned synthetic diagnostic")
 	}
-	const count = 3000
+	count := 3000
+	if value := os.Getenv("GATEWAY_STATUS_DIAGNOSTIC_COUNT"); value != "" {
+		var err error
+		count, err = strconv.Atoi(value)
+		if err != nil || count < 1 || count > 5000 {
+			t.Fatal("diagnostic count must be 1..5000")
+		}
+	}
 	a, _, hashes := timelineFixture(t, count+1)
 	s := a.newBrowseStore("tx-locator")
 	head := indexBrowseHead{Schema: 1, Blocks: map[string]string{}}
@@ -40,8 +47,22 @@ func TestIndexStatusPopulatedDiagnostic(t *testing.T) {
 	view := a.indexTimeline(indexDefinitions(), nil, nil)
 	second := time.Since(start)
 	track := timelineTrack(t, view, "tx-locator")
-	if !source.Complete || len(source.Ranges) != 1 || source.Ranges[0] != (heightInterval{From: 0, To: count - 1}) || len(track.Coverage) != 1 || track.Coverage[0] != source.Ranges[0] {
+	from := 0
+	if count > timelineSourceLimit {
+		from = count - timelineSourceLimit
+	}
+	if source.Complete != (from == 0) || len(source.Ranges) != 1 || source.Ranges[0] != (heightInterval{From: int64(from), To: int64(count - 1)}) || len(track.Coverage) != 1 || track.Coverage[0] != source.Ranges[0] {
 		t.Fatal("unexpected coverage", source, track)
 	}
-	t.Logf("3000 synthetic retained points: provider scan=%s, timeline=%s; same coverage; two transactions per point; not real-block throughput", first, second)
+	start = time.Now()
+	status := a.indexStatus()
+	unified := time.Since(start)
+	provider := indexProviderRow(t, status.Providers, "tx-locator", "gateway_browsed_index")
+	if len(provider.Coverage) != 1 || provider.Coverage[0] != source.Ranges[0] || timelineTrack(t, status.Timeline, "tx-locator").Coverage[0] != source.Ranges[0] {
+		t.Fatal("unified status coverage differs", provider)
+	}
+	if (provider.Completeness == "recorded_sparse_singletons") != source.Complete {
+		t.Fatal("unified status completeness differs", provider, source)
+	}
+	t.Logf("%d synthetic retained points: independent provider=%s, timeline=%s; subsequent unified full status=%s; same coverage; two transactions per point; uncontrolled cache, not real-block throughput", count, first, second, unified)
 }

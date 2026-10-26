@@ -1,7 +1,9 @@
 package main
 
 import (
+	"container/list"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -520,11 +522,18 @@ func (a *app) browseTimelineSource(id string, h *timelineLocalReader) (indexTime
 	}
 	for _, n := range heights {
 		commit := head.Blocks[strconv.FormatInt(n, 10)]
-		b, e := s.readBatch(commit)
-		if e != nil {
-			return out, e
+		var checkpoint indexCheckpoint
+		var b indexBatch
+		if id == "tx-locator" {
+			checkpoint, err = browseStatusTXCheckpoint(s, commit)
+		} else {
+			b, err = s.readBatch(commit)
+			checkpoint = b.Checkpoint
 		}
-		if b.Checkpoint.Height != n || b.Checkpoint.From != n || b.Checkpoint.PreviousCommitment != "" {
+		if err != nil {
+			return out, err
+		}
+		if checkpoint.Height != n || checkpoint.From != n || checkpoint.PreviousCommitment != "" {
 			return out, fmt.Errorf("invalid browsed coverage receipt")
 		}
 		if id == "inscriptions" && !inscriptionBatchInventoryComplete(b) {
@@ -532,12 +541,66 @@ func (a *app) browseTimelineSource(id string, h *timelineLocalReader) (indexTime
 			out.Note = "Known inscription occurrences without a complete block-inventory recipe do not establish block coverage."
 			continue
 		}
-		if h.matches(n, b.Checkpoint.BlockHash) {
+		if h.matches(n, checkpoint.BlockHash) {
 			out.Ranges = append(out.Ranges, heightInterval{n, n})
 		}
 	}
 	out.Ranges = mergeIntervals(out.Ranges)
 	return out, nil
+}
+
+// Browse coverage rechecks membership, selected headers, and the exact bytes of
+// every batch on every inspection. Only a fully validated identical TX payload
+// can reuse its checkpoint summary. It is never used for queries or writes.
+const browseStatusCacheEntries = 4096
+
+type browseStatusCacheKey struct {
+	dir, commitment string
+	digest          [32]byte
+}
+type browseStatusCacheEntry struct {
+	key        browseStatusCacheKey
+	checkpoint indexCheckpoint
+}
+
+var browseStatusBatchCache = struct {
+	sync.Mutex
+	items map[browseStatusCacheKey]*list.Element
+	order list.List
+}{items: make(map[browseStatusCacheKey]*list.Element)}
+
+func browseStatusTXCheckpoint(s *indexStore, commit string) (indexCheckpoint, error) {
+	data, err := s.readBatchBytes(commit)
+	if err != nil {
+		return indexCheckpoint{}, err
+	}
+	key := browseStatusCacheKey{filepath.Clean(s.dir), commit, sha256.Sum256(data)}
+	c := &browseStatusBatchCache
+	c.Lock()
+	if e := c.items[key]; e != nil {
+		c.order.MoveToFront(e)
+		checkpoint := e.Value.(browseStatusCacheEntry).checkpoint
+		c.Unlock()
+		return checkpoint, nil
+	}
+	c.Unlock()
+	batch, err := s.validateBatchBytes(commit, data)
+	if err != nil {
+		return indexCheckpoint{}, err
+	}
+	c.Lock()
+	if e := c.items[key]; e != nil {
+		c.order.MoveToFront(e)
+	} else {
+		if c.order.Len() >= browseStatusCacheEntries {
+			oldest := c.order.Back()
+			delete(c.items, oldest.Value.(browseStatusCacheEntry).key)
+			c.order.Remove(oldest)
+		}
+		c.items[key] = c.order.PushFront(browseStatusCacheEntry{key, batch.Checkpoint})
+	}
+	c.Unlock()
+	return batch.Checkpoint, nil
 }
 
 // Provider status shares the same receipt checks as the timeline. Pin local

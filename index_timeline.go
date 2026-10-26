@@ -90,6 +90,10 @@ func (h *timelineLocalReader) matches(height int64, hash string) bool {
 // The header read lock pins the selected file while this bounded projection is
 // assembled. An interrupted append is reported rather than repaired by a GET.
 func (a *app) indexTimeline(defs []indexDefinition, providers []indexProviderView, instances []indexInstance, statusErrors ...string) indexTimelineView {
+	return a.indexTimelineWithBrowseSources(defs, providers, instances, nil, statusErrors...)
+}
+
+func (a *app) indexTimelineWithBrowseSources(defs []indexDefinition, providers []indexProviderView, instances []indexInstance, sources map[string]indexTimelineSource, statusErrors ...string) indexTimelineView {
 	a.timelineMu.Lock()
 	defer a.timelineMu.Unlock()
 	st := a.getStatus()
@@ -146,6 +150,11 @@ func (a *app) indexTimeline(defs []indexDefinition, providers []indexProviderVie
 				track.CoverageComplete = false
 				out.Errors = append(out.Errors, def.ID+": "+err.Error())
 			} else {
+				// Provider and timeline describe this same checked observation.
+				// An unavailable header snapshot cannot certify provider data.
+				if sources != nil && out.TipKnown {
+					sources[def.ID] = source
+				}
 				track.CoverageComplete = track.CoverageComplete && source.Complete
 				if len(source.Ranges) > 0 || !source.Complete {
 					track.Sources = append(track.Sources, source)

@@ -64,6 +64,12 @@ type indexProviderState struct {
 // resolution. Core inspection uses the existing short-lived status cache and
 // bounded local status RPCs; a configured provider is not assumed connected.
 func (a *app) indexProviderViews() []indexProviderView {
+	return a.indexProviderViewsWithBrowse(true)
+}
+
+// A full status can defer browse coverage to its timeline inspection. Other
+// callers still receive independently authenticated provider coverage.
+func (a *app) indexProviderViewsWithBrowse(inspectBrowse bool) []indexProviderView {
 	a.settingsMu.RLock()
 	s := a.settings
 	a.settingsMu.RUnlock()
@@ -73,12 +79,14 @@ func (a *app) indexProviderViews() []indexProviderView {
 		core = inspectCore(s)
 	}
 	local := indexProviderState{}
-	for _, id := range []string{"tx-locator", "inscriptions"} {
-		source := a.browseProviderSource(id)
-		if id == "tx-locator" {
-			local.BrowsedTx, local.BrowseTxComplete = source.Ranges, source.Complete
-		} else {
-			local.BrowsedInscriptions, local.BrowseInscriptionsComplete = source.Ranges, source.Complete
+	if inspectBrowse {
+		for _, id := range []string{"tx-locator", "inscriptions"} {
+			source := a.browseProviderSource(id)
+			if id == "tx-locator" {
+				local.BrowsedTx, local.BrowseTxComplete = source.Ranges, source.Complete
+			} else {
+				local.BrowsedInscriptions, local.BrowseInscriptionsComplete = source.Ranges, source.Complete
+			}
 		}
 	}
 	local.BitcoinPeersAvailable = !s.NetworkDisabled && a.network != nil && len(a.network.listSessions()) > 0
@@ -191,6 +199,26 @@ func (a *app) indexProviderViews() []indexProviderView {
 		local.AddressHistorySnapshot = &chainSnapshot{Network: "mainnet", Height: cp.Height, Hash: cp.BlockHash, Source: "gateway_address_history"}
 	}
 	return buildIndexProviderViews(s, core, local)
+}
+
+func applyStatusBrowseSources(rows []indexProviderView, sources map[string]indexTimelineSource) {
+	for i := range rows {
+		r := &rows[i]
+		if r.Provider != "gateway_browsed_index" || !releaseFeatureAvailable(r.ID) {
+			continue
+		}
+		source := sources[r.ID] // missing or failed inspection stays unknown
+		r.Coverage = mergeIntervals(source.Ranges)
+		r.Completeness = "recorded_sparse_singletons"
+		if !source.Complete {
+			r.Completeness = "bounded_or_unavailable_sparse_projection"
+		}
+		r.Queryable = len(r.Coverage) > 0
+		r.Readiness = "needs_coverage_or_provider"
+		if r.Queryable {
+			r.Readiness = "retained_sparse_browse_records"
+		}
+	}
 }
 
 func buildIndexProviderViews(s appSettings, core coreStatus, local indexProviderState) []indexProviderView {

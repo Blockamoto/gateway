@@ -19,6 +19,8 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 WINDOWS = ('GatewayClient.exe', 'GatewayOnDemand.exe', 'GatewayNativeHost.exe', 'GatewayUpdateHelper.exe')
 NOTICES = ('LICENSE', 'THIRD-PARTY-NOTICES.txt', 'GO-LICENSE.txt')
+COMPANION = ('content.js', 'IDENTITY.txt', 'manifest.json', 'popup.html', 'popup.js', 'README.txt', 'search.js', 'service-worker.js', 'test.js')
+PREVIEW_COMPANION = ('PREVIEW-IDENTITY.json', 'Register-PreviewNativeHost.ps1', 'TESTING-PREVIEW.md', 'Test-PreviewCompanion.js', 'future-unreviewed.js')
 DOCS = ('RELEASE-NOTES-v0.6.4.md', 'UPDATES.md', 'UPDATE-REVIEW-0.6.4.md', 'INTEGRATION-0.6.4-INDEX-EXPLORER.md', 'GATEWAY-ROADMAP.md', 'INDEXING.md', 'INDEX-PEER.md', 'GATEWAY-BOOTSTRAP.md', 'STATUS.md', 'BITMAP-RESEARCH.md', 'RELEASE-ACCEPTANCE.json', 'ZERO-STATE-INDEX-ACCEPTANCE.json')
 
 
@@ -35,7 +37,8 @@ class PackagingTests(unittest.TestCase):
             (self.root / notice).write_text('Required distribution notice: ' + notice + '\n')
         (self.root / 'gateway_windows_amd64.syso').write_bytes(b'fixture-icon-object')
         (self.root / 'packaging/windows-installer/gateway_windows_amd64.syso').write_bytes(b'fixture-installer-resource-object')
-        (self.root / 'browser-companion/manifest.json').write_text('{"name":"fixture companion"}')
+        for name in COMPANION + PREVIEW_COMPANION:
+            (self.root / 'browser-companion' / name).write_text('fixture companion: ' + name)
         for doc in DOCS:
             (self.root / 'docs' / doc).write_text('fixture documentation\n')
         (self.root / 'docs/RELEASE-ACCEPTANCE.json').write_text('{"version":"0.6.4","fixture":true}')
@@ -43,7 +46,7 @@ class PackagingTests(unittest.TestCase):
         for name in ('TestStandalone.cmd', 'TestFreshStandalone.cmd'):
             (self.root / name).write_text('fixture launcher\n')
         shutil.copy2(ROOT / 'packaging/windows-installer/main.go.txt', self.root / 'packaging/windows-installer/main.go.txt')
-        for script in ('build-release.py', 'package-release.py'):
+        for script in ('build-release.py', 'package-release.py', 'audit-release.py'):
             shutil.copy2(ROOT / 'scripts' / script, self.root / 'scripts' / script)
 
     def tearDown(self):
@@ -51,6 +54,20 @@ class PackagingTests(unittest.TestCase):
 
     def namespace(self, script):
         return runpy.run_path(str(self.root / 'scripts' / script))
+
+    def test_both_companion_copiers_exclude_preview_and_unknown_files(self):
+        self.assertEqual(set(self.namespace('audit-release.py')['PRODUCTION_COMPANION_FILES']), set(COMPANION))
+        for script in ('build-release.py', 'package-release.py'):
+            with self.subTest(script=script):
+                destination = self.root / (script + '-companion')
+                module = self.namespace(script)
+                self.assertEqual(set(module['PRODUCTION_COMPANION_FILES']), set(COMPANION))
+                module['copy_production_companion'](self.root/'browser-companion', destination)
+                self.assertEqual({path.name for path in destination.iterdir()}, set(COMPANION))
+                for name in COMPANION:
+                    self.assertEqual((destination/name).read_bytes(), (self.root/'browser-companion'/name).read_bytes())
+                for name in PREVIEW_COMPANION:
+                    self.assertTrue((self.root/'browser-companion'/name).is_file())
 
     def test_release_build_info_rejects_personal_package_identities(self):
         validate = self.namespace('build-release.py')['validate_release_build_info']
@@ -86,6 +103,7 @@ class PackagingTests(unittest.TestCase):
             calls.append((target.name, options['env']['GOOS'], command[command.index('-ldflags') + 1]))
             if target.name.endswith('-installer.exe'):
                 payload = Path(options['cwd']) / 'payload'
+                self.assertEqual({path.name for path in (payload/'browser-companion').iterdir()}, set(COMPANION))
                 self.assertTrue(Path(options['cwd']).resolve().is_relative_to(self.root/'build/release-work'))
                 self.assertEqual((Path(options['cwd'])/'gateway_windows_amd64.syso').read_bytes(),b'fixture-installer-resource-object')
                 self.assertEqual((payload / 'COMPATIBILITY.json').read_bytes(), self.compatibility)
@@ -162,6 +180,8 @@ class PackagingTests(unittest.TestCase):
         for platform, helper in [('windows-amd64', 'GatewayUpdateHelper.exe'), ('linux-amd64', 'gateway-update-helper')]:
             package_root = 'gateway-client-v0.6.4-' + platform
             with zipfile.ZipFile(out / (package_root + '.zip')) as archive:
+                companion = {name.removeprefix(package_root+'/browser-companion/') for name in archive.namelist() if name.startswith(package_root+'/browser-companion/')}
+                self.assertEqual(companion, set(COMPANION) if platform == 'windows-amd64' else set())
                 self.assertEqual(archive.read(package_root + '/COMPATIBILITY.json'), self.compatibility)
                 self.assertEqual(archive.read(package_root + '/TESTING-0.6.4.md'), (self.root / 'docs/TESTING-0.6.4.md').read_bytes())
                 self.assertEqual(json.loads(archive.read(package_root + '/RELEASE-ACCEPTANCE.json'))['fixture'], 'current')
@@ -197,6 +217,8 @@ class PackagingTests(unittest.TestCase):
                     digest, name = line.split('  ', 1)
                     self.assertEqual(hashlib.sha256(archive.read(package_root + '/' + name)).hexdigest(), digest)
             with zipfile.ZipFile(out / (package_root + '-fresh.zip')) as archive:
+                companion = {name.removeprefix(package_root+'/browser-companion/') for name in archive.namelist() if name.startswith(package_root+'/browser-companion/')}
+                self.assertEqual(companion, set(COMPANION) if platform == 'windows-amd64' else set())
                 self.assertEqual(archive.read(package_root + '/bootstrap/headers-mainnet.bin'), header_payload)
                 self.assertEqual(archive.read(package_root + '/STATUS.md').decode('utf-8'), expected_status)
                 for document in supplemental:

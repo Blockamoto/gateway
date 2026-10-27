@@ -277,12 +277,15 @@ def exercise(out, build, installer):
     # Uninstall invokes the installed client for narrowly scoped integration removal.
     require_hash(app/'GatewayClient.exe', CLIENT_SHA)
     run_audited(uninstaller, INSTALLER_SHA, ['-uninstall', '-quiet'], env)
-    deadline = time.monotonic()+30
+    wait_started = time.monotonic()
+    deadline = wait_started+30
     while uninstaller.exists() and time.monotonic() < deadline:
         time.sleep(.2)
     integration_clear()
-    if shortcut.exists() or uninstaller.exists() or any((app/name).exists() for name in EXPECTED):
-        raise RuntimeError('Disposable uninstall left managed files or shortcut')
+    remaining = [path.name for path in (shortcut, uninstaller, *(app/name for name in EXPECTED)) if path.exists()]
+    if remaining:
+        raise RuntimeError('Disposable uninstall left managed files or shortcut after '
+                           f'{time.monotonic()-wait_started:.2f}s: {remaining}')
     if sentinel.read_text(encoding='utf-8') != 'preserve me\n':
         raise RuntimeError('Uninstall modified unrelated file')
     if {p.name:digest(p) for p in (marker, profile_sentinel)} != profile_hashes:

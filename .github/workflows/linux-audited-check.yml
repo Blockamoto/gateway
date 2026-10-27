@@ -1,0 +1,64 @@
+name: Exact audited Linux client offline check
+
+on:
+  push:
+    branches:
+      - codex/linux-audited-check
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild-then-isolated-check:
+    if: github.repository == 'Blockamoto/gateway'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out tooling branch without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install exact Go version
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Capture exact source and approved public overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision=6c33011a9cb3878d6246031f23938ca11ec5ba81
+          test "$(git rev-parse "$revision^{commit}")" = "$revision"
+          git merge-base --is-ancestor "$revision" HEAD
+          source=/C_/GatewayReleaseBuild/0.7.8/source-6c33011
+          test ! -e /C_
+          sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$source"
+          git archive "$revision" | tar -x -C "$source"
+          mkdir -p "$RUNNER_TEMP/audited-linux-tmp" "$RUNNER_TEMP/audited-linux-home" "$RUNNER_TEMP/audited-linux-cache"
+          cp "$source/assets/bootstrap/update-channels.json" "$RUNNER_TEMP/audited-linux-tmp/update-channels.json"
+          printf '%s  %s\n' cdb721f84a91b5397e003d54cadbc4cfbb6599d1f8bcd068aa6c54537d30ee0f "$RUNNER_TEMP/audited-linux-tmp/update-channels.json" | sha256sum -c -
+          SOURCE="$source" OVERLAY="$RUNNER_TEMP/audited-linux-tmp/overlay.json" CHANNELS="$RUNNER_TEMP/audited-linux-tmp/update-channels.json" python3 -c 'import json,os; from pathlib import Path; Path(os.environ["OVERLAY"]).write_text(json.dumps({"Replace":{os.environ["SOURCE"]+"/assets/bootstrap/update-channels.json":os.environ["CHANNELS"]}}))'
+      - name: Rebuild and require the exact audited digest before execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          source=/C_/GatewayReleaseBuild/0.7.8/source-6c33011
+          cd "$source"
+          export GO111MODULE=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1
+          export GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOWORK=off GOFLAGS= GOEXPERIMENT=
+          export SOURCE_DATE_EPOCH=1792010749 HOME="$RUNNER_TEMP/audited-linux-home" TMPDIR="$RUNNER_TEMP/audited-linux-tmp" GOCACHE="$RUNNER_TEMP/audited-linux-cache"
+          test "$(go version | awk '{print $3}')" = go1.27.1
+          test "$(go list -f '{{.ImportPath}}' .)" = '_/C_/GatewayReleaseBuild/0.7.8/source-6c33011'
+          go build -overlay "$TMPDIR/overlay.json" -trimpath -ldflags '-s -w' -o "$TMPDIR/gateway-client" .
+          printf '%s  %s\n' 64a9baddba41f0e0233c62de3b21b34ce5bcac80b579055e5f16d9ad3e9727c2 "$TMPDIR/gateway-client" | sha256sum -c -
+      - name: Check exact binary with loopback only and disposable profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ip; command -v setpriv; sudo -n true
+          sudo unshare --net --fork -- bash -c '
+            set -euo pipefail
+            ip link set lo up
+            exec setpriv --reuid "$1" --regid "$2" --clear-groups --no-new-privs env -i PATH="$3" HOME="$4" TMPDIR="$5" python3 "$6" --binary "$7" --source "$8" --out "$5/offline-check"
+          ' _ "$(id -u)" "$(id -g)" "$PATH" "$RUNNER_TEMP/audited-linux-home" "$RUNNER_TEMP/audited-linux-tmp" "$GITHUB_WORKSPACE/scripts/check-audited-linux-offline.py" "$RUNNER_TEMP/audited-linux-tmp/gateway-client" /C_/GatewayReleaseBuild/0.7.8/source-6c33011

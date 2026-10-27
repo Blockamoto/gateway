@@ -27,7 +27,9 @@ Start Menu shortcut. It creates fresh app-data, temp and install directories,
 uses the dedicated hosted user's HKCU, and invokes quiet CLI installation with
 startup, protocol, browser setup and launch disabled. Installation still writes
 the hosted user's uninstall registration and a shortcut under the disposable
-APPDATA. The check validates their targets, the installed executable and header
+APPDATA. The check validates the registration target and the shortcut's stored
+local LinkInfo target with a bounded binary parser; it does not resolve alternate
+IDList targets through the Windows shell. It validates the installed executable and header
 digests, then performs quiet uninstall with no purge flags. It waits for delayed
 self-deletion and requires the test registration and shortcut to be removed and
 synthetic application/profile sentinel files to be unchanged. The ephemeral VM

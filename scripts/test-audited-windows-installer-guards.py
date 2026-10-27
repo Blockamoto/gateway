@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import io
 import os
+import struct
 from pathlib import Path
 import tempfile
 import unittest
@@ -21,6 +22,34 @@ class Response(io.BytesIO):
 
 
 class GuardTests(unittest.TestCase):
+    def test_bounded_shortcut_local_target_and_invalid_forms(self):
+        target = r'C:\owned\GatewayOnDemand.exe'
+        shell_header = bytearray(bytes.fromhex('4c0000000114020000000000c000000000000046') + bytes(56))
+        struct.pack_into('<I', shell_header, 20, 2)
+        for unicode_paths in (False, True):
+            header_size = 36 if unicode_paths else 28
+            base = (target.encode('utf-16-le')+b'\0\0') if unicode_paths else target.encode('ascii')+b'\0'
+            tail = b'\0\0' if unicode_paths else b'\0'
+            info = bytearray(header_size)
+            struct.pack_into('<7I', info, 0, header_size+len(base)+len(tail), header_size, 1, 0,
+                             header_size, 0, header_size+len(base))
+            if unicode_paths:
+                struct.pack_into('<II', info, 28, header_size, header_size+len(base))
+            payload = bytes(shell_header+info+base+tail)
+            with tempfile.TemporaryDirectory() as tmp:
+                link = Path(tmp)/'fixture.lnk'
+                link.write_bytes(payload)
+                self.assertEqual(tool.shortcut_target(link), target)
+                self.assertNotEqual(tool.shortcut_target(link), r'C:\owned\other.exe')
+                link.write_bytes(payload[:-1])
+                with self.assertRaises(RuntimeError):
+                    tool.shortcut_target(link)
+                bad = bytearray(payload)
+                struct.pack_into('<I', bad, 20, 2 | 0x200)
+                link.write_bytes(bad)
+                with self.assertRaisesRegex(RuntimeError, 'Unsupported'):
+                    tool.shortcut_target(link)
+
     def test_hosted_context_is_required(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, 'GitHub-hosted'):

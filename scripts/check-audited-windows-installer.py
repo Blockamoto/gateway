@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import runpy
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -204,12 +205,53 @@ def integration_clear():
         pass
 
 
-def shortcut_target(shortcut, env):
-    command = "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:GW_TEST_SHORTCUT); $s.TargetPath"
-    child_env = dict(env, GW_TEST_SHORTCUT=str(shortcut))
-    result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', command],
-                            env=child_env, capture_output=True, text=True, timeout=30, check=True)
-    return result.stdout.strip()
+def shortcut_target(shortcut):
+    # Read only the bounded local LinkInfo target. This does not resolve an IDList.
+    with shortcut.open('rb') as f:
+        data = f.read(1024*1024+1)
+    if len(data) > 1024*1024 or len(data) < 76:
+        raise RuntimeError('Invalid shortcut size')
+    if data[:20] != bytes.fromhex('4c0000000114020000000000c000000000000046'):
+        raise RuntimeError('Invalid shortcut header')
+    flags = struct.unpack_from('<I', data, 20)[0]
+    if not flags & 2 or flags & (0x20 | 0x200):
+        raise RuntimeError('Unsupported shortcut target form')
+    pos = 76
+    if flags & 1:
+        if pos+2 > len(data):
+            raise RuntimeError('Truncated shortcut IDList')
+        pos += 2+struct.unpack_from('<H', data, pos)[0]
+    if pos+28 > len(data):
+        raise RuntimeError('Truncated shortcut LinkInfo')
+    size, header, infoflags, _, local, _, suffix = struct.unpack_from('<7I', data, pos)
+    if size < 28 or header < 28 or header > size or pos+size > len(data) or infoflags != 1:
+        raise RuntimeError('Unsupported shortcut LinkInfo')
+    info = data[pos:pos+size]
+    unicode_paths = header >= 36
+    if unicode_paths:
+        local, suffix = struct.unpack_from('<II', info, 28)
+
+    def read_string(offset):
+        if offset < header or offset >= size:
+            raise RuntimeError('Invalid shortcut path offset')
+        if unicode_paths:
+            end = offset
+            while end+1 < size and info[end:end+2] != b'\0\0':
+                end += 2
+            if end+1 >= size:
+                raise RuntimeError('Unterminated shortcut path')
+            return info[offset:end].decode('utf-16-le', errors='strict')
+        end = info.find(b'\0', offset)
+        if end < 0:
+            raise RuntimeError('Unterminated shortcut path')
+        # The owned runner paths are ASCII; do not guess a code page.
+        return info[offset:end].decode('ascii', errors='strict')
+
+    base, tail = read_string(local), read_string(suffix)
+    target = base + tail
+    if not Path(target).is_absolute():
+        raise RuntimeError('Shortcut target is not absolute')
+    return target
 
 
 def runner_preflight():
@@ -272,7 +314,7 @@ def exercise(out, build, installer):
         version, _ = winreg.QueryValueEx(key, 'DisplayVersion')
     if os.path.normcase(location) != os.path.normcase(str(app)) or version != '0.7.8':
         raise RuntimeError('Uninstall registration target differs')
-    if not shortcut.is_file() or os.path.normcase(shortcut_target(shortcut, env)) != os.path.normcase(str(app/'GatewayOnDemand.exe')):
+    if not shortcut.is_file() or os.path.normcase(shortcut_target(shortcut)) != os.path.normcase(str(app/'GatewayOnDemand.exe')):
         raise RuntimeError('Disposable shortcut target differs')
     # Uninstall invokes the installed client for narrowly scoped integration removal.
     require_hash(app/'GatewayClient.exe', CLIENT_SHA)

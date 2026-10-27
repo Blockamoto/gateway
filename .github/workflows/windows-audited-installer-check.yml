@@ -1,0 +1,81 @@
+name: Exact audited Windows installer disposable check
+
+on:
+  push:
+    branches:
+      - codex/windows-installer-check
+    paths:
+      - .github/workflows/windows-audited-installer-check.yml
+      - scripts/check-audited-windows-installer.py
+      - scripts/test-audited-windows-installer-guards.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-audited-windows-installer-check
+  cancel-in-progress: false
+
+jobs:
+  exact-installer:
+    if: github.repository == 'Blockamoto/gateway'
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      GO111MODULE: 'off'
+      CGO_ENABLED: '0'
+      GOTOOLCHAIN: 'local'
+      GOPROXY: 'off'
+      GOSUMDB: 'off'
+      GOWORK: 'off'
+      GOTELEMETRY: 'off'
+    steps:
+      - name: Check out review tooling and candidate history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run non-installing guard tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'GitHub-hosted runner required' }
+          python scripts/test-audited-windows-installer-guards.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Guard tests failed' }
+      - name: Install exact Go version
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Create exact candidate source at its original neutral path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $revision = '6c33011a9cb3878d6246031f23938ca11ec5ba81'
+          if ((git rev-parse "$revision^{commit}") -ne $revision) { throw 'Candidate revision unavailable' }
+          git merge-base --is-ancestor $revision HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate is not an ancestor of tooling' }
+          $root = 'C:\GatewayReleaseBuild'
+          if (Test-Path -LiteralPath $root) { throw 'Neutral source parent already exists' }
+          $source = Join-Path $root '0.7.8\source-6c33011'
+          New-Item -ItemType Directory -Path $source -Force | Out-Null
+          $archive = Join-Path $env:RUNNER_TEMP 'gateway-source-6c33011.tar'
+          if (Test-Path -LiteralPath $archive) { throw 'Source archive already exists' }
+          git archive --format=tar -o $archive $revision
+          if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
+          tar -xf $archive -C $source
+          if ($LASTEXITCODE -ne 0) { throw 'Source extraction failed' }
+      - name: Reconstruct, hash-gate, and test disposable installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python scripts/check-audited-windows-installer.py --source 'C:\GatewayReleaseBuild\0.7.8\source-6c33011'
+          if ($LASTEXITCODE -ne 0) { throw 'Reconstruction or disposable installation check failed' }
+      - name: Retain sanitized result only
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: audited-windows-installer-disposable-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gateway-audited-installer-check/result.json
+          if-no-files-found: error
+          retention-days: 14

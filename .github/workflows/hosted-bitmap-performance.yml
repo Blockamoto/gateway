@@ -1,0 +1,98 @@
+# INACTIVE DRAFT. Install only after independent review.
+name: Synthetic populated Bitmap performance acceptance
+
+on:
+  push:
+    branches: [codex/bitmap-performance]
+    paths:
+      - .github/workflows/hosted-bitmap-performance.yml
+      - scripts/hosted-bitmap-build.py
+      - scripts/hosted-bitmap-run.py
+      - scripts/test-hosted-bitmap-guards.py
+      - scripts/fixtures/bitmap_populated_hosted_test.go
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-bitmap-performance-synthetic
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    if: >-
+      github.repository == 'Blockamoto/gateway' && github.ref == 'refs/heads/codex/bitmap-performance' && github.event.head_commit.message == 'ci: run hosted bitmap pilot once'
+    runs-on: windows-2025
+    timeout-minutes: 300
+    env:
+      GO111MODULE: 'off'
+      CGO_ENABLED: '0'
+      # Existing audited candidate, distinct from the eventual tooling commit.
+      CANDIDATE_REVISION: '6c33011a9cb3878d6246031f23938ca11ec5ba81'
+    steps:
+      - name: Check out trusted workflow tooling
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate the accepted candidate pin
+        shell: pwsh
+        run: |
+          if ($env:CANDIDATE_REVISION -notmatch '^[0-9a-f]{40}$') { throw 'candidate commit is not pinned' }
+      - name: Check out the pinned release candidate and baseline history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.CANDIDATE_REVISION }}
+          path: candidate
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Initialize an exclusively owned workspace
+        shell: pwsh
+        working-directory: candidate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path -LiteralPath 'build')) { New-Item -ItemType Directory -Path 'build' -ErrorAction Stop | Out-Null }
+          $out = "build/bitmap-pilot-hosted-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          python scripts/bitmap_pilot_paths.py --init $out
+          if ($LASTEXITCODE -ne 0) { throw 'workspace initialization failed' }
+          "PILOT_OUTPUT=$out" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build comparison binaries from pinned sources
+        shell: pwsh
+        working-directory: candidate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python "$env:GITHUB_WORKSPACE/scripts/hosted-bitmap-build.py" --out $env:PILOT_OUTPUT --candidate-revision $env:CANDIDATE_REVISION --fixture "$env:GITHUB_WORKSPACE/scripts/fixtures/bitmap_populated_hosted_test.go"
+          if ($LASTEXITCODE -ne 0) { throw 'comparison build failed' }
+      - name: Check monitor guard behavior
+        shell: pwsh
+        working-directory: candidate
+        run: |
+          python "$env:GITHUB_WORKSPACE/scripts/test-hosted-bitmap-guards.py"
+          if ($LASTEXITCODE -ne 0) { throw 'monitor guard tests failed' }
+      - name: Run bounded synthetic fixture and serialized comparison
+        shell: pwsh
+        working-directory: candidate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python "$env:GITHUB_WORKSPACE/scripts/hosted-bitmap-run.py" --out $env:PILOT_OUTPUT --mode full
+          if ($LASTEXITCODE -ne 0) { throw 'benchmark failed or guard stopped it' }
+      - name: Retain compact evidence and partial guard receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hosted-bitmap-synthetic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            candidate/${{ env.PILOT_OUTPUT }}/build-receipt.json
+            candidate/${{ env.PILOT_OUTPUT }}/hosted-seed-progress.jsonl
+            candidate/${{ env.PILOT_OUTPUT }}/hosted-seed-summary.json
+            candidate/${{ env.PILOT_OUTPUT }}/80k-projection.json
+            candidate/${{ env.PILOT_OUTPUT }}/??-*/hosted-apply-summary.json
+            candidate/${{ env.PILOT_OUTPUT }}/*-process.json
+            candidate/${{ env.PILOT_OUTPUT }}/hosted-result.json
+            candidate/${{ env.PILOT_OUTPUT }}/*.log
+          if-no-files-found: warn
+          retention-days: 14

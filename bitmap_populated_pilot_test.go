@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -263,6 +264,30 @@ func pilotWriteExclusive(path string, data []byte) error {
 
 // These tests use only newly created owned paths, never a populated fixture.
 func TestBitmapPopulatedPilotPathGuards(t *testing.T) {
+	if os.Getenv("GATEWAY_BITMAP_PILOT_GUARD_CHILD") != "1" {
+		exe, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(exe, "-test.run=^TestBitmapPopulatedPilotPathGuards$", "-test.v")
+		cmd.Dir = t.TempDir()
+		cmd.Env = append(os.Environ(), "GATEWAY_BITMAP_PILOT_GUARD_CHILD=1")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("isolated path guards failed: %v\n%s", err, output)
+		}
+		t.Logf("isolated path guards: %s", output)
+		return
+	}
+	// A clean checkout need not have a build directory. This child owns its
+	// temporary working directory and creates only its own test build root.
+	entries, err := os.ReadDir(".")
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("isolated guard working directory must be empty: %v", err)
+	}
+	if err := os.Mkdir("build", 0700); err != nil {
+		t.Fatal(err)
+	}
 	build, err := filepath.Abs("build")
 	if err != nil {
 		t.Fatal(err)

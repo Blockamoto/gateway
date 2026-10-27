@@ -114,7 +114,7 @@ class Runtime:
     def denied(self, path, body=None, expected=(400, 403, 409)):
         value = self.call(path, body, expected)
         reason = value.get('error', '')
-        assert reason and any(text in reason.lower() for text in ('unavailable', 'locked', 'not available', 'not an available', 'cannot execute', 'methodology', 'fixed canonical')), (path, value)
+        assert reason and any(text in reason.lower() for text in ('unavailable', 'locked', 'disabled', 'not available', 'not an available', 'cannot execute', 'methodology', 'fixed canonical')), (path, value)
         return value
 
     def wait_run(self, states, run_id=None):
@@ -167,7 +167,9 @@ def main():
         assert set(instances) == set(fixed) | set(previous) | set(chains) | set(FIXED)
         for identity, kind in fixed.items():
             item = instances[identity]
-            assert item['kind'] == kind and item['execution_available'] and not item.get('rules_editable')
+            assert item['kind'] == kind and item['execution_available'] is (kind == 'district') and not item.get('rules_editable')
+            if kind == 'parcel':
+                assert item.get('execution_unavailable_reason')
             assert item['label'] == ('Bitmap Districts Standard V1' if kind == 'district' else 'Bitmap Parcels Standard V1')
             assert len(item['profile_hash']) == 64
             pinned = '335958311eb1c8ce4d14c48bc5c21d23c7a4b134'
@@ -196,12 +198,15 @@ def main():
         assert runtime.call('/api/v1/bitmap/view?kind=district')['instance'] == 'bitmap-districts-standard-v1'
         assert runtime.call('/api/v1/bitmap/view?kind=parcel')['instance'] == 'bitmap-parcels-standard-v1'
         assert set(initial['chain_metadata']) == set(chains)
-        checks.append('current District/Parcel identities start at 792435 with six/seven published rules and separate implementation limits; previous hashes remain unchanged and chains are inspect-only')
+        checks.append('current District/Parcel identities start at 792435 with six/seven published rules; District execution is available and Parcel execution is deferred; previous hashes remain unchanged and chains are inspect-only')
         status = runtime.call('/api/v1/index/status')
         definitions = {i['id']: i for i in status['definitions']}
         assert not status['jobs'] and not status['run'].get('run')
-        for identity in fixed:
-            assert definitions[identity]['buildable'] and not definitions[identity].get('locked')
+        for identity, kind in fixed.items():
+            assert definitions[identity]['buildable'] is (kind == 'district')
+            assert not definitions[identity].get('locked'), 'Saved rules remain readable even when execution is deferred'
+            if kind == 'parcel':
+                assert definitions[identity].get('lock_reason')
             assert definitions[identity]['metadata'] and definitions[identity]['source_url']
         for identity in FIXED | previous | chains:
             assert definitions[identity]['locked']
@@ -211,14 +216,16 @@ def main():
         runtime.denied('/api/v1/bitmap/profiles/validate', dict(kind='district', rules={}), 403)
         runtime.denied('/api/v1/bitmap/compare?baseline=bitmap-districts&variant=bitmap-parcels', expected=403)
         custom = 'bitmap-districts-' + '1' * 32
-        for identity in list(FIXED | previous | chains) + [custom]:
+        for identity in list(FIXED | previous | chains) + ['bitmap-parcels-standard-v1', custom]:
             request = dict(consumers=[selection(identity)])
-            runtime.denied('/api/v1/index/run/prepare', request)
-            runtime.denied('/api/v1/index/run/start', dict(request=request))
-            runtime.denied('/api/v1/index/build', dict(index=identity, retention='pruned'))
-            runtime.denied('/api/v1/index/live', dict(index=identity, action='enable'))
+            results = [runtime.denied('/api/v1/index/run/prepare', request),
+                       runtime.denied('/api/v1/index/run/start', dict(request=request)),
+                       runtime.denied('/api/v1/index/build', dict(index=identity, retention='pruned')),
+                       runtime.denied('/api/v1/index/live', dict(index=identity, action='enable'))]
+            if identity == 'bitmap-parcels-standard-v1':
+                assert all('Parcels indexing is disabled' in result['error'] for result in results)
         assert preserved_files(profile) == before
-        checks.append('creation/editing/drafts/validation/comparison routes refuse work; all chain, previous-generation and custom admission routes refuse execution without mutating evidence')
+        checks.append('creation/editing/drafts/validation/comparison routes refuse work; Parcel, all chain, previous-generation and custom admission routes refuse execution without mutating evidence')
         request = dict(consumers=[selection('bitmap-districts-standard-v1')])
         runtime.call('/api/v1/index/run/prepare', request)
         plan = runtime.call('/api/v1/index/run/plan', request)
@@ -240,7 +247,7 @@ def main():
             'This fixture does not validate live indexing or source-gap retries beyond the genuine genesis-only authority.',
             'Canonical witnesses, blocator-only persistence, parent evaluation receipts and disabled-chain admission are checked by focused Go tests.'])
         (output / 'result.json').write_text(json.dumps(receipt, indent=2) + chr(10), encoding='utf-8')
-        print('Compiled Bitmap Standard V1 API PASS: origin 792435, six/seven published rules, disabled chains, both previous canonical generations unchanged and denied custom execution.')
+        print('Compiled Bitmap Standard V1 API PASS: District enabled, Parcel deferred, origin 792435, six/seven published rules, disabled chains, both previous canonical generations unchanged and denied custom execution.')
     finally:
         if runtime is not None:
             runtime.stop()

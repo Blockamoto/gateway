@@ -3,6 +3,7 @@ package engine
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,7 +46,11 @@ func (p Recipe) Validate() error {
 	var required []string
 	switch p.State {
 	case "none":
-		required = []string{"emit"}
+		if len(p.Operations) == 1 && p.Operations[0].Op == "project-inscription-fields" {
+			required = []string{"project-inscription-fields"}
+		} else {
+			required = []string{"emit"}
+		}
 	case "utxo":
 		required = []string{"consume-inputs", "create-outputs", "emit"}
 	case "bitmap-districts":
@@ -103,6 +108,11 @@ type Transaction struct {
 type Reveal struct {
 	ContentType string
 	Body        []byte
+	// Complete ordered pushes from the 0.7.8 full-block extractor, including
+	// the body marker and any dangling field tag. They are caller assertions.
+	PayloadAvailable bool
+	PayloadHex       []string
+	ParserProfile    string
 }
 type Block struct {
 	Height       uint64
@@ -267,6 +277,7 @@ func (e *Engine) Apply(b Block) (Receipt, error) {
 	}
 	seenTX := map[string]bool{}
 	seenInputs := map[Outpoint]bool{}
+	var inscriptionBudget inscriptionBlockBudget
 	for ti, tx := range b.Transactions {
 		if tx.ID == "" || seenTX[tx.ID] {
 			return Receipt{}, errors.New("empty or duplicate transaction identity")
@@ -274,6 +285,20 @@ func (e *Engine) Apply(b Block) (Receipt, error) {
 		seenTX[tx.ID] = true
 		for _, operation := range e.recipe.Operations {
 			switch operation.Op {
+			case "project-inscription-fields":
+				if !tx.RevealsComplete {
+					return Receipt{}, errors.New("incomplete inscription envelope extraction")
+				}
+				for ri, reveal := range tx.Reveals {
+					if err := inscriptionBudget.add(reveal); err != nil {
+						return Receipt{}, err
+					}
+					row, err := projectInscriptionFields(reveal, ti, ri, b.Height)
+					if err != nil {
+						return Receipt{}, err
+					}
+					receipt.Rows = append(receipt.Rows, row)
+				}
 			case "select-bitmap-district-winner":
 				if !tx.RevealsComplete {
 					return Receipt{}, errors.New("incomplete inscription envelope extraction")
@@ -348,6 +373,119 @@ func (e *Engine) Apply(b Block) (Receipt, error) {
 	}
 	published = true
 	return cloneReceipt(receipt), nil
+}
+
+// projectInscriptionFields consumes ordered pushes from the existing 0.7.8
+// extractor's occurrence payload. It does not parse witness or authenticate
+// those pushes. Parent tag bytes are declarations, never relationship proof.
+const inscriptionOccurrenceLimit = 100000
+const inscriptionItemLimit = 250000
+const inscriptionPayloadByteLimit = 4000000
+
+// These are upper bounds on the projected subset, not authentication of the
+// source witness or a substitute for its full-block extraction budget.
+type inscriptionBlockBudget struct{ occurrences, items, bytes int }
+
+func (b *inscriptionBlockBudget) add(reveal Reveal) error {
+	if b.occurrences >= inscriptionOccurrenceLimit || len(reveal.PayloadHex) > inscriptionItemLimit-b.items {
+		return errors.New("inscription block occurrence or item budget exceeded")
+	}
+	bytes := b.bytes
+	for _, raw := range reveal.PayloadHex {
+		if len(raw)%2 != 0 || len(raw)/2 > inscriptionPayloadByteLimit-bytes {
+			return errors.New("inscription block payload budget exceeded or invalid hex length")
+		}
+		bytes += len(raw) / 2
+	}
+	b.occurrences++
+	b.items += len(reveal.PayloadHex)
+	b.bytes = bytes
+	return nil
+}
+
+func projectInscriptionFields(reveal Reveal, txIndex, revealIndex int, height uint64) (Row, error) {
+	if !reveal.PayloadAvailable || reveal.ParserProfile != "gateway-inscription-occurrence-v1" {
+		return Row{}, errors.New("unresolved inscription payload evidence")
+	}
+	if len(reveal.PayloadHex) > inscriptionItemLimit {
+		return Row{}, errors.New("inscription payload item budget exceeded")
+	}
+	decoded := make([][]byte, len(reveal.PayloadHex))
+	var total int
+	for i, raw := range reveal.PayloadHex {
+		if len(raw)%2 != 0 || len(raw)/2 > inscriptionPayloadByteLimit-total || strings.ToLower(raw) != raw {
+			return Row{}, errors.New("invalid inscription payload encoding or budget")
+		}
+		b, err := hex.DecodeString(raw)
+		if err != nil {
+			return Row{}, errors.New("invalid inscription payload hex")
+		}
+		total += len(b)
+		decoded[i] = b
+	}
+	fields := map[string][]string{}
+	incomplete := false
+	pendingTag := ""
+	for i := 0; i < len(decoded); i += 2 {
+		if len(decoded[i]) == 0 {
+			break // remaining pushes are body, never tag/value fields
+		}
+		if i+1 == len(decoded) {
+			incomplete = true
+			pendingTag = reveal.PayloadHex[i]
+			break
+		}
+		tag := reveal.PayloadHex[i]
+		fields[tag] = append(fields[tag], reveal.PayloadHex[i+1])
+	}
+	fieldsJSON, _ := json.Marshal(fields)
+	meta := fields["05"]
+	metaState := "absent"
+	if len(meta) != 0 {
+		metaState = "present"
+	}
+	if pendingTag == "05" && len(meta) == 0 {
+		metaState = "incomplete"
+	}
+	metaprotocolState := "absent"
+	if len(fields["07"]) != 0 {
+		metaprotocolState = "present"
+	}
+	if pendingTag == "07" && len(fields["07"]) == 0 {
+		metaprotocolState = "incomplete"
+	}
+	metaprotocolJSON, _ := json.Marshal(nonNilStrings(fields["07"]))
+	parents := fields["03"]
+	parentsJSON, _ := json.Marshal(nonNilStrings(parents))
+	parentState := "not-declared"
+	if len(parents) != 0 {
+		parentState = "declared-unresolved"
+	}
+	if pendingTag == "03" && len(parents) == 0 {
+		parentState = "declared-incomplete"
+	}
+	payloadJSON, _ := json.Marshal(nonNilStrings(reveal.PayloadHex))
+	return Row{Cells: []Cell{
+		{Field: "inscription.blocator", Value: fmt.Sprintf("%di%d.%d", txIndex, revealIndex, height)},
+		{Field: "parser.profile", Value: reveal.ParserProfile},
+		{Field: "payload.pushes.hex.json", Value: string(payloadJSON)},
+		{Field: "fields.hex.json", Value: string(fieldsJSON)},
+		{Field: "metadata.state", Value: metaState},
+		{Field: "metadata.hex", Value: strings.Join(meta, "")},
+		{Field: "metaprotocol.state", Value: metaprotocolState},
+		{Field: "metaprotocol.values.hex.json", Value: string(metaprotocolJSON)},
+		{Field: "parent.declarations.hex.json", Value: string(parentsJSON)},
+		{Field: "parent.relationship.state", Value: parentState},
+		{Field: "field.incomplete", Value: strconv.FormatBool(incomplete)},
+		{Field: "field.dangling.tag.hex", Value: pendingTag},
+	}}, nil
+}
+
+func nonNilStrings(v []string) []string {
+	if v == nil {
+		return []string{}
+	}
+	return v
 }
 
 // bitmapDistrictOrigin is the current Gateway 0.7.8 start policy, not an

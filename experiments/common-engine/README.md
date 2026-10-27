@@ -51,3 +51,27 @@ winner prefix. A saved winner row is a stored assertion, not a standalone
 proof: the experiment does not retain source envelopes or show that a candidate
 qualified or that no earlier candidate existed. Production evidence and prefix
 verification remain necessary.
+
+`inscription-fields.json` exercises another operation in this same interpreter.
+It takes complete ordered payload-push hex strings in the shape of the 0.7.8
+`inscriptionOccurrence.PayloadHex` produced by `extractInscriptionOccurrences`.
+For each reveal it retains those pushes, projects raw tag/value pairs, joins tag
+5 metadata bytes, retains each tag 7 metaprotocol value and tag 3 parent
+declaration, and reports incomplete fields. Empty and absent metadata are
+distinct. A dangling later tag is recorded separately and does not erase an
+earlier completed metadata, metaprotocol or parent value. A completed parent
+declaration is `declared-unresolved`; it is not a proven parent-child
+relationship. Missing full-block extraction or payload evidence fails the
+entire block instead of yielding empty coverage. Projected occurrences, payload
+items and bytes are bounded cumulatively per block; these limits do not replace
+the extractor's full witness budget or authenticate caller-provided payloads.
+
+This projection's parser-profile and completeness flags are caller assertions.
+The recipe does not invoke the 0.7.8 parser, authenticate witnesses or prove
+chain membership, decode CBOR, interpret duplicate-field Ord semantics, resolve
+parent IDs, establish parent provenance, track sats, or claim Ord compatibility.
+The base parser's [pinned Ord reference](https://github.com/ordinals/ord/tree/03c9b87b14fe1e2c38191b860a08988345ec4e5f) and the later
+[Ord field implementation](https://github.com/ordinals/ord/blob/b7ccfcf6e1b4f47cb578cb43997c37a4f9f16414/src/inscriptions/inscription.rs)
+must be compared before any version-specific conformance claim. Existing raw
+fields are recorded as declarations; only additional authenticated lineage
+evidence can prove a parent-child relationship.

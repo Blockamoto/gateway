@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "id": "inscription-fields-fixture-v1",
+  "state": "none",
+  "operations": [{"op": "project-inscription-fields"}]
+}

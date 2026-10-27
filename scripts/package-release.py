@@ -11,6 +11,15 @@ import subprocess
 from urllib.parse import quote, unquote, urlsplit
 import zipfile
 
+# Match build-release.py and the companion files accepted by released helpers.
+PRODUCTION_COMPANION_FILES = ('content.js', 'IDENTITY.txt', 'manifest.json', 'popup.html', 'popup.js', 'README.txt', 'search.js', 'service-worker.js', 'test.js')
+
+
+def copy_production_companion(source, destination):
+    destination.mkdir()
+    for name in PRODUCTION_COMPANION_FILES:
+        shutil.copy2(source/name, destination/name)
+
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -83,7 +92,7 @@ def main():
         if platform.startswith('windows'):
             for launcher in ['TestStandalone.cmd', 'TestFreshStandalone.cmd']:
                 shutil.copy2(root / launcher, folder / launcher)
-            shutil.copytree(root / 'browser-companion', folder / 'browser-companion')
+            copy_production_companion(root / 'browser-companion', folder / 'browser-companion')
             (folder / 'portable.marker').write_text('Gateway portable profile.\n')
         for document, source in document_sources.items():
             if source.suffix == '.md':

@@ -7,6 +7,9 @@ from __future__ import annotations
 import argparse, hashlib, json, struct
 from pathlib import Path
 
+# Match the production files embedded by build-release.py, not preview tooling.
+PRODUCTION_COMPANION_FILES = ('content.js', 'IDENTITY.txt', 'manifest.json', 'popup.html', 'popup.js', 'README.txt', 'search.js', 'service-worker.js', 'test.js')
+
 def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -123,11 +126,11 @@ def main() -> None:
         assert notice and position >= 0, (name, 'installer license or notice mismatch')
         exact.append({'file':name,'sha256':sha(notice),'installer_byte_offset':position,'exact_match':True})
     companion=[]
-    for path in sorted((root/'browser-companion').iterdir()):
-        if path.is_file():
-            payload=path.read_bytes();position=installer.find(payload)
-            assert position>=0,(path.name,'companion mismatch')
-            companion.append({'file':path.name,'sha256':sha(payload),'exact_match':True})
+    for name in PRODUCTION_COMPANION_FILES:
+        path=root/'browser-companion'/name
+        payload=path.read_bytes();position=installer.find(payload)
+        assert position>=0,(path.name,'companion mismatch')
+        companion.append({'file':path.name,'sha256':sha(payload),'exact_match':True})
     linux=(args.build/'gateway-client').read_bytes();assert linux[:4]==b'\x7fELF'
     linux_helper=(args.build/'gateway-update-helper').read_bytes();assert linux_helper[:4]==b'\x7fELF'
     baseline=(args.build/'bootstrap/headers-mainnet.bin').read_bytes()

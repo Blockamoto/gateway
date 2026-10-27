@@ -7,6 +7,15 @@ import argparse, base64, datetime, hashlib, json, os, re, shutil, subprocess, sy
 from pathlib import Path
 from urllib.parse import urlsplit
 
+# Keep the production payload compatible with already released updater helpers.
+# Preview registration tools and identities remain available in source only.
+PRODUCTION_COMPANION_FILES = ('content.js', 'IDENTITY.txt', 'manifest.json', 'popup.html', 'popup.js', 'README.txt', 'search.js', 'service-worker.js', 'test.js')
+
+def copy_production_companion(source: Path, destination: Path) -> None:
+    destination.mkdir()
+    for name in PRODUCTION_COMPANION_FILES:
+        shutil.copy2(source/name, destination/name)
+
 def public_object(pairs):
     value = {}
     for key, item in pairs:
@@ -137,7 +146,7 @@ def main() -> None:
             shutil.copy2(root/notice, payload/notice)
         shutil.copy2(root/'docs'/f'TESTING-{version}.md', payload/f'TESTING-{version}.md')
         shutil.copytree(bootstrap, payload/'bootstrap', ignore=shutil.ignore_patterns('overlay.json', 'update-channels.json'))
-        shutil.copytree(root/'browser-companion', payload/'browser-companion')
+        copy_production_companion(root/'browser-companion', payload/'browser-companion')
         (temp/'main.go').write_text((root/'packaging/windows-installer/main.go.txt').read_text(encoding='utf-8').replace('__GATEWAY_VERSION__', version), encoding='utf-8')
         shutil.copytree(root/'internal', temp/'internal')
         shutil.copy2(root/'packaging/windows-installer/gateway_windows_amd64.syso',temp/'gateway_windows_amd64.syso')

@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 
-EXPECTED='64a9baddba41f0e0233c62de3b21b34ce5bcac80b579055e5f16d9ad3e9727c2'
+EXPECTED='3268a30d155adc2fdc54b4ebc29265ea39127d2edbf3b83c89ff1ade307d285f'
 
 def checked_binary(path):
     if path.is_symlink() or not path.is_file():

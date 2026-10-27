@@ -85,6 +85,13 @@
       ],
       "limits": "File-to-file equality and hash bindings were independently recomputed from the supplied local files. The JSON objects do not independently establish that the reference was captured from Bops, that the candidate list is a complete authenticated Gateway snapshot, or that reported Bitcoin block proofs were actually verified. The screenshot does not cryptographically bind its browser input to the supplied file hash, and its complete-range checkbox is off. This bounded comparison is not full-mainnet acceptance, consensus validation, or a test of the final export implementation or release binary; no active profile was inspected.",
       "supporting_reported_verification": "The separate supplied verification report states that 3,645 winners across 241 blocks were verified by checking double-SHA256 header identity and ordered TXID-list Merkle roots using Blockstream API evidence, with zero omitted. This is the report's claim; the evidence inspected here does not independently replay those block/header checks."
+    },
+    "export_snapshot_partial_preview": {
+      "result": "bounded-preview-pass",
+      "source_revision": "860ad91eb2e55d6892822602bc7477b0aff9ef12",
+      "windows_executable_sha256": "d8ddfe9d60fde4f6c86a4fee03acaa4a6d68112ca050d92c953717cf7ed6adc7",
+      "scope": "The compiled preview matched the real-browser-tested executable byte for byte. An isolated profile with three saved District winners produced a complete native export and a partial conventional export with one verified winner, two omitted winners and four missing references; headers, footer and checksums matched, with saved index and run state unchanged. Focused HTTP tests covered reviewed snapshot after append, partial review after new retained Raw, expiry, deletion, reorg, corrupted or missing captured lookup data and 458,000-entry synthetic decision budgets. The full TestIndexExport family passed in 234.097 seconds after four test-only request assertions were corrected and independently rerun. This is not final release-artifact acceptance.",
+      "evidence": "build/export-partial-browser-qa-v2/result.json"
     }
   },
   "pending_release_gates": [

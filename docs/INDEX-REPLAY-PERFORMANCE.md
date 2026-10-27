@@ -345,3 +345,56 @@ summary root pages, but does not independently bind those roots to the commit;
 the normal Go reader authenticates the committed head and roots during Apply.
 Run `python scripts/test_bitmap_pilot_guards.py -v` for the lightweight path,
 collision and reparse-point tests; they do not run the benchmark.
+
+## Hosted populated District Apply (2026-10-27)
+
+[GitHub Actions run](https://github.com/Blockamoto/gateway/actions/runs/40448722444),
+tooling commit `f2c83a5c2e47d76db89c706ac3b2e5752490451d`, candidate source
+`6c33011a9cb3878d6246031f23938ca11ec5ba81`, old-cache baseline overlay source
+`efc5b13c8a43d43b91e6423707e81ccf74e9f2db`. The run used Windows Server 2025,
+image `windows-2025-vs2026` version `20261021.278.1`, and Go 1.27.1. The
+baseline overlays the old ordinal cache and matching evidence helper on the same
+candidate; it does not represent a complete older release.
+
+The 27-block seed contained 531,397 synthetic candidates and 458,312 winners.
+It took 833.714 seconds summed Apply and 837.652 seconds process time, with
+251,695,104 bytes peak working set. It used 793,125 immutable page files and
+3,786,035,576 logical page bytes. The first checkpoint above 80,000 winners
+projected 187,605 final files, underpredicting actual file count by 4.23 times.
+Free disk fell from 235,329,609,728 to 202,227,335,168 bytes across the seed and
+four copies. The runner had much more free space than GitHub's nominal 14 GB
+specification, so this does not establish suitability for a 14 GB runner. All
+guards passed, the 2 GiB process working-set cap was respected and free disk
+remained above the 3 GiB reserve.
+
+Four separate copies ran serially in baseline/current/current/baseline order:
+
+| Variant | Apply times, seconds | Whole-process times, seconds |
+| --- | --- | --- |
+| Baseline | 3.829, 3.911 | 212.353, 234.841 |
+| Current | 3.577, 3.676 | 209.585, 211.107 |
+
+The current samples show no regression in this bounded synthetic comparison;
+the 6.3% median difference is descriptive, with two observations per variant,
+no predefined threshold and uncontrolled OS cache. Whole-process time includes
+file preflight and page census and is not Apply time. Sampled host CPU means in
+run order were 29.28%, 28.81%, 28.95% and 53.53%.
+
+All four outputs had 532,397 candidates, 458,812 winners, 796,471 page files /
+3,804,803,129 logical page bytes, identical four roots and commitment
+`699538d2ee351bf79b33b504a3fe442e9230a5e8d495cd5e6bed6f0fb1eada1f`. Each
+checked 16 input-derived first-winner blocators. Checked roots and accessed
+pages do not establish full-store integrity. The timed block had 500 duplicate
+and 500 new targets. History and targets were synthetic rather than authenticated
+Bitcoin data; the workload omitted UI polling and network activity. The result
+does not prove real-profile throughput or that the observed stall is resolved.
+
+The current and baseline test executables had SHA-256 values
+`6559c7d03a94ba282dd269cc13601b9d4a86863be6f04625a93d774a933061a4` and
+`2bacbe030735c2348a941c79a2ced27e61f3aefb0f988fcdba98df298d8e6a82`; fixture
+SHA-256 was `cb11bdc81800f9f7a06bc013d82724841610091855bbaa8f88f2690591229aeb`.
+The original artifact ZIP is retained under `build/hosted-bitmap-evidence-40448722444`, SHA-256
+`bf84343b4a1f5ad669fb1a0ab155750a8edd11d9bcee11e04b25d319ffc1b3cc`, matching
+GitHub's artifact digest. That directory's `extracted` folder contains the complete compact receipt and
+logs; `job-122006108805.log` is the separately retrieved job log.
+No retries or remote changes were performed while monitoring.

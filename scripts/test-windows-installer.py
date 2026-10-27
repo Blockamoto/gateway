@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,7 +49,28 @@ func createShortcut(_ string) error { return fixtureCreateShortcutError }
 func deleteShortcut() error { return fixtureDeleteShortcutError }
 func registerUninstall(_, _ string) error { fixtureUninstallRegistrationCount++; return nil }
 func regDeleteKey(key string) { fixtureDeletedRegistryKeys = append(fixtureDeletedRegistryKeys, key) }
-func messageBox(_, _ string, _ uintptr) int { fixtureWarningDialogCount++; return IDYES }
+func messageBox(_, title string, _ uintptr) int {
+    fixtureWarningDialogCount++
+    if os.Getenv("GATEWAY_TEST_DELAYED_DIALOG") != "" {
+        if title == "Choose what happens to your data" { return 7 } // IDNO: preserve data.
+        if title == "Gateway removed" { syscall.NewLazyDLL("kernel32.dll").NewProc("Sleep").Call(4000) }
+    }
+    return IDYES
+}
+'''
+
+CLEANUP_FIXTURE_MAIN = r'''
+func main() {
+    if path := os.Getenv("GATEWAY_TEST_REPLACED_FILE"); path != "" {
+        h, err := openUninstallerForRemoval(path); if err != nil { panic(err) }
+        defer syscall.CloseHandle(h)
+        if err := os.Rename(path, path+".old"); err != nil { panic(err) }
+        if err := os.WriteFile(path, []byte("replacement"), 0600); err != nil { panic(err) }
+        if err := scheduleUninstallerRemoval(h, filepath.Dir(path)); err != nil { panic(err) }
+        return
+    }
+    fixtureOriginalmain()
+}
 '''
 
 INSTALL_TESTS = r'''
@@ -396,6 +418,12 @@ class InstallerTests(unittest.TestCase):
         cls.command([cls.go, 'build', '-o', str(cls.mode_binary), '.'], cls.mode)
         cls.install = cls.fixture('payload', rename_functions(cls.source, ('createShortcut', 'deleteShortcut', 'registerUninstall', 'regDeleteKey', 'messageBox')) + INSTALL_STUBS)
         (cls.install / 'main_test.go').write_text(INSTALL_TESTS, encoding='utf-8')
+        cleanup_source = cls.source.replace('WaitForSingleObject($process, 60000)', 'WaitForSingleObject($process, 1000)')
+        if cleanup_source == cls.source:
+            raise AssertionError('cleanup wait fixture did not shorten the bounded wait')
+        cls.cleanup_fixture = cls.fixture('cleanup', rename_functions(cleanup_source, ('createShortcut', 'deleteShortcut', 'registerUninstall', 'regDeleteKey', 'messageBox', 'main')) + INSTALL_STUBS + CLEANUP_FIXTURE_MAIN)
+        cls.cleanup_binary = cls.cleanup_fixture / 'fixture.exe'
+        cls.command([cls.go, 'build', '-o', str(cls.cleanup_binary), '.'], cls.cleanup_fixture)
 
     @classmethod
     def fixture(cls, name, source):
@@ -480,6 +508,57 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('TestShortcutFailureDoesNotInterruptInstallOrRemoval', result.stdout)
         self.assertIn('TestInstallerAdvancedSourceIsValidatedBeforeWrites', result.stdout)
         self.assertIn('TestInstallerUpdatesPageAndAdvancedSourcePreserveChoices', result.stdout)
+
+    def test_uninstaller_removes_only_its_original_file(self):
+        root = self.root / 'cleanup spaces & 100%'
+        app = root / 'application'
+        app.mkdir(parents=True)
+        local = root / 'local'
+        roaming = root / 'roaming'
+        temp = root / 'temp'
+        for folder in (local, roaming, temp):
+            folder.mkdir()
+        env = {**self.env, 'LOCALAPPDATA': str(local), 'APPDATA': str(roaming),
+               'TEMP': str(temp), 'TMP': str(temp)}
+        profile = local / 'Gateway' / 'data'
+        profile.mkdir(parents=True)
+        sentinel = profile / 'preserved.txt'
+        sentinel.write_text('keep profile')
+        neighbor = app / 'unrelated.txt'
+        neighbor.write_text('keep neighbor')
+        binary = app / 'Uninstall Gateway Client.exe'
+        shutil.copyfile(self.cleanup_binary, binary)
+        self.command([str(binary), '-uninstall', '-quiet'], self.cleanup_fixture, env)
+        deadline = time.monotonic() + 45
+        while binary.exists() and time.monotonic() < deadline:
+            time.sleep(.1)
+        self.assertFalse(binary.exists(), 'uninstaller executable remained after its process exited')
+        self.assertEqual(neighbor.read_text(), 'keep neighbor')
+        self.assertEqual(sentinel.read_text(), 'keep profile')
+
+        original = app / 'same path & replacement.txt'
+        original.write_text('original')
+        replacement_env = {**env, 'GATEWAY_TEST_REPLACED_FILE': str(original)}
+        self.command([str(self.cleanup_binary)], self.cleanup_fixture, replacement_env)
+        old = Path(str(original) + '.old')
+        deadline = time.monotonic() + 45
+        while old.exists() and time.monotonic() < deadline:
+            time.sleep(.1)
+        self.assertFalse(old.exists(), 'original file was not removed')
+        self.assertEqual(original.read_text(), 'replacement', 'replacement at old path was removed')
+
+        # The final interactive dialog lasts longer than the shortened child
+        # wait. The child must not start until after that dialog closes.
+        interactive = app / 'Uninstall Gateway Client.exe'
+        shutil.copyfile(self.cleanup_binary, interactive)
+        self.command([str(interactive), '-uninstall'], self.cleanup_fixture,
+                     {**env, 'GATEWAY_TEST_DELAYED_DIALOG': '1'})
+        deadline = time.monotonic() + 45
+        while interactive.exists() and time.monotonic() < deadline:
+            time.sleep(.1)
+        self.assertFalse(interactive.exists(), 'delayed success dialog expired cleanup wait')
+        self.assertEqual(neighbor.read_text(), 'keep neighbor')
+        self.assertEqual(sentinel.read_text(), 'keep profile')
 
 
 if __name__ == '__main__':

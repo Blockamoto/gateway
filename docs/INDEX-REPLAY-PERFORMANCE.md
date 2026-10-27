@@ -203,3 +203,145 @@ go test -run '^$' -bench '^BenchmarkOrdinalTreeScatteredReads$' -benchtime=1x -c
 The focused cache test verifies the 512-page bound, retention of a hot page,
 and eviction of the least recently used page. The existing checked-page
 reopen/integrity test also passed with the new cache.
+
+## Populated District Apply pilot (2026-10-27)
+
+An isolated structural pilot uses the normal Standard District writer to
+create one synthetic block with 20,000 distinct winners. This block is not
+authenticated Bitcoin history and does not model the real sequence of
+hundreds of thousands of claims. The source fixture is kept separate from
+the two writable copies used for the timed next-block Apply. That second
+synthetic block contains 500 previously claimed targets and 500 new targets,
+interleaved in deterministic order. Neither stage opens a user profile or
+uses a network.
+
+The seed's normal Apply took 74.607 seconds after 0.780 seconds of fixture
+setup; its process took 80.267 seconds overall and reached its first test
+output after 4.063 seconds. Peak process working set was 219,570,176 bytes.
+The reopened committed head contains 20,000 candidates and winners, with
+4,044 immutable page files and 31,341,488 logical page bytes. Other machine
+work was active; this is one local sample, not a baseline guarantee.
+
+The first next-block pair used the old clear-all ordinal cache followed by
+the current bounded LRU. Apply took 33.462 and 86.813 seconds respectively;
+whole-process durations were 40.597 and 92.137 seconds, with sampled OS peak
+working sets of 91,000,832 and 96,804,864 bytes. Both published exactly the
+same commitment, all four roots, 21,000 candidates, 20,500 winners and
+4,736 page files / 36,686,648 logical bytes. These fixed-order single samples
+ran under uncontrolled machine load, and their copy preflight checked the
+same head and checksummed root pages rather than every copied file. Pages
+accessed during Apply retained their normal integrity checks. The pair does
+not establish a cache regression or improvement; in particular, the earlier
+scattered-read microbenchmark cannot be used as a writer-throughput claim.
+
+A second pair reversed the order after the detached-evidence cache fix, using
+fresh test binaries and profile copies. Current LRU Apply took 43.532 seconds
+and the old cache took 60.594 seconds. All four samples across both pairs had
+the same committed outputs and page census. In this reverse pair, sampled
+whole-process CPU time was 4.359 and 4.563 seconds, and sampled read-operation
+deltas were 2,217 and 2,287 respectively; process I/O includes startup and
+census, can miss a short tail between samples, and is not a Sync count. Sampled
+mean host CPU load was 98.57% and 99.16%, respectively, with a 100% sampled
+peak in both runs. A separate system snapshot showed heavy Windows Defender
+activity alongside other active processes. The contrasting order-dependent
+times and heavy load leave the speed effect unresolved. No further inference
+about live indexing or the 458,000-winner state follows from these samples.
+
+The reverse baseline overlaid the old detached-evidence helper as well as the
+old ordinal tree and test because the corrected helper uses newer cache fields.
+This synthetic District fixture does not exercise the detached parent-proof
+path. Reverse baseline/current test binary SHA-256 values were
+`59923d1d18e9fdd770ea6ba7bf75497452a4ba784c298388dda64c1ec9586dad` and
+`d0ea5dde8fe79f9271030cabaffd0fe407f52d064eda4160feabde8ee1a5bfca`;
+the corrected current ordinal source SHA-256 was
+`ea519a5a20a0b6d07176d3652f9d8fecdd9dc5a3096b12ac532f09134e9cac65`.
+The reverse receipt is `build/bitmap-populated-pilot/pairs-reverse-result.json`.
+
+The seed was not scaled to the reported 458,000-winner live state. A simple
+linear extrapolation of the seed's page count and bytes gives about 92,600
+files and 718 MB, and its seed Apply time gives about 28.5 minutes; tree shape,
+additional commits, machine load, memory and witness/occurrence limits make
+those estimates unreliable. A 458,000-claim single synthetic block also
+exceeds the existing occurrence budget. The real populated profile and its
+ongoing work were not accessed by this pilot.
+
+Evidence is retained in `build/bitmap-populated-pilot`: `seed-process.json`,
+`seed/pilot-summary.json`, the source overlays, copied profiles and the first
+`pairs-result.json`. The seed input commitment was
+`50d940c5f5118d4304c7e2ad3ca215f3dd4ab7f63ebcfc98c822dadf4d9ac9ab`.
+The first pair used baseline/current test binary SHA-256 values
+`38e80ee235a2191ce42f8ff7a018fa468f429868a638b2409c2ae33ac5a1fca1` and
+`b6d048d59b2c56686fa6b137906f084afffd9b28671609544eeee21872206fb9`;
+the old/current ordinal source SHA-256 values were
+`ee69b12b3c2a31d5147aeba1f8e252fec566ffeed27696776821b0c951203805` and
+`fc0443689255d22f617690e11ec26fda4595563c15ca88efeaab9cff57c0ec11`.
+
+To reproduce in a **new** owned pilot directory, use the Windows Go toolchain.
+The output must be a new direct `build/bitmap-pilot-*` child. Initialization
+fails if it exists; runners require its marker, reject reparse points and
+existing outputs, and terminate only their owned process above 1.5 GiB sampled
+working set or 240 seconds. These guards protect against accidental reuse,
+not hostile concurrent path changes. Do not point it at existing profiles.
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$env:GO111MODULE='off'; $env:CGO_ENABLED='0'
+$out = 'build/bitmap-pilot-choose-a-new-name'
+python scripts/bitmap_pilot_paths.py --init $out
+if ($LASTEXITCODE -ne 0) { throw 'Pilot initialization failed' }
+if (Test-Path -LiteralPath "$out/pilot.test.exe") { throw 'Pilot binary already exists' }
+go test -c -o "$out/pilot.test.exe" .
+if ($LASTEXITCODE -ne 0) { throw 'Pilot build failed' }
+python scripts/benchmark-bitmap-populated-seed.py --out $out
+if ($LASTEXITCODE -ne 0) { throw 'Pilot seed failed' }
+```
+
+For the old-cache comparison, create a Go overlay with the `efc5b13` versions
+of `ordinal_state_tree.go`, its matching test file and the detached-evidence
+helper. The helper overlay is needed to compile against the corrected current
+source; this District-only fixture does not exercise parent-proof evidence.
+Both binaries use the same remaining source and the tracked
+`TestBitmapPopulatedPilotApply` fixture. Each run uses separate owned copies
+and compares committed results. The original first pair preceded the detached
+evidence correction and used only the ordinal source/test overlays.
+
+```powershell
+$env:BITMAP_PILOT_OUT = (Resolve-Path -LiteralPath $out).Path
+@'
+import json, os, pathlib, subprocess
+root = pathlib.Path.cwd()
+out = pathlib.Path(os.environ['BITMAP_PILOT_OUT'])
+mapping = {}
+for name in ['ordinal_state_tree.go', 'ordinal_state_tree_test.go', 'bitmap_development_evidence.go']:
+    data = subprocess.run(['git', 'show', 'efc5b13:' + name], check=True, stdout=subprocess.PIPE).stdout
+    target = out / ('old-' + name)
+    with target.open('xb') as f:
+        f.write(data)
+    mapping[str(root / name)] = str(target)
+with (out / 'baseline-overlay.json').open('x', encoding='utf-8') as f:
+    f.write(json.dumps({'Replace': mapping}, indent=2) + '\n')
+'@ | python -
+if ($LASTEXITCODE -ne 0) { throw 'Overlay preparation failed' }
+if (Test-Path -LiteralPath "$out/baseline-apply.test.exe") { throw 'Baseline binary already exists' }
+go test -c -overlay "$out/baseline-overlay.json" -o "$out/baseline-apply.test.exe" .
+if ($LASTEXITCODE -ne 0) { throw 'Baseline build failed' }
+if (Test-Path -LiteralPath "$out/current-apply.test.exe") { throw 'Candidate binary already exists' }
+go test -c -o "$out/current-apply.test.exe" .
+if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed' }
+python scripts/benchmark-bitmap-populated-pairs.py --out $out
+if ($LASTEXITCODE -ne 0) { throw 'Pilot comparison failed' }
+```
+
+The first and reverse pairs use distinct profile and receipt names. Each pair
+refuses existing destinations before copying; retain a partial run and reproduce
+in a fresh workspace instead of resuming. For reverse order, build the same two
+configurations as `reverse-baseline-v2.test.exe` and `reverse-current-v2.test.exe`
+in a new workspace and create `v2-old-bitmap_development_evidence.go` exclusively
+from the old helper. Run `python scripts/benchmark-bitmap-populated-pairs.py
+--out $out --reverse`.
+
+The Python preflight checks the summary commitment string and four checksummed
+summary root pages, but does not independently bind those roots to the commit;
+the normal Go reader authenticates the committed head and roots during Apply.
+Run `python scripts/test_bitmap_pilot_guards.py -v` for the lightweight path,
+collision and reparse-point tests; they do not run the benchmark.

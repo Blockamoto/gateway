@@ -17,8 +17,25 @@ import (
 	"./internal/updateapply"
 )
 
-func (s *indexExportSession) missing(blocator, hash, reason string) {
+func (s *indexExportSession) missing(blocator, hash, reason string) error {
 	position, _ := parseBODCoordinate(blocator)
+	if s.recordMissing {
+		if s.resolvedDecisions[blocator] != "" {
+			return errIndexExportSnapshotChanged
+		}
+		if prior, ok := s.missingDecisions[blocator]; ok {
+			if prior.BlockHash != hash || prior.Reason != reason {
+				return errIndexExportSnapshotChanged
+			}
+		} else {
+			cost := 160 + len(blocator) + len(hash) + len(reason)
+			if s.missingBudget == nil || *s.missingBudget < cost {
+				return fmt.Errorf("export unresolved snapshot exceeds memory budget")
+			}
+			*s.missingBudget -= cost
+			s.missingDecisions[blocator] = indexExportMissing{Height: position.Height, BlockHash: hash, Blocator: blocator, Reason: reason}
+		}
+	}
 	s.meta.MissingCount++
 	if len(s.meta.Missing) < 100 {
 		s.meta.Missing = append(s.meta.Missing, indexExportMissing{Height: position.Height, BlockHash: hash, Blocator: blocator, Reason: reason})
@@ -33,6 +50,23 @@ func (s *indexExportSession) missing(blocator, hash, reason string) {
 			s.meta.LookupRange.To = position.Height
 		}
 	}
+	return nil
+}
+
+func (s *indexExportSession) recordResolvedIdentity(blocator, identity string) error {
+	if old, ok := s.resolvedDecisions[blocator]; ok {
+		if old != identity {
+			return errIndexExportSnapshotChanged
+		}
+		return nil
+	}
+	cost := 128 + len(blocator) + len(identity)
+	if s.resolvedBudget == nil || *s.resolvedBudget < cost {
+		return fmt.Errorf("export identity review exceeds transient memory budget")
+	}
+	*s.resolvedBudget -= cost
+	s.resolvedDecisions[blocator] = identity
+	return nil
 }
 func (s *indexExportSession) identity(blocator, blockHash string) (string, error) {
 	position, ok := parseBODCoordinate(blocator)
@@ -44,6 +78,22 @@ func (s *indexExportSession) identity(blocator, blockHash string) (string, error
 	}
 	if s.q.Representation == "native" {
 		return blocator, nil
+	}
+	if s.replayMissing || s.recordMissing {
+		if prior, ok := s.missingDecisions[blocator]; ok {
+			if prior.BlockHash != blockHash {
+				return "", errIndexExportSnapshotChanged
+			}
+			if s.replayMissing {
+				if err := s.verifyOmittedIdentity(position, blocator, blockHash); err != nil {
+					return "", err
+				}
+			}
+			if err := s.missing(blocator, blockHash, prior.Reason); err != nil {
+				return "", err
+			}
+			return "", nil
+		}
 	}
 	var found string
 	merge := func(txid string) error {
@@ -130,10 +180,85 @@ func (s *indexExportSession) identity(blocator, blockHash string) (string, error
 		}
 	}
 	if found == "" {
-		s.missing(blocator, blockHash, "transaction-ID lookup evidence and retained Raw reveal bytes are unavailable")
+		if err := s.missing(blocator, blockHash, "transaction-ID lookup evidence and retained Raw reveal bytes are unavailable"); err != nil {
+			return "", err
+		}
 		return "", nil
 	}
-	return fmt.Sprintf("%si%d", found, position.InscriptionIndex), nil
+	identity := fmt.Sprintf("%si%d", found, position.InscriptionIndex)
+	if s.recordMissing {
+		if err := s.recordResolvedIdentity(blocator, identity); err != nil {
+			return "", err
+		}
+	}
+	return identity, nil
+}
+
+// Preserve the reviewed omission but reauthenticate every captured lookup that
+// was consulted for it. Newly available local Raw may be checked for integrity
+// and consistency but cannot change the already reviewed output.
+func (s *indexExportSession) verifyOmittedIdentity(position bodCoordinate, blocator, blockHash string) error {
+	if !s.rawTried || s.rawHeight != position.Height || s.rawHash != blockHash {
+		s.rawTried, s.rawHeight, s.rawHash = true, position.Height, blockHash
+		s.rawView, s.rawIDs = nil, nil
+		view, err := s.rawRead(s.ctx, position.Height, blockHash)
+		if err != nil {
+			return err
+		}
+		s.rawView = view
+		if view != nil {
+			extracted, err := extractInscriptionOccurrences(*view)
+			if err != nil {
+				return err
+			}
+			s.rawIDs = map[string]string{}
+			for _, occurrence := range extracted.Occurrences {
+				s.rawIDs[inscriptionCoordinate(uint32(occurrence.TxIndex), occurrence.Index, occurrence.BlockHeight)] = occurrence.ID
+			}
+		}
+	}
+	if s.rawView != nil && s.rawIDs[blocator] == "" {
+		return fmt.Errorf("saved occurrence is absent from its verified Raw reveal block: %s", blocator)
+	}
+	for _, p := range s.lookups {
+		batch, have, err := s.lookupBatch(p, position.Height)
+		if err != nil {
+			return err
+		}
+		if !have {
+			continue
+		}
+		if batch.Checkpoint.BlockHash != blockHash {
+			return errIndexExportSnapshotChanged
+		}
+		id, err := s.batchTxID(p.s, batch, position.TxIndex, position.InscriptionIndex)
+		if err != nil {
+			return err
+		}
+		if id != "" {
+			return errIndexExportSnapshotChanged
+		}
+	}
+	for _, view := range s.lookupViews {
+		if view.blocks[strconv.FormatInt(position.Height, 10)] == "" {
+			continue
+		}
+		batch, err := s.browseBatch(view, position.Height)
+		if err != nil {
+			return err
+		}
+		if batch.Checkpoint.BlockHash != blockHash {
+			return errIndexExportSnapshotChanged
+		}
+		id, err := s.batchTxID(view.s, batch, position.TxIndex, position.InscriptionIndex)
+		if err != nil {
+			return err
+		}
+		if id != "" {
+			return errIndexExportSnapshotChanged
+		}
+	}
+	return nil
 }
 func (s *indexExportSession) lookupBatch(p *indexExportPinnedStore, height int64) (indexBatch, bool, error) {
 	if height < p.from || height > p.to {
@@ -146,7 +271,14 @@ func (s *indexExportSession) lookupBatch(p *indexExportPinnedStore, height int64
 	var err error
 	if p.spill == nil {
 		var ready bool
-		commit, ready, err = p.s.activeLocatorCommitContext(s.ctx, height)
+		if p.forcePinned {
+			commit, ready = p.pinnedLookups[height], true
+			if commit == "" {
+				return indexBatch{}, false, errIndexExportSnapshotChanged
+			}
+		} else {
+			commit, ready, err = p.s.activeLocatorCommitContext(s.ctx, height)
+		}
 		if err != nil && s.ctx.Err() != nil {
 			return indexBatch{}, false, s.ctx.Err()
 		}
@@ -172,6 +304,19 @@ func (s *indexExportSession) lookupBatch(p *indexExportPinnedStore, height int64
 	}
 	if err = s.anchor(height, b.Checkpoint.BlockHash); err != nil {
 		return b, false, err
+	}
+	if p.recordLookups {
+		if prior, present := p.pinnedLookups[height]; present {
+			if prior != commit {
+				return b, false, errIndexExportSnapshotChanged
+			}
+		} else {
+			if p.pinBudget == nil || *p.pinBudget < 160 {
+				return b, false, fmt.Errorf("export lookup snapshot exceeds memory budget")
+			}
+			*p.pinBudget -= 160
+		}
+		p.pinnedLookups[height] = commit
 	}
 	if len(p.cache) >= 2 {
 		p.cache = map[int64]indexBatch{}

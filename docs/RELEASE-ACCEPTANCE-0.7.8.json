@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "version": "0.7.8",
+  "title": "v0.7.8: Bitmap Districts",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-27",
+  "status": "release-candidate-in-validation",
+  "published": false,
+  "release_kind": "prerelease",
+  "source_identity_note": "The final release source has not yet been frozen. A package must identify its exact committed source in SOURCE-REVISION.txt and artifact-manifest.json; the release tag must resolve to that same commit. This record cannot contain its own future commit identity. Subsequent acceptance and publication evidence must identify the precise source and artifact hashes it actually tested.",
+  "enabled_indexes": [
+    "headers",
+    "blocks",
+    "inscriptions",
+    "tx-locator",
+    "txo-spender",
+    "utxo-state",
+    "address-state",
+    "address-history",
+    "sat-state",
+    "bitmap-districts-standard-v1"
+  ],
+  "gated_features": [
+    "bitmap-parcels",
+    "bitmap-chains",
+    "bitmap-custom-execution",
+    "satline",
+    "gateway-peerhood"
+  ],
+  "validation_mode": "header_anchored_processing",
+  "consensus_validated": false,
+  "recorded_evidence": {
+    "prior_local_performance_replays": {
+      "result": "bounded-preview-evidence",
+      "reference": "VERIFICATION-PERFORMANCE-0.7.8.md",
+      "scope": "Separate local compiled clients, synthetic populated TX point fixtures and a bounded authenticated Bitcoin-block replay. These measurements have stated cache, sample and workload limitations and do not establish full-mainnet or final-release performance."
+    },
+    "prior_parcel_availability": {
+      "source_revision": "efc5b13",
+      "result": "implemented-on-source",
+      "scope": "Parcel execution and normal UI entries were disabled while retaining saved evidence. Current final-source checks remain required."
+    },
+    "bops_bounded_winner_comparison": {
+      "result": "3645-identical-keys-and-inscription-ids-in-supplied-files",
+      "source_scope": "The supplied Gateway candidate snapshot summary reports commitment e79edb731a3ff43a9c84bddf89d3c8774331a438dd9ce6f18862ba04bad7d25e and reveal blocks 792435\u2013794387. The captured candidate JSONL contains 4,976 rows: 3,645 selected and 1,331 not selected. The 3,645 selected targets and their candidate fields exactly match the supplied verified-winner JSONL; its reported inscription IDs exactly match the Gateway comparison JSON. These rows span 241 distinct reveal heights from 792435 through 794387.",
+      "comparison_observation": "A fresh read-only comparison of the supplied Gateway and Bops-labelled JSON objects found 3,645 unique target keys in each, 3,645 exact conventional inscription ID matches, zero different IDs, zero Gateway-only keys and zero reference-only keys. Both computed file SHA-256 values match the supplied comparison report. The BoppletonLiveOCI screenshot also displays the Gateway input filename and reports 3,645 IDs checked and matched, with zero different, not-in-index, not-pulled or unconfirmed; its status bar displays block 794387. Its complete-range checkbox is off.",
+      "evidence_files": [
+        {
+          "file": "Gateway-winners-verified-IDs-792435-794387.json",
+          "bytes": 278203,
+          "sha256": "de9816a757304a1d9ba100901024493833091c5ddfaf3fdc76af05c5196bd8e2"
+        },
+        {
+          "file": "Gateway-Bops-comparison-3645-winners.png",
+          "bytes": 121900,
+          "sha256": "c4d44b6b789dae3745dc973fe2b3746aadacf9b41f9bc2d967c008f750de1fc1",
+          "format": "JPEG bytes despite .png filename",
+          "dimensions": "1529x826"
+        },
+        {
+          "file": "Bops-LiveOCI-reference-792435-794387.json",
+          "bytes": 278203,
+          "sha256": "6df245bccacecb63d2d2a0ac377024ac32401b4cf1bfce409315664058a3ce3c"
+        },
+        {
+          "file": "Gateway-Bops-id-comparison-792435-794387.json",
+          "bytes": 427,
+          "sha256": "9515ae16bd90820af3aea093c1d7ccfebe571935c15bbf17fd16999417115eb0"
+        },
+        {
+          "file": "Gateway-district-candidates-snapshot-794387.jsonl",
+          "bytes": 2205783,
+          "sha256": "15e4aace55693dd2b4278699fac61fd4141f0ffbe564c55586514bbc6a1c4c84"
+        },
+        {
+          "file": "Gateway-district-winners-794387-verified-ids.jsonl",
+          "bytes": 1947026,
+          "sha256": "f7a76f74c5d63847bd4357f7fba4389948883e9765a24007071057a9ecb06b5d"
+        },
+        {
+          "file": "Gateway-district-winners-794387-id-verification.json",
+          "bytes": 550,
+          "sha256": "50cd1debe3530d17bdc521066a46cf2958a12aad29bf0f8769a6e43e95c1414c"
+        }
+      ],
+      "limits": "File-to-file equality and hash bindings were independently recomputed from the supplied local files. The JSON objects do not independently establish that the reference was captured from Bops, that the candidate list is a complete authenticated Gateway snapshot, or that reported Bitcoin block proofs were actually verified. The screenshot does not cryptographically bind its browser input to the supplied file hash, and its complete-range checkbox is off. This bounded comparison is not full-mainnet acceptance, consensus validation, or a test of the final export implementation or release binary; no active profile was inspected.",
+      "supporting_reported_verification": "The separate supplied verification report states that 3,645 winners across 241 blocks were verified by checking double-SHA256 header identity and ordered TXID-list Merkle roots using Blockstream API evidence, with zero omitted. This is the report's claim; the evidence inspected here does not independently replay those block/header checks."
+    }
+  },
+  "pending_release_gates": [
+    "Freeze and commit the final source, including the current export changes, then run and record the required source, regression and platform checks against that exact source.",
+    "Review the bounded Bops comparison evidence and verify indexing performance is adequate for the user before release.",
+    "Build from a neutral workspace using a completed validated header baseline and the reviewed public update channel; independently audit the exact Windows and Linux artifacts, installer payloads, package contents and hashes.",
+    "Complete separate exact-artifact startup, restart, indexing/export, native browser and installation checks, recording failures and skips without inferring results from earlier previews.",
+    "Publish only the approved exact-source tag and audited artifacts; verify all published asset hashes and perform separate published Linux and native acceptance.",
+    "Prepare and authenticate the initial signed application/header bundle against the exact published release and current previous sequences; promote the approved version and verify the live manifests, actual downloads and prior-client upgrade separately."
+  ],
+  "limits": [
+    "Full-mainnet indexing time, memory use, storage use and live peer performance have not been established by the bounded fixtures.",
+    "Bitmap Parcels and both Bitmap chains are disabled; saved evidence is preserved. Full Bitcoin consensus and script validation are not provided.",
+    "Windows binaries are not Authenticode signed. Installation, browser registration and antivirus or SmartScreen acceptance need their own evidence."
+  ]
+}

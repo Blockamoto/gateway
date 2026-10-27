@@ -14,8 +14,9 @@ lookup stores, or install browser routing.
 
 ## Coverage and lookup requirements
 
-A complete export contains all records in the stated saved scope. It does not
-assert that gaps or earlier/later Bitcoin history were indexed. Inscriptions
+A complete export contains all records in the stated saved scope. A partial
+District conventional-ID export contains only verifiably translated winners.
+Neither asserts that gaps or earlier/later Bitcoin history were indexed. Inscriptions
 can include verified committed sparse browsing coverage as well as their saved
 linear prefix; the file identifies the captured sources and coverage. Pending
 work and staged, uncommitted indexing progress are excluded.
@@ -28,14 +29,23 @@ Raw bodies, verified local archive/cache blocks, and read-only mounted blocks
 can supply the conversion. Export never fetches missing
 blocks or constructs locators implicitly.
 
-If any required reference cannot be resolved consistently, the conventional
-file is unavailable. The review reports the missing count, bounded examples
-and the height span containing missing lookups. That span can include gaps and
-parent reveals outside the index's own coverage. Examples are labelled when
-they are not exhaustive. **Arm TX ID Locators** is an explicit staging action;
-it preserves the current range and Live choices. Choose the relevant In/Out
-range and press Play separately when ready. Native export remains a separate
-choice and does not claim that unknown conventional IDs are known.
+For a District conventional-ID export, unavailable translations do not prevent
+an export: verified winner mappings are included and unresolved winners are
+omitted. Review and the file report that the result is partial and give the
+number of omitted District winners. The missing-reference count can be larger
+than the number of omitted winners because the same inscription can occur in
+more than one export record. It is not a complete District dataset. A conflict,
+corruption or invalid selected-chain evidence still fails rather than becoming
+an omission. Other export types still require complete identity conversion.
+
+The review reports bounded missing examples and the height span containing
+missing lookups. The span can include gaps and parent reveals outside the index's
+own coverage. **Arm TX ID Locators** is an explicit staging action; it preserves
+the current range and Live choices. Review the next required block and run range
+before pressing Play. An existing sequential TX index resumes from its saved
+checkpoint: it cannot jump a gap or prepend earlier history. Native export
+remains a separate choice and does not claim that unknown conventional IDs are
+known.
 
 ## File format
 
@@ -47,7 +57,10 @@ header summary. Data records follow, then a completion footer with application
 record counts and a checksum for all preceding file bytes. Coverage and
 source-membership manifest lines are excluded from the application row count.
 Source commitments attest the original stored evidence; they are not hashes
-of the converted record bytes.
+of the converted record bytes. The coverage describes the saved source scope,
+not a claim that every District winner was translated. Partial District files
+report omitted winners in the completion footer and unresolved source-block
+references are explicitly marked incomplete.
 
 The two representations use the same record layout. Only inscription identity
 references are converted. Inscriptions export occurrence mappings and compact
@@ -82,19 +95,29 @@ Both endpoints accept local, same-origin JSON POST requests:
 Supported indexes are `inscriptions`, `bitmap-districts-standard-v1` and
 `bitmap-parcels-standard-v1`. Representations are `native` and `conventional`.
 Review reports readiness, coverage, source anchors, counts and requirements.
-A failed or incomplete review does not enable download.
+A successful review pins its exact output in this Gateway process for up to
+15 minutes; the returned `expires_at` is an upper bound. Restarting Gateway or
+evicting older reviews to stay within the bounded review capacity can expire it
+sooner. A partial District conventional-ID review enables a clearly labelled
+partial download; other incomplete reviews do not enable download. The process
+keeps at most four reviews under an estimated 256 MiB aggregate retained-pin
+budget. One generation also has a separate estimated 256 MiB transient identity
+consistency budget, in addition to normal index and session buffers. A review
+that exceeds a budget fails explicitly; these estimates are not RSS limits.
 
-Download validates the selected committed snapshot and prepares the entire
-artifact in a private temporary spool before sending attachment headers.
-Missing, changed or conflicting evidence produces an error response rather
-than a successful partial file. A successful response includes the completed
-snapshot, byte length and export checksum. The UI checks those completion
-headers and receives the complete file before offering it as a download.
+Download revalidates the reviewed committed sources and selected-chain anchors
+and prepares the entire artifact in a private temporary spool before sending
+attachment headers. It compares the completed bytes with the reviewed artifact.
+Missing, deleted, reorganized, changed or conflicting evidence produces an
+error response rather than an unverified file. Expired, evicted or lost
+reviews require a fresh preparation. A successful response confirms that the artifact transfer is complete separately
+from whether the dataset is complete, and includes the snapshot, byte length
+and export checksum. The UI checks those headers and receives the complete
+artifact before offering it as a download.
 Temporary spools are removed on success, failure and cancellation.
 
-New progress is not silently added to the reviewed snapshot. If the source
-cannot safely provide that snapshot while work changes, export reports the
-requirement or asks for another review; it does not control the ongoing run.
+New append-only progress does not change or invalidate the reviewed snapshot;
+it is not added to the downloaded file. Export does not control the ongoing run.
 
 ## Verification
 

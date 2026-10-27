@@ -58,12 +58,15 @@ func TestIndexExportInventoryRejectsKnownPositiveSources(t *testing.T) {
 					if !validHash(meta.Snapshot) {
 						t.Fatal("fixture did not reach captured inventory validation", meta)
 					}
-					q.Snapshot = meta.Snapshot
-					body, err := json.Marshal(q)
-					if err != nil {
-						t.Fatal(err)
-					}
 					for _, action := range []string{"review", "download"} {
+						request := q
+						if action == "download" {
+							request.Snapshot = meta.Snapshot
+						}
+						body, err := json.Marshal(request)
+						if err != nil {
+							t.Fatal(err)
+						}
 						w := httptest.NewRecorder()
 						r := indexExportHTTPTestRequest("POST", action, string(body))
 						if action == "review" {
@@ -71,7 +74,11 @@ func TestIndexExportInventoryRejectsKnownPositiveSources(t *testing.T) {
 						} else {
 							a.handleIndexExportDownload(w, r)
 						}
-						if w.Code != 409 || !strings.Contains(w.Body.String(), "inventory") || w.Header().Get("Content-Disposition") != "" || w.Header().Get("X-Gateway-Export-Complete") != "" || strings.Contains(w.Body.String(), `"type":"inscription"`) {
+						want := "inventory"
+						if action == "download" {
+							want = "snapshot_expired"
+						} // Failed reviews never create downloadable pins.
+						if w.Code != 409 || !strings.Contains(w.Body.String(), want) || w.Header().Get("Content-Disposition") != "" || w.Header().Get("X-Gateway-Export-Complete") != "" || strings.Contains(w.Body.String(), `"type":"inscription"`) {
 							t.Fatal("partial inventory did not reach its export rejection", action, w.Code, w.Header(), w.Body.String())
 						}
 					}
@@ -145,7 +152,7 @@ func TestIndexExportInventoryRejectsOlderPointPrefix(t *testing.T) {
 		body, _ := json.Marshal(q)
 		w := httptest.NewRecorder()
 		a.handleIndexExportDownload(w, indexExportHTTPTestRequest("POST", "download", string(body)))
-		if w.Code != 409 || !strings.Contains(w.Body.String(), "inventory") || w.Header().Get("Content-Disposition") != "" || w.Header().Get("X-Gateway-Export-Complete") != "" {
+		if w.Code != 409 || !strings.Contains(w.Body.String(), "snapshot_expired") || w.Header().Get("Content-Disposition") != "" || w.Header().Get("X-Gateway-Export-Complete") != "" {
 			t.Fatal("older partial prefix did not reach its export rejection", w.Code, w.Header(), w.Body.String())
 		}
 	}

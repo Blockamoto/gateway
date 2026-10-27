@@ -4,6 +4,7 @@ package main
 // HTTP callers must spool this writer and attach it only when Complete is true.
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"./internal/updateapply"
 )
@@ -61,6 +63,7 @@ type indexExportMetadata struct {
 	Representation   string                   `json:"representation"`
 	Format           string                   `json:"format"`
 	Snapshot         string                   `json:"snapshot"`
+	ExpiresAt        string                   `json:"expires_at,omitempty"`
 	Sources          []indexExportSource      `json:"sources"`
 	SourcesTotal     uint64                   `json:"sources_total"`
 	Coverage         []heightInterval         `json:"coverage"`
@@ -68,6 +71,8 @@ type indexExportMetadata struct {
 	Blocks           uint64                   `json:"blocks"`
 	Ready            bool                     `json:"ready"`
 	Complete         bool                     `json:"complete"`
+	Partial          bool                     `json:"partial"`
+	OmittedWinners   uint64                   `json:"omitted_winners"`
 	MissingCount     uint64                   `json:"missing_count"`
 	Missing          []indexExportMissing     `json:"missing"`
 	MissingTruncated bool                     `json:"missing_truncated"`
@@ -76,11 +81,15 @@ type indexExportMetadata struct {
 	Note             string                   `json:"note"`
 }
 type indexExportPinnedStore struct {
-	s     *indexStore
-	from  int64
-	to    int64
-	cache map[int64]indexBatch
-	spill *os.File
+	s             *indexStore
+	from          int64
+	to            int64
+	cache         map[int64]indexBatch
+	spill         *os.File
+	forcePinned   bool
+	recordLookups bool
+	pinnedLookups map[int64]string
+	pinBudget     *int
 }
 type indexExportBrowse struct {
 	s      *indexStore
@@ -89,28 +98,34 @@ type indexExportBrowse struct {
 	cache  map[int64]indexBatch
 }
 type indexExportSession struct {
-	a           *app
-	ctx         context.Context
-	q           indexExportRequest
-	meta        indexExportMetadata
-	primary     *indexExportPinnedStore
-	browse      *indexExportBrowse
-	bitmap      *bitmapDevelopmentHead
-	district    *bitmapDevelopmentHead
-	lookups     []*indexExportPinnedStore
-	lookupViews []*indexExportBrowse
-	memberships []*indexExportBrowse
-	anchors     map[int64]string
-	authority   chainAuthorityView
-	hashAt      func(int64) (string, error)
-	readBytes   int64
-	readBlocks  int
-	rawHeight   int64
-	rawHash     string
-	rawView     *blockView
-	rawTried    bool
-	rawIDs      map[string]string
-	rawRead     func(context.Context, int64, string) (*blockView, error)
+	a                 *app
+	ctx               context.Context
+	q                 indexExportRequest
+	meta              indexExportMetadata
+	primary           *indexExportPinnedStore
+	browse            *indexExportBrowse
+	bitmap            *bitmapDevelopmentHead
+	district          *bitmapDevelopmentHead
+	lookups           []*indexExportPinnedStore
+	lookupViews       []*indexExportBrowse
+	memberships       []*indexExportBrowse
+	anchors           map[int64]string
+	authority         chainAuthorityView
+	hashAt            func(int64) (string, error)
+	readBytes         int64
+	readBlocks        int
+	rawHeight         int64
+	rawHash           string
+	rawView           *blockView
+	rawTried          bool
+	rawIDs            map[string]string
+	rawRead           func(context.Context, int64, string) (*blockView, error)
+	missingDecisions  map[string]indexExportMissing
+	resolvedDecisions map[string]string
+	recordMissing     bool
+	replayMissing     bool
+	missingBudget     *int
+	resolvedBudget    *int
 }
 type indexExportEncoder struct {
 	w      io.Writer
@@ -140,12 +155,24 @@ func (e *indexExportEncoder) line(v any) error {
 	return nil
 }
 func (a *app) indexExportReview(ctx context.Context, q indexExportRequest) (indexExportMetadata, error) {
-	return a.writeIndexExport(ctx, q, io.Discard)
+	return a.runIndexExport(ctx, q, io.Discard, true)
 }
 func (a *app) writeIndexExport(ctx context.Context, q indexExportRequest, w io.Writer) (indexExportMetadata, error) {
+	return a.runIndexExport(ctx, q, w, false)
+}
+func (a *app) runIndexExport(ctx context.Context, q indexExportRequest, w io.Writer, review bool) (indexExportMetadata, error) {
+	if err := ctx.Err(); err != nil {
+		return indexExportMetadata{}, err
+	}
+	select {
+	case indexExportGenerationSlot <- struct{}{}:
+		defer func() { <-indexExportGenerationSlot }()
+	default:
+		return indexExportMetadata{}, errIndexExportBusy
+	}
 	s := &indexExportSession{a: a, ctx: ctx, q: q, anchors: map[int64]string{}, rawHeight: -1}
-	defer s.close()
-	s.meta = indexExportMetadata{Schema: 1, Index: q.Index, Representation: q.Representation, Format: indexExportJSONLFormat, Sources: []indexExportSource{}, Coverage: []heightInterval{}, Missing: []indexExportMissing{}, Requirements: []indexExportRequirement{}, Note: "Complete export means all saved committed coverage in this snapshot, not complete chain coverage. Gaps remain unknown. Source commitments authenticate original records; exported bytes have a separate checksum."}
+	defer func() { s.close() }()
+	s.meta = indexExportMetadata{Schema: 1, Index: q.Index, Representation: q.Representation, Format: indexExportJSONLFormat, Sources: []indexExportSource{}, Coverage: []heightInterval{}, Missing: []indexExportMissing{}, Requirements: []indexExportRequirement{}, Note: "Coverage describes saved committed source blocks, not output completeness or complete chain coverage. Gaps remain unknown; see the end record for output completeness and omissions. Source commitments authenticate original records; exported bytes have a separate checksum."}
 	if q.Index != "inscriptions" && q.Index != bitmapStandardDistrictID && q.Index != bitmapStandardParcelID {
 		return s.meta, fmt.Errorf("export supports Inscriptions and Bitmap Standard V1 Districts/Parcels only")
 	}
@@ -155,8 +182,29 @@ func (a *app) writeIndexExport(ctx context.Context, q indexExportRequest, w io.W
 	if err := ctx.Err(); err != nil {
 		return s.meta, err
 	}
+	var pin *indexExportPin
+	if q.Snapshot != "" {
+		var err error
+		pin, err = findIndexExportPin(a, q)
+		if err != nil {
+			return s.meta, err
+		}
+	}
 	if err := s.capture(); err != nil {
+		if errors.Is(err, errIndexExportBusy) {
+			return s.meta, err
+		}
+		if pin != nil && ctx.Err() == nil {
+			return s.meta, fmt.Errorf("%w: %v", errIndexExportSnapshotChanged, err)
+		}
 		return s.failed(err)
+	}
+	if pin != nil {
+		if err := s.validateExportPin(pin); err != nil {
+			return s.meta, err
+		}
+		s.close()
+		s = pin.session(ctx, a, q, s.authority, s.hashAt, s.rawRead)
 	}
 	if len(s.meta.Coverage) == 0 {
 		s.meta.Note = "No committed index coverage is available to export. Pending and staged work is excluded."
@@ -167,15 +215,52 @@ func (a *app) writeIndexExport(ctx context.Context, q indexExportRequest, w io.W
 		Sources               []indexExportSource
 		Coverage              []heightInterval
 	}{q.Index, q.Representation, s.meta.Sources, s.meta.Coverage})
+	if pin != nil {
+		s.meta.Snapshot = pin.plan.meta.Snapshot
+	} else if review {
+		var nonce [32]byte
+		if _, err := rand.Read(nonce[:]); err != nil {
+			return s.meta, err
+		}
+		s.meta.Snapshot = indexDigest(struct {
+			Snapshot string
+			Nonce    [32]byte
+		}{s.meta.Snapshot, nonce})
+	}
 	if q.Snapshot != "" && q.Snapshot != s.meta.Snapshot {
 		return s.meta, errIndexExportSnapshotChanged
 	}
-	e := &indexExportEncoder{w: w, digest: sha256.New()}
+	var draft *indexExportPin
+	initialNote := s.meta.Note
+	if review && q.Snapshot == "" {
+		budget := indexExportPinMemoryLimit - newIndexExportPin(s).weight
+		if budget < 0 {
+			return s.meta, fmt.Errorf("export review exceeds the bounded snapshot memory budget")
+		}
+		if q.Index == bitmapStandardDistrictID && q.Representation == "conventional" {
+			resolvedBudget := indexExportResolvedReviewMemoryLimit
+			s.recordMissing = true
+			s.missingDecisions = make(map[string]indexExportMissing)
+			s.resolvedDecisions = make(map[string]string)
+			s.missingBudget = &budget
+			s.resolvedBudget = &resolvedBudget
+		}
+		for _, store := range s.lookups {
+			if store != nil {
+				store.recordLookups = true
+				store.pinnedLookups = make(map[int64]string)
+				store.pinBudget = &budget
+			}
+		}
+	}
+	whole := sha256.New()
+	counter := &indexExportCountWriter{w: io.MultiWriter(w, whole)}
+	e := &indexExportEncoder{w: counter, digest: sha256.New()}
 	preview := s.meta.Coverage
 	if len(preview) > 20 {
 		preview = preview[:20]
 	}
-	if err := e.line(map[string]any{"type": "metadata", "schema": 1, "format": s.meta.Format, "index": q.Index, "representation": q.Representation, "snapshot": s.meta.Snapshot, "sources": s.meta.Sources, "sources_total": s.meta.SourcesTotal, "coverage": preview, "coverage_count": len(s.meta.Coverage), "coverage_digest": indexDigest(s.meta.Coverage), "scope": "saved_committed_coverage; gaps_unknown", "note": s.meta.Note}); err != nil {
+	if err := e.line(map[string]any{"type": "metadata", "schema": 1, "format": s.meta.Format, "index": q.Index, "representation": q.Representation, "snapshot": s.meta.Snapshot, "sources": s.meta.Sources, "sources_total": s.meta.SourcesTotal, "coverage": preview, "coverage_count": len(s.meta.Coverage), "coverage_digest": indexDigest(s.meta.Coverage), "scope": "saved_committed_source_coverage; gaps_unknown; output_completeness_in_end_record", "note": s.meta.Note}); err != nil {
 		return s.meta, err
 	}
 	if err := s.membershipLines(e); err != nil {
@@ -199,14 +284,81 @@ func (a *app) writeIndexExport(ctx context.Context, q indexExportRequest, w io.W
 	if s.meta.MissingCount > 0 {
 		s.meta.MissingTruncated = s.meta.MissingCount > uint64(len(s.meta.Missing))
 		s.meta.Requirements = []indexExportRequirement{{Index: "tx-locator", State: "lookup_evidence_missing", Reason: "Conventional export needs verified transaction-ID lookup evidence at the missing reveal positions, or retained verified Raw blocks. This does not arm, fetch, repair, start or backfill anything.", Action: "inspect", LookupRange: s.meta.LookupRange}}
-		s.meta.Note = "Conventional export is incomplete; no download is available. missing_count counts identity references; missing is a bounded sample. lookup_range is the bounding span of all missing reference heights and may include gaps."
-		return s.meta, nil
+		if q.Index == bitmapStandardDistrictID && q.Representation == "conventional" && s.meta.OmittedWinners > 0 {
+			s.meta.Partial = true
+			s.meta.Note = "Partial District export: unresolved winner mappings are omitted. Coverage describes saved source blocks, not complete output. missing_count counts identity references; omitted_winners counts omitted mappings."
+		} else {
+			s.meta.Note = "Conventional export is incomplete; no download is available. missing_count counts identity references; missing is a bounded sample. lookup_range is the bounding span of all missing reference heights and may include gaps."
+			return s.meta, nil
+		}
 	}
 	checksum := hex.EncodeToString(e.digest.Sum(nil))
-	if err = e.line(map[string]any{"type": "end", "snapshot": s.meta.Snapshot, "complete": true, "rows": s.meta.Rows, "blocks": s.meta.Blocks, "payload_sha256": checksum}); err != nil {
+	if err = e.line(map[string]any{"type": "end", "snapshot": s.meta.Snapshot, "complete": !s.meta.Partial, "partial": s.meta.Partial, "omitted_winners": s.meta.OmittedWinners, "missing_count": s.meta.MissingCount, "rows": s.meta.Rows, "blocks": s.meta.Blocks, "payload_sha256": checksum}); err != nil {
 		return s.meta, err
 	}
-	s.meta.Ready, s.meta.Complete = true, true
+	s.meta.Ready, s.meta.Complete = true, !s.meta.Partial
+	checksumWhole := hex.EncodeToString(whole.Sum(nil))
+	if pin != nil && (checksumWhole != pin.digest || counter.n != pin.size) {
+		s.meta.Ready, s.meta.Complete = false, false
+		return s.meta, errIndexExportSnapshotChanged
+	}
+	if pin != nil {
+		if !time.Now().Before(pin.expires) {
+			return s.meta, errIndexExportExpired
+		}
+		check := &indexExportSession{a: a, ctx: ctx, q: q, anchors: map[int64]string{}, rawHeight: -1}
+		defer check.close()
+		if err := check.capture(); err != nil {
+			if errors.Is(err, errIndexExportBusy) {
+				return s.meta, err
+			}
+			if ctx.Err() != nil {
+				return s.meta, ctx.Err()
+			}
+			return s.meta, fmt.Errorf("%w: %v", errIndexExportSnapshotChanged, err)
+		}
+		if err := check.validateExportPin(pin); err != nil {
+			return s.meta, err
+		}
+		if err := ctx.Err(); err != nil {
+			return s.meta, err
+		}
+		if !time.Now().Before(pin.expires) {
+			return s.meta, errIndexExportExpired
+		}
+	}
+	if review && q.Snapshot == "" {
+		if err := ctx.Err(); err != nil {
+			return s.meta, err
+		}
+		draft = newIndexExportPin(s)
+		draft.plan.meta.Note = initialNote
+		check := &indexExportSession{a: a, ctx: ctx, q: q, anchors: map[int64]string{}, rawHeight: -1}
+		defer check.close()
+		if err := check.capture(); err != nil {
+			if errors.Is(err, errIndexExportBusy) {
+				return s.meta, err
+			}
+			if ctx.Err() != nil {
+				return s.meta, ctx.Err()
+			}
+			return s.meta, fmt.Errorf("%w: %v", errIndexExportSnapshotChanged, err)
+		}
+		if err := check.validateExportPin(draft); err != nil {
+			return s.meta, err
+		}
+		draft.digest, draft.size = checksumWhole, counter.n
+		draft.expires = time.Now().Add(indexExportPinLifetime)
+		if err := ctx.Err(); err != nil {
+			return s.meta, err
+		}
+		if err := saveIndexExportPin(a, q, s.meta.Snapshot, draft); err != nil {
+			return s.meta, err
+		}
+		s.meta.ExpiresAt = draft.expires.UTC().Format(time.RFC3339)
+	} else if pin != nil {
+		s.meta.ExpiresAt = pin.expires.UTC().Format(time.RFC3339)
+	}
 	return s.meta, nil
 }
 
@@ -752,6 +904,7 @@ func (s *indexExportSession) bitmapRows(e *indexExportEncoder) error {
 		return nil
 	}
 	dir := filepath.Join(bitmapDevelopmentDir(s.a.dataDir, h.Index), "pages")
+	outcomes := newOrdinalTree(dir, h.BlockRoot).withContext(s.ctx)
 	winnerCount := uint64(0)
 	if err := s.treeWalk(dir, h.WinnerRoot, func(kv ordinalKV) error {
 		var c bitmapDevelopmentCandidate
@@ -764,6 +917,12 @@ func (s *indexExportSession) bitmapRows(e *indexExportEncoder) error {
 		if c.Kind != bitmapConsumerKind(h.Index) {
 			return fmt.Errorf("Bitmap export kind differs from saved profile")
 		}
+		if c.Kind == "district" && (c.Transaction != nil || len(c.ParentBlocators) != 0 || c.Provenance != nil || c.SelectedParentDeclared) {
+			return fmt.Errorf("District export contains Parcel target or parent provenance")
+		}
+		if c.Kind == "parcel" && c.Transaction == nil {
+			return fmt.Errorf("Parcel export lost its transaction target")
+		}
 		if err := s.anchor(c.RevealHeight, c.RevealHash); err != nil {
 			return err
 		}
@@ -774,7 +933,7 @@ func (s *indexExportSession) bitmapRows(e *indexExportEncoder) error {
 			return fmt.Errorf("Parcel export parent receipt differs from its reveal")
 		}
 		var outcome bitmapDevelopmentBlock
-		have, outcomeErr := newOrdinalTree(dir, h.BlockRoot).withContext(s.ctx).get(fmt.Sprintf("%016x", c.RevealHeight), &outcome)
+		have, outcomeErr := outcomes.get(fmt.Sprintf("%016x", c.RevealHeight), &outcome)
 		if outcomeErr != nil {
 			return outcomeErr
 		}
@@ -788,29 +947,27 @@ func (s *indexExportSession) bitmapRows(e *indexExportEncoder) error {
 		if !have || outcome.Height != c.RevealHeight || outcome.BlockHash != c.RevealHash || !outcome.BlockEvaluated || !outcome.CompleteScope || !inOutcome {
 			return fmt.Errorf("selected Bitmap export record lacks its committed reveal outcome")
 		}
-		identity, err := s.identity(c.Blocator, c.RevealHash)
-		if err != nil {
-			return err
-		}
 		record, err := s.bitmapRecord(c)
 		if err != nil {
 			return err
 		}
+		identity, err := s.identity(c.Blocator, c.RevealHash)
+		if err != nil {
+			return err
+		}
+		winnerCount++
+		if identity == "" && s.q.Index == bitmapStandardDistrictID && s.q.Representation == "conventional" {
+			s.meta.OmittedWinners++
+			return nil
+		}
 		source := map[string]any{"commitment": h.Commitment, "profile_hash": h.ProfileHash, "winner_root": h.WinnerRoot, "candidate_root": h.CandidateRoot, "block_root": h.BlockRoot, "key": kv.Key, "attestation": "original_source_roots; converted export has a separate checksum"}
 		row := map[string]any{"type": "bitmap_winner", "id": identity, "record": record, "source": source}
 		if c.Kind == "district" {
-			if c.Transaction != nil {
-				return fmt.Errorf("District export contains a Parcel target")
-			}
 			row["bitmap"] = *c.District
 		} else {
-			if c.Transaction == nil {
-				return fmt.Errorf("Parcel export lost its transaction target")
-			}
 			row["district"], row["transaction"] = *c.District, *c.Transaction
 			row["parcel"] = fmt.Sprintf("%d.%d.bitmap", *c.Transaction, *c.District)
 		}
-		winnerCount++
 		return s.row(e, row)
 	}); err != nil {
 		return err
@@ -839,14 +996,21 @@ func (s *indexExportSession) bitmapRows(e *indexExportEncoder) error {
 		delete(record, "winner_blocators")
 		delete(record, "ordered_winner_ids")
 		winners := make([]string, 0, len(block.WinnerBlocators))
+		omitted := 0
 		for _, blocator := range block.WinnerBlocators {
 			identity, err := s.identity(blocator, block.BlockHash)
 			if err != nil {
 				return err
 			}
+			if identity == "" && s.q.Index == bitmapStandardDistrictID && s.q.Representation == "conventional" {
+				omitted++
+				continue
+			}
 			winners = append(winners, identity)
 		}
 		record["winner_inscriptions"] = winners
+		record["omitted_winner_inscriptions"] = omitted
+		record["winner_ids_complete"] = omitted == 0
 		s.meta.Blocks++
 		return s.row(e, map[string]any{"type": "source_block", "record": record, "source": map[string]any{"commitment": h.Commitment, "block_root": h.BlockRoot, "profile_hash": h.ProfileHash}})
 	}); err != nil {

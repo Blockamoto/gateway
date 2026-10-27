@@ -4,13 +4,104 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 )
+
+func TestIndexExportMissingDecisionRemainsStableWithinReviewAndReplay(t *testing.T) {
+	blockHash := indexDigest("missing decision selected block")
+	budget := 1024
+	s := &indexExportSession{ctx: context.Background(), q: indexExportRequest{Representation: "conventional"}, anchors: map[int64]string{}, hashAt: func(int64) (string, error) { return blockHash, nil }, rawHeight: -1, recordMissing: true, missingBudget: &budget, missingDecisions: map[string]indexExportMissing{}}
+	s.rawRead = func(context.Context, int64, string) (*blockView, error) { return nil, nil }
+	if id, err := s.identity("1i0.42", blockHash); err != nil || id != "" {
+		t.Fatal(id, err)
+	}
+	s.rawRead = func(context.Context, int64, string) (*blockView, error) {
+		t.Fatal("review revisited resolved source for pinned missing reference")
+		return nil, nil
+	}
+	if id, err := s.identity("1i0.42", blockHash); err != nil || id != "" || s.meta.MissingCount != 2 {
+		t.Fatal(id, err, s.meta.MissingCount)
+	}
+	s.recordMissing, s.replayMissing = false, true
+	if id, err := s.identity("1i0.42", blockHash); err != nil || id != "" || s.meta.MissingCount != 3 {
+		t.Fatal(id, err, s.meta.MissingCount)
+	}
+	s.recordMissing, s.replayMissing = true, false
+	s.resolvedDecisions = map[string]string{"2i0.42": indexDigest("previous verified tx") + "i0"}
+	if err := s.missing("2i0.42", blockHash, "missing"); !errors.Is(err, errIndexExportSnapshotChanged) {
+		t.Fatal("verified identity disappeared during review", err)
+	}
+}
+
+func TestIndexExportDecisionBudgetsAtPopulatedScale(t *testing.T) {
+	const count = 458000
+	retained, transient := indexExportPinMemoryLimit, indexExportResolvedReviewMemoryLimit
+	s := &indexExportSession{recordMissing: true, missingDecisions: map[string]indexExportMissing{}, resolvedDecisions: map[string]string{}, missingBudget: &retained, resolvedBudget: &transient}
+	hash := indexDigest("synthetic selected block")
+	identity := indexDigest("synthetic verified transaction") + "i0"
+	for i := 0; i < count; i++ {
+		if err := s.recordResolvedIdentity(fmt.Sprintf("1i0.%d", i), identity); err != nil {
+			t.Fatal("resolved decision limit below populated scale", i, err)
+		}
+		if err := s.missing(fmt.Sprintf("2i0.%d", i), hash, "unavailable"); err != nil {
+			t.Fatal("unresolved decision limit below populated scale", i, err)
+		}
+	}
+	if indexExportResolvedReviewMemoryLimit-transient <= 32<<20 || indexExportPinMemoryLimit-retained <= 32<<20 || len(s.resolvedDecisions) != count || len(s.missingDecisions) != count {
+		t.Fatal("did not exercise separate populated-size budgets", transient, retained)
+	}
+	retained = 0
+	if err := s.missing("2i0.9999999", hash, "unavailable"); err == nil {
+		t.Fatal("retained budget did not fail closed")
+	}
+	transient = 0
+	if err := s.recordResolvedIdentity("1i0.9999999", identity); err == nil {
+		t.Fatal("transient budget did not fail closed")
+	}
+}
+
+func TestIndexExportOutcomeReaderDiagnostic(t *testing.T) {
+	if os.Getenv("GATEWAY_EXPORT_READER_DIAGNOSTIC") == "" {
+		t.Skip("owned synthetic reader diagnostic")
+	}
+	dir := filepath.Join(t.TempDir(), "pages")
+	tree := newOrdinalTree(dir, "")
+	for i := 0; i < 64; i++ {
+		if err := tree.put(fmt.Sprintf("%016x", i), bitmapDevelopmentBlock{Height: int64(i), BlockEvaluated: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root, err := tree.flush()
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(reuse bool) time.Duration {
+		start := time.Now()
+		reader := newOrdinalTree(dir, root)
+		for i := 0; i < 1000; i++ {
+			if !reuse {
+				reader = newOrdinalTree(dir, root)
+			}
+			var block bitmapDevelopmentBlock
+			ok, err := reader.get(fmt.Sprintf("%016x", i%64), &block)
+			if err != nil || !ok || block.Height != int64(i%64) {
+				t.Fatal(i, ok, block, err)
+			}
+		}
+		return time.Since(start)
+	}
+	fresh, reused := read(false), read(true)
+	t.Logf("1000 synthetic outcome lookups: fresh reader=%s, reused bounded reader=%s; equal results; not a mainnet throughput claim", fresh, reused)
+}
 
 // This checked-in Bitcoin block is the authentic Bitmap-origin reveal block.
 // Writers and the decoder produce all evidence; no ID lookup is injected.
@@ -118,6 +209,71 @@ func TestIndexExportAuthenticRetainedRevealOnlyTranslation(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestIndexExportPartialDistrictPinIgnoresLaterRaw(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("docs", "bitmap-evidence", "genesis-block.raw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := hash256(raw[:80])
+	block, err := parseBlockDetailed(bitmapDevelopmentStart, reverseHex(hash[:]), raw[:80], raw, "export verified fixture", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := exportTestApp(t)
+	a.settings.CoreDisabled, a.settings.CoreMountDisabled, a.settings.NetworkDisabled = true, true, true
+	f, err := os.OpenFile(a.headersPath, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.WriteAt(raw[:80], block.Height*80); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a.status.HeaderHeight, a.status.HeaderCount = block.Height, block.Height+1
+	district := bitmapTestConsumer(t, a.dataDir, bitmapStandardDistrictID)
+	if err = district.Apply(context.Background(), block, nil); err != nil {
+		t.Fatal(err)
+	}
+	if district.head == nil || district.head.WinnerCount == 0 {
+		t.Fatal("fixture has no District winner")
+	}
+	q := indexExportRequest{Index: bitmapStandardDistrictID, Representation: "conventional"}
+	meta, err := a.indexExportReview(context.Background(), q)
+	if err != nil || !meta.Ready || !meta.Partial || meta.Complete || meta.OmittedWinners == 0 {
+		t.Fatal(meta, err)
+	}
+	q.Snapshot = meta.Snapshot
+	pin, err := findIndexExportPin(a, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained, err := openIndexStore(a.dataDir, "blocks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = retained.appendBlock(block, block.Height, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(q)
+	w := httptest.NewRecorder()
+	a.handleIndexExportDownload(w, indexExportHTTPTestRequest("POST", "download", string(body)))
+	if w.Code != 200 || w.Header().Get("X-Gateway-Export-Complete") != "false" || w.Header().Get("X-Gateway-Export-Partial") != "true" || w.Body.Len() != int(pin.size) {
+		t.Fatal(w.Code, w.Header(), w.Body.String())
+	}
+	digest := sha256.Sum256(w.Body.Bytes())
+	if hex.EncodeToString(digest[:]) != pin.digest {
+		t.Fatal("new Raw evidence changed reviewed partial bytes")
+	}
+	q.Snapshot = ""
+	fresh, err := a.indexExportReview(context.Background(), q)
+	if err != nil || !fresh.Complete || fresh.Partial {
+		t.Fatal("new review did not use retained Raw", fresh, err)
 	}
 }
 

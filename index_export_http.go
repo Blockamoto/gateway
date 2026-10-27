@@ -82,6 +82,9 @@ func indexExportFailureStatus(err error) (int, string) {
 	if errors.Is(err, errIndexExportBusy) {
 		return http.StatusConflict, "busy"
 	}
+	if errors.Is(err, errIndexExportExpired) {
+		return http.StatusConflict, "snapshot_expired"
+	}
 	if errors.Is(err, errIndexExportSnapshotChanged) {
 		return http.StatusConflict, "snapshot_changed"
 	}
@@ -89,7 +92,9 @@ func indexExportFailureStatus(err error) (int, string) {
 }
 
 func completeIndexExportMetadata(q indexExportRequest, meta indexExportMetadata) bool {
-	return meta.Ready && meta.Complete && meta.Index == q.Index && meta.Representation == q.Representation && meta.Format == indexExportJSONLFormat && validHash(meta.Snapshot) && (q.Snapshot == "" || meta.Snapshot == q.Snapshot) && meta.MissingCount == 0
+	validComplete := meta.Complete && !meta.Partial && meta.MissingCount == 0 && meta.OmittedWinners == 0
+	validPartial := q.Index == bitmapStandardDistrictID && q.Representation == "conventional" && !meta.Complete && meta.Partial && meta.MissingCount > 0 && meta.OmittedWinners > 0
+	return meta.Ready && (validComplete || validPartial) && meta.Index == q.Index && meta.Representation == q.Representation && meta.Format == indexExportJSONLFormat && validHash(meta.Snapshot) && (q.Snapshot == "" || meta.Snapshot == q.Snapshot)
 }
 
 func (a *app) handleIndexExportReview(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +167,9 @@ func serveIndexExportDownload(w http.ResponseWriter, r *http.Request, q indexExp
 	w.Header().Set("X-Gateway-Export-Snapshot", meta.Snapshot)
 	w.Header().Set("X-Gateway-Export-SHA256", hex.EncodeToString(digest.Sum(nil)))
 	w.Header().Set("X-Gateway-Export-Rows", strconv.FormatUint(meta.Rows, 10))
-	w.Header().Set("X-Gateway-Export-Complete", "true")
+	w.Header().Set("X-Gateway-Export-Artifact-Complete", "true")
+	w.Header().Set("X-Gateway-Export-Complete", strconv.FormatBool(meta.Complete))
+	w.Header().Set("X-Gateway-Export-Partial", strconv.FormatBool(meta.Partial))
+	w.Header().Set("X-Gateway-Export-Omitted-Winners", strconv.FormatUint(meta.OmittedWinners, 10))
 	_, _ = io.Copy(w, file)
 }

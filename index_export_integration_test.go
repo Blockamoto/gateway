@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // These fixtures use the ordinary index writers and selected-header checks.
@@ -220,6 +222,12 @@ func TestIndexExportIntegrationPinnedProgressRestartAndStagedLookup(t *testing.T
 	if err != nil || !old.Complete {
 		t.Fatal(old, err)
 	}
+	oldQuery := q
+	oldQuery.Snapshot = old.Snapshot
+	oldPin, err := findIndexExportPin(a, oldQuery)
+	if err != nil {
+		t.Fatal(err)
+	}
 	lookup, err := openIndexStore(a.dataDir, "tx-locator")
 	if err != nil {
 		t.Fatal(err)
@@ -257,8 +265,8 @@ func TestIndexExportIntegrationPinnedProgressRestartAndStagedLookup(t *testing.T
 	body, _ := json.Marshal(q)
 	w := httptest.NewRecorder()
 	a.handleIndexExportDownload(w, indexExportHTTPTestRequest("POST", "download", string(body)))
-	if w.Code != 409 || w.Header().Get("Content-Disposition") != "" {
-		t.Fatal("changed snapshot was silently exported", w.Code, w.Body.String())
+	if w.Code != 200 || w.Header().Get("X-Gateway-Export-Snapshot") != old.Snapshot || w.Header().Get("X-Gateway-Export-SHA256") != oldPin.digest || int64(w.Body.Len()) != oldPin.size || !strings.Contains(w.Body.String(), `"block_height":42`) || strings.Contains(w.Body.String(), `"block_height":43`) {
+		t.Fatal("append invalidated the reviewed snapshot", w.Code, w.Body.String())
 	}
 	q.Snapshot = ""
 	meta, rows := exportTestArtifact(t, a, q)
@@ -269,10 +277,212 @@ func TestIndexExportIntegrationPinnedProgressRestartAndStagedLookup(t *testing.T
 	status := a.getStatus()
 	restarted.setStatus(func(s *appStatus) { *s = status })
 	got, err := restarted.indexExportReview(context.Background(), q)
-	if err != nil || !got.Complete || got.Snapshot != meta.Snapshot {
-		t.Fatal("read-only reopen changed snapshot", got, meta, err)
+	if err != nil || !got.Complete || got.Snapshot == meta.Snapshot || !reflect.DeepEqual(got.Coverage, meta.Coverage) {
+		t.Fatal("read-only reopen changed coverage or reused a review token", got, meta, err)
 	}
 	exportTestUnchanged(t, a, before)
+}
+
+func TestIndexExportGenerationBusyAndCancellation(t *testing.T) {
+	a, _, _ := exportTestInscriptionFixture(t, "lean")
+	q := indexExportRequest{Index: "inscriptions", Representation: "native"}
+	indexExportGenerationSlot <- struct{}{}
+	_, err := a.indexExportReview(context.Background(), q)
+	if !errors.Is(err, errIndexExportBusy) {
+		<-indexExportGenerationSlot
+		t.Fatal("concurrent generation was not bounded", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = a.indexExportReview(ctx, q)
+	<-indexExportGenerationSlot
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal("cancelled caller did not return cancellation", err)
+	}
+	meta, err := a.indexExportReview(context.Background(), q)
+	if err != nil || !meta.Complete {
+		t.Fatal("generation gate did not release", meta, err)
+	}
+}
+
+type exportTestCallbackWriter struct{ callback func() }
+
+func (w *exportTestCallbackWriter) Write(data []byte) (int, error) {
+	if w.callback != nil {
+		callback := w.callback
+		w.callback = nil
+		callback()
+	}
+	return len(data), nil
+}
+
+func TestIndexExportReviewRejectsDeletionDuringScan(t *testing.T) {
+	a, _, _ := exportTestInscriptionFixture(t, "lean")
+	q := indexExportRequest{Index: "inscriptions", Representation: "native"}
+	w := &exportTestCallbackWriter{callback: func() {
+		if err := os.Remove(filepath.Join(a.dataDir, "indexes", "inscriptions", "head.json")); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	meta, err := a.runIndexExport(context.Background(), q, w, true)
+	if !errors.Is(err, errIndexExportSnapshotChanged) || meta.ExpiresAt != "" {
+		t.Fatal("deleted membership published a review", meta, err)
+	}
+}
+
+func TestIndexExportReviewPinsExpiryDeletionAndReorg(t *testing.T) {
+	for _, change := range []string{"expiry", "deleted head", "corrupt batch", "reorg", "restart", "wrong representation"} {
+		t.Run(change, func(t *testing.T) {
+			a, _, block := exportTestInscriptionFixture(t, "lean")
+			q := indexExportRequest{Index: "inscriptions", Representation: "native"}
+			first, err := a.indexExportReview(context.Background(), q)
+			if err != nil || !first.Complete || first.ExpiresAt == "" {
+				t.Fatal(first, err)
+			}
+			second, err := a.indexExportReview(context.Background(), q)
+			if err != nil || !second.Complete || second.Snapshot == first.Snapshot {
+				t.Fatal("reviews did not get independent tokens", first, second, err)
+			}
+			q.Snapshot = first.Snapshot
+			pin, err := findIndexExportPin(a, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch change {
+			case "expiry":
+				indexExportPins.Lock()
+				pin.expires = time.Now().Add(-time.Second)
+				indexExportPins.Unlock()
+			case "deleted head":
+				if err := os.Remove(filepath.Join(a.dataDir, "indexes", "inscriptions", "head.json")); err != nil {
+					t.Fatal(err)
+				}
+			case "corrupt batch":
+				path := filepath.Join(a.dataDir, "indexes", "inscriptions", "commits", pin.plan.primary.s.head.Commitment+".json")
+				if err := os.WriteFile(path, []byte("corrupt"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "reorg":
+				raw, err := os.ReadFile(a.headersPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				raw[block.Height*80+76] ^= 0x01
+				if err := os.WriteFile(a.headersPath, raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "restart":
+				old := a
+				a = &app{dataDir: old.dataDir, headersPath: old.headersPath, settings: old.settings}
+				status := old.getStatus()
+				a.setStatus(func(s *appStatus) { *s = status })
+			case "wrong representation":
+				q.Representation = "conventional"
+			}
+			body, _ := json.Marshal(q)
+			w := httptest.NewRecorder()
+			a.handleIndexExportDownload(w, indexExportHTTPTestRequest("POST", "download", string(body)))
+			state := "snapshot_changed"
+			if change == "expiry" || change == "restart" || change == "wrong representation" {
+				state = "snapshot_expired"
+			}
+			if w.Code != 409 || w.Header().Get("Content-Disposition") != "" || !strings.Contains(w.Body.String(), `"state":"`+state+`"`) {
+				t.Fatal(change, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestIndexExportPinRejectsRemovedSparseMembership(t *testing.T) {
+	a, _, block := exportTestInscriptionFixture(t, "lean")
+	height := block.Height
+	if _, err := a.prepareIndexRun(indexRunRequest{In: &height, Out: &height, Consumers: []indexRunSelection{{Index: "inscriptions", Armed: true}}}); err != nil {
+		t.Fatal(err)
+	}
+	batch, err := singletonBrowseBatch("inscriptions", block, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added, err := a.persistBrowseBatch(context.Background(), "inscriptions", batch); err != nil || !added {
+		t.Fatal(added, err)
+	}
+	q := indexExportRequest{Index: "inscriptions", Representation: "native"}
+	meta, err := a.indexExportReview(context.Background(), q)
+	if err != nil || !meta.Complete {
+		t.Fatal(meta, err)
+	}
+	q.Snapshot = meta.Snapshot
+	path := filepath.Join(a.dataDir, "indexes", "browse", "inscriptions", "head.json")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(a.dataDir, "indexes", "browse", "inscriptions", "commits", batch.Checkpoint.Commitment+".json")); err != nil {
+		t.Fatal("fixture must leave old bytes behind", err)
+	}
+	body, _ := json.Marshal(q)
+	w := httptest.NewRecorder()
+	a.handleIndexExportDownload(w, indexExportHTTPTestRequest("POST", "download", string(body)))
+	if w.Code != 409 || w.Header().Get("Content-Disposition") != "" || !strings.Contains(w.Body.String(), `"state":"snapshot_changed"`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestIndexExportOmissionRechecksCapturedNonHeadLookup(t *testing.T) {
+	for _, damage := range []string{"corrupt", "delete"} {
+		t.Run(damage, func(t *testing.T) {
+			a := exportTestApp(t)
+			first := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "", "0.bitmap")
+			installRunProtocolHeader(t, a, &first)
+			second := bitmapDevelopmentFixtureBlock(first.Height+1, first.Hash)
+			installRunProtocolHeader(t, a, &second)
+			district := bitmapTestConsumer(t, a.dataDir, bitmapStandardDistrictID)
+			for _, block := range []blockView{first, second} {
+				if err := district.Apply(context.Background(), block, nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A synthetic zero-occurrence lookup at the first selected block is
+			// intentionally missing the District identity; its next block is head.
+			blank := bitmapDevelopmentFixtureBlock(first.Height, "")
+			blank.Hash = first.Hash
+			store, err := openIndexStore(a.dataDir, "inscriptions")
+			if err != nil {
+				t.Fatal(err)
+			}
+			store.head.Mode = "lean"
+			if err = store.appendBlock(blank, first.Height, "ephemeral"); err != nil {
+				t.Fatal(err)
+			}
+			firstCommit := store.head.Commitment
+			if err = store.appendBlock(second, first.Height, "ephemeral"); err != nil {
+				t.Fatal(err)
+			}
+			if store.head.Commitment == firstCommit {
+				t.Fatal("fixture did not advance lookup head")
+			}
+			q := indexExportRequest{Index: bitmapStandardDistrictID, Representation: "conventional"}
+			meta, err := a.indexExportReview(context.Background(), q)
+			if err != nil || !meta.Ready || !meta.Partial || meta.OmittedWinners != 1 {
+				t.Fatal(meta, err)
+			}
+			q.Snapshot = meta.Snapshot
+			path := filepath.Join(store.dir, "commits", firstCommit+".json")
+			if damage == "corrupt" {
+				err = os.WriteFile(path, []byte("corrupt"), 0600)
+			} else {
+				err = os.Remove(path)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := json.Marshal(q)
+			w := httptest.NewRecorder()
+			a.handleIndexExportDownload(w, indexExportHTTPTestRequest("POST", "download", string(body)))
+			if w.Code != 409 || w.Header().Get("Content-Disposition") != "" || w.Header().Get("X-Gateway-Export-Artifact-Complete") != "" {
+				t.Fatal("damaged lookup produced attachment", w.Code, w.Header(), w.Body.String())
+			}
+		})
+	}
 }
 
 func TestIndexExportIntegrationUnavailableNeverCreatesArtifact(t *testing.T) {
@@ -439,6 +649,35 @@ func TestIndexExportIntegrationLegacyLookupFallbackReadsPrefixOnce(t *testing.T)
 		t.Fatalf("lookup reread a committed prefix per identity: %d reads for %d blocks", session.readBlocks, count)
 	}
 	exportTestUnchanged(t, a, before)
+	// The review may need one bounded fallback walk. Once reviewed, download
+	// uses the exact verified lookup references even if acceleration is absent.
+	q := indexExportRequest{Index: "inscriptions", Representation: "conventional"}
+	meta, err := a.indexExportReview(context.Background(), q)
+	if err != nil || !meta.Complete {
+		t.Fatal(meta, err)
+	}
+	q.Snapshot = meta.Snapshot
+	pin, err := findIndexExportPin(a, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := a.currentChainAuthority()
+	replay := pin.session(context.Background(), a, q, authority, a.addressSelectedHashes(context.Background(), authority), nil)
+	defer replay.close()
+	var pinned *indexExportPinnedStore
+	for _, p := range replay.lookups {
+		if p.s.definition.ID == "tx-locator" {
+			pinned = p
+			break
+		}
+	}
+	if pinned == nil || len(pinned.pinnedLookups) != count {
+		t.Fatal("review did not capture verified lookups", pinned)
+	}
+	_, have, err := replay.lookupBatch(pinned, blocks[0].Height)
+	if err != nil || !have || pinned.spill != nil || replay.readBlocks != 1 {
+		t.Fatal("download rescanned prefix", have, err, replay.readBlocks)
+	}
 }
 
 func exportTestBitmapFixture(t *testing.T) (*app, []blockView) {
@@ -605,4 +844,71 @@ func TestIndexExportIntegrationBitmapSelectedWinnersAndParentConversion(t *testi
 		})
 	}
 	exportTestUnchanged(t, a, before)
+}
+
+func TestIndexExportDistrictPinnedAppendAndPartialConventional(t *testing.T) {
+	a, blocks := exportTestBitmapFixture(t)
+	q := indexExportRequest{Index: bitmapStandardDistrictID, Representation: "conventional"}
+	prepared, err := a.indexExportReview(context.Background(), q)
+	if err != nil || !prepared.Complete || prepared.Partial {
+		t.Fatal(prepared, err)
+	}
+	q.Snapshot = prepared.Snapshot
+	oldPin, err := findIndexExportPin(a, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add another District winner while the reviewed snapshot remains valid.
+	script := inscriptionTestScript([]byte{1}, []byte("text/plain"), nil, []byte("792436.bitmap"))
+	tx := utxoFixtureSpend(999001, []inputView{{N: 0, PrevTxID: indexDigest("new district input"), Witness: ordWitness050(script)}}, 1)
+	newBlock := utxoFixtureBlock(blocks[1].Height+1, blocks[1].Hash, utxoFixtureCoinbase(999002, subsidyAtHeight(blocks[1].Height+1)), tx)
+	installRunProtocolHeader(t, a, &newBlock)
+	district := bitmapTestConsumer(t, a.dataDir, bitmapStandardDistrictID)
+	if err := district.Apply(context.Background(), newBlock, nil); err != nil {
+		t.Fatal(err)
+	}
+	if district.head.WinnerCount != 2 {
+		t.Fatal("new winner was not committed", district.head)
+	}
+	body, _ := json.Marshal(q)
+	w := httptest.NewRecorder()
+	a.handleIndexExportDownload(w, indexExportHTTPTestRequest("POST", "download", string(body)))
+	if w.Code != 200 || w.Header().Get("X-Gateway-Export-SHA256") != oldPin.digest || int64(w.Body.Len()) != oldPin.size || strings.Contains(w.Body.String(), `"bitmap":792436`) {
+		t.Fatal("append changed reviewed bytes", w.Code, w.Body.String())
+	}
+
+	q.Snapshot = ""
+	partial, err := a.indexExportReview(context.Background(), q)
+	if err != nil || !partial.Ready || partial.Complete || !partial.Partial || partial.OmittedWinners != 1 || partial.MissingCount == 0 {
+		t.Fatal("missing lookup should yield explicit partial review", partial, err)
+	}
+	q.Snapshot = partial.Snapshot
+	pin, err := findIndexExportPin(a, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = json.Marshal(q)
+	w = httptest.NewRecorder()
+	a.handleIndexExportDownload(w, indexExportHTTPTestRequest("POST", "download", string(body)))
+	if w.Code != 200 || w.Header().Get("X-Gateway-Export-Artifact-Complete") != "true" || w.Header().Get("X-Gateway-Export-Complete") != "false" || w.Header().Get("X-Gateway-Export-Partial") != "true" || w.Header().Get("X-Gateway-Export-Omitted-Winners") != "1" || w.Header().Get("X-Gateway-Export-SHA256") != pin.digest || int64(w.Body.Len()) != pin.size || !strings.Contains(w.Body.String(), `"bitmap":792435`) || strings.Contains(w.Body.String(), `"bitmap":792436`) || !strings.Contains(w.Body.String(), `"omitted_winner_inscriptions":1`) || !strings.Contains(w.Body.String(), `"winner_ids_complete":false`) || !strings.Contains(w.Body.String(), `"complete":false`) {
+		t.Fatal("partial download was not honestly bounded", w.Code, w.Header(), w.Body.String())
+	}
+	// A newly available lookup is excluded from that already reviewed artifact.
+	locator, err := openIndexStore(a.dataDir, "tx-locator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := locator.appendBlock(newBlock, blocks[0].Height, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	a.handleIndexExportDownload(w, indexExportHTTPTestRequest("POST", "download", string(body)))
+	if w.Code != 200 || w.Header().Get("X-Gateway-Export-SHA256") != pin.digest || w.Header().Get("X-Gateway-Export-Partial") != "true" {
+		t.Fatal("new lookup changed pinned partial", w.Code, w.Body.String())
+	}
+	q.Snapshot = ""
+	complete, err := a.indexExportReview(context.Background(), q)
+	if err != nil || !complete.Complete || complete.Partial || complete.OmittedWinners != 0 {
+		t.Fatal("new review did not include available lookup", complete, err)
+	}
 }

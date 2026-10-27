@@ -1,0 +1,46 @@
+name: Offline synthetic signing checks
+
+on:
+  push:
+    branches:
+      - codex/signing-offline-check
+
+permissions:
+  contents: read
+
+jobs:
+  offline-synthetic-only:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GO111MODULE: 'off'
+      CGO_ENABLED: '0'
+    steps:
+      - name: Check out tooling branch without persisted credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install pinned Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Require POSIX key-mode rejection and offline fake-origin tests
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/offline-home" "$RUNNER_TEMP/offline-tmp" "$RUNNER_TEMP/offline-go-cache"
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/offline-home" TMPDIR="$RUNNER_TEMP/offline-tmp" \
+            GO111MODULE=off CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOWORK=off \
+            GOCACHE="$RUNNER_TEMP/offline-go-cache" python3 scripts/check-signing-posix-mode.py
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/offline-home" TMPDIR="$RUNNER_TEMP/offline-tmp" \
+            GO111MODULE=off CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOWORK=off \
+            GOCACHE="$RUNNER_TEMP/offline-go-cache" python3 scripts/test-prepare-initial-update-feed-078.py -v
+      - name: Exercise synthetic signing with real local operator
+        run: |
+          set -euo pipefail
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/offline-home" TMPDIR="$RUNNER_TEMP/offline-tmp" \
+            GO111MODULE=off CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOWORK=off \
+            GOCACHE="$RUNNER_TEMP/offline-go-cache" go build -trimpath -o "$RUNNER_TEMP/gateway-offline-test-operator" ./packaging/update-publisher
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/offline-home" TMPDIR="$RUNNER_TEMP/offline-tmp" \
+            GO111MODULE=off CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOWORK=off \
+            GOCACHE="$RUNNER_TEMP/offline-go-cache" python3 scripts/test-prepare-real-078.py --publisher "$RUNNER_TEMP/gateway-offline-test-operator"

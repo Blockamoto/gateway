@@ -25,6 +25,8 @@ const server=http.createServer(async(req,res)=>{
   if(url.pathname==='/api/v1/index/layout')return reply({schema:1,order:{},revision:0});
   if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname))return reply(snapshot);if(url.pathname==='/api/v1/index/run/prepare'){snapshot.run={schema:1,configured:true,prepared:body,run:null};return reply(snapshot.run);}
   if(url.pathname==='/api/v1/index/query')return reply({rows:[],known:true,total:0,total_known:true});
+  if(url.pathname==='/api/v1/bitmap/view')return reply({state:'not_built',note:'No saved canonical Bitmap mapping.'});
+  if(url.pathname==='/api/v1/txio/readiness')return reply({inputs:[],outputs:[],sources_checked:[]});
   if(url.pathname==='/api/v1/index/block-map')return reply({...block(height),total:20,indexing:[],transactions});
   if(url.pathname==='/api/v1/sats/point'){
    assert.equal(req.method,'GET');assert.equal(url.searchParams.get('output'),'0.0.42');assert.equal(url.searchParams.get('block_hash'),anchor);

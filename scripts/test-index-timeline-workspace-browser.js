@@ -304,6 +304,7 @@ async function run() {
     snapshot.live=[{index:'inscriptions',initial_from:0,on:false,enabled:false}];
     await page.goto(origin+'/indexes',{waitUntil:'networkidle'});
     if(await page.locator('#timeline-collapse:not([aria-expanded=true])').isVisible())await page.locator('#timeline-collapse:not([aria-expanded=true])').click();
+    if(await page.locator('#timeline-group-ordinals').getAttribute('aria-expanded')==='false')await page.locator('#timeline-group-ordinals').click();
     await page.locator('.timeline-track[data-index="inscriptions"] .timeline-track-select').click();
     await page.locator('#timeline-fit').click();await settle();
     const inscriptionLane=page.locator('.timeline-lane[data-index="inscriptions"]');

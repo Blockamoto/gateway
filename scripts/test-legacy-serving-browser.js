@@ -51,7 +51,8 @@ async function run(){
    await page.evaluate(()=>refreshStatus());
    assert.deepEqual(fixture,before,'Rendering must not rewrite saved preferences');
    assert.equal(await page.locator('#serve').isChecked(),listener.requested);
-   assert.equal(await page.locator('#cache').isChecked(),true);
+   assert.equal(await page.locator('#cache').count(),0,'Legacy settings must not offer a separate Raw storage switch');
+   assert.match(await page.locator('#settingsBody').innerText(),/New block storage follows the timeline Raw Blocks control: On retains verified bytes; Off uses them temporarily\./);
    assert.equal(await page.locator('#shareCache').isChecked(),true);
    assert.equal(await page.locator('#cap').inputValue(),'1024');
    return notice.innerText();

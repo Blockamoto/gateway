@@ -6,7 +6,12 @@ const assert = require('node:assert/strict');
 // through global Explorer navigation.
 async function selectHeight(page, height, index = null) {
   if (await page.locator('#timeline-collapse:not([aria-expanded=true])').isVisible()) await page.locator('#timeline-collapse:not([aria-expanded=true])').click();
-  if (index) await page.locator('.timeline-track[data-index="'+index+'"] .timeline-track-select').click();
+  if (index) {
+    const row = page.locator('.timeline-track[data-index="'+index+'"]');
+    const group = await row.getAttribute('data-group');
+    if (group && await page.locator('#timeline-group-'+group).getAttribute('aria-expanded') === 'false') await page.locator('#timeline-group-'+group).click();
+    await row.locator('.timeline-track-select').click();
+  }
   const root = page.locator('#index-timeline');
   const view = () => root.evaluate(el => ({from:Number(el.dataset.from),to:Number(el.dataset.to)}));
   const lane = index ? page.locator('.timeline-lane[data-index="'+index+'"]') : page.locator('.timeline-lane[data-index="'+(await page.locator('#timeline-inspector').getAttribute('data-index'))+'"]');

@@ -35,6 +35,12 @@ func TestTimelineArmOwnsBrowseConsentAndLegacyAlias(t *testing.T) {
 	if string(before) != string(after) {
 		t.Fatal("compatibility alias rewrote a separate browse policy")
 	}
+	// The synthetic browse block has no verified raw bytes. Keep its TX
+	// consumer armed while turning Raw off; Raw-on production is exercised
+	// with authenticated bodies in the retention tests.
+	if _, err := a.prepareIndexRun(indexRunRequest{In: &in, Consumers: []indexRunSelection{{Index: "blocks", Armed: false}, {Index: "tx-locator", Armed: true}}}); err != nil {
+		t.Fatal(err)
+	}
 	if got := a.indexBrowsedBlock(context.Background(), block, nil); len(got) != 1 || got[0].Index != "tx-locator" || got[0].State != "indexed" {
 		t.Fatal("Arm did not own the explicit viewed-block fact", got)
 	}
@@ -52,18 +58,24 @@ func TestTimelineArmOwnsBrowseConsentAndLegacyAlias(t *testing.T) {
 func TestTimelineBrowsePublicationRechecksArm(t *testing.T) {
 	a, _, hashes := timelineFixture(t, 4)
 	setBrowse073(t, a, "tx-locator", true)
-	calls := 0
+	block := browseBlock073(t, 2, hashes[2])
+	s := a.newBrowseStore("tx-locator")
+	staged, revoked := false, false
 	ctx := context.WithValue(context.Background(), indexRunPublicationKey{}, func() error {
-		calls++
-		if calls == 2 {
+		path, err := s.packedLocatorPath(block.Transactions[0].TxID)
+		if err != nil {
+			return err
+		}
+		if receipt, err := readPackedLocatorReceipt(path); err == nil && receipt.Bytes > 0 && !revoked {
+			staged, revoked = true, true
 			_, err := a.prepareIndexRun(indexRunRequest{})
 			return err
 		}
 		return nil
 	})
-	got := a.indexBrowsedBlock(ctx, browseBlock073(t, 2, hashes[2]), nil)
-	if len(got) != 1 || got[0].State != "unavailable" || calls != 2 {
-		t.Fatal("final Off fence was not exercised", got, calls)
+	got := a.indexBrowsedBlock(ctx, block, nil)
+	if len(got) != 1 || got[0].State != "off" || !staged || !revoked {
+		t.Fatal("final Off fence was not exercised after staging", got, staged, revoked)
 	}
 	if _, present, err := a.browsedBatchContext(context.Background(), "tx-locator", 2, hashes[2]); err != nil || present {
 		t.Fatal("revoked singleton became visible", present, err)

@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"embed"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -19,6 +20,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"unicode/utf16"
 	"unsafe"
 )
 
@@ -607,12 +609,87 @@ type repeatedProfile []string
 func (p *repeatedProfile) String() string     { return strings.Join(*p, "; ") }
 func (p *repeatedProfile) Set(s string) error { *p = append(*p, s); return nil }
 
+// Keep an open handle to the actual uninstaller file, not its pathname. A
+// later installation may replace that pathname while the cleanup is pending.
+func openUninstallerForRemoval(path string) (syscall.Handle, error) {
+	name, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return syscall.InvalidHandle, err
+	}
+	return syscall.CreateFile(name, 0x00010000, syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE, nil, syscall.OPEN_EXISTING, syscall.FILE_ATTRIBUTE_NORMAL, 0) // DELETE access
+}
+
+// The image cannot be deleted while this process is running. A hidden child
+// waits on an inherited process handle and then deletes the inherited file
+// handle, so neither a reused PID nor a replacement at the old path is removed.
+func scheduleUninstallerRemoval(file syscall.Handle, installDir string) error {
+	current, err := syscall.GetCurrentProcess()
+	if err != nil {
+		return err
+	}
+	var childFile, childProcess syscall.Handle
+	if err = syscall.DuplicateHandle(current, file, current, &childFile, 0, true, syscall.DUPLICATE_SAME_ACCESS); err != nil {
+		return err
+	}
+	defer syscall.CloseHandle(childFile)
+	if err = syscall.DuplicateHandle(current, current, current, &childProcess, 0x00100000, true, 0); err != nil {
+		return err
+	} // SYNCHRONIZE
+	defer syscall.CloseHandle(childProcess)
+	const script = `$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class GatewayUninstallCleanup {
+  [DllImport("kernel32.dll", SetLastError=true)] public static extern uint WaitForSingleObject(IntPtr h, uint ms);
+  [DllImport("kernel32.dll", SetLastError=true)] public static extern bool SetFileInformationByHandle(IntPtr h, int cls, ref byte info, uint size);
+  [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr h);
+}
+'@
+$process = [IntPtr]::new([long]::Parse($env:GATEWAY_CLEANUP_PROCESS))
+$file = [IntPtr]::new([long]::Parse($env:GATEWAY_CLEANUP_FILE))
+try {
+  if ([GatewayUninstallCleanup]::WaitForSingleObject($process, 60000) -ne 0) { exit 1 }
+  [byte]$remove = 1
+  $deleted = $false
+  for ($i=0; $i -lt 100; $i++) {
+    if ([GatewayUninstallCleanup]::SetFileInformationByHandle($file, 4, [ref]$remove, 1)) { $deleted = $true; break }
+    Start-Sleep -Milliseconds 100
+  }
+  if (-not $deleted) { exit 1 }
+} finally {
+  [void][GatewayUninstallCleanup]::CloseHandle($file)
+  [void][GatewayUninstallCleanup]::CloseHandle($process)
+}
+try { [System.IO.Directory]::Delete($env:GATEWAY_CLEANUP_DIRECTORY, $false) } catch { }
+`
+	units := utf16.Encode([]rune(script))
+	encoded := make([]byte, len(units)*2)
+	for i, unit := range units {
+		binary.LittleEndian.PutUint16(encoded[i*2:], unit)
+	}
+	powershell := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+	cmd := hiddenCommand(powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.StdEncoding.EncodeToString(encoded))
+	cmd.SysProcAttr.AdditionalInheritedHandles = []syscall.Handle{childFile, childProcess}
+	cmd.Env = append(os.Environ(), fmt.Sprintf("GATEWAY_CLEANUP_PROCESS=%d", childProcess), fmt.Sprintf("GATEWAY_CLEANUP_FILE=%d", childFile), "GATEWAY_CLEANUP_DIRECTORY="+installDir)
+	cmd.Dir = os.TempDir()
+	if err = cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
+
 func uninstall(quiet, purge, confirmed bool, extra []string) error {
 	self, e := os.Executable()
 	if e != nil {
 		return e
 	}
 	installDir := filepath.Dir(self)
+	selfFile, e := openUninstallerForRemoval(self)
+	if e != nil {
+		return fmt.Errorf("open uninstaller for removal: %w", e)
+	}
+	defer syscall.CloseHandle(selfFile)
 	if !quiet && messageBox("Remove Gateway Client application files and owned integrations?\n\nYou can choose whether to keep or delete Gateway data in the next step. Close other Gateway copies before continuing.", "Uninstall Gateway Client", MB_YESNO|MB_ICONQUESTION|0x100) != IDYES {
 		return nil
 	}
@@ -785,10 +862,12 @@ func uninstall(quiet, purge, confirmed bool, extra []string) error {
 			}
 		}
 	}
-	command := fmt.Sprintf(`timeout /t 2 /nobreak >nul & del /f /q "%s" >nul 2>nul & rmdir "%s" >nul 2>nul`, self, installDir)
-	_ = hiddenCommand("cmd.exe", "/C", command).Start()
 	if !quiet && !purge {
 		messageBox("Gateway application removed. Your data is preserved. Browser extension approval is managed separately by your browser.", "Gateway removed", MB_OK|MB_ICONINFORMATION)
+	}
+	// Start the bounded wait only after the user has dismissed the last dialog.
+	if e := scheduleUninstallerRemoval(selfFile, installDir); e != nil {
+		return fmt.Errorf("schedule uninstaller removal: %w", e)
 	}
 	return nil
 }

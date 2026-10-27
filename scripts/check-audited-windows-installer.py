@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed hosted reconstruction and disposable install/uninstall check.
 
-Only the independently audited 6c33011 installer is eligible for execution.
+Only the independently audited ad8b48c installer is eligible for execution.
 This script runs only in the dedicated hosted workflow context.
 """
 import argparse
@@ -20,11 +20,12 @@ import time
 import urllib.request
 import zipfile
 
-REVISION = '6c33011a9cb3878d6246031f23938ca11ec5ba81'
-SOURCE = Path(r'C:\GatewayReleaseBuild\0.7.8\source-6c33011')
-STAGE = SOURCE / 'build' / 'release-work' / 'gateway-installer-o5z77qy_'
-INSTALLER_SHA = '0634e5c3c5c3456e2ab22220b8d5042b95988543d31cd6b991b73f9262d4336c'
-CLIENT_SHA = 'a7d44aee1475b82e940d536c18a288d0b746e29e0730f67d81b3c013d631f520'
+REVISION = 'ad8b48c4a1335e0c992ad21507d9a5553f75ee28'
+PINS_READY = True  # Set only after the candidate build and binary audit are complete.
+SOURCE = Path(r'C:\GatewayReleaseBuild\0.7.8\source-ad8b48c')
+STAGE = SOURCE / 'build' / 'release-work' / 'gateway-installer-ryjvn_k0'
+INSTALLER_SHA = 'c8e3d7b90b624d55e2270d5411ec498b2ffebc52a0277d86585ea7df2ea76234'
+CLIENT_SHA = '341dc743ec86cd113a52075b1e6d6f77395f7e27bf5401a55aa69fa34e4b010a'
 HEADER_SHA = '64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467'
 HEADER_META_SHA = '7e61b63a39064be8633338cd3ee6794e8ee2cc845561905cfc4ae40793912679'
 CHANNEL_SHA = 'cdb721f84a91b5397e003d54cadbc4cfbb6599d1f8bcd068aa6c54537d30ee0f'
@@ -35,9 +36,9 @@ HEADER_TIP = '00000000000000000000dcddaef250e1665ecc5dadbcbdb08769509c0a433253'
 URL = 'https://github.com/Blockamoto/gateway/releases/download/v0.7.7/gateway-headers-v0.7.7.zip'
 EXPECTED = {
     'GatewayClient.exe': CLIENT_SHA,
-    'GatewayUpdateHelper.exe': 'c347d1b8bb299dcbc3acc008e8f0407364cbb62e7d09244cefcb739dfc651419',
-    'GatewayOnDemand.exe': '904bbd88e09c5c269530ff763154ca636e6916be42b3457bc3b5f7fb7fd45570',
-    'GatewayNativeHost.exe': 'f3ebe50b17e95b9178cfb83a7562eadf4d17ce5b5f4b88e3f4adf0678a4a1cd2',
+    'GatewayUpdateHelper.exe': '1a73b5dba28e27ca1c88792cef9b5b9ff90555d2996fead25efb57212082d117',
+    'GatewayOnDemand.exe': 'c47742989f6579801b998e39ed56f30e3a897f7a3986bf7d08ae2da72e15f393',
+    'GatewayNativeHost.exe': '3ec6fd875208f394994d1ac253243718e0c8ad51112ba6e79782d751ddd130c6',
 }
 
 
@@ -59,6 +60,8 @@ def hosted_only():
             or os.environ.get('GITHUB_REF') != 'refs/heads/codex/windows-installer-check'
             or os.environ.get('GITHUB_EVENT_NAME') != 'push'):
         raise RuntimeError('This operation requires the dedicated GitHub-hosted Windows job')
+    if not PINS_READY:
+        raise RuntimeError('Audited candidate pins are not ready; installation refused')
 
 
 def reject_links(path):

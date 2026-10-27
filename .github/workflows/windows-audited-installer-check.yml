@@ -51,15 +51,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $revision = '6c33011a9cb3878d6246031f23938ca11ec5ba81'
+          $revision = 'ad8b48c4a1335e0c992ad21507d9a5553f75ee28'
           if ((git rev-parse "$revision^{commit}") -ne $revision) { throw 'Candidate revision unavailable' }
           git merge-base --is-ancestor $revision HEAD
           if ($LASTEXITCODE -ne 0) { throw 'Candidate is not an ancestor of tooling' }
           $root = 'C:\GatewayReleaseBuild'
           if (Test-Path -LiteralPath $root) { throw 'Neutral source parent already exists' }
-          $source = Join-Path $root '0.7.8\source-6c33011'
+          $source = Join-Path $root '0.7.8\source-ad8b48c'
           New-Item -ItemType Directory -Path $source -Force | Out-Null
-          $archive = Join-Path $env:RUNNER_TEMP 'gateway-source-6c33011.tar'
+          $archive = Join-Path $env:RUNNER_TEMP 'gateway-source-ad8b48c.tar'
           if (Test-Path -LiteralPath $archive) { throw 'Source archive already exists' }
           git archive --format=tar -o $archive $revision
           if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
@@ -69,7 +69,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          python scripts/check-audited-windows-installer.py --source 'C:\GatewayReleaseBuild\0.7.8\source-6c33011'
+          python scripts/check-audited-windows-installer.py --source 'C:\GatewayReleaseBuild\0.7.8\source-ad8b48c'
           if ($LASTEXITCODE -ne 0) { throw 'Reconstruction or disposable installation check failed' }
       - name: Retain sanitized result only
         if: success()

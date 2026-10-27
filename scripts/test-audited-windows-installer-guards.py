@@ -55,6 +55,17 @@ class GuardTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'GitHub-hosted'):
                 tool.hosted_only()
 
+    def test_unready_pins_refuse_hosted_execution(self):
+        context = {'GITHUB_ACTIONS':'true', 'RUNNER_ENVIRONMENT':'github-hosted',
+                   'GITHUB_REPOSITORY':'Blockamoto/gateway',
+                   'GITHUB_REF':'refs/heads/codex/windows-installer-check',
+                   'GITHUB_EVENT_NAME':'push'}
+        with mock.patch.dict(os.environ, context, clear=True), \
+             mock.patch.object(tool.sys, 'platform', 'win32'), \
+             mock.patch.object(tool, 'PINS_READY', False):
+            with self.assertRaisesRegex(RuntimeError, 'pins are not ready'):
+                tool.hosted_only()
+
     def test_hash_mismatch_never_starts_process(self):
         with tempfile.TemporaryDirectory() as tmp:
             binary = Path(tmp) / 'fake.exe'

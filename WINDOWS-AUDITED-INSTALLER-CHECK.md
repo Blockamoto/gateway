@@ -7,7 +7,7 @@ any release, and must never run against a real user's account, profile,
 registry, Start Menu, or installation.
 
 The proposed check is restricted to a fresh GitHub-hosted Windows runner. It
-reconstructs candidate `6c33011a9cb3878d6246031f23938ca11ec5ba81` at its
+reconstructs candidate `ad8b48c4a1335e0c992ad21507d9a5553f75ee28` at its
 original neutral source path. It fetches the public v0.7.7 header archive and
 requires its pinned size and SHA-256, checks ZIP CRC and exact member names,
 and checks both approved header and metadata digests and the header tip.
@@ -16,7 +16,7 @@ metadata, and the original fixed GOPATH-off installer staging path are checked.
 The rebuilt client is hash-gated before the build's bootstrap verification;
 the installer and copied uninstaller are hash-gated immediately before each
 execution. The audited installer hash is
-`0634e5c3c5c3456e2ab22220b8d5042b95988543d31cd6b991b73f9262d4336c`.
+`c8e3d7b90b624d55e2270d5411ec498b2ffebc52a0277d86585ea7df2ea76234`.
 The final digest gate is mandatory: differing toolchains, paths, line endings,
 staging or other build inputs must produce a failed check, not a substitute
 installer. Byte-for-byte reconstruction on the hosted runner is unproven.

@@ -19,7 +19,7 @@ import tempfile
 import zipfile
 
 VERSION = "0.7.8"
-REVISION = 'ad8b48c4a1335e0c992ad21507d9a5553f75ee28'  # FILL only after exact-source release gates pass
+REVISION = 'e439525617ed5ec742cbcda97aecfaa3a36ee7be'
 PREVIOUS_VERSION = "0.7.7"
 PREVIOUS_REVISION = "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4"
 REPOSITORY = "Blockamoto/gateway"
@@ -29,9 +29,9 @@ KEY = {"key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
 # All following values must be frozen from authenticated, reviewed evidence.
 # Empty defaults deliberately reject every invocation before secrets are read.
 EXPECTED_SEQUENCES = (17, 16)
-EXPECTED_MANIFEST_SHA256 = '6754157f9df4b2d0fb49e6e9d9fd2cc708383e07c0a90db7a21bc4e0fabc2583'
-EXPECTED_ARTIFACTS = {'gateway-client-v0.7.8-windows-amd64.zip': {'bytes': 14894415, 'sha256': '9bbba48a9dc64e9da0199493f5c8fd3660a2a6fbf391c0e41dc9b9486faf5298'}, 'gateway-client-v0.7.8-windows-amd64-fresh.zip': {'bytes': 80801219, 'sha256': 'da8e85ea335132a0849c29f3c9e2928060bfb816ecd2345eda73b4a893f0947b'}, 'gateway-client-v0.7.8-linux-amd64.zip': {'bytes': 9130655, 'sha256': '68138e4e1f7eed0106af145f82c678b302170e49b812feb9cb08c187b1e14432'}, 'gateway-client-v0.7.8-linux-amd64-fresh.zip': {'bytes': 75037458, 'sha256': '8239ab004d27dc9bbf6b4b4ba228a1b42c4b65437db2d0f5ee88e2eed0c621e3'}, 'gateway-client-v0.7.8-installer.exe': {'bytes': 120988672, 'sha256': 'c8e3d7b90b624d55e2270d5411ec498b2ffebc52a0277d86585ea7df2ea76234'}, 'gateway-headers-v0.7.8.zip': {'bytes': 65906545, 'sha256': '2ed96422ff8707e53b18f06d57daef68a11066583abadb22e8e0734967954811'}}  # filename -> {"bytes": integer, "sha256": lowercase hex}
-HEADER_POLICY = "unchanged"  # "unchanged" or explicitly reviewed "reviewed-new"
+EXPECTED_MANIFEST_SHA256 = '815b669b5960cf7dfd57d8b13dbf8b5a70cb699e22e455d92c7ebff1da437682'
+EXPECTED_ARTIFACTS = {'gateway-client-v0.7.8-windows-amd64.zip': {'bytes': 14882004, 'sha256': 'ae8b14083a9acd4d7d8adb31079f71ce96726e124b87929d5ad6a69146debb19'}, 'gateway-client-v0.7.8-windows-amd64-fresh.zip': {'bytes': 80788809, 'sha256': '08bf5a2cbfaad38a332b92cba83eb957976bcc3d7b8c107297c3e29b2064c616'}, 'gateway-client-v0.7.8-linux-amd64.zip': {'bytes': 9130431, 'sha256': '25968228e8fa44b4b4e7589881cf6a6a2896193c4865d54562bbb537c26c0491'}, 'gateway-client-v0.7.8-linux-amd64-fresh.zip': {'bytes': 75037234, 'sha256': '56fb01a89db4acad574096516c128db10bfd80de75d3bdcb5bac963f70771412'}, 'gateway-client-v0.7.8-installer.exe': {'bytes': 120960000, 'sha256': 'af8befc5701548e32014dcefce15535ba79f442c89d68ebdf6989431a512554a'}, 'gateway-headers-v0.7.8.zip': {'bytes': 65906545, 'sha256': 'bba29a584cea69179b5c199a4701b0399d0b57a9d5b4ba6c6ec88e2cf13643b5'}}
+HEADER_POLICY = 'unchanged'
 EXPECTED_HEADER_SNAPSHOT_SHA256 = '4cba8f53b306e7163f5c43da0569c24a911517833476834925ec64714ca2cc0c'
 FILES = {f"gateway-client-v{VERSION}-{platform}{suffix}.zip"
          for platform in ["windows-amd64", "linux-amd64"] for suffix in ["", "-fresh"]}

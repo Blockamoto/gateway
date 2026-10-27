@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed hosted reconstruction and disposable install/uninstall check.
 
-Only the independently audited ad8b48c installer is eligible for execution.
+Only the independently audited e439525 installer is eligible for execution.
 This script runs only in the dedicated hosted workflow context.
 """
 import argparse
@@ -20,12 +20,12 @@ import time
 import urllib.request
 import zipfile
 
-REVISION = 'ad8b48c4a1335e0c992ad21507d9a5553f75ee28'
+REVISION = 'e439525617ed5ec742cbcda97aecfaa3a36ee7be'
 PINS_READY = True  # Set only after the candidate build and binary audit are complete.
-SOURCE = Path(r'C:\GatewayReleaseBuild\0.7.8\source-ad8b48c')
-STAGE = SOURCE / 'build' / 'release-work' / 'gateway-installer-ryjvn_k0'
-INSTALLER_SHA = 'c8e3d7b90b624d55e2270d5411ec498b2ffebc52a0277d86585ea7df2ea76234'
-CLIENT_SHA = '341dc743ec86cd113a52075b1e6d6f77395f7e27bf5401a55aa69fa34e4b010a'
+SOURCE = Path(r'C:\GatewayReleaseBuild\0.7.8\source-e439525')
+STAGE = SOURCE / 'build' / 'release-work' / 'gateway-installer-heixtpnp'
+INSTALLER_SHA = 'af8befc5701548e32014dcefce15535ba79f442c89d68ebdf6989431a512554a'
+CLIENT_SHA = '58c16c23c2073447a413f07956e7c6278b7ee0e150546c1d20530c34897dc479'
 HEADER_SHA = '64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467'
 HEADER_META_SHA = '7e61b63a39064be8633338cd3ee6794e8ee2cc845561905cfc4ae40793912679'
 CHANNEL_SHA = 'cdb721f84a91b5397e003d54cadbc4cfbb6599d1f8bcd068aa6c54537d30ee0f'
@@ -36,9 +36,9 @@ HEADER_TIP = '00000000000000000000dcddaef250e1665ecc5dadbcbdb08769509c0a433253'
 URL = 'https://github.com/Blockamoto/gateway/releases/download/v0.7.7/gateway-headers-v0.7.7.zip'
 EXPECTED = {
     'GatewayClient.exe': CLIENT_SHA,
-    'GatewayUpdateHelper.exe': '1a73b5dba28e27ca1c88792cef9b5b9ff90555d2996fead25efb57212082d117',
-    'GatewayOnDemand.exe': 'c47742989f6579801b998e39ed56f30e3a897f7a3986bf7d08ae2da72e15f393',
-    'GatewayNativeHost.exe': '3ec6fd875208f394994d1ac253243718e0c8ad51112ba6e79782d751ddd130c6',
+    'GatewayUpdateHelper.exe': 'bab9126bed4452e38587fef02edffdfc8ad45d89e1ec256d155df07fdf43100c',
+    'GatewayOnDemand.exe': 'f827ab9c3155b28a24d00652469c30f786d76205df8ea8ebcf3505d8ad268210',
+    'GatewayNativeHost.exe': '54a5205d3848ff65592699eac7a82f5e14d405e90c9a72eb910fbe2ab2001b0e',
 }
 
 
@@ -382,6 +382,12 @@ def exercise(out, build, installer):
     run_audited(installer, INSTALLER_SHA, args, env)
     for name, expected in EXPECTED.items():
         require_hash(app/name, expected)
+    companion_names = {'content.js', 'IDENTITY.txt', 'manifest.json', 'popup.html', 'popup.js', 'README.txt', 'search.js', 'service-worker.js', 'test.js'}
+    companion = app/'browser-companion'
+    if {p.name for p in companion.iterdir()} != companion_names:
+        raise RuntimeError('Installed production companion file set differs')
+    for name in companion_names:
+        require_hash(companion/name, digest(SOURCE/'browser-companion'/name))
     require_hash(app/'bootstrap/headers-mainnet.bin', HEADER_SHA)
     require_hash(app/'bootstrap/headers-mainnet.json', HEADER_META_SHA)
     uninstaller = app / 'Uninstall Gateway Client.exe'
@@ -414,7 +420,7 @@ def exercise(out, build, installer):
           'file_exists_at_end':uninstaller.exists(), 'wait_seconds':round(time.monotonic()-wait_started, 3),
           'limit':'sampled PIDs only; no child stderr, missing observations do not prove no child'}), flush=True)
     integration_clear()
-    remaining = [path.name for path in (shortcut, uninstaller, *(app/name for name in EXPECTED)) if path.exists()]
+    remaining = [path.name for path in (shortcut, uninstaller, companion, *(app/name for name in EXPECTED)) if path.exists()]
     if remaining:
         raise RuntimeError('Disposable uninstall left managed files or shortcut after '
                            f'90 seconds; remaining after bounded wait: {remaining}')
@@ -428,7 +434,7 @@ def exercise(out, build, installer):
             'client_sha256':CLIENT_SHA, 'header_sha256':HEADER_SHA,
             'scope':'exact audited installer; isolated hosted HKCU and app-data; quiet install and uninstall; no purge, startup, protocol, browser or launch',
             'registration_and_shortcut_created_then_removed':True, 'unrelated_sentinel_preserved':True,
-            'synthetic_owned_profile_preserved':True,
+            'synthetic_owned_profile_preserved':True, 'production_companion_exact_and_removed':True,
             'limitations':['No existing user state, upgrade, GUI, browser approval, NRPT, network or antivirus acceptance tested.']}
 
 

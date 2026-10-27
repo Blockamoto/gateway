@@ -7,7 +7,7 @@ any release, and must never run against a real user's account, profile,
 registry, Start Menu, or installation.
 
 The proposed check is restricted to a fresh GitHub-hosted Windows runner. It
-reconstructs candidate `ad8b48c4a1335e0c992ad21507d9a5553f75ee28` at its
+reconstructs candidate `e439525617ed5ec742cbcda97aecfaa3a36ee7be` at its
 original neutral source path. It fetches the public v0.7.7 header archive and
 requires its pinned size and SHA-256, checks ZIP CRC and exact member names,
 and checks both approved header and metadata digests and the header tip.
@@ -16,10 +16,11 @@ metadata, and the original fixed GOPATH-off installer staging path are checked.
 The rebuilt client is hash-gated before the build's bootstrap verification;
 the installer and copied uninstaller are hash-gated immediately before each
 execution. The audited installer hash is
-`c8e3d7b90b624d55e2270d5411ec498b2ffebc52a0277d86585ea7df2ea76234`.
+`af8befc5701548e32014dcefce15535ba79f442c89d68ebdf6989431a512554a`.
 The final digest gate is mandatory: differing toolchains, paths, line endings,
 staging or other build inputs must produce a failed check, not a substitute
-installer. Byte-for-byte reconstruction passed on hosted runs 40456943290 and 40457787932.
+installer. Earlier candidate ad8b48c reconstruction passed on hosted runs 40456943290 and
+40457787932; corrected e439525 requires a new hosted check.
 
 Before installation, the test rejects pre-existing Gateway uninstall,
 startup, protocol and browser-native-host registrations and the runner's real
@@ -35,10 +36,12 @@ self-deletion and requires the test registration and shortcut to be removed and
 synthetic application/profile sentinel files to be unchanged. The ephemeral VM
 is discarded after the job; no generic local HKCU sandbox is assumed.
 
-Run 40457787932 observed the exact audited uninstaller remove itself after
+Run 40457787932 observed the earlier ad8b48c uninstaller remove itself after
 33.625 seconds on a fresh hosted runner. The original 30-second acceptance check failed. The bounded acceptance budget
 is now 90 seconds to allow cold PowerShell initialization; remaining files still fail
-the check. The implementation and all candidate hashes are unchanged.
+the check. The corrected e439525 pins include the production-only companion payload.
+Installation must contain exactly the nine released-updater-compatible files,
+with source-matching hashes, and uninstall must remove that directory.
 
 For diagnostics, the check samples process IDs and records PowerShell children
 of its own uninstaller. The check retains the 30-second observation and waits up to 90 seconds for

@@ -73,7 +73,7 @@ def init(path):
     if out.parent != build or not out.name.startswith("bitmap-pilot-"):
         raise ValueError("output must be a direct build/bitmap-pilot-* child")
     out.mkdir(mode=0o700)  # exclusive; never reuse any existing directory
-    with (out / MARKER).open("x", encoding="ascii") as marker:
+    with (out / MARKER).open("x", encoding="ascii", newline="\n") as marker:
         marker.write("owned bitmap pilot v1\n")
     print(out)
 

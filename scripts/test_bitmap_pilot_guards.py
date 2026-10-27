@@ -38,6 +38,7 @@ class PilotGuards(unittest.TestCase):
         return seed
 
     def test_init_and_seed_refuse_reuse(self):
+        self.assertEqual((self.out / ".bitmap-populated-pilot-owned").read_bytes(), b"owned bitmap pilot v1\n")
         with self.assertRaises(FileExistsError): init(self.out)
         receipt = self.out / "seed-process.json"
         receipt.write_text("keep")

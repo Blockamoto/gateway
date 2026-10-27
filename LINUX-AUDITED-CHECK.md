@@ -1,12 +1,12 @@
 # Exact audited Linux client: offline hosted check
 
 This separate tooling branch proposes a fail-closed reproducibility experiment.
-It checks out full branch history, verifies that exact release source ad8b48c is
+It checks out full branch history, verifies that exact release source e439525 is
 an ancestor, and archives it locally into the Windows-derived GOPATH-off package
 identity. It uses Go 1.27.1 and the release build flags, and
 checks the public embedded update descriptor. It executes the rebuilt client
 only if its full SHA-256 equals the independently audited Linux candidate
-`3268a30d155adc2fdc54b4ebc29265ea39127d2edbf3b83c89ff1ade307d285f`.
+`ec3f11ca2f8d2a6e0e5010263b80e6269203b16b27117fbd140f70ae42598fbf`.
 Cross-platform reproduction is not yet established; a mismatch is a failed
 check, not permission to execute a merely equivalent binary.
 

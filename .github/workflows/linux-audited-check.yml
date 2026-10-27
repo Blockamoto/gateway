@@ -28,10 +28,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          revision=ad8b48c4a1335e0c992ad21507d9a5553f75ee28
+          revision=e439525617ed5ec742cbcda97aecfaa3a36ee7be
           test "$(git rev-parse "$revision^{commit}")" = "$revision"
           git merge-base --is-ancestor "$revision" HEAD
-          source=/C_/GatewayReleaseBuild/0.7.8/source-ad8b48c
+          source=/C_/GatewayReleaseBuild/0.7.8/source-e439525
           test ! -e /C_
           sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" "$source"
           git archive "$revision" | tar -x -C "$source"
@@ -43,15 +43,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source=/C_/GatewayReleaseBuild/0.7.8/source-ad8b48c
+          source=/C_/GatewayReleaseBuild/0.7.8/source-e439525
           cd "$source"
           export GO111MODULE=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1
           export GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOWORK=off GOFLAGS= GOEXPERIMENT=
           export SOURCE_DATE_EPOCH=1792010749 HOME="$RUNNER_TEMP/audited-linux-home" TMPDIR="$RUNNER_TEMP/audited-linux-tmp" GOCACHE="$RUNNER_TEMP/audited-linux-cache"
           test "$(go version | awk '{print $3}')" = go1.27.1
-          test "$(go list -f '{{.ImportPath}}' .)" = '_/C_/GatewayReleaseBuild/0.7.8/source-ad8b48c'
+          test "$(go list -f '{{.ImportPath}}' .)" = '_/C_/GatewayReleaseBuild/0.7.8/source-e439525'
           go build -overlay "$TMPDIR/overlay.json" -trimpath -ldflags '-s -w' -o "$TMPDIR/gateway-client" .
-          printf '%s  %s\n' 3268a30d155adc2fdc54b4ebc29265ea39127d2edbf3b83c89ff1ade307d285f "$TMPDIR/gateway-client" | sha256sum -c -
+          printf '%s  %s\n' ec3f11ca2f8d2a6e0e5010263b80e6269203b16b27117fbd140f70ae42598fbf "$TMPDIR/gateway-client" | sha256sum -c -
       - name: Check exact binary with loopback only and disposable profiles
         shell: bash
         run: |
@@ -61,4 +61,4 @@ jobs:
             set -euo pipefail
             ip link set lo up
             exec setpriv --reuid "$1" --regid "$2" --clear-groups --no-new-privs env -i PATH="$3" HOME="$4" TMPDIR="$5" python3 "$6" --binary "$7" --source "$8" --out "$5/offline-check"
-          ' _ "$(id -u)" "$(id -g)" "$PATH" "$RUNNER_TEMP/audited-linux-home" "$RUNNER_TEMP/audited-linux-tmp" "$GITHUB_WORKSPACE/scripts/check-audited-linux-offline.py" "$RUNNER_TEMP/audited-linux-tmp/gateway-client" /C_/GatewayReleaseBuild/0.7.8/source-ad8b48c
+          ' _ "$(id -u)" "$(id -g)" "$PATH" "$RUNNER_TEMP/audited-linux-home" "$RUNNER_TEMP/audited-linux-tmp" "$GITHUB_WORKSPACE/scripts/check-audited-linux-offline.py" "$RUNNER_TEMP/audited-linux-tmp/gateway-client" /C_/GatewayReleaseBuild/0.7.8/source-e439525

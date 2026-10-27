@@ -48,3 +48,10 @@ assert.deepEqual(plain(rawSnapshot),rawCopy,'UI filtering never mutates backend 
 assert.equal(visible.definitions.length,1);for(const key of ['instances','live','providers','jobs'])assert.equal(visible[key].length,0,key);assert.equal(visible.job,null);assert.equal(visible.timeline.tracks.length,0);assert.equal(visible.run.prepared.consumers.length,0);assert.equal(visible.run.run.consumers.length,0);assert.equal(visible.run.run.request.consumers.length,1);assert.equal(visible.run.run.hidden_processing_unavailable,true,'Filtered old run cannot silently resume hidden work');
 assert.equal(context.window.GatewayIndexTransport.parcelDefinition({id:'alias'}),true,'Custom Parcel aliases remain known after their UI row is removed');
 console.log('Parcel hidden UI projection PASS: all generations, aliases, related chains, saved evidence, live/jobs/run/status hidden without altering API data.');
+
+const waiting=context.window.GatewayIndexTransport.visibleSnapshot({jobs:[{id:'waiting',index:'sat-state',state:'waiting',error:'Missing authenticated source bytes.',progress:[{index:'sat-state',state:'running'}]}]});
+assert.equal(Object.prototype.hasOwnProperty.call(waiting.jobs[0].progress[0],'error'),false,'Absent progress error stays absent so it cannot shadow the parent error');
+vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../ui/shell/index-cards.js'),'utf8'),context);
+assert.equal(context.window.GatewayIndexCards.jobFor('sat-state',waiting).error,'Missing authenticated source bytes.');
+const withProgressError=context.window.GatewayIndexTransport.visibleSnapshot({jobs:[{id:'waiting',index:'sat-state',state:'waiting',error:'Parent error',progress:[{index:'sat-state',state:'running',error:'Specific error'}]}]});
+assert.equal(context.window.GatewayIndexCards.jobFor('sat-state',withProgressError).error,'Specific error','A present progress error still takes precedence');

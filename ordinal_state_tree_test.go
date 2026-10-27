@@ -52,6 +52,29 @@ func TestOrdinalTreeCacheRetainsHotPagesAndBoundsEntries(t *testing.T) {
 	}
 }
 
+func TestOrdinalTreeMemoryOnlyProofNeverLoadsAbsentDiskPages(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "pages")
+	writer := newOrdinalTree(dir, "")
+	page := ordinalPage{Entries: []ordinalKV{{Key: "01", Value: json.RawMessage("7")}}}
+	hash, err := writer.write(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := newOrdinalTree(dir, hash)
+	reader.memoryOnly = true
+	if _, err := reader.read(hash); err == nil {
+		t.Fatal("missing proof page was read from disk")
+	}
+	reader.cache[hash] = page
+	reader.cacheEntries[hash] = reader.cacheOrder.PushFront(hash)
+	for i := 0; i < 2; i++ {
+		got, err := reader.read(hash)
+		if err != nil || len(got.Entries) != 1 || string(got.Entries[0].Value) != "7" {
+			t.Fatal(got, err)
+		}
+	}
+}
+
 func TestOrdinalTreeReadEvidenceBoundsAndReopen(t *testing.T) {
 	for _, test := range []struct {
 		name, raw, wantError string

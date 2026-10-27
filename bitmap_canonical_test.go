@@ -167,7 +167,15 @@ func TestBitmapCanonicalParcelSelectedDistrictAndProvenance(t *testing.T) {
 					t.Fatal(err)
 				}
 				if tc.name == "collected-preblock-is-gap" {
-					if err = sat.collectSat077State(); err != nil {
+					// Collection is incremental and may need multiple bounded
+					// mark passes before it can safely sweep the old state.
+					for pass := 0; pass < 40; pass++ {
+						err = sat.collectSat077State()
+						if err == nil || !errors.Is(err, errOrdinalMaintenancePending) {
+							break
+						}
+					}
+					if err != nil {
 						t.Fatal(err)
 					}
 				}

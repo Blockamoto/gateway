@@ -112,6 +112,14 @@ func verifyBitmapParentEvidence(ctx context.Context, root string, proof *bitmapP
 	tree := func(rootHash string) *ordinalTree {
 		t := newOrdinalTree(filepath.Join(root, "indexes", "bitmap-development-v1", "unavailable-proof-page"), rootHash).withContext(ctx)
 		t.cache = bundle.Pages
+		t.memoryOnly = true
+		// Detached evidence supplies already-authenticated in-memory pages.
+		// Populate the LRU metadata too, so a cache hit never dereferences a
+		// missing list entry. The bundle is read-only and contains every proof
+		// page; an absent page still fails at the unavailable proof path.
+		for hash := range bundle.Pages {
+			t.cacheEntries[hash] = t.cacheOrder.PushFront(hash)
+		}
 		return t
 	}
 	var identity inscriptionSatResult

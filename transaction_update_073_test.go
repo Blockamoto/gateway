@@ -39,6 +39,19 @@ func setBrowse073(t *testing.T, a *app, id string, on bool) {
 func Test073BrowseOptInIndependentSparseAndRestart(t *testing.T) {
 	a, _, hashes := timelineFixture(t, 7)
 	b2, b5 := browseBlock073(t, 2, hashes[2]), browseBlock073(t, 5, hashes[5])
+	assertResults := func(got []indexBrowseResult, want map[string]string) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatal("unexpected browse result count", got)
+		}
+		seen := map[string]bool{}
+		for _, result := range got {
+			if seen[result.Index] || want[result.Index] != result.State || result.Error != "" {
+				t.Fatal("unexpected browse result", got)
+			}
+			seen[result.Index] = true
+		}
+	}
 	if got := a.indexBrowsedBlock(context.Background(), b2, nil); len(got) != 0 {
 		t.Fatal("fresh profile indexed without consent", got)
 	}
@@ -46,19 +59,13 @@ func Test073BrowseOptInIndependentSparseAndRestart(t *testing.T) {
 		t.Fatal("off browsing wrote index state", err)
 	}
 	setBrowse073(t, a, "tx-locator", true)
-	if got := a.indexBrowsedBlock(context.Background(), b2, nil); len(got) != 1 || got[0].State != "indexed" {
-		t.Fatal(got)
-	}
+	assertResults(a.indexBrowsedBlock(context.Background(), b2, nil), map[string]string{"tx-locator": "indexed"})
 	if _, available, err := a.browsedBatchContext(context.Background(), "inscriptions", 2, hashes[2]); err != nil || available {
 		t.Fatal("TX preference enabled inscriptions", available, err)
 	}
 	setBrowse073(t, a, "inscriptions", true)
-	if got := a.indexBrowsedBlock(context.Background(), b2, nil); len(got) != 2 || got[0].State != "already_indexed" || got[1].State != "indexed" {
-		t.Fatal(got)
-	}
-	if got := a.indexBrowsedBlock(context.Background(), b5, nil); len(got) != 2 || got[1].State != "indexed" {
-		t.Fatal(got)
-	}
+	assertResults(a.indexBrowsedBlock(context.Background(), b2, nil), map[string]string{"tx-locator": "already_indexed", "inscriptions": "indexed"})
+	assertResults(a.indexBrowsedBlock(context.Background(), b5, nil), map[string]string{"tx-locator": "indexed", "inscriptions": "indexed"})
 	for _, id := range []string{"inscriptions", "tx-locator"} {
 		s, err := indexStoreHead(a.dataDir, id)
 		if err != nil || s.checkpoint != nil {

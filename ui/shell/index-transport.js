@@ -63,7 +63,7 @@ window.GatewayIndexTransport = (() => {
     const text=value=>typeof value==='string'&&/parcel/i.test(value)?'This saved work is unavailable in this version.':value;
     const blocked=row=>parcelDefinition(row)||hidden.has(row?.index||row?.definition||row?.id)||hidden.has(row?.district_instance);
     const rows=list=>(list||[]).filter(row=>!blocked(row));
-    const details=list=>rows(list).map(row=>({...row,reason:text(row.reason),error:text(row.error),note:text(row.note),dependencies:details(row.dependencies)}));
+    const details=list=>rows(list).map(row=>{const clean={...row,dependencies:details(row.dependencies)};for(const key of ['reason','error','note'])if(Object.prototype.hasOwnProperty.call(row,key))clean[key]=text(row[key]);return clean;});
     const cleanJob=job=>!job||blocked(job)?null:{...job,reason:text(job.reason),error:text(job.error),waiting_reason:text(job.waiting_reason),outputs:(job.outputs||[]).filter(id=>!blocked({id})),progress:details(job.progress),consumers:details(job.consumers)};
     const request=req=>req?{...req,consumers:rows(req.consumers)}:req;
     const run=value.run?{...value.run,error:text(value.run.error),prepared:request(value.run.prepared),run:value.run.run?{...cleanJob(value.run.run),hidden_processing_unavailable:!!value.run.run.hidden_processing_unavailable||(value.run.run.request?.consumers||[]).some(c=>c.armed&&blocked(c)),request:request(value.run.run.request)}:value.run.run}:value.run;

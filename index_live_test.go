@@ -154,7 +154,9 @@ func Test063LiveCatchupUsesRawArmAndDoesNotExpandPublication(t *testing.T) {
 	if current.State != "synced" || !current.LagKnown || current.Lag != 0 || !current.TipFresh {
 		t.Fatalf("fresh live state: %+v", current)
 	}
+	a.settingsMu.Lock()
 	a.settings.NetworkDisabled = true
+	a.settingsMu.Unlock()
 	offline := a.indexLiveView("blocks", indexLivePolicy{Index: "blocks", Enabled: true, Retention: "ephemeral"})
 	if offline.State != "offline_unknown" || offline.LagKnown || offline.TipFresh {
 		t.Fatalf("stale local arithmetic was mislabeled current: %+v", offline)

@@ -40,6 +40,7 @@ type ordinalTree struct {
 	cache            map[string]ordinalPage
 	cacheOrder       *list.List
 	cacheEntries     map[string]*list.Element
+	memoryOnly       bool
 	dirtyDirectories map[string]bool
 	writeLocks       *[256]sync.Mutex
 }
@@ -80,6 +81,9 @@ func (t *ordinalTree) read(hash string) (ordinalPage, error) {
 	if p, ok := t.cache[hash]; ok {
 		t.cacheOrder.MoveToFront(t.cacheEntries[hash])
 		return p, nil
+	}
+	if t.memoryOnly {
+		return ordinalPage{}, fmt.Errorf("ordinal state proof page is missing")
 	}
 	path := t.pagePath(hash)
 	f, e := os.Open(path)

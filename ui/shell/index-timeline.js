@@ -623,7 +623,7 @@ window.GatewayIndexTimeline = (() => {
     }
     function draw() {
       const active=doc.activeElement,globalFocus=active?.matches?.('.timeline-global-handle')?{edge:active.dataset.edge,ruler:!!active.closest('#timeline-ruler')}:null,restore=pendingMarkerFocus||active?.matches?.('.timeline-selection-marker')&&{id:active.closest('.timeline-track')?.dataset.index,height:Number(active.dataset.height),edge:active.dataset.edge};pendingMarkerFocus=null;
-      dimensions();paintHierarchy();ruler.replaceChildren();const p=frame(),v=navView(),span=v.to-v.from+1,position=p?p.focused:playhead;
+      dimensions();paintHierarchy();for(const node of ruler.querySelectorAll(':scope > .timeline-ruler-tick, :scope > .timeline-playhead-marker'))node.remove();const p=frame(),v=navView(),span=v.to-v.from+1,position=p?p.focused:playhead;
       const marks=p?rulerMarks(v,ruler.clientWidth||800).filter(m=>m.kind==='regular'):rulerMarks(v,ruler.clientWidth||800),ticks=new Set(marks.filter(m=>m.kind==='regular').map(m=>m.height));
       for(const mark of marks){const tick=el('span',mark.label,'timeline-ruler-tick '+mark.kind);tick.dataset.height=String(mark.height);tick.title=p?positionLabel(mark.height):mark.detail||'Block '+format(mark.height);tick.style.left=((mark.height-v.from+.5)/span*100)+'%';ruler.append(tick);}
       ruler.setAttribute('aria-valuemin','0');ruler.setAttribute('aria-valuemax',String(navExtent()));ruler.setAttribute('aria-valuenow',String(position??v.from));ruler.setAttribute('aria-valuetext',position===null?'Choose a position':positionLabel(position));

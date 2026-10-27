@@ -23,15 +23,20 @@ class PromotionTests(unittest.TestCase):
     def test_unfrozen_draft_rejects_before_network(self):
         p = SimpleNamespace(frozen_inputs=Mock(), require=require)
         helper = SimpleNamespace(GitHub=Mock())
-        with self.assertRaisesRegex(Rejected, 'Signing run'):
+        with patch.object(m, 'SIGNING_RUN_ID', 0), self.assertRaisesRegex(Rejected, 'Signing run'):
             m.execute(SimpleNamespace(), p, helper)
         helper.GitHub.assert_not_called()
 
     def test_all_promotion_pins_required(self):
         p = SimpleNamespace(frozen_inputs=Mock(), require=require)
-        with patch.object(m, 'SIGNING_RUN_ID', 42):
-            with self.assertRaisesRegex(Rejected, 'Promotion identity'):
-                m.frozen(p)
+        complete = dict(SIGNING_RUN_ID=42, SIGNING_WORKFLOW_REVISION='a'*40,
+                        EXPECTED_BUNDLE_SHA256='b'*64, EXPECTED_PREVIOUS_BUNDLE_SHA256='c'*64)
+        with patch.multiple(m, **complete):
+            m.frozen(p)
+        for field in complete:
+            with self.subTest(field=field), patch.multiple(m, **{**complete, field: 0 if field == 'SIGNING_RUN_ID' else ''}):
+                with self.assertRaises(Rejected):
+                    m.frozen(p)
 
     def test_signed_source_and_sequences_required(self):
         p = SimpleNamespace(require=require, VERSION='0.7.8', REVISION='a'*40,

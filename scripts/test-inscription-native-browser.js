@@ -43,8 +43,8 @@ async function run(){
   // Required recursion headers are asserted below. Late diagnostic reads can
   // race browser teardown and must not interrupt native/profile cleanup.
   page.on('pageerror',error=>errors.push(error.message));page.on('response',res=>{if(res.url().startsWith(contentOrigin))contentResponses.push({url:res.url(),status:res.status()});});page.on('request',req=>{if(req.url().startsWith(contentOrigin))req.allHeaders().then(headers=>contentRequests.push({url:req.url(),headers})).catch(()=>{});if(req.url().startsWith(management+'/api/v1/settings')&&req.method()==='POST')managementAttempts.push(req.url());});
-  await page.goto(management+'/indexes?viewer=1');await page.locator('#workspace-viewport').waitFor();await page.waitForFunction(()=>workspaceReady===true&&typeof viewport?.open==='function');
-  async function open(name){await page.evaluate(id=>viewport.open(id),ids[name]);await page.waitForFunction(id=>viewport.state().id===id&&viewport.state().state==='ready',ids[name]);return page.evaluate(()=>JSON.parse(document.querySelector('.inscription-evidence pre').textContent));}
+  await page.goto(management+'/indexes?viewer=1');await page.waitForFunction(()=>workspaceReady===true&&typeof viewport?.open==='function');
+  async function open(name){await page.evaluate(id=>viewport.open(id),ids[name]);await page.locator('#workspace-viewport').waitFor({state:'visible'});await page.waitForFunction(id=>viewport.state().id===id&&viewport.state().state==='ready',ids[name]);return page.evaluate(()=>JSON.parse(document.querySelector('.inscription-evidence pre').textContent));}
   assert.equal(adapterReads.some(url=>url.endsWith(ids.child)),false,'Recursive child is not cached before viewer use');let record=await open('html');
   await page.waitForFunction(()=>document.querySelector('.inscription-monitor iframe').src.includes('/preview/'));
   let inner;for(let i=0;i<80;i++){inner=page.frames().find(frame=>frame.url().startsWith(contentOrigin+'/content/'+ids.html));if(inner&&await inner.evaluate(()=>document.body?.dataset.recursive==='Recursive native content').catch(()=>false))break;await delay(100);}

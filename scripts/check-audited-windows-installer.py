@@ -278,6 +278,82 @@ def run_audited(binary, expected, arguments, env):
                           capture_output=True, timeout=180, check=True)
 
 
+def process_snapshot():
+    """Read process IDs only; no process control or command lines."""
+    import ctypes
+    from ctypes import wintypes
+    class Entry(ctypes.Structure):
+        _fields_ = [('size', wintypes.DWORD), ('usage', wintypes.DWORD),
+                    ('pid', wintypes.DWORD), ('heap', ctypes.c_size_t),
+                    ('module', wintypes.DWORD), ('threads', wintypes.DWORD),
+                    ('parent', wintypes.DWORD), ('priority', ctypes.c_long),
+                    ('flags', wintypes.DWORD), ('exe', wintypes.WCHAR * 260)]
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(Entry)]
+    kernel.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(Entry)]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.CreateToolhelp32Snapshot(2, 0)  # TH32CS_SNAPPROCESS
+    if handle == wintypes.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        entry = Entry()
+        entry.size = ctypes.sizeof(entry)
+        rows = []
+        if not kernel.Process32FirstW(handle, ctypes.byref(entry)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        while True:
+            rows.append((entry.pid, entry.parent, entry.exe.lower()))
+            if not kernel.Process32NextW(handle, ctypes.byref(entry)):
+                error = ctypes.get_last_error()
+                if error != 18:  # ERROR_NO_MORE_FILES
+                    raise ctypes.WinError(error)
+                break
+        return rows
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def observed_uninstall(binary, env):
+    # Pin immediately before the only process invocation, as in run_audited.
+    require_hash(binary, INSTALLER_SHA)
+    process_snapshot()  # Fail before starting if diagnostic observation is unavailable.
+    started = time.monotonic()
+    seen = set()
+    observations = []
+    proc = subprocess.Popen([str(binary), '-uninstall', '-quiet'], env=env,
+                            cwd=env['TEMP'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    def sample():
+        rows = process_snapshot()
+        current = {pid for pid, parent, name in rows
+                   if name == 'powershell.exe' and (parent == proc.pid or pid in seen)}
+        for pid in sorted(current - seen):
+            observations.append({'event':'child_seen', 'pid':pid, 'seconds':round(time.monotonic()-started, 3)})
+        seen.update(current)
+        return current
+    try:
+        while True:
+            sample()
+            try:
+                stdout, stderr = proc.communicate(timeout=.2)
+                break
+            except subprocess.TimeoutExpired:
+                if time.monotonic()-started >= 180:
+                    proc.kill()
+                    proc.communicate()
+                    raise RuntimeError('Owned uninstaller timed out')
+        sample()
+        if proc.returncode:
+            raise subprocess.CalledProcessError(proc.returncode, proc.args, stdout, stderr)
+    except BaseException:
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()
+        raise
+    return sample, observations
+
+
 def exercise(out, build, installer):
     import winreg
     real_shortcut = runner_preflight()
@@ -321,16 +397,27 @@ def exercise(out, build, installer):
         raise RuntimeError('Disposable shortcut target differs')
     # Uninstall invokes the installed client for narrowly scoped integration removal.
     require_hash(app/'GatewayClient.exe', CLIENT_SHA)
-    run_audited(uninstaller, INSTALLER_SHA, ['-uninstall', '-quiet'], env)
+    sample_child, observations = observed_uninstall(uninstaller, env)
     wait_started = time.monotonic()
-    deadline = wait_started+30
-    while uninstaller.exists() and time.monotonic() < deadline:
+    child_alive = set()
+    while uninstaller.exists() and time.monotonic() < wait_started+30:
+        child_alive = sample_child()
         time.sleep(.2)
+    exceeded_30_seconds = uninstaller.exists()
+    if exceeded_30_seconds:
+        print('30-second cleanup assertion FAILED; continuing observation up to 120 seconds', flush=True)
+        while uninstaller.exists() and time.monotonic() < wait_started+120:
+            child_alive = sample_child()
+            time.sleep(.2)
+    print('Cleanup process observations: '+json.dumps({'events':observations,
+          'child_pids_alive_at_end':sorted(child_alive), 'file_exists_at_30_seconds':exceeded_30_seconds,
+          'file_exists_at_end':uninstaller.exists(), 'wait_seconds':round(time.monotonic()-wait_started, 3),
+          'limit':'sampled PIDs only; no child stderr, missing observations do not prove no child'}), flush=True)
     integration_clear()
     remaining = [path.name for path in (shortcut, uninstaller, *(app/name for name in EXPECTED)) if path.exists()]
-    if remaining:
+    if exceeded_30_seconds or remaining:
         raise RuntimeError('Disposable uninstall left managed files or shortcut after '
-                           f'{time.monotonic()-wait_started:.2f}s: {remaining}')
+                           f'30 seconds; remaining after diagnostic wait: {remaining}')
     if sentinel.read_text(encoding='utf-8') != 'preserve me\n':
         raise RuntimeError('Uninstall modified unrelated file')
     if {p.name:digest(p) for p in (marker, profile_sentinel)} != profile_hashes:

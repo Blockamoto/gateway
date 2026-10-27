@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from unittest import mock
 import zipfile
+import sys
 
 spec = importlib.util.spec_from_file_location('audited_installer', Path(__file__).with_name('check-audited-windows-installer.py'))
 tool = importlib.util.module_from_spec(spec)
@@ -22,6 +23,22 @@ class Response(io.BytesIO):
 
 
 class GuardTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows process snapshot')
+    def test_process_snapshot_contains_current_process(self):
+        self.assertTrue(any(pid == os.getpid() for pid, _, _ in tool.process_snapshot()))
+
+    def test_uninstall_observer_hash_checks_and_samples_owned_child(self):
+        process = mock.Mock(pid=42, returncode=0, args=['fixture'])
+        process.communicate.return_value = (b'', b'')
+        rows = [(77, 42, 'powershell.exe'), (78, 99, 'powershell.exe')]
+        with mock.patch.object(tool, 'require_hash') as gate, \
+             mock.patch.object(tool, 'process_snapshot', return_value=rows), \
+             mock.patch.object(tool.subprocess, 'Popen', return_value=process):
+            sample, events = tool.observed_uninstall(Path('fixture.exe'), {'TEMP':'fixture-temp'})
+            gate.assert_called_once_with(Path('fixture.exe'), tool.INSTALLER_SHA)
+            self.assertEqual(sample(), {77})
+            self.assertEqual([(x['event'], x['pid']) for x in events], [('child_seen', 77)])
+
     def test_bounded_shortcut_local_target_and_invalid_forms(self):
         target = r'C:\owned\GatewayOnDemand.exe'
         shell_header = bytearray(bytes.fromhex('4c0000000114020000000000c000000000000046') + bytes(56))

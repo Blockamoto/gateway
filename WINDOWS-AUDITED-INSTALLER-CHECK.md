@@ -35,6 +35,12 @@ self-deletion and requires the test registration and shortcut to be removed and
 synthetic application/profile sentinel files to be unchanged. The ephemeral VM
 is discarded after the job; no generic local HKCU sandbox is assumed.
 
+For diagnostics, the check samples process IDs and records PowerShell children
+of its own uninstaller. If the executable remains after 30 seconds, the check
+continues observation up to 120 seconds but still fails the 30-second assertion.
+It cannot capture the audited child's discarded standard error, and a missed
+sample does not prove that no child was started. Findings are in the job log.
+
 The work is not network-sandboxed. Checkout, tool setup and the public header
 download use network; the test does not launch setup or enable peer networking.
 It does not test upgrades, existing installations, existing user profiles,

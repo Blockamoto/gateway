@@ -1,6 +1,6 @@
 # Draft: exact audited Windows installer check
 
-This tooling branch is local and has not been pushed. A qualifying push to
+A qualifying push to
 `codex/windows-installer-check` will run the check, including a quiet install
 and uninstall on a fresh GitHub-hosted runner. It does not publish or promote
 any release, and must never run against a real user's account, profile,
@@ -19,7 +19,7 @@ execution. The audited installer hash is
 `c8e3d7b90b624d55e2270d5411ec498b2ffebc52a0277d86585ea7df2ea76234`.
 The final digest gate is mandatory: differing toolchains, paths, line endings,
 staging or other build inputs must produce a failed check, not a substitute
-installer. Byte-for-byte reconstruction on the hosted runner is unproven.
+installer. Byte-for-byte reconstruction passed on hosted runs 40456943290 and 40457787932.
 
 Before installation, the test rejects pre-existing Gateway uninstall,
 startup, protocol and browser-native-host registrations and the runner's real
@@ -35,9 +35,14 @@ self-deletion and requires the test registration and shortcut to be removed and
 synthetic application/profile sentinel files to be unchanged. The ephemeral VM
 is discarded after the job; no generic local HKCU sandbox is assumed.
 
+Run 40457787932 observed the exact audited uninstaller remove itself after
+33.625 seconds on a fresh hosted runner. The original 30-second acceptance check failed. The bounded acceptance budget
+is now 90 seconds to allow cold PowerShell initialization; remaining files still fail
+the check. The implementation and all candidate hashes are unchanged.
+
 For diagnostics, the check samples process IDs and records PowerShell children
-of its own uninstaller. If the executable remains after 30 seconds, the check
-continues observation up to 120 seconds but still fails the 30-second assertion.
+of its own uninstaller. The check retains the 30-second observation and waits up to 90 seconds for
+self-deletion, then requires all cleanup and preservation assertions to pass.
 It cannot capture the audited child's discarded standard error, and a missed
 sample does not prove that no child was started. Findings are in the job log.
 

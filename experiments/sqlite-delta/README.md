@@ -19,8 +19,23 @@ The current common-engine `Backend` requires a complete candidate View. Its
 adapter here therefore reads and compares the full state before submitting a
 delta. Using that adapter does **not** avoid whole-state copying or prove
 indexing throughput. It is provided to compare correctness against the earlier
-whole-state SQLite prototype. A real incremental engine must produce its own
-deltas and selected lookups without that adapter.
+whole-state SQLite prototype.
+
+The experimental `UTXOProducer` takes the common engine's executable UTXO
+recipe and uses the direct delta API instead. It prepares a fenced checkpoint,
+looks up only block-touched inputs and prospective output keys, evaluates the
+recipe in transaction order using a local overlay, and publishes only final
+changed keys and the block receipt. Looking up prospective outputs detects
+collisions; outputs both created and spent in the block need no saved coin row.
+It snapshots the UTXO-relevant block and transaction slices before its two
+passes, so those passes see the same outpoint keys; callers must not mutate the
+input concurrently with `Apply`. The snapshot allocates in proportion to the
+block, in addition to the touched-key overlay.
+Fixture tests compare its receipts and state to the whole-state engine across
+restart, no-op and changed/deleted keys, intra-block spends, errors, injected
+failure/retry and a stale anchor. A same-ID recreation fixture is synthetic;
+it is not an implementation of Bitcoin's BIP30 historical rules. The full
+suite passed with `go test -count=1 ./...`, as did `go vet ./...`.
 
 Run `go test ./...` and `go vet ./...` in this directory. Tests cover insertion,
 updates, deletions, empty outcomes, independent index instances, stale chain and
@@ -50,4 +65,6 @@ In particular, the first head's required genesis or District origin is a
 producer responsibility, and an upsert can update an already present coin.
 A Bitcoin UTXO producer must reject disallowed live-outpoint collisions and
 handle historical exceptions before submitting a delta; this store does not
-establish those rules.
+establish those rules. The fixture producer uses an overlay proportional to
+touched keys and has not been measured on representative real blocks with a
+populated index; neither it nor its source adapter validates Bitcoin consensus.

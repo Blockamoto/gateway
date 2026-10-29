@@ -447,6 +447,11 @@ body.indexes-workspace .index-timeline,.index-timeline{--track-label:260px;--tim
 .timeline-locator-companion p{margin:0 0 18px;line-height:1.6}
 .timeline-locator-companion-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .timeline-locator-companion-actions button{min-height:40px;padding:8px 12px;font-size:12px}
+.timeline-dependency-setup .timeline-dependency-row{display:grid;grid-template-columns:minmax(0,1fr) 27px 27px 24px;align-items:center;column-gap:6px;height:auto;min-height:44px;padding:4px 8px}
+.timeline-dependency-setup .timeline-dependency-row>span:first-child{min-width:0;grid-row:1}
+.timeline-dependency-setup .timeline-dependency-row>.timeline-track-switch{grid-row:1}
+.timeline-dependency-setup .timeline-dependency-tick{grid-column:4;grid-row:1;text-align:center}
+.timeline-dependency-setup .timeline-dependency-route-heading{margin:14px 0 8px;font-size:13px;line-height:1.35}
 .timeline-start-review .timeline-locator-companion-actions{flex-direction:column;align-items:stretch}
 .timeline-start-option{display:flex;align-items:center;gap:10px;min-width:0}
 .timeline-start-option button{flex:0 0 auto;white-space:nowrap}

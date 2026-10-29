@@ -6,7 +6,7 @@ window.GatewayBitmapView=(()=>{
   // portable, independently replayed proof of the negative interval.
   function proofNote(candidate){
     const proof=candidate?.provenance;
-    if(proof?.evaluation_kind==='local-selected-raw-no-spend-attestation-v1'&&proof.relation_state==='rejected')return 'Locally evaluated negative relationship: this installation checked the selected interval and retained a local attestation. The local attestation may remain usable if Raw blocks are removed, but independent replay requires the retained Raw blocks for that interval. Opening this view does not start a scan.';
+    if(proof?.evaluation_kind==='local-selected-raw-no-spend-attestation-v1'&&proof.relation_state==='rejected')return 'Locally evaluated negative relationship: this profile checked the selected interval and retained a local attestation. The local attestation may remain usable if Raw blocks are removed; independent replay requires the retained Raw blocks for that interval. An independent replay action is not yet available in the interface. Opening this view does not start a scan.';
     if(proof?.evaluation_kind==='selected-chain-satpoint-replay-v3')return 'Relationship evidence was replayed from retained receipt blocks against the selected chain. Viewing this result does not start a historical scan.';
     return '';
   }

@@ -73,9 +73,14 @@ func (a *app) newSatlineStart(backend satlineBackend, q satlineQuery, ctx contex
 	}
 	return r.follow(q.Input, -1)
 }
-func (a *app) prepareSatlineBase(q satlineQuery, rebuild bool, ctx context.Context) (satlineResult, int) {
+func (a *app) prepareSatlineBase(q satlineQuery, rebuild bool, ctx context.Context, pinned ...*satlineEvidenceBackend077) (satlineResult, int) {
+	backend := newSatlineEvidenceBackend077(a, ctx)
+	if len(pinned) > 0 {
+		backend = pinned[0]
+	}
+	canonical := backend.hashAt
 	if rec, ok := a.loadSatlineRecord(q.Kind, q.key()); ok && rec.VerifierVersion == blockVerifierVersion {
-		check := checkSatlineRecord(rec, a.canonicalHashAtHeight)
+		check := checkSatlineRecord(rec, canonical)
 		if check.Status == anchorUnavailable && satlineStart(rec.Result) != nil {
 			return pendingSatlineAnchor(rec.Result, check.Reason), len(rec.Result.Hops)
 		}
@@ -91,7 +96,7 @@ func (a *app) prepareSatlineBase(q satlineQuery, rebuild bool, ctx context.Conte
 				r.ChainTipHeight = auth.Height
 				return r, 0
 			}
-			count, startOK := validateSatlineRecord(rec, a.canonicalHashAtHeight)
+			count, startOK := validateSatlineRecord(rec, canonical)
 			if startOK {
 				r := satlineClone(rec.Result)
 				r.AnchorStatus, r.OperationalReason = string(anchorMatches), ""
@@ -118,16 +123,19 @@ func (a *app) prepareSatlineBase(q satlineQuery, rebuild bool, ctx context.Conte
 			}
 		}
 	}
-	return a.newSatlineStart(contextSatlineBackend{appSatlineBackend{a}, ctx}, q, ctx), -1
+	return a.newSatlineStart(backend, q, ctx), -1
 }
 func (a *app) runSatlineLocal(ctx context.Context, q satlineQuery, op string, maxHops int, notify func(satlineResult)) satlineResult {
+	if err := requireReleaseFeature("satline"); err != nil {
+		return satlineError(q, "MODULE_DISABLED", err.Error())
+	}
 	a.satlineWorkMu.Lock()
 	defer a.satlineWorkMu.Unlock()
 	if !q.valid() {
 		return satlineError(q, "INVALID", "Malformed Satline query")
 	}
 	if !a.satlineEnabled() {
-		return satlineError(q, "MODULE_DISABLED", "Satline is disabled. Bitcoin on Demand remains available.")
+		return satlineError(q, "MODULE_DISABLED", releaseLockReason("satline"))
 	}
 	a.satlineMu.Lock()
 	initErr := a.satlineInitErr
@@ -140,14 +148,15 @@ func (a *app) runSatlineLocal(ctx context.Context, q satlineQuery, op string, ma
 	}
 	// Recheck/rebuild calculate into a new record. Keep the old valid file until
 	// a completed replacement exists, rather than unlinking it before network IO.
-	base, reused := a.prepareSatlineBase(q, op == "rebuild" || op == "recheck", ctx)
+	backend := newSatlineEvidenceBackend077(a, ctx)
+	base, reused := a.prepareSatlineBase(q, op == "rebuild" || op == "recheck", ctx, backend)
 	prefix := append([]satlineHop(nil), base.Hops...)
-	pin := a.currentChainAuthority()
+	pin := backend.pin
 	checkPinnedAnchor := func() anchorCheck {
 		if pin.Height < 0 || !validHash(pin.Hash) {
 			return anchorCheck{Status: anchorUnavailable, Reason: "No selected chain snapshot is available."}
 		}
-		return checkChainAnchor(pin.Height, pin.Hash, a.canonicalHashAtHeight)
+		return checkChainAnchor(pin.Height, pin.Hash, backend.hashAt)
 	}
 	applyAnchor := func(result satlineResult) satlineResult {
 		check := checkPinnedAnchor()
@@ -182,7 +191,7 @@ func (a *app) runSatlineLocal(ctx context.Context, q satlineQuery, op string, ma
 	if op == "start" || base.OperationalReason == "WAITING_FOR_CHAIN_ANCHOR" || base.OperationalReason == "CHAIN_REORG_DETECTED" || base.CurrentSatpoint == nil || satlineStaticState(base.State) || base.State == "UNMINED" {
 		return withSatlinePersistence(base, q, reused, storedErr)
 	}
-	resolver := newSatlineResolver(contextSatlineBackend{appSatlineBackend{a}, ctx})
+	resolver := newSatlineResolver(backend)
 	resolver.ctx = ctx
 	resolver.weakest = base.VerificationState
 	resolver.progress = func(tail satlineResult) {
@@ -224,6 +233,9 @@ type satlineJob struct {
 }
 
 func (a *app) startSatlineJob(q satlineQuery, op string, maxHops int, peer string) (string, error) {
+	if err := requireReleaseFeature("satline"); err != nil {
+		return "", err
+	}
 	if !q.valid() {
 		return "", fmt.Errorf("invalid Satline query")
 	}

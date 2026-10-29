@@ -18,27 +18,50 @@ func indexProviderRow(t *testing.T, rows []indexProviderView, id, provider strin
 	return indexProviderView{}
 }
 
+func TestIndexProvidersDemandRemainsIndependentOfRetainedBodies(t *testing.T) {
+	local := indexProviderState{BitcoinPeersAvailable: true, Blocks: []heightInterval{{From: 1, To: 2}}}
+	row := indexProviderRow(t, buildIndexProviderViews(appSettings{}, coreStatus{}, local), "blocks", "gateway_cache")
+	if !row.Queryable || !row.OnDemand {
+		t.Fatal("retained bodies must not hide connected on-demand capability", row)
+	}
+	local.BitcoinPeersAvailable = false
+	row = indexProviderRow(t, buildIndexProviderViews(appSettings{}, coreStatus{}, local), "blocks", "gateway_cache")
+	if !row.Queryable || row.OnDemand {
+		t.Fatal("retained coverage must not imply a connected source", row)
+	}
+}
+
 func TestIndexProvidersCoreProgressAndPolicy(t *testing.T) {
 	settings := appSettings{ServeData: true}
 	core := coreStatus{Connected: true, Height: 100, BestBlockHash: genesisHashDisplay, TxIndexEnabled: true, TxIndexHeight: 60, SpenderIndexEnabled: true, SpenderIndexHeight: 40}
 	rows := buildIndexProviderViews(settings, core, indexProviderState{})
 	tx := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex")
 	spend := indexProviderRow(t, rows, "txo-spender", "bitcoin_core_txospenderindex")
-	if !tx.Queryable || tx.Serveable || tx.Completeness != "provider_reported_partial" || len(tx.Coverage) != 1 || tx.Coverage[0].To != 60 {
+	if tx.Queryable || tx.Serveable || tx.Readiness != "enabled_index_not_ready" || tx.Completeness != "provider_reported_partial" || len(tx.Coverage) != 1 || tx.Coverage[0].To != 60 {
 		t.Fatalf("partial txindex claims: %+v", tx)
 	}
-	if !spend.Queryable || spend.Serveable || spend.Coverage[0].To != 40 {
+	// Local positive spend queries can use partial Core coverage. The catalog
+	// must keep the partial qualification and unsynced serving restriction.
+	if !spend.Queryable || spend.Serveable || spend.Readiness != "provider_available_partial_coverage" || spend.Completeness != "provider_reported_partial" || len(spend.Coverage) != 1 || spend.Coverage[0] != (heightInterval{From: 0, To: 40}) {
 		t.Fatalf("partial spender claims: %+v", spend)
 	}
 	core.TxIndex, core.SpenderIndex = true, true
 	core.TxIndexHeight, core.SpenderIndexHeight = 100, 100
 	rows = buildIndexProviderViews(settings, core, indexProviderState{})
 	tx = indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex")
-	if tx.Completeness != "provider_reported_at_snapshot" || !tx.Serveable || tx.Snapshot == nil || tx.Snapshot.Height != 100 {
+	if tx.Completeness != "provider_reported_at_snapshot" || !tx.Serveable || !tx.Queryable || tx.Snapshot == nil || tx.Snapshot.Height != 100 {
 		t.Fatalf("synced provider lost its qualified snapshot: %+v", tx)
 	}
+	settings.ServeData = false
+	if got := indexProviderRow(t, buildIndexProviderViews(settings, core, indexProviderState{}), "txo-spender", "bitcoin_core_txospenderindex"); !got.Queryable || got.Serveable {
+		t.Fatalf("local spender query ignored serving policy: %+v", got)
+	}
+	settings.ServeData = true
 	core.InitialBlockDownload = true
 	rows = buildIndexProviderViews(settings, core, indexProviderState{})
+	if got := indexProviderRow(t, rows, "tx-locator", "bitcoin_core_txindex"); got.Queryable || got.Serveable || got.Readiness != "enabled_index_not_ready" {
+		t.Fatalf("IBD bare-ID route advertised: %+v", got)
+	}
 	if got := indexProviderRow(t, rows, "txo-spender", "bitcoin_core_txospenderindex"); got.Completeness != "provider_reported_partial" {
 		t.Fatalf("IBD promoted to complete: %+v", got)
 	}
@@ -59,7 +82,7 @@ func TestIndexProvidersDoNotInventPrunedOrNativeCoverage(t *testing.T) {
 		t.Fatalf("missing pruning boundary invented archival coverage: %+v", blocks)
 	}
 	graph := indexProviderRow(t, rows, "tx-locator", "gateway_native_graph")
-	if !graph.Queryable || graph.Serveable || graph.Completeness != "recorded_ranges" {
+	if !graph.Queryable || graph.Serveable || graph.Readiness != "provider_available_check_coverage" || graph.Completeness != "recorded_ranges" {
 		t.Fatalf("graph metadata became full coverage or nonexistent wire support: %+v", graph)
 	}
 	core.PruneHeight = 95
@@ -72,6 +95,14 @@ func TestIndexProvidersDoNotInventPrunedOrNativeCoverage(t *testing.T) {
 func TestIndexProvidersPrivateLocatorsSurviveBlockEviction(t *testing.T) {
 	a, _ := testAppWithGenesis(t)
 	a.settings.CoreDisabled, a.settings.ShareCache = true, true
+	block, err := a.fetchAndDecode("0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A locator already retained by an earlier explicit operation is distinct
+	// from raw cache possession; a browse preference does not create it here.
+	txid := block.Transactions[0].TxID
+	a.cacheIndex.Tx[txid] = txLocation{TxID: txid, Height: 0, BlockHash: genesisHashDisplay, TxIndex: 0}
 	a.coverage.TxLocation = []heightInterval{{From: 0, To: 0}}
 	for id, b := range a.cacheIndex.Blocks {
 		b.Private = true
@@ -103,8 +134,8 @@ func TestIndexProvidersCoreAddressStateIsLocalAndOnDemand(t *testing.T) {
 	a := &app{dataDir: t.TempDir(), settings: appSettings{BitcoinDataDir: dir, RPCAuthMode: "auto", ServeData: true}, status: appStatus{HeaderHeight: -1}, cacheIndex: newCacheIndex()}
 	rows := a.indexProviderViews()
 	current := indexProviderRow(t, rows, "address-state", "bitcoin_core_chainstate")
-	history := indexProviderRow(t, rows, "address-history", "none")
-	if !current.Queryable || current.Serveable || current.Completeness != "on_demand_snapshot" || len(current.Coverage) != 0 || history.Queryable || history.Serveable {
+	history := indexProviderRow(t, rows, "address-history", "gateway_address_history")
+	if current.Queryable || current.Serveable || current.Readiness == "locked" || current.Completeness != "on_demand_snapshot" || len(current.Coverage) != 0 || history.Queryable || history.Serveable || history.Readiness != "not_built" {
 		t.Fatalf("current state and history confused: current=%+v history=%+v", current, history)
 	}
 	if scans.Load() != 0 {
@@ -142,15 +173,13 @@ func TestIndexProvidersSpenderMissRemainsUnknown(t *testing.T) {
 	existing := strings.Repeat("a", 64)
 	settings, stop := fakeCoreUnspentGraph(t, existing)
 	defer stop()
-	a := &app{dataDir: t.TempDir(), settings: settings, status: appStatus{HeaderHeight: -1}, cacheIndex: newCacheIndex(), coverage: newCoverageState()}
-	a.initGraphStore()
 	for _, tc := range []struct{ txid, state string }{{existing, "unspent_at_snapshot"}, {strings.Repeat("b", 64), "unknown"}} {
-		v, err := a.resolveSpender(tc.txid, 0)
-		if err != nil || v.ConfirmedState != tc.state {
-			t.Fatalf("spender %s: %+v %v", tc.txid, v, err)
+		exists, hash, err := coreConfirmedUnspent(settings, tc.txid, 0)
+		if err != nil || exists != (tc.state == "unspent_at_snapshot") {
+			t.Fatalf("spender %s: %v %v", tc.txid, exists, err)
 		}
-		if tc.state == "unspent_at_snapshot" && (v.Snapshot == nil || v.Snapshot.Hash != genesisHashDisplay || v.Provider != "bitcoin_core_txospenderindex") {
-			t.Fatalf("unspent answer omitted provenance/snapshot: %+v", v)
+		if exists && hash != genesisHashDisplay {
+			t.Fatalf("unspent answer omitted snapshot: %s", hash)
 		}
 	}
 	// Catalog presence does not upgrade incomplete native coverage into a
@@ -161,12 +190,14 @@ func TestIndexProvidersSpenderMissRemainsUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	appendGraphTestHeader(t, b, genesisHashDisplay, 123)
-	if got := indexProviderRow(t, b.indexProviderViews(), "txo-spender", "gateway_native_graph"); !got.Queryable || got.Completeness != "recorded_ranges" {
+	if got := indexProviderRow(t, b.indexProviderViews(), "txo-spender", "gateway_native_graph"); !got.Queryable || got.Serveable || got.Readiness != "provider_available_check_coverage" || got.Completeness != "recorded_ranges" || len(got.Coverage) != 1 || got.Coverage[0] != (heightInterval{From: 0, To: 0}) {
 		t.Fatalf("native sparse provider missing: %+v", got)
 	}
-	v, err := b.resolveSpender(genesis.Transactions[0].TxID, 0)
-	if err != nil || v.ConfirmedState != "unknown" {
-		t.Fatalf("native coverage gap became unspent: %+v %v", v, err)
+	if snap, why := b.graphCanProveUnspent(genesis.Transactions[0].TxID, 0); snap != nil {
+		t.Fatalf("native coverage gap became unspent: %+v %s", snap, why)
+	}
+	if got, err := b.resolveSpender(genesis.Transactions[0].TxID, 0); err != nil || got.ConfirmedState != "unknown" || got.Found || got.Snapshot != nil {
+		t.Fatalf("queryable sparse provider promoted a miss to unspent: %+v %v", got, err)
 	}
 }
 
@@ -211,13 +242,21 @@ func TestIndexProvidersSatlineRequiresActualPublication(t *testing.T) {
 		if line.Serveable != want || state.Serveable || len(line.Coverage) != 0 || len(state.Coverage) != 0 {
 			t.Fatalf("publication/state capability mismatch: line=%+v state=%+v", line, state)
 		}
+		if !releaseFeatureAvailable("satline") && (line.Readiness != "locked" || line.Queryable || state.Queryable || !strings.Contains(line.Note, "deferred")) {
+			t.Fatalf("saved publication bypassed trace deferral: line=%+v state=%+v", line, state)
+		}
 	}
 	check(false)
 	p := satlinePublication{VerifierVersion: blockVerifierVersion, Schema: 1, Query: q, Start: *r.BirthSatpoint, Hops: r.Hops[:1]}
 	if err := atomicWriteJSON(a.satlinePublicationPath(q), p); err != nil {
 		t.Fatal(err)
 	}
-	check(true)
+	check(releaseFeatureAvailable("satline")) // An explicit publication cannot bypass the release gate.
+	a.settings.SatlineEnabled = false
+	check(releaseFeatureAvailable("satline")) // The deprecated setting never overrides release availability.
+	a.settings.SatlineServePublished = false
+	check(false) // Local tracing does not override the separate sharing choice.
+	a.settings.SatlineServePublished = true
 	p.Hops = nil
 	if err := atomicWriteJSON(a.satlinePublicationPath(q), p); err != nil {
 		t.Fatal(err)

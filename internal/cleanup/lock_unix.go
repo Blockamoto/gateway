@@ -15,6 +15,8 @@ type Lock struct {
 	closed bool
 }
 
+func AcquireForMove(root string) (*Lock, error) { return Acquire(root) }
+
 func Acquire(root string) (*Lock, error) {
 	root, e := safeRoot(root)
 	if e != nil {

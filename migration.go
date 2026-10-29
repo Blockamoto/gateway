@@ -213,6 +213,9 @@ func archiveRootAllowed(root, coreDir, blocksDir string) error {
 	return nil
 }
 func (a *app) startMigration(q migrationRequest) error {
+	if err := requireReleaseFeature("txo-spender"); err != nil {
+		return fmt.Errorf("archive migration depends on the locked spender graph: %w", err)
+	}
 	a.migrationMu.Lock()
 	if a.migration.Running {
 		a.migrationMu.Unlock()
@@ -285,7 +288,7 @@ func (a *app) startMigration(q migrationRequest) error {
 	a.migrationCancel = cancel
 	a.saveMigrationLocked()
 	a.migrationMu.Unlock()
-	go a.runMigration(ctx, j)
+	a.startUpdateAwareWorker(func() { a.runMigration(ctx, j) })
 	return nil
 }
 func (a *app) runMigration(ctx context.Context, j migrationJob) {
@@ -450,7 +453,7 @@ func (a *app) preflightReclaim(ctx context.Context, height int64) error {
 		return fmt.Errorf("reclamation requires at least the recent 288 blocks retained by Core")
 	}
 	if a.graphStatus().NativeCompleteThrough < height {
-		return fmt.Errorf("reclamation blocked: BOD-native canonical graph coverage is incomplete through %d", height)
+		return fmt.Errorf("reclamation blocked: Gateway-native canonical graph coverage is incomplete through %d", height)
 	}
 	a.coreStoreMu.Lock()
 	store := a.coreStore

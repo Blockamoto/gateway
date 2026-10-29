@@ -1,0 +1,8 @@
+# Replace this reserved example name with the chosen operator-owned DNS name.
+# TLS termination is independent from the Ed25519 update-signing identity.
+updates.example.org {
+    handle_path /preview/* {
+        reverse_proxy 127.0.0.1:8786
+    }
+    respond 404
+}

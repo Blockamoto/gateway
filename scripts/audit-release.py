@@ -7,8 +7,33 @@ from __future__ import annotations
 import argparse, hashlib, json, struct
 from pathlib import Path
 
+# Match the production files embedded by build-release.py, not preview tooling.
+PRODUCTION_COMPANION_FILES = ('content.js', 'IDENTITY.txt', 'manifest.json', 'popup.html', 'popup.js', 'README.txt', 'search.js', 'service-worker.js', 'test.js')
+
 def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+def inspect_version(data: bytes) -> dict:
+    strings={}
+    def walk(at,limit):
+        length,size,kind=struct.unpack_from('<HHH',data,at)
+        end=at+length
+        if length<6 or end>limit:raise ValueError('Invalid version block bounds')
+        pos=at+6;key_start=pos
+        while pos+2<=end and data[pos:pos+2]!=b'\0\0':pos+=2
+        if pos+2>end:raise ValueError('Unterminated version key')
+        key=data[key_start:pos].decode('utf-16le');pos=(pos+2+3)&~3
+        value_end=pos+size*(2 if kind else 1)
+        if value_end>end:raise ValueError('Invalid version value bounds')
+        value=data[pos:value_end]
+        if kind and size:strings[key]=value.decode('utf-16le').rstrip('\0')
+        if key=='VS_VERSION_INFO':
+            if len(value)!=52 or struct.unpack_from('<I',value)[0]!=0xFEEF04BD:raise ValueError('Invalid fixed file info')
+        pos=(value_end+3)&~3
+        while pos<end:pos=(walk(pos,end)+3)&~3
+        return end
+    walk(0,len(data))
+    return strings
 
 def inspect_pe(data: bytes) -> dict:
     if data[:2] != b'MZ':
@@ -24,6 +49,9 @@ def inspect_pe(data: bytes) -> dict:
     directory = optional+112
     resource_rva, resource_size = struct.unpack_from('<II', data, directory+16)
     certificate_offset, certificate_size = struct.unpack_from('<II', data, directory+32)
+    if not resource_rva and not resource_size:
+        return {'machine':'amd64','subsystem':struct.unpack_from('<H',data,optional+68)[0],
+                'resource_size':0,'authenticode_present':bool(certificate_offset and certificate_size),'leaves':{}}
     table = optional+optional_size
     section_list=[]
     for i in range(sections):
@@ -69,31 +97,59 @@ def main() -> None:
         w,h,colors,reserved,planes,bits,size,at=struct.unpack_from('<BBBBHHII',ico,6+16*i)
         images[i+1]=ico[at:at+size]
     results=[]
-    for name,expected_subsystem in [('GatewayClient.exe',3),('GatewayOnDemand.exe',2),('GatewayNativeHost.exe',3),(installer_name,2)]:
+    for name,expected_subsystem in [('GatewayClient.exe',3),('GatewayOnDemand.exe',2),('GatewayNativeHost.exe',3),('GatewayUpdateHelper.exe',2),(installer_name,2)]:
         raw=(args.build/name).read_bytes();pe=inspect_pe(raw);leaves=pe.pop('leaves')
         assert pe['subsystem']==expected_subsystem,(name,'subsystem')
         for identifier,payload in images.items():assert leaves[(3,identifier,1033)]==payload,(name,identifier,'icon mismatch')
         group=leaves[(14,101,1033)]
         assert struct.unpack_from('<HHH',group)==(0,1,count)
+        metadata=inspect_version(leaves[(16,1,1033)])
+        assert metadata['ProductName']=='Gateway' and metadata['FileVersion']==version and metadata['ProductVersion']==version,(name,'version metadata')
+        assert metadata['OriginalFilename']==name and metadata['FileDescription'],(name,'file identity')
         assert not pe['authenticode_present']
-        results.append({'file':name,'bytes':len(raw),'sha256':sha(raw),**pe,'icon_images':7,'icon_group':101,'icon_pixels_equal_checked_in_assets':True})
+        results.append({'file':name,'bytes':len(raw),'sha256':sha(raw),**pe,'version_info':metadata,'icon_images':7,'icon_group':101,'icon_pixels_equal_checked_in_assets':True})
     installer=(args.build/installer_name).read_bytes()
     exact=[]
-    for name in ('GatewayClient.exe','GatewayOnDemand.exe','GatewayNativeHost.exe'):
+    for name in ('GatewayClient.exe','GatewayOnDemand.exe','GatewayNativeHost.exe','GatewayUpdateHelper.exe'):
         payload=(args.build/name).read_bytes();position=installer.find(payload)
         assert position>=0,(name,'installer mismatch')
         exact.append({'file':name,'sha256':sha(payload),'installer_byte_offset':position,'exact_match':True})
+    compatibility=(root/'COMPATIBILITY.json').read_bytes();position=installer.find(compatibility)
+    assert position>=0,('COMPATIBILITY.json','installer metadata mismatch')
+    exact.append({'file':'COMPATIBILITY.json','sha256':sha(compatibility),'installer_byte_offset':position,'exact_match':True})
+    guide_name = f'TESTING-{version}.md'
+    guide = (root/'docs'/guide_name).read_bytes(); position = installer.find(guide)
+    assert position >= 0, (guide_name, 'installer tester guide mismatch')
+    exact.append({'file':guide_name,'sha256':sha(guide),'installer_byte_offset':position,'exact_match':True})
+    for name in ('LICENSE', 'THIRD-PARTY-NOTICES.txt', 'GO-LICENSE.txt'):
+        notice = (root/name).read_bytes(); position = installer.find(notice)
+        assert notice and position >= 0, (name, 'installer license or notice mismatch')
+        exact.append({'file':name,'sha256':sha(notice),'installer_byte_offset':position,'exact_match':True})
     companion=[]
-    for path in sorted((root/'browser-companion').iterdir()):
-        if path.is_file():
-            payload=path.read_bytes();position=installer.find(payload)
-            assert position>=0,(path.name,'companion mismatch')
-            companion.append({'file':path.name,'sha256':sha(payload),'exact_match':True})
+    for name in PRODUCTION_COMPANION_FILES:
+        path=root/'browser-companion'/name
+        payload=path.read_bytes();position=installer.find(payload)
+        assert position>=0,(path.name,'companion mismatch')
+        companion.append({'file':path.name,'sha256':sha(payload),'exact_match':True})
     linux=(args.build/'gateway-client').read_bytes();assert linux[:4]==b'\x7fELF'
+    linux_helper=(args.build/'gateway-update-helper').read_bytes();assert linux_helper[:4]==b'\x7fELF'
+    baseline=(args.build/'bootstrap/headers-mainnet.bin').read_bytes()
+    baseline_metadata=(args.build/'bootstrap/headers-mainnet.json').read_bytes()
+    metadata=json.loads(baseline_metadata)
+    assert len(baseline)%80==0 and metadata['count']==len(baseline)//80
+    if baseline:
+        assert metadata['sha256']==sha(baseline), 'Header sidecar digest mismatch'
+        assert installer.find(baseline)>=0, 'Fresh installer missing exact header sidecar'
+        assert installer.find(baseline_metadata)>=0, 'Fresh installer missing header metadata'
+        for name in ('GatewayClient.exe','gateway-client'):
+            assert (args.build/name).read_bytes().find(baseline)<0, (name,'snapshot must remain external')
+    headers={'bytes':len(baseline),'count':metadata['count'],'sha256':sha(baseline),
+             'fresh_installer_payload_verified':bool(baseline),'external_to_client':bool(baseline)}
     result={'status':'PASS','kind':'Binary structure and exact payload audit. Not native Windows runtime verification.',
             'windows':results,'installer_payloads':exact,'installer_companion_files':companion,
             'linux':{'file':'gateway-client','bytes':len(linux),'sha256':sha(linux),'format':'ELF'},
-            'windows_runtime_tested':False,'authenticode_signed':False}
+            'linux_helper':{'file':'gateway-update-helper','bytes':len(linux_helper),'sha256':sha(linux_helper),'format':'ELF'},
+            'headers':headers,'windows_runtime_tested':False,'authenticode_signed':False}
     args.out.parent.mkdir(parents=True,exist_ok=True);args.out.write_text(json.dumps(result,indent=2)+'\n')
-    print('PASS: four Windows PE resource trees, seven icon images each, exact installer executable and companion payloads; ELF present.')
+    print('PASS: five Windows PE icon and version resources, exact installer executable/compatibility/companion payloads; client and helper ELF present.')
 if __name__=='__main__':main()

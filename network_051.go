@@ -19,172 +19,100 @@ import (
 const maxBitcoinAddresses = 4096
 
 type bitcoinAddress struct {
-	Address             string                   `json:"address"`
-	Source              string                   `json:"source"`
-	Services            uint64                   `json:"services"`
-	FirstSeen           time.Time                `json:"first_seen"`
-	LastSuccess         time.Time                `json:"last_success,omitempty"`
-	RetryAfter          time.Time                `json:"retry_after,omitempty"`
-	Failures            int                      `json:"failures"`
-	LastError           string                   `json:"last_error,omitempty"`
-	LastSeen            time.Time                `json:"last_seen,omitempty"`
-	LastAttempt         time.Time                `json:"last_attempt,omitempty"`
-	LastCrawled         time.Time                `json:"last_crawled,omitempty"`
-	GatewayIntroduction string                   `json:"gateway_introduction,omitempty"` // Address supplied by a directly negotiated Gateway; still an unverified claim.
-	GatewayVerified     bool                     `json:"gateway_previously_negotiated"`
-	LastBODSuccess      time.Time                `json:"last_bod_success,omitempty"`
-	Suppliers           []string                 `json:"suppliers,omitempty"`
-	Key                 string                   `json:"key,omitempty"`
-	Ordinal             uint64                   `json:"ordinal,omitempty"`
-	Observations        uint64                   `json:"observations,omitempty"`
-	Imported            bool                     `json:"imported,omitempty"`
-	Exclusion           string                   `json:"exclusion,omitempty"`
-	AdvertisedAt        uint32                   `json:"advertised_at,omitempty"`
-	GossipServices      uint64                   `json:"gossip_services,omitempty"`
-	FirstHintAt         time.Time                `json:"first_hint_at,omitempty"`
-	FirstHintSource     string                   `json:"first_hint_source,omitempty"`
-	FirstHintMask       string                   `json:"first_hint_services_hex,omitempty"`
-	LastClaimMask       string                   `json:"last_claim_services_hex,omitempty"`
-	LastClaimSource     string                   `json:"last_claim_source,omitempty"`
-	LastClaimAt         time.Time                `json:"last_claim_at,omitempty"`
-	SpecificHint        bool                     `json:"specific_hint_observed,omitempty"`
-	SpecificHintSource  string                   `json:"specific_hint_source,omitempty"`
-	SpecificHintMask    string                   `json:"specific_hint_services_hex,omitempty"`
-	AllBitsClaim        bool                     `json:"all_bits_claim_observed,omitempty"`
-	GatewayRetryAfter   time.Time                `json:"gateway_retry_after,omitempty"`
-	EverHint            bool                     `json:"ever_gateway_hint,omitempty"`
-	DirectServices      uint64                   `json:"direct_services,omitempty"`
-	DirectAt            time.Time                `json:"direct_at,omitempty"`
-	DirectVersion       int32                    `json:"direct_protocol_version,omitempty"`
-	LastServiceOutcome  string                   `json:"last_service_outcome,omitempty"`
-	LastServiceError    string                   `json:"last_service_error,omitempty"`
-	LastServiceAt       time.Time                `json:"last_service_at,omitempty"`
-	LastNegotiation     string                   `json:"last_negotiation,omitempty"`
-	Negotiated          []gatewayProtocolSupport `json:"negotiated_protocols,omitempty"`
-	FirstAttempt        time.Time                `json:"first_attempt,omitempty"`
-	Attempts            uint64                   `json:"attempts,omitempty"`
-	GatewayAttempts     uint64                   `json:"gateway_attempts,omitempty"`
-	GatewayChecks       uint64                   `json:"gateway_checks,omitempty"`
-	LastOutcome         string                   `json:"last_outcome,omitempty"`
-	OutcomeAt           time.Time                `json:"outcome_at,omitempty"`
-	LastRole            string                   `json:"last_role,omitempty"`
-	InFlight            bool                     `json:"interrupted_if_restored,omitempty"`
-	AddressMessages     uint64                   `json:"address_messages,omitempty"`
-	RequestedReplies    uint64                   `json:"requested_replies,omitempty"`
-	LastAddrOutcome     string                   `json:"last_address_outcome,omitempty"`
-	serializedBytes     int64
+	Address     string    `json:"address"`
+	Source      string    `json:"source"`
+	Services    uint64    `json:"services"`
+	FirstSeen   time.Time `json:"first_seen"`
+	LastSuccess time.Time `json:"last_success,omitempty"`
+	RetryAfter  time.Time `json:"retry_after,omitempty"`
+	Failures    int       `json:"failures"`
+	LastError   string    `json:"last_error,omitempty"`
+	LastAttempt time.Time `json:"last_attempt,omitempty"`
 }
 type networkPeerView struct {
-	Role            string                   `json:"role,omitempty"`
-	ID              string                   `json:"id"`
-	Address         string                   `json:"address"`
-	Owner           string                   `json:"owner"`
-	Direction       string                   `json:"direction"`
-	Transport       string                   `json:"transport"`
-	Source          string                   `json:"discovery_source"`
-	State           string                   `json:"state"`
-	Services        uint64                   `json:"services"`
-	ServiceHex      string                   `json:"services_hex"`
-	ProtocolVersion int32                    `json:"protocol_version"`
-	Protocols       []string                 `json:"protocols"`
-	Negotiated      []gatewayProtocolSupport `json:"negotiated_protocols,omitempty"`
-	Gateway         bool                     `json:"gateway"`
-	BOD             bool                     `json:"bod"`
-	TargetHeight    int64                    `json:"target_height_estimate"`
-	Connected       time.Time                `json:"connected,omitempty"`
-	Updated         time.Time                `json:"updated"`
-	LastWork        string                   `json:"last_work,omitempty"`
-	Received        uint64                   `json:"bytes_received"`
-	Sent            uint64                   `json:"bytes_sent"`
-	LastError       string                   `json:"last_error,omitempty"`
+	BlockInFlight             int                      `json:"block_in_flight,omitempty"`
+	BlockResponses            uint64                   `json:"block_responses,omitempty"`
+	BlockFailures             uint64                   `json:"block_failures,omitempty"`
+	BlockBytes                uint64                   `json:"block_bytes,omitempty"`
+	BlockTransferMilliseconds int64                    `json:"block_transfer_milliseconds,omitempty"`
+	Role                      string                   `json:"role,omitempty"`
+	ID                        string                   `json:"id"`
+	Address                   string                   `json:"address"`
+	Owner                     string                   `json:"owner"`
+	Direction                 string                   `json:"direction"`
+	Transport                 string                   `json:"transport"`
+	Source                    string                   `json:"discovery_source"`
+	State                     string                   `json:"state"`
+	Services                  uint64                   `json:"services"`
+	ServiceHex                string                   `json:"services_hex"`
+	ProtocolVersion           int32                    `json:"protocol_version"`
+	Protocols                 []string                 `json:"protocols"`
+	Negotiated                []gatewayProtocolSupport `json:"negotiated_protocols,omitempty"`
+	Gateway                   bool                     `json:"gateway"`
+	BOD                       bool                     `json:"bod"`
+	TargetHeight              int64                    `json:"target_height_estimate"`
+	Connected                 time.Time                `json:"connected,omitempty"`
+	Updated                   time.Time                `json:"updated"`
+	LastWork                  string                   `json:"last_work,omitempty"`
+	Received                  uint64                   `json:"bytes_received"`
+	Sent                      uint64                   `json:"bytes_sent"`
+	LastError                 string                   `json:"last_error,omitempty"`
 }
 type bitcoinNetwork struct {
-	app                *app
-	ctx                context.Context
-	cancel             context.CancelFunc
-	mu                 sync.Mutex
-	addresses          map[string]*bitcoinAddress // bounded, disposable working set
-	ledger             map[string]*bitcoinAddress // exact retained identity and work history
-	ledgerOrder        []string
-	ledgerDirty        map[string]bool
-	ledgerMeta         discoveryLedgerMeta
-	ledgerBytes        int64
-	ledgerCommitted    uint64
-	ledgerError        string
-	ledgerWarning      string
-	ledgerLimited      bool
-	ledgerMetaDirty    bool
-	ledgerCompactBytes int64
-	ledgerNextOrdinal  uint64
-	workQueues         [6][]string
-	workCursor         [6]uint64
-	roleCursor         int
-	roleTurns          [3]uint64
-	clock              func() time.Time
-
-	sessions            map[string]*bitcoinSession
-	dialing             map[string]networkPeerView
-	recent              []networkPeerView
-	bootstrapAt         time.Time
-	bootstrapBusy       bool
-	bootstrapError      string
-	configuredGateways  []string // current normalized settings, protected by mu
-	saveMu              sync.Mutex
-	headerCursor        uint64
-	policy              discoveryPolicy
-	discovery           discoveryState
-	events              []discoveryEvent
-	tokens              float64
-	tokenAt             time.Time
-	dialCancels         map[string]context.CancelFunc
-	observedAt          map[string]time.Time
-	selectedPublicIP    string
-	pendingPublicIP     string
-	pendingPublicAt     time.Time
-	publicIPRefreshAt   time.Time
-	lastAnnounceAttempt time.Time
-	announcementHistory map[string]announcementRecord054
-	observedIPs         map[string]string
-	lastAnnounce        time.Time
-	lastAnnounceKey     string
-	// Test fixtures can disable external bootstrap and allow loopback addr gossip.
-	noBootstrap  bool
-	allowPrivate bool
+	app              *app
+	ctx              context.Context
+	cancel           context.CancelFunc
+	mu               sync.Mutex
+	addresses        map[string]*bitcoinAddress
+	sessions         map[string]*bitcoinSession
+	dialing          map[string]networkPeerView
+	dialCancels      map[string]context.CancelFunc
+	recent           []networkPeerView
+	events           []bitcoinNetworkEvent
+	bootstrapAt      time.Time
+	bootstrapBusy    bool
+	bootstrapError   string
+	saveMu           sync.Mutex
+	persistenceError string
+	headerCursor     uint64
+	blockCursor      uint64
+	blockDownloads   *bitcoinBlockDownloads
+	nextDial         time.Time
+	clock            func() time.Time
+	noBootstrap      bool
+	allowPrivate     bool
 }
 type bitcoinSession struct {
-	lastAnnouncement    time.Time
-	lastAnnouncementKey string
-	scout               bool // protected by n.mu
-	addrReceived        bool // protected by n.mu
-	addrSampleReceived  bool // protected by n.mu; a multi-record address message
-	addrAsked           bool // protected by n.mu
-	inboundAddrAsked    bool // protected by n.mu
-	serveQueue          chan message
-	retired             bool                 // protected by n.mu; planned scout retirement is not a peer failure
-	addressBudget       int                  // protected by n.mu
-	headerUnavailable   bool                 // protected by n.mu; uncorrelated headers timed out
-	bodBudget           sessionServiceBudget // used only by serviceLoop
-	satBudget           sessionServiceBudget // used only by serviceLoop
-	satIDs              map[string]bool      // used only by serviceLoop
-	requestSuccess      bool                 // protected by n.mu
-	lastServiceCheck    time.Time            // protected by n.mu
-	healthChecking      bool                 // protected by n.mu
-	n                   *bitcoinNetwork
-	peer                *peerConn
-	view                networkPeerView  // protected by n.mu
-	status              *overlayResponse // observed BOD status, protected by n.mu
-	done                chan struct{}
-	once                sync.Once
-	writeMu             sync.Mutex
-	replyMu             sync.Mutex
-	pendingReply        *sessionPendingReply // protected by replyMu
-	slot                chan struct{}
+	blockWork         bitcoinBlockWork // protected by n.mu
+	addrReceived      bool             // protected by n.mu
+	addrAsked         bool             // protected by n.mu
+	inboundAddrAsked  bool             // protected by n.mu
+	serveQueue        chan message
+	retired           bool                 // protected by n.mu; shutdown is not a peer failure
+	headerUnavailable bool                 // protected by n.mu; uncorrelated headers timed out
+	bodBudget         sessionServiceBudget // used only by serviceLoop
+	satBudget         sessionServiceBudget // used only by serviceLoop
+	satIDs            map[string]bool      // used only by serviceLoop
+	requestSuccess    bool                 // protected by n.mu
+	healthChecking    bool                 // protected by n.mu
+	n                 *bitcoinNetwork
+	peer              *peerConn
+	view              networkPeerView  // protected by n.mu
+	status            *overlayResponse // observed BOD status, protected by n.mu
+	done              chan struct{}
+	once              sync.Once
+	writeMu           sync.Mutex
+	replyMu           sync.Mutex
+	pendingReply      *sessionPendingReply              // protected by replyMu
+	pendingBlocks     map[[32]byte]*sessionPendingReply // hash-correlated, protected by replyMu
+	blockSlots        chan struct{}                     // initialized under replyMu
+	slot              chan struct{}
 }
 
 func newBitcoinNetwork(a *app) *bitcoinNetwork {
 	ctx, cancel := context.WithCancel(context.Background())
-	n := &bitcoinNetwork{app: a, ctx: ctx, cancel: cancel, addresses: map[string]*bitcoinAddress{}, sessions: map[string]*bitcoinSession{}, dialing: map[string]networkPeerView{}, dialCancels: map[string]context.CancelFunc{}, observedIPs: map[string]string{}, observedAt: map[string]time.Time{}, policy: defaultDiscoveryPolicy(), tokens: 3, tokenAt: time.Now(), discovery: discoveryState{Started: time.Now().UTC(), Mode: "bootstrap"}}
-	n.initLedger()
+	n := &bitcoinNetwork{app: a, ctx: ctx, cancel: cancel, addresses: map[string]*bitcoinAddress{}, sessions: map[string]*bitcoinSession{}, dialing: map[string]networkPeerView{}, dialCancels: map[string]context.CancelFunc{}}
+	n.loadBitcoinAddresses()
 	return n
 }
 func validPeerEndpoint(address string) bool {
@@ -209,6 +137,9 @@ func (n *bitcoinNetwork) learn(rows []advertisedPeer, supplier string) {
 func (n *bitcoinNetwork) start() { go n.run() }
 func (n *bitcoinNetwork) stop() {
 	n.cancel()
+	if n.app != nil {
+		waitRawCoverageStopped(n.app.dataDir)
+	}
 	for _, s := range n.listSessions() {
 		n.mu.Lock()
 		s.retired = true
@@ -217,7 +148,7 @@ func (n *bitcoinNetwork) stop() {
 	}
 	n.persist()
 }
-func (n *bitcoinNetwork) persist() { n.persistLedger() }
+func (n *bitcoinNetwork) persist() { n.persistBitcoinAddresses() }
 
 func (n *bitcoinNetwork) run() {
 	tick := time.NewTicker(time.Second)
@@ -273,22 +204,6 @@ func (n *bitcoinNetwork) bootstrap() {
 			}
 		}()
 	}
-	// LAN discovery is a separately enabled development aid, never a hidden
-	// alternative counted as Bitcoin discovery.
-	n.app.settingsMu.RLock()
-	lan := n.app.settings.LANDiscovery
-	n.app.settingsMu.RUnlock()
-	if lan && n.app.gatewayListen == "" && n.enabled() {
-		self := ""
-		if n.app.source != nil {
-			self = n.app.source.peerID()
-		}
-		for _, peer := range discoverOverlayPeers("") {
-			if peer.ID != self {
-				n.add(peer.Addr, "lan_udp", 0)
-			}
-		}
-	}
 	wg.Wait()
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -298,7 +213,7 @@ func (n *bitcoinNetwork) bootstrap() {
 		n.bootstrapError = ""
 	}
 }
-func (n *bitcoinNetwork) maintain() { n.maintainDiscovery() }
+func (n *bitcoinNetwork) maintain() { n.maintainBitcoin() }
 func peerNetworkGroup(addr string) string {
 	host, _, _ := net.SplitHostPort(addr)
 	ip := net.ParseIP(host)
@@ -310,7 +225,7 @@ func peerNetworkGroup(addr string) string {
 	}
 	return host
 }
-func (n *bitcoinNetwork) dial(x bitcoinAddress) { n.dialDiscoveryPeer(x) }
+func (n *bitcoinNetwork) dial(x bitcoinAddress) { n.dialBitcoinPeer(x) }
 func (n *bitcoinNetwork) failed(addr string, err error) {
 	n.failedOutcome(addr, err, "connection_failed")
 }
@@ -327,9 +242,8 @@ func (n *bitcoinNetwork) failedOutcome(addr string, err error, outcome string) {
 		v.Updated = time.Now().UTC()
 		n.appendRecent(v)
 	}
-	n.discovery.Failed++
 	n.eventLocked("dial_failed", addr, err.Error())
-	if x := n.ledger[addr]; x != nil {
+	if x := n.addresses[addr]; x != nil {
 		n.recordFailureLocked(x, outcome, err.Error())
 	}
 }
@@ -340,7 +254,7 @@ func (n *bitcoinNetwork) appendRecent(v networkPeerView) {
 	}
 }
 func (n *bitcoinNetwork) backoff(addr, reason string) {
-	if x := n.ledger[addr]; x != nil {
+	if x := n.addresses[addr]; x != nil {
 		n.recordFailureLocked(x, "connection_failed", reason)
 	}
 }
@@ -370,6 +284,9 @@ func (s *bitcoinSession) send(command string, payload []byte) error {
 	return s.sendLocked(command, payload, time.Now().Add(8*time.Second))
 }
 func (s *bitcoinSession) sendRequest(ctx context.Context, command string, payload []byte) error {
+	return s.sendRequestWithDispatch(ctx, command, payload, nil)
+}
+func (s *bitcoinSession) sendRequestWithDispatch(ctx context.Context, command string, payload []byte, dispatched *time.Time) error {
 	// A serving handler can own the writer while this direction waits. Do not
 	// emit a request whose caller has already cancelled during that wait.
 	tick := time.NewTicker(5 * time.Millisecond)
@@ -391,6 +308,9 @@ func (s *bitcoinSession) sendRequest(ctx context.Context, command string, payloa
 	if end, ok := ctx.Deadline(); ok && end.Before(deadline) {
 		deadline = end
 	}
+	if dispatched != nil {
+		*dispatched = time.Now()
+	}
 	return s.sendLocked(command, payload, deadline)
 }
 func (s *bitcoinSession) sendLocked(command string, payload []byte, deadline time.Time) error {
@@ -408,7 +328,7 @@ func (s *bitcoinSession) sendLocked(command string, payload []byte, deadline tim
 }
 func (s *bitcoinSession) readLoop() {
 	for {
-		_ = s.peer.conn.SetReadDeadline(time.Now().Add(110 * time.Second))
+		_ = s.peer.conn.SetReadDeadline(time.Now().Add(20 * time.Minute))
 		m, e := readMessage(s.peer.conn)
 		if e != nil {
 			s.close(e.Error())
@@ -426,10 +346,6 @@ func (s *bitcoinSession) readLoop() {
 		case "addr", "addrv2":
 			rows, e := parseAddressMessage(m)
 			if e != nil {
-				s.n.mu.Lock()
-				s.n.ledgerMeta.MalformedMessages++
-				s.n.ledgerMetaDirty = true
-				s.n.mu.Unlock()
 				s.close("Malformed address message: " + e.Error())
 				return
 			}
@@ -455,11 +371,25 @@ func (s *bitcoinSession) readLoop() {
 			s.deliverReply(m)
 		case "headers", "block", "notfound":
 			s.deliverReply(m)
-		case "inv": // A new tip is discovered by the periodic header request.
+		case "inv": // Header validation remains with the header synchronizer.
+			if count, used, e := decodeCompactSizeMinimal(m.payload); e == nil && count <= 50000 && uint64(len(m.payload)-used) == count*36 {
+				s.n.mu.Lock()
+				for ; used < len(m.payload); used += 36 {
+					if binary.LittleEndian.Uint32(m.payload[used:used+4])&0x3fffffff == 2 {
+						var h [32]byte
+						copy(h[:], m.payload[used+4:used+36])
+						delete(s.blockWork.missing, h)
+					}
+				}
+				s.n.mu.Unlock()
+			}
 		}
 	}
 }
 func (s *bitcoinSession) request(ctx context.Context, command string, payload []byte, accept func(message) bool) (message, error) {
+	return s.requestWithDispatch(ctx, command, payload, accept, nil)
+}
+func (s *bitcoinSession) requestWithDispatch(ctx context.Context, command string, payload []byte, accept func(message) bool, dispatched *time.Time) (message, error) {
 	if e := ctx.Err(); e != nil {
 		return message{}, e
 	}
@@ -506,7 +436,7 @@ func (s *bitcoinSession) request(ctx context.Context, command string, payload []
 		}
 		s.n.mu.Unlock()
 	}()
-	if e := s.sendRequest(ctx, command, payload); e != nil {
+	if e := s.sendRequestWithDispatch(ctx, command, payload, dispatched); e != nil {
 		return message{}, e
 	}
 	for {
@@ -530,8 +460,11 @@ func (s *bitcoinSession) request(ctx context.Context, command string, payload []
 	}
 }
 func (s *bitcoinSession) bodRequest(ctx context.Context, req overlayRequest) (overlayResponse, error) {
+	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
+		return overlayResponse{}, err
+	}
 	if !s.peer.gateway || !s.peer.bod {
-		return overlayResponse{}, fmt.Errorf("BOD not negotiated")
+		return overlayResponse{}, fmt.Errorf("Gateway not negotiated")
 	}
 	body, _ := json.Marshal(req)
 	env := bodEnvelope{Wire: bodWireVersion, Kind: "request", Type: bodWireType(req.Type), ID: randomRequestID(), Payload: body}
@@ -544,7 +477,7 @@ func (s *bitcoinSession) bodRequest(ctx context.Context, req overlayRequest) (ov
 		return overlayResponse{}, e
 	}
 	if out.Wire != bodWireVersion {
-		return overlayResponse{}, fmt.Errorf("incompatible BOD response")
+		return overlayResponse{}, fmt.Errorf("incompatible Gateway response")
 	}
 	var resp overlayResponse
 	if len(out.Payload) > 0 {
@@ -557,7 +490,7 @@ func (s *bitcoinSession) bodRequest(ctx context.Context, req overlayRequest) (ov
 		return resp, fmt.Errorf("%w: %s", errBODUnknown, out.Error)
 	}
 	if out.Status != "ok" {
-		return resp, fmt.Errorf("BOD %s: %s", out.Status, out.Error)
+		return resp, fmt.Errorf("Gateway %s: %s", out.Status, out.Error)
 	}
 	resp.OK = true
 	return resp, nil
@@ -594,56 +527,15 @@ func (n *bitcoinNetwork) waitSession(ctx context.Context, archive bool) (*bitcoi
 	}
 }
 func (n *bitcoinNetwork) fetchBlock(hash [32]byte, header []byte) ([]byte, string, error) {
-	ctx, cancel := context.WithTimeout(n.ctx, 45*time.Second)
-	defer cancel()
-	var last error
-	tried := map[string]bool{}
-	for attempt := 0; attempt < 4; attempt++ {
-		s, e := n.waitSession(ctx, true)
-		if e != nil {
-			return nil, "", e
-		}
-		sessions := n.listSessions()
-		for _, x := range sessions {
-			if x.transportEligible(true) && !tried[x.peer.addr] {
-				s = x
-				break
-			}
-		}
-		if tried[s.peer.addr] {
-			break
-		}
-		tried[s.peer.addr] = true
-		inv := uint32(2)
-		if s.peer.services&nodeWitnessService != 0 {
-			inv = 0x40000002
-		}
-		var req bytes.Buffer
-		req.Write(encodeVarInt(1))
-		_ = binary.Write(&req, binary.LittleEndian, inv)
-		req.Write(hash[:])
-		sub, done := context.WithTimeout(ctx, 15*time.Second)
-		m, e := s.request(sub, "getdata", req.Bytes(), func(m message) bool { return m.command == "block" || m.command == "notfound" })
-		done()
-		if e != nil {
-			last = e
-			continue
-		}
-		if m.command == "notfound" {
-			last = fmt.Errorf("peer does not have this block")
-			continue
-		}
-		if len(m.payload) < 81 || hash256(m.payload[:80]) != hash || (len(header) == 80 && !bytes.Equal(header, m.payload[:80])) {
-			last = fmt.Errorf("peer supplied the wrong block")
-			s.close(last.Error())
-			continue
-		}
-		// Full Merkle/witness verification is still done by the existing parser.
-		return m.payload, s.peer.addr, nil
-	}
-	return nil, "", fmt.Errorf("WAITING_FOR_PEERS: no connected archival peer supplied the block: %v", last)
+	return n.fetchBlockContext(n.ctx, hash, header)
+}
+func (n *bitcoinNetwork) fetchBlockContext(parent context.Context, hash [32]byte, header []byte) ([]byte, string, error) {
+	return n.fetchTargetBlockContext(parent, blockTarget{Height: -1, HashRaw: hash, HashDisplay: reverseHex(hash[:]), ExpectedHeader: header})
 }
 func (n *bitcoinNetwork) gatewayPeers() []overlayPeer {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		return []overlayPeer{}
+	}
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	out := []overlayPeer{}
@@ -655,7 +547,7 @@ func (n *bitcoinNetwork) gatewayPeers() []overlayPeer {
 		if r == nil || !s.view.BOD {
 			r = &overlayResponse{HeaderHeight: -1}
 		}
-		p := overlayPeer{Addr: s.peer.addr, ID: r.PeerID, Protocol: bodWireVersion, Gateway: true, BIP434: true, GatewayWire: s.peer.gatewayWire, ServiceHint: s.peer.services&gatewayExperimentalServiceBit != 0, Protocols: append([]gatewayProtocolSupport(nil), s.peer.gatewayProtocols...), Capabilities: append([]string(nil), r.Capabilities...), HeaderHeight: r.HeaderHeight, TipHash: r.TipHash, CacheBlocks: r.CacheBlocks, LastSeen: s.view.Updated, DiscoverySource: s.view.Source}
+		p := overlayPeer{Addr: s.peer.addr, ID: r.PeerID, Protocol: bodWireVersion, Gateway: true, BIP434: true, GatewayWire: s.peer.gatewayWire, Protocols: append([]gatewayProtocolSupport(nil), s.peer.gatewayProtocols...), Capabilities: append([]string(nil), r.Capabilities...), HeaderHeight: r.HeaderHeight, TipHash: r.TipHash, CacheBlocks: r.CacheBlocks, LastSeen: s.view.Updated, DiscoverySource: s.view.Source}
 		if r.Status != nil {
 			p.Snapshot = &r.Status.Snapshot
 			p.Profiles = r.Status.Profiles
@@ -667,6 +559,12 @@ func (n *bitcoinNetwork) gatewayPeers() []overlayPeer {
 	return out
 }
 func (n *bitcoinNetwork) query(peer overlayPeer, req overlayRequest) (overlayResponse, error) {
+	return n.queryContext(n.ctx, peer, req)
+}
+func (n *bitcoinNetwork) queryContext(parent context.Context, peer overlayPeer, req overlayRequest) (overlayResponse, error) {
+	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
+		return overlayResponse{}, err
+	}
 	if !n.enabled() {
 		return overlayResponse{}, fmt.Errorf("outbound networking is disabled")
 	}
@@ -676,11 +574,13 @@ func (n *bitcoinNetwork) query(peer overlayPeer, req overlayRequest) (overlayRes
 	if s == nil {
 		return overlayResponse{}, fmt.Errorf("Gateway peer is no longer connected")
 	}
-	ctx, cancel := context.WithTimeout(n.ctx, bodRequestTimeout)
+	ctx, cancel := context.WithTimeout(parent, bodRequestTimeout)
 	defer cancel()
+	stop := context.AfterFunc(n.ctx, cancel)
+	defer stop()
 	return s.bodRequest(ctx, req)
 }
-func (n *bitcoinNetwork) snapshot() map[string]any { return n.discoverySnapshot() }
+func (n *bitcoinNetwork) snapshot() map[string]any { return n.bitcoinSnapshot() }
 func (n *bitcoinNetwork) retry() {
 	n.mu.Lock()
 	n.eventLocked("retry_requested", "", "Retry eligible peers; retained outcomes, cooldowns and global budgets are unchanged")
@@ -689,6 +589,9 @@ func (n *bitcoinNetwork) retry() {
 }
 
 func (a *app) queryGatewayPeer(peer overlayPeer, req overlayRequest) (overlayResponse, error) {
+	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
+		return overlayResponse{}, err
+	}
 	if a.network != nil {
 		return a.network.query(peer, req)
 	}
@@ -724,15 +627,20 @@ func (n *bitcoinNetwork) disconnect(addr string) bool {
 	}
 	s.close("Disconnected by user; automatic retry is delayed")
 	n.mu.Lock()
-	if x := n.ledger[addr]; x != nil {
+	if x := n.addresses[addr]; x != nil {
 		x.RetryAfter = n.now().Add(10 * time.Minute)
-		n.touchLocked(x)
 	}
 	n.mu.Unlock()
 	return true
 }
 
 func (n *bitcoinNetwork) fetchModuleBlock(hash string) (blockData, overlayPeer, error) {
+	return n.fetchModuleBlockContext(n.ctx, hash)
+}
+func (n *bitcoinNetwork) fetchModuleBlockContext(parent context.Context, hash string) (blockData, overlayPeer, error) {
+	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
+		return blockData{}, overlayPeer{}, err
+	}
 	if !n.enabled() {
 		return blockData{}, overlayPeer{}, fmt.Errorf("WAITING_FOR_PEERS: outbound networking disabled")
 	}
@@ -759,9 +667,11 @@ func (n *bitcoinNetwork) fetchModuleBlock(hash string) (blockData, overlayPeer, 
 		}
 		_ = binary.Write(&req, binary.LittleEndian, inv)
 		req.Write(raw[:])
-		ctx, cancel := context.WithTimeout(n.ctx, 15*time.Second)
+		ctx, cancel := context.WithTimeout(parent, 15*time.Second)
+		stop := context.AfterFunc(n.ctx, cancel)
 		m, e := s.request(ctx, "getdata", req.Bytes(), func(m message) bool { return m.command == "block" || m.command == "notfound" })
 		cancel()
+		stop()
 		if e != nil {
 			last = e
 			continue
@@ -777,9 +687,12 @@ func (n *bitcoinNetwork) fetchModuleBlock(hash string) (blockData, overlayPeer, 
 		}
 		return blockData{Height: -1, BlockHash: strings.ToLower(hash), Raw: m.payload}, peer, nil
 	}
-	return blockData{}, overlayPeer{}, fmt.Errorf("no connected BOD peer supplied block bytes: %v", last)
+	return blockData{}, overlayPeer{}, fmt.Errorf("no connected Gateway peer supplied block bytes: %v", last)
 }
 func (a *app) queryManagedSatline(ctx context.Context, addr string, req satlineSegmentRequest) (satlineSegment, error) {
+	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
+		return satlineSegment{}, err
+	}
 	if a.network == nil {
 		return querySatlinePeer(ctx, addr, req, a.localGatewayProtocols())
 	}
@@ -792,7 +705,7 @@ func (a *app) queryManagedSatline(ctx context.Context, addr string, req satlineS
 	n.mu.Unlock()
 	// An inbound peer's source port identifies a live socket, not a listener.
 	if !connected {
-		n.add(addr, "manual_satline", gatewayExperimentalServiceBit)
+		n.add(addr, "manual_satline", 0)
 		n.maintain()
 	}
 	wait, cancel := context.WithTimeout(ctx, 12*time.Second)

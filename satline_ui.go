@@ -74,6 +74,12 @@ func (a *app) registerSatlineRoutes(mux *http.ServeMux) {
 	}
 }
 func (a *app) handleSatlinePage(w http.ResponseWriter, r *http.Request) {
+	if !releaseFeatureAvailable("satline") {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; frame-ancestors 'self'; base-uri 'none'")
+		_, _ = io.WriteString(w, `<!doctype html><html lang="en"><meta charset="utf-8"><title>Satline deferred</title><h1>Satline deferred</h1><p>Forward and reverse traces and resume are unavailable in v0.7.7. Saved trace data is retained. Sats indexing and saved range/location lookups remain available.</p><a href="/?resolve=indexes.gateway">View indexes</a></html>`)
+		return
+	}
 	// Gateway-served friendly origins are trusted management shells too.
 	// Keep the module on its parent origin, or iframe CSP and navigation break.
 	name := strings.TrimPrefix(r.URL.Path, "/satline")
@@ -114,6 +120,9 @@ type satlineRecentView struct {
 }
 
 func (a *app) handleSatlineRecords(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "satline") {
+		return
+	}
 	if r.Method != "GET" {
 		http.Error(w, "GET required", 405)
 		return
@@ -163,6 +172,9 @@ func (a *app) handleSatlineRecords(w http.ResponseWriter, r *http.Request) {
 	satlineReply(w, map[string]any{"records": out, "local_only": true})
 }
 func (a *app) handleSatlineRecord(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "satline") {
+		return
+	}
 	if r.Method != "GET" {
 		http.Error(w, "GET required", 405)
 		return
@@ -187,6 +199,9 @@ func (a *app) handleSatlineRecord(w http.ResponseWriter, r *http.Request) {
 	satlineReply(w, map[string]any{"query": q, "result": rec.Result, "updated": rec.UpdatedAt, "published": puberr == nil && rec.VerifierVersion == blockVerifierVersion, "anchors_checked": false, "needs_recheck": rec.VerifierVersion != blockVerifierVersion, "note": note})
 }
 func (a *app) handleSatlineRun(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "satline") {
+		return
+	}
 	var body struct {
 		Input     string `json:"input"`
 		Operation string `json:"operation"`
@@ -227,6 +242,9 @@ func (a *app) handleSatlineRun(w http.ResponseWriter, r *http.Request) {
 	satlineReply(w, map[string]any{"id": id})
 }
 func (a *app) handleSatlineJob(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "satline") {
+		return
+	}
 	if r.Method != "GET" {
 		http.Error(w, "GET required", 405)
 		return
@@ -242,6 +260,12 @@ func (a *app) handleSatlineJob(w http.ResponseWriter, r *http.Request) {
 	satlineReply(w, j)
 }
 func (a *app) handleSatlineCancel(w http.ResponseWriter, r *http.Request) {
+	// Stopping already-running work remains possible even when this release
+	// forbids starting or resuming traces. This never opens or deletes evidence.
+	if !safeLocalRequest(r) {
+		jsonError(w, http.StatusForbidden, fmt.Errorf("Satline controls are private to the local Gateway UI"))
+		return
+	}
 	var q struct {
 		ID string `json:"id"`
 	}
@@ -251,13 +275,24 @@ func (a *app) handleSatlineCancel(w http.ResponseWriter, r *http.Request) {
 	a.satlineJobsMu.Lock()
 	defer a.satlineJobsMu.Unlock()
 	j, ok := a.satlineJobs[q.ID]
-	if ok && !j.Done {
-		j.cancel()
+	if !ok {
+		jsonError(w, http.StatusNotFound, fmt.Errorf("Satline job not found"))
+		return
+	}
+	if !j.Done {
+		if j.cancel != nil {
+			j.cancel()
+		}
+		j.Status = "cancelled"
 		j.Stage = "Stopping at completed checkpoint"
+		a.persistJobLocked(j)
 	}
 	satlineReply(w, map[string]bool{"ok": true})
 }
 func (a *app) handleSatlineNetwork(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "satline") {
+		return
+	}
 	if r.Method == "GET" {
 		satlineReply(w, a.satlineNetworkStatus())
 		return
@@ -276,6 +311,9 @@ func (a *app) handleSatlineNetwork(w http.ResponseWriter, r *http.Request) {
 	satlineReply(w, a.satlineNetworkStatus())
 }
 func (a *app) handleSatlinePublication(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "satline") {
+		return
+	}
 	var body struct {
 		Input   string `json:"input"`
 		Publish bool   `json:"publish"`
@@ -295,6 +333,9 @@ func (a *app) handleSatlinePublication(w http.ResponseWriter, r *http.Request) {
 	satlineReply(w, map[string]bool{"published": body.Publish})
 }
 func (a *app) handleSatlineExplain(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "satline") {
+		return
+	}
 	var body struct {
 		Input string `json:"input"`
 		Hop   int    `json:"hop"`

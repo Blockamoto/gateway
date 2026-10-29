@@ -3,60 +3,106 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light dark">
 <title>Indexes · Gateway</title>
 <link rel="stylesheet" href="/shell/style.css">
+<link rel="stylesheet" href="/shell/index-timeline.css">
+<link rel="stylesheet" href="/shell/bitmap-workspace.css">
+<link rel="stylesheet" href="/shell/index-help.css">
+<link rel="stylesheet" href="/shell/explorer-features.css">
+<link rel="stylesheet" href="/shell/transaction-flow-layout.css">
+<link rel="stylesheet" href="/shell/block-viewport.css">
 <style nonce="__INDEX_NONCE__">
-main{max-width:1280px;margin:auto;padding:32px}.workspace-context{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 0 22px;color:var(--muted);font-size:13px}.workspace-context span:last-child{color:var(--accent,var(--mint))}.workspace-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:24px;overflow-x:auto}.workspace-tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--muted);padding:14px 18px;white-space:nowrap}.workspace-tabs button[aria-current="page"]{border-color:var(--accent,var(--mint));color:var(--text)}.index-layout .panel{margin:0}.page-heading h1{font-size:clamp(28px,4vw,40px);letter-spacing:-1px}.page-heading .lede{max-width:700px;font-size:15px;line-height:1.7}.index-entry h3{font-size:16px}.index-entry{background:var(--bg)}.index-meta{font-size:13px!important}.small{font-size:13px;line-height:1.65}.field label{font-size:13px}.field small{font-size:12px;line-height:1.55}.actions{flex-wrap:wrap}.embedded .index-top{display:none}.embedded main{padding:28px 24px;min-height:0}progress{accent-color:var(--accent,var(--mint))!important}@media(max-width:600px){main{padding:20px 14px}.workspace-tabs button{padding:12px}.query-controls>*{width:100%}.query-controls input{width:100%!important}}.index-top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:35px}.index-top a{font-size:14px}.index-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:22px}.index-layout>*{min-width:0}.index-section{margin-top:22px}.index-list{display:grid;gap:12px}.index-entry{border:1px solid var(--line);border-radius:12px;padding:16px}.index-entry h3{margin-top:0}.index-entry p:last-child{margin-bottom:0}.index-meta{display:grid;grid-template-columns:150px minmax(0,1fr);gap:9px 15px;font-size:12px;line-height:1.6}.index-meta dt{color:var(--muted)}.index-meta dd{margin:0;overflow-wrap:anywhere}.index-note{border-left:3px solid var(--mint);padding:10px 15px;background:var(--panel2)}#message{padding:14px 18px;border:1px solid var(--line);border-radius:12px;margin:18px 0;white-space:pre-wrap}#message[data-error="true"]{color:var(--red)}#job-error{color:var(--amber);white-space:pre-wrap}progress{width:100%;height:12px;accent-color:var(--mint)}ol,ul{padding-left:22px;line-height:1.8;font-size:12px}summary{font-size:13px}button{white-space:normal}.query-controls{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.query-controls .field{margin:0}.query-controls input{width:110px}[hidden]{display:none!important}@media(max-width:800px){.index-layout{grid-template-columns:1fr}.index-meta{grid-template-columns:1fr;gap:3px}.index-meta dd{margin-bottom:10px}.index-top{align-items:flex-start}}
+main{max-width:1440px;margin:auto;padding:32px}.workspace-context{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:16px 0 22px;color:var(--muted);font-size:13px}.workspace-context span:last-child{color:var(--accent,var(--mint))}.workspace-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:24px;overflow-x:auto}.workspace-tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--muted);padding:14px 18px;white-space:nowrap}.workspace-tabs button[aria-current="page"]{border-color:var(--accent,var(--mint));color:var(--text)}.index-layout .panel{margin:0}.page-heading h1{font-size:clamp(28px,4vw,40px);letter-spacing:-1px}.page-heading .lede{max-width:700px;font-size:15px;line-height:1.7}.index-entry h3{font-size:16px}.index-entry{background:var(--bg)}.index-meta{font-size:13px!important}.small{font-size:13px;line-height:1.65}.field label{font-size:13px}.field small{font-size:12px;line-height:1.55}.actions{flex-wrap:wrap}.embedded .index-top{display:none}.embedded main{padding:28px 24px;min-height:0}progress{accent-color:var(--accent,var(--mint))!important}@media(max-width:600px){main{padding:20px 14px}.workspace-tabs button{padding:12px}.query-controls>*{width:100%}.query-controls input{width:100%!important}}.index-top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:35px}.index-top a{font-size:14px}.index-layout{display:grid;grid-template-columns:1fr;gap:22px}.index-layout>*{min-width:0}.index-section{margin-top:22px}.index-list{display:grid;gap:12px}.index-entry{border:1px solid var(--line);border-radius:12px;padding:16px}.index-entry h3{margin-top:0}.index-entry p:last-child{margin-bottom:0}.index-meta{display:grid;grid-template-columns:150px minmax(0,1fr);gap:9px 15px;font-size:12px;line-height:1.6}.index-meta dt{color:var(--muted)}.index-meta dd{margin:0;overflow-wrap:anywhere}.index-note{border-left:3px solid var(--mint);padding:10px 15px;background:var(--panel2)}#message{padding:14px 18px;border:1px solid var(--line);border-radius:12px;margin:18px 0;white-space:pre-wrap}#message[data-error="true"]{color:var(--red)}#job-error{color:var(--amber);white-space:pre-wrap}progress{width:100%;height:12px;accent-color:var(--mint)}ol,ul{padding-left:22px;line-height:1.8;font-size:12px}summary{font-size:13px}button{white-space:normal}.query-controls{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.query-controls .field{margin:0}.query-controls input{width:110px}[hidden]{display:none!important}@media(max-width:800px){.index-layout{grid-template-columns:1fr}.index-meta{grid-template-columns:1fr;gap:3px}.index-meta dd{margin-bottom:10px}.index-top{align-items:flex-start}}
 main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width:0}.index-entry .mono{overflow-wrap:anywhere}@media(max-width:600px){.embedded main{padding:20px 14px}}
+.query-controls .records-follow input{width:auto!important}
+.timeline-inspector:is([data-index="utxo-state"],[data-index="address-state"],[data-index="txio-sat-ranges"]) #timeline-details{display:none!important}
+#current-job-panel>.actions,#job-queue,#combined-outputs,#build-range-picker,.build-range-notes,#plan-form>label.check,#plan-form>.actions,#plan,#advanced-retention>.field,#sat-history-field,#inscription-enrichment>button,#index-details-nav [data-view="build"]{display:none!important}
+
 </style>
-</head>
-<body>
+<link rel="stylesheet" href="/shell/theme.css"><script nonce="__INDEX_NONCE__" src="/shell/theme.js"></script></head>
+<body class="indexes-workspace">
 <main>
 <nav class="index-top" aria-label="Index navigation"><a href="/">← Gateway home</a><a href="/?resolve=storage.gateway">Storage settings</a></nav>
-<header class="page-heading"><div><div class="eyebrow">Your Gateway · Indexes</div><h1>Build useful knowledge.</h1><p class="lede">Choose the answers you need. Review their sources, build locally, and decide separately what to share.</p></div><button id="refresh">Refresh status</button></header>
-<div class="workspace-context"><span id="workspace-state">Reading your local workspace…</span><span>Private until explicitly published</span></div><nav class="workspace-tabs" aria-label="Index workspace"><button type="button" data-view="build" aria-current="page">Build an index</button><button type="button" data-view="results">My results</button><button type="button" data-view="providers">Data sources</button><button type="button" data-view="peers">Peer claims</button></nav><div id="message" role="status" aria-live="polite" hidden></div>
-<div class="index-layout" data-pane="build">
+<div id="workspace-state" class="timeline-status-strip" role="status" hidden>Reading your local workspace…</div><div id="message" role="status" aria-live="polite" hidden></div><section id="index-timeline" aria-label="Index timeline"></section><div id="index-workspace" hidden><h2 id="selected-index-label" class="selected-index-label" hidden></h2><section id="index-requirements" class="panel" aria-label="Index requirements"></section><nav id="index-details-nav" class="workspace-tabs" aria-label="Selected index details" hidden><button type="button" data-view="build">Build a range</button><button type="button" data-view="results">Records & sharing</button><button type="button" data-view="providers">Data sources</button><button type="button" data-view="peers">Peer claims</button></nav>
+<section class="panel" id="current-job-panel" aria-labelledby="job-heading"><h2 id="job-heading">Current job</h2><p id="job-summary" class="muted small">Loading local status…</p><progress id="job-progress" hidden></progress><dl id="job-meta" class="index-meta"></dl><p id="job-error" class="small"></p><p id="job-limitations" class="hint small" hidden></p><div class="actions"><button id="job-records" type="button">Progress & records</button><button id="pause" disabled>Pause build</button><button id="resume" disabled>Load previous request</button></div><p class="small muted">Pause takes effect after an in-flight source request returns. Resume retries the same range from its saved checkpoint. Completed checkpoints are reused.</p><details><summary>Exact job JSON</summary><pre id="job-json"></pre></details><div id="job-queue" class="index-section"></div></section><div class="index-layout" data-pane="build">
+<section id="utxo-build-panel" aria-label="UTXO build and committed state" hidden></section>
+<section id="sat-build-panel" aria-label="Sat build and saved recovery state" hidden></section>
+<section id="address-state-build-panel" aria-label="Current address UTXO build and snapshot" hidden></section>
 <section class="panel" aria-labelledby="build-heading">
 <h2 id="build-heading">What would you like to build?</h2>
 <form id="plan-form">
-<div class="field"><label for="index">Index definition</label><select id="index" required><option value="">Loading definitions…</option></select></div>
+<input id="index" type="hidden" value="blocks">
 <p id="definition-summary" class="small muted"></p>
-<div class="form-grid">
-<div class="field"><label for="from">First block</label><input id="from" type="number" min="0" step="1" placeholder="Definition start"><small id="from-note">An existing instance resumes from its last committed checkpoint.</small></div>
-<div class="field"><label for="to">Last block</label><input id="to" type="number" min="0" step="1" placeholder="Verified tip"><small>Leave blank to snapshot the available verified tip when work starts.</small></div>
-</div>
-<div class="field"><label for="retention">Source block retention</label><select id="retention"><option value="ephemeral">Ephemeral — use and discard newly fetched source bytes</option><option value="cache">Cache — retain under the cache policy</option><option value="retain">Retain — keep in Gateway-owned storage</option></select><small>Derived records remain. Existing cache policy and external Bitcoin Core files are separate; this choice never deletes Core data.</small></div>
-<div class="field"><label for="mode">Result detail</label><select id="mode"><option value="lean">Lean — district and inscription ID only</option><option value="full">Full — candidates and evidence</option></select><small>Existing indexes resume in their original format. Full records are not a complete contestability audit.</small></div><div class="actions"><button type="submit" id="plan-button">Review plan</button><button type="button" class="primary" id="build" disabled>Start reviewed plan</button></div>
+<label class="check"><input id="initial-live" type="checkbox"> Live: catch up and follow new blocks</label>
+<fieldset id="build-range-picker" class="build-range-picker"><legend>Build range</legend>
+<div class="build-range-fields"><div class="field"><label for="from">First block</label><input id="from" type="number" min="0" step="1" placeholder="Definition start" aria-describedby="from-start-note from-note"></div><div class="field" id="end-field"><label for="to">Last block</label><input id="to" type="number" min="0" step="1" placeholder="Verified tip" aria-describedby="range-summary"></div></div>
+<div class="build-range-rail"><div class="build-range-selected" aria-hidden="true"></div><input id="range-start" type="range" min="0" max="0" step="1" value="0" aria-label="First block range handle"><input id="range-end" type="range" min="0" max="0" step="1" value="0" aria-label="Last block range handle"></div>
+<p id="range-summary" class="small muted">Enter block heights or drag either handle. Both endpoints are included.</p>
+</fieldset>
+<p class="build-range-notes"><small id="from-start-note">Block heights are inclusive. Review the plan before fetching data.</small><small id="from-note">An existing instance resumes from its last committed checkpoint.</small></p>
+<fieldset id="combined-outputs" hidden><legend>Also index these block results</legend><p class="small muted">Share source fetching and decoding. Each result keeps its own coverage and recoverable progress.</p><div id="output-choices"></div></fieldset><details id="advanced-retention"><summary>Source block storage</summary><label class="check" id="sat-history-field" hidden><input id="retain-sat-history" type="checkbox"><span>Retain full historical output ranges for newly processed blocks<small class="block muted">Enabling this later does not rebuild past output ranges; turning it off preserves already recorded history. Sat identity, origin and current placement do not require full historical output ranges.</small></span></label><input id="retention" type="hidden" value="ephemeral"><p class="small muted">New source bodies follow the Raw Blocks track for both browsing and indexing. Off uses them temporarily; On retains them. Mandatory recovery facts and optional derived history are separate.</p></details>
+<div class="field"><label for="mode">Result detail</label><select id="mode"><option value="lean">Lean — positions only</option><option value="full">Full — content and evidence</option></select><small id="mode-note">Existing indexes resume in their original format.</small></div><div id="inscription-enrichment" hidden><label class="index-switch"><span>Also index conventional inscription IDs</span><input id="conventional-ids" type="checkbox" role="switch" checked aria-describedby="enrichment-note"><span class="switch-track" aria-hidden="true"></span></label><p id="enrichment-note" class="small muted">Save sparse transaction hashes for inscription reveals only. Positional resolution works with this off; the full TX ID Locators index is not required.</p><button id="enrich-inscription-ids" type="button" hidden>Build conventional ID locators</button><p class="small muted">Reviewing this action fills missing locator coverage over the saved inscription range. Lean records may need their reveal blocks fetched once per block.</p></div><div class="actions"><button type="submit" id="plan-button">Review plan</button><button type="button" class="primary" id="build" disabled>Start reviewed plan</button></div>
+<fieldset id="txio-enrichment" hidden><legend>TXIO output history</legend><label class="check"><input id="retain-output-values" type="checkbox"> Retain output Values</label><label class="check"><input id="retain-output-scripts" type="checkbox"> Retain exact ScriptPubKeys</label><p class="small muted">Each optional layer records its own coverage. Enabling a layer later does not fill earlier gaps. Live UTXO and recovery facts remain local automatically, regardless of these historical choices.</p></fieldset>
 </form>
+<details id="inscription-storage" hidden><summary>Inspect storage use</summary><p class="small muted">Run a bounded inspection of saved file bytes. Lean coordinates, Full reveal records, related transaction locators, source blocks and resolved content are reported separately. This includes managed files and retained stale commits, not external mounted-node data or filesystem allocation sizes. This does not fetch or index anything.</p><button id="inspect-inscription-storage" type="button">Inspect saved storage</button><p id="inscription-storage-state" class="small" role="status"></p><dl id="inscription-storage-bytes" class="index-meta"></dl><pre id="inscription-storage-json" hidden></pre></details>
+<section id="index-export-panel" hidden></section>
 <div id="plan" class="index-section" hidden><h3>Before this build starts</h3><dl id="plan-meta" class="index-meta"></dl><ul id="plan-notes"></ul><p id="plan-buildability" class="small muted"></p><details><summary>Exact plan JSON</summary><pre id="plan-json"></pre></details></div>
 </section>
-<section class="panel" aria-labelledby="job-heading"><h2 id="job-heading">Current job</h2><p id="job-summary" class="muted small">Loading local status…</p><progress id="job-progress" hidden></progress><dl id="job-meta" class="index-meta"></dl><p id="job-error" class="small"></p><div class="actions"><button id="pause" disabled>Pause build</button><button id="resume" disabled>Load previous request</button></div><p class="small muted">Pause takes effect after an in-flight source request returns. Resume retries the same range from its saved checkpoint. Completed checkpoints are reused.</p><details><summary>Exact job JSON</summary><pre id="job-json"></pre></details></section>
+
 </div>
 <section class="panel index-section" data-pane="build" aria-labelledby="rules-heading"><h2 id="rules-heading">Understand the recipe</h2><p id="rule-theory" class="small"></p><dl id="rule-meta" class="index-meta"></dl><details><summary>Detailed rules</summary><ol id="rule-list"></ol></details><p class="small muted">A definition describes what answers mean; it does not prove this node can answer them. Provider and retained-instance status appear below. Unsupported historical compatibility profiles remain unavailable and never rewrite Bitmap base results.</p><details><summary>Machine-readable definition</summary><pre id="rule-json"></pre></details></section>
 
+<section id="sat-lookup-panel" class="panel index-section" data-pane="results" hidden><h2>Find a sat</h2><form id="sat-lookup-form" class="query-controls"><label class="field">Sat number<input id="sat-lookup-number" type="text" inputmode="numeric" pattern="0|[1-9][0-9]*" required placeholder="0"></label><button type="submit">Look up sat</button></form><p class="small muted">Reads your Sat index. Identity, origin and placement are valid only within its verified snapshot. Lookup never starts indexing or tracing.</p><p id="sat-lookup-summary" class="small" role="status"></p><dl id="sat-lookup-meta" class="index-meta"></dl><details><summary>Sat evidence</summary><pre id="sat-lookup-json"></pre></details></section>
 <section class="panel index-section" data-pane="results" aria-labelledby="lookup-heading" hidden><h2 id="lookup-heading">Find a Bitmap district</h2><form id="lookup-form" class="query-controls"><div class="field"><label for="lookup-key">District number</label><input id="lookup-key" type="text" inputmode="numeric" pattern="0|[1-9][0-9]*" maxlength="20" placeholder="0" required></div><button type="submit">Look up district</button></form><p class="small muted">Enter the exact district number, without .bitmap or leading zeros. Lookup reads retained derived records; it does not build an index or fetch source blocks. Exact lookup may inspect the committed history and take longer than the bounded preview. A missing local result does not prove no claim exists.</p><p id="lookup-summary" class="small" role="status"></p><details><summary>Lookup evidence</summary><pre id="lookup-json" hidden></pre></details></section>
-<section class="panel index-section" data-pane="results" aria-labelledby="query-heading" hidden><h2 id="query-heading">Browse records</h2><form id="query-form" class="query-controls"><div class="field"><label for="query-index">Index</label><select id="query-index"><option value="bitmap">Bitmap districts</option><option value="inscriptions">Inscription occurrences</option></select></div><div class="field"><label for="query-limit">Maximum records</label><input id="query-limit" type="number" value="50" min="1" max="1000" step="1" required></div><button type="submit">Query local records</button></form><p id="query-summary" class="small muted">Queries inspect retained records newest first, within a bounded window of at most 512 block batches. They do not start a build or fetch from the network.</p><div id="query-results" class="index-list"></div><details><summary>Result JSON and evidence</summary><pre id="query-json"></pre></details></section>
-<section class="panel index-section" data-pane="results" aria-labelledby="instances-heading" hidden><h2 id="instances-heading">Your local knowledge</h2><details><summary>Coverage and sharing explained</summary><p class="small muted">Each index has one contiguous local instance in this release. Coverage records completed work within the stated range. A retained result and its checkpoint are distinct from keeping its original source blocks. Checkpoints are rechecked against the selected chain before resume.</p><p class="small muted">Publishing freezes the displayed checkpoint and its records for peer sharing. Later work stays private until you publish again. Network service also requires the separate Serve data setting. Withdraw publication to stop sharing without deleting local records.</p></details><div id="instances" class="index-list"></div></section>
+<section class="panel index-section" data-pane="results" aria-labelledby="query-heading" hidden><h2 id="query-heading">Latest discoveries</h2><form id="query-form" class="query-controls"><input id="query-index" type="hidden" value="bitmap"><input id="query-limit" type="hidden" value="50"><button type="submit">Refresh records</button><label class="records-follow"><input id="follow-records" type="checkbox" checked>Follow new discoveries</label></form><p id="query-freshness" class="small muted" hidden>Following is paused. This saved preview is not revalidated against chain changes; refresh before relying on current chain status.</p><p id="query-summary" class="small muted">Queries inspect retained records newest first, within a bounded window of at most 512 block batches. They do not start a build or fetch from the network.</p><div id="query-results" class="table-wrap"></div><details><summary>Result JSON and evidence</summary><pre id="query-json"></pre></details></section>
+<section class="panel index-section" data-pane="results" aria-labelledby="instances-heading" hidden><h2 id="instances-heading">Your local knowledge</h2><details><summary>Coverage and sharing explained</summary><p class="small muted">Each index reports its own retained instance and coverage. Coverage records completed work within the stated range. A retained result and its checkpoint are distinct from keeping its original source blocks. Checkpoints are rechecked against the selected chain before resume.</p><p class="small muted">Publishing freezes the displayed checkpoint and its records for peer sharing. Later work stays private until you publish again. Network service also requires the separate Serve data setting. Withdraw publication to stop sharing without deleting local records.</p></details><div id="instances" class="index-list"></div></section>
 <section class="panel index-section" data-pane="providers" aria-labelledby="providers-heading" hidden><h2 id="providers-heading">Available providers</h2><p class="small muted">Bitcoin Core and Ord are optional. A provider being configured, queryable or reachable does not imply complete historical coverage or permission to share its results.</p><div id="providers" class="index-list"></div></section>
-<section class="panel index-section" data-pane="peers" aria-labelledby="peer-heading" hidden><h2 id="peer-heading">Inspect peer index claims</h2><p class="small muted">These buttons send explicit network requests to already-negotiated Gateway peers. Peers can observe the request. Claim inspection contacts at most four known peers and does not start discovery. The preview checks one published block's internal commitments; it is not Bitcoin replay and does not store or import the result.</p><button id="peer-claims">Inspect known peer claims</button><p id="peer-summary" class="small" role="status">No peer inspection requested.</p><details><summary>Peer responses and evidence</summary><pre id="peer-claims-json" hidden></pre></details><form id="peer-form" class="query-controls"><div class="field"><label for="peer-address">Known peer from the claim results</label><input id="peer-address" type="text" placeholder="host:port" required></div><div class="field"><label for="peer-index">Index</label><select id="peer-index"><option value="bitmap">Bitmap districts</option><option value="inscriptions">Inscription occurrences</option></select></div><button type="submit">Preview latest published block</button></form><p id="peer-preview-summary" class="small" role="status">Peer evidence still requires local Bitcoin replay before it can become verified index state.</p><details><summary>Preview evidence</summary><pre id="peer-preview-json" hidden></pre></details></section>
+<section class="panel index-section" data-pane="peers" aria-labelledby="peer-heading" hidden><h2 id="peer-heading">Inspect peer index claims</h2><p id="peer-unavailable" class="hint" hidden>Peer record exchange is not supported for this index in this release. Inspect local evidence and providers in Data sources.</p><p class="small muted">These buttons send explicit network requests to already-negotiated Gateway peers. Peers can observe the request. Claim inspection contacts at most four known peers and does not start discovery. The preview checks one published block's internal commitments; it is not Bitcoin replay and does not store or import the result.</p><button id="peer-claims">Inspect known peer claims</button><p id="peer-summary" class="small" role="status">No peer inspection requested.</p><details><summary>Peer responses and evidence</summary><pre id="peer-claims-json" hidden></pre></details><form id="peer-form" class="query-controls"><div class="field"><label for="peer-address">Known peer from the claim results</label><input id="peer-address" type="text" placeholder="host:port" required></div><input id="peer-index" type="hidden" value="bitmap"><button type="submit">Preview latest published block</button></form><p id="peer-preview-summary" class="small" role="status">Peer evidence still requires local Bitcoin replay before it can become verified index state.</p><details><summary>Preview evidence</summary><pre id="peer-preview-json" hidden></pre></details></section>
 <details class="index-section"><summary>Full local status JSON</summary><pre id="status-json"></pre></details>
-<details class="index-section"><summary>Terminal equivalents</summary><p class="small muted"> <code>index rules</code>, <code>index plan bitmap --to HEIGHT</code>, <code>index build bitmap --to HEIGHT --retention ephemeral</code>, <code>index pause</code>, <code>index status</code>, <code>index query bitmap --limit 50</code>, <code>index lookup bitmap 0</code>.</p></details>
-</main>
+<details class="index-section"><summary>Terminal equivalents</summary><p class="small muted"> <code>index rules</code>, <code>index plan blocks --to HEIGHT</code>, <code>index build blocks --to HEIGHT</code>, <code>index pause</code>, <code>index status</code>, <code>index query blocks --limit 50</code>.</p></details>
+</div></main>
+<script src="/shell/index-cards.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-transport.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-help-content.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-help.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-scrollbar-geometry.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-timeline.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/utxo-panel.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/address-panel.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/sat-panel.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-workspace.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/transaction-flow-layout.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/block-viewport.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/address-view.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/sat-view.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/bitmap-view.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-export.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/bitmap-workspace.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/explorer-features.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/workspace-resources.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/timeline-explorer.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/inscription-viewport.js" nonce="__INDEX_NONCE__"></script>
+<script id="index-bootstrap" type="application/json" nonce="__INDEX_NONCE__">__INDEX_BOOTSTRAP__</script>
 <script nonce="__INDEX_NONCE__">
 'use strict';
 const $ = id => document.getElementById(id);
-if (new URLSearchParams(location.search).get('embedded') === '1') { document.body.classList.add('embedded'); if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { parent.postMessage({type:'gateway:index-height',height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)+4},location.origin); }).observe(document.querySelector('main')); }
+if (new URLSearchParams(location.search).get('embedded') === '1') document.body.classList.add('embedded');
+let currentView = "catalog", selectedIndex = "", timeline, explorer, viewport, utxoPanel, addressPanel, satPanel, indexExport, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
+let workspaceBoot={};try{workspaceBoot=JSON.parse($('index-bootstrap').textContent);}catch{}
 function selectView(view) {
+  currentView = view;
   for (const pane of document.querySelectorAll('[data-pane]')) pane.hidden = pane.dataset.pane !== view;
   for (const tab of document.querySelectorAll('[data-view]')) { if (tab.dataset.view === view) tab.setAttribute('aria-current','page'); else tab.removeAttribute('aria-current'); }
 }
-for (const tab of document.querySelectorAll('[data-view]')) tab.addEventListener('click', () => selectView(tab.dataset.view));
-let definitions = [], reviewedRequest = '', status = null, fetching = false, instancesKey = '', providersKey = '';
+for (const tab of document.querySelectorAll('[data-view]')) tab.addEventListener('click', () => { selectView(tab.dataset.view); showSelectedStatus(); if (tab.dataset.view === 'results' && selectedDefinition()?.buildable) loadRecords(); });
+let definitions = [], reviewedRequest = '', planSerial = 0, status = null, fetching = false, refreshAgain = false, fullRefreshPending = false, instancesKey = '', providersKey = '', statusRevision = 0, refreshPromise = null, progressTimer = null;
+const terminalObservations=new Map();
+const rangePicker = window.GatewayIndexWorkspace.mountRange({root:$('build-range-picker'),from:$('from'),to:$('to'),live:$('initial-live')});
 const pretty = value => JSON.stringify(value, null, 2);
 const human = value => ({first_valid_claim:'First valid claim in the indexed history',not_evaluated:'Not evaluated',recorded_contiguous_range:'Recorded continuous range',ephemeral:'Discard source blocks after processing',unknown:'Unknown'})[value] || String(value ?? 'unknown').replaceAll('_', ' ');
 const ranges = value => value?.length ? value.map(x => x.from + '–' + x.to + ' (' + (x.to - x.from + 1).toLocaleString() + ' block' + (x.to === x.from ? '' : 's') + ')').join(', ') : 'No recorded range';
-function message(text, error = false) { $('message').textContent = text; $('message').dataset.error = String(error); $('message').hidden = !text; }
+function message(text, error = false) { const changed=$('message').textContent!==text||$('message').hidden; $('message').textContent = text; $('message').dataset.error = String(error); $('message').hidden = !text; if(text&&error&&changed)($('timeline-inspector-panel')||$('timeline-inspector'))?.scrollTo({top:0}); }
 function element(tag, text, className) { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (className) el.className = className; return el; }
 function metadata(target, rows) { target.replaceChildren(); for (const [label, value] of rows) target.append(element('dt', label), element('dd', String(value ?? 'unknown'))); }
 function details(parent, label, value) { const el = element('details'); el.append(element('summary', label), element('pre', pretty(value))); parent.append(el); }
@@ -65,62 +111,156 @@ function querySummary(result) {
   const count = result.total_known === true ? ' of ' + result.total + ' recorded results' : ' from at least ' + result.total + ' inspected records; the full count is unknown';
   return 'Showing ' + result.rows.length + count + '. Snapshot block ' + result.checkpoint.height + '. Newest first, inspected ' + result.inspected_blocks + ' block batches (maximum 512). Chain state: ' + human(result.chain_state) + '.' + (result.truncated ? ' This view is partial; absence here is not proof of no record.' : '') + (result.next_cursor ? ' Continuation metadata is included in the result JSON.' : '');
 }
-async function api(action, body) {
+function inscriptionRows(rows){return (rows||[]).flatMap(row=>{
+  if(Array.isArray(row?.inscriptions))return row.inscriptions.map(position=>({reveal_coordinate:position,reveal_height:row.block_height??row.height,transaction_count:row.transaction_count,mode:row.mode}));
+  if(typeof row==='string')return [{reveal_coordinate:row}];
+  return [row];
+});}
+function inscriptionMarker(row){const position=row.reveal_coordinate||window.GatewayInscriptionViewport.coordinate(row),match=/^(\d+)i(\d+)\.(\d+)(?:\.bitcoin)?$/.exec(position);return match?{address:position,txIndex:Number(match[1]),inscriptionIndex:Number(match[2]),height:Number(match[3])}:null;}
+async function api(action, body, requestOptions={}) {
+  if (body !== undefined && action !== 'plan') statusRevision++;
   const options = body === undefined ? {} : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)};
-  const response = await fetch('/api/v1/index/' + action, options);
+  const response = await fetch('/api/v1/index/' + action, {...options,...requestOptions});
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Request failed (' + response.status + ')');
+  if (!response.ok) {const error=new Error(result.error || 'Request failed (' + response.status + ')');error.details=result;error.status=response.status;throw error;}
   return result;
 }
 function request() {
-  const result = {index: $('index').value, retention: $('retention').value, mode: $('index').value === 'bitmap' ? $('mode').value : 'full'};
-  for (const field of ['from', 'to']) if ($(field).value !== '' && !(field === 'from' && $('index').value === 'bitmap')) {
+  if(selectedDefinition()?.locked) throw new Error('This index is locked in this testing build.');
+  if($('index').value==='utxo-state')return window.GatewayUTXOPanel.request();
+  if($('index').value==='address-state')return window.GatewayAddressPanel.request();
+  if($('index').value==='sat-state')return window.GatewaySatPanel.request();
+  const result = {index: $('index').value, retention: $('retention').value, live: $('initial-live').checked, live_configured: true, mode: $('index').value==='address-history'?'lean':['bitmap','inscriptions'].includes($('index').value) ? $('mode').value : 'full'};
+  if(result.index==='inscriptions')result.conventional_ids=inscriptionLocatorsAvailable()&&$('conventional-ids').checked;
+  for (const field of ['from', 'to']) if (!(field === 'to' && result.live) && $(field).value !== '' && !(field === 'from' && $('index').value === 'bitmap')) {
     const n = Number($(field).value);
     if (!Number.isSafeInteger(n) || n < 0) throw new Error('Block heights must be non-negative integers.');
     result[field] = n;
   }
+  if(result.index==='blocks')result.outputs=[...$('output-choices').querySelectorAll('input')].filter(x=>x.checked&&!x.disabled).map(x=>x.value);
+  if(result.index==='txo-spender'||result.outputs?.includes('txo-spender')){result.retain_output_values=$('retain-output-values').checked;result.retain_output_scripts=$('retain-output-scripts').checked;}
+  if(['blocks','sat-state'].includes(result.index)){result.retain_sat_history=$('retain-sat-history').checked;result.sat_history_configured=true;}
   return result;
 }
-function invalidatePlan() { reviewedRequest = ''; $('build').disabled = true; $('plan').hidden = true; }
+function invalidatePlan() { planSerial++; reviewedRequest = ''; $('build').disabled = true; $('plan-button').disabled = false; $('plan').hidden = true; }
 function selectedDefinition() { return definitions.find(x => x.id === $('index').value); }
+function syncOutputEnrichment(){const enabled=selectedIndex==='txo-spender'||selectedIndex==='blocks'&&[...$('output-choices').querySelectorAll('input')].some(x=>x.value==='txo-spender'&&x.checked&&!x.disabled);$('txio-enrichment').disabled=!enabled;}
+function inscriptionLocatorsAvailable(){return definitions.some(x=>x.id==='tx-locator'&&!x.locked);}
+function syncRetainedStart() {
+  const d=selectedDefinition(); if(!selectedIndex||!d?.buildable||d.locked)return;
+  if(d.id==='address-history'){$('from').readOnly=false;return;}
+  const instance=status?.instances?.find(x=>x.definition===selectedIndex), saved=instance?.checkpoint?.from;
+  const fixed=Number.isSafeInteger(saved)&&saved>=0?saved:!d.arbitrary_start?d.start_height:null;
+  $('from').readOnly=Boolean(instance)||!d.arbitrary_start;
+  if(fixed!==null&&Number.isSafeInteger(fixed)&&$('from').value!==String(fixed)) {
+    $('from').value=String(fixed);invalidatePlan();
+    message('Saved index history starts at block '+fixed+'. Indexing status checks the exact required continuation; active joins never backfill automatically.');
+  }
+}
+function selectIndex(id, view, initialLive = false) {
+ if(id&&!definitions.some(d=>d.id===id))return;
+ if(window.GatewayIndexTransport.parcelDefinition((status?.definitions||[]).find(d=>d.id===id)||{id}))return;
+ resources?.closeBitmapSettings?.();
+ indexExport?.update({index:id==='inscriptions'?id:'',status});
+ if(view==='advanced')view='build';
+  if(selectedIndex && !selectedDefinition()?.locked){const draft={};for(const key of ['from','to','retention','mode'])draft[key]=$(key).value;draft.live=$('initial-live').checked;draft.history=$('retain-sat-history').checked;draft.conventional_ids=$('conventional-ids').checked;draft.output_values=$('retain-output-values').checked;draft.output_scripts=$('retain-output-scripts').checked;draft.outputs=[...$('output-choices').querySelectorAll('input')].filter(x=>x.checked&&!x.disabled).map(x=>x.value);planDrafts.set(selectedIndex,draft)}
+  if(!id){selectedIndex='';timeline.select('');selectView('catalog');return;}
+  message('');selectedIndex = id; receivedRecordKeys=new Set();lastRecordReceipt=''; recordSerial++; recordKey = ''; recordLoading = false;
+  $('inscription-storage').hidden=id!=='inscriptions';
+  for (const field of ['index', 'query-index', 'peer-index']) $(field).value = id;
+  const d = selectedDefinition(), instance = status?.instances?.find(x => x.definition === id);
+  if (!d) return; if (d.locked) { invalidatePlan(); $('index-workspace').hidden=true; $('selected-index-label').hidden=true; $('index-details-nav').hidden=true; timeline.select(id); selectView('catalog'); if(window.GatewayBitmapWorkspace.instanceID(id)){explorer?.setTab('inspector');resources?.openBitmapSettings?.(id);} return; }
+  $('selected-index-label').textContent = d.name;
+  $('selected-index-label').hidden = false; $('index-details-nav').hidden = false;
+  $('from').value = instance?.checkpoint?.from ?? (id === 'inscriptions' && d.network === 'bitcoin-mainnet' ? Math.max(d.start_height || 0,767430) : d.start_height || 0);
+ $('initial-live').checked = initialLive || Boolean(status?.live?.find(x => x.index === id)?.enabled); syncLiveForm(); $('from').readOnly = id!=='address-history'&&Boolean(instance) || !d.arbitrary_start;
+  $('to').value = ''; $('retention').value = status?.live?.find(x => x.index === id)?.retention || instance?.retention || 'ephemeral';
+  $('mode').value = instance ? instance.mode || 'full' : 'lean'; $('mode').disabled = Boolean(instance); $('retain-sat-history').checked=Boolean(status?.live?.find(x=>x.index===id)?.retain_sat_history??instance?.retain_sat_history);
+  $('conventional-ids').checked=inscriptionLocatorsAvailable()&&(status?.live?.find(x=>x.index===id)?.conventional_ids??instance?.conventional_ids??true);
+  const outputPolicy=status?.live?.find(x=>x.index===id);$('retain-output-values').checked=Boolean(outputPolicy?.retain_output_values??instance?.retain_output_values);$('retain-output-scripts').checked=Boolean(outputPolicy?.retain_output_scripts??instance?.retain_output_scripts);
+  for (const tab of document.querySelectorAll('[data-view]')) tab.hidden = tab.dataset.view==='peers'||(!d.buildable && ['build','results'].includes(tab.dataset.view));
+  $('query-results').replaceChildren(); $('query-json').textContent = '';
+  $('query-summary').textContent = 'Loading local records. This is a bounded preview, not the entire index.';
+  $('lookup-json').textContent = ''; $('lookup-summary').textContent = '';
+  invalidatePlan(); showRules();const draft=planDrafts.get(id);if(draft){for(const key of ['from','to','retention','mode'])$(key).value=draft[key];$('initial-live').checked=draft.live;$('retain-sat-history').checked=draft.history;$('retain-output-values').checked=draft.output_values;$('retain-output-scripts').checked=draft.output_scripts;$('conventional-ids').checked=inscriptionLocatorsAvailable()&&(draft.conventional_ids??true);for(const input of $('output-choices').querySelectorAll('input'))input.checked=!input.disabled&&draft.outputs.includes(input.value);syncLiveForm()}timeline.select(id); selectView(view);explorer?.setTab('inspector');
+  if (d.buildable && view === 'results') loadRecords();
+  showSelectedStatus();
+  rangePicker.update(d,status);
+  syncOutputEnrichment();
+  resources?.showIndexDelete?.(id,d.name);
+  if(window.GatewayBitmapWorkspace.instanceID(id))resources?.openBitmapSettings?.(id);
+}
+function showRequirements(){
+ const holder=$('index-requirements'),d=selectedDefinition();holder.replaceChildren(element('h3','Requirements'));if(!d)return;
+ const names={'blocks':'Source blocks','headers':'Headers','utxo-state':'UTXO set','sat-state':'Sat ranges','address-state':'Current UTXOs','address-history':'Historical outputs','tx-locator':'TX ID Locators','bitmap-districts':'Bitmap Districts','bitmap-parcels':'Bitmap Parcels','bitmap-chain':'BitmapChain'};
+ const row=(name,state,reason,id)=>{const p=element('p',undefined,'small');p.append(element('strong',name+' · '+state+' '),element('span',reason+' '));if(id){const button=element('button','Inspect '+(names[id]||id),'text-button');button.type='button';button.onclick=()=>inspectIndex(id);p.append(button);}holder.append(p);};
+ row('Raw block bodies','One timeline storage control','Raw Blocks Off uses newly fetched bodies temporarily; On retains them for browsing and indexing. This does not change mandatory recovery facts or optional derived history.',d.id==='blocks'?null:'blocks');const actual=(status?.run?.run?.consumers||[]).find(c=>c.index===d.id),policy=window.GatewayIndexTransport.rangePolicy(d,actual);if(policy)row('Indexing scope',policy.mode==='complete_prefix'?'Required prefix':policy.mode==='snapshot_projection'?'Saved snapshot':policy.mode==='sparse'?'Independent ranges':'Append only',policy.text);if(d.id==='blocks')row('Block storage','Bodies and block metadata only','Raw blocks do not create new transaction-hash lookup entries. Use the optional TX ID Locators track for new hash-to-location indexing. Known block positions decode the exact block directly.','tx-locator');if(d.id==='tx-locator')row('Transaction-hash lookup','Optional and opt-in','Arm saves sparse verified locations from blocks you explicitly view. Start indexes the chosen scope. A known block position or blocator needs no locator index. Existing saved evidence or a capable Core txindex provider may also locate a hash.');if(d.id==='inscriptions')row('Viewed block facts','Controlled by Arm','Arm saves lean verified inscription coordinates from explicitly viewed blocks without starting a historical scan. Start and the saved mode govern the chosen indexing scope.');if(actual?.dependencies?.length){for(const dependency of actual.dependencies)row(names[dependency.index]||dependency.index,human(dependency.state),dependency.reason,dependency.action?dependency.index:null);return;}
+ if(d.id==='headers'){row('Provider synchronization',status?.timeline?.syncing?'Syncing':'Inspect source status','Headers identify the selected chain; this is not a block derivation job.');return;}
+ if(d.id==='address-state'){const u=status?.utxo||{},ready=Number.isSafeInteger(u.processed_height)&&!!u.processed_hash;row('Saved UTXO state',ready?'Available at block '+u.processed_height:'Not established','Current Addresses projects one complete saved checkpoint; it does not scan creation ranges.','utxo-state');row('Optional Sat joins','Checkpoint-dependent','Ranges and known holdings require matching Sat and address checkpoints.','sat-state');return;}
+ const blocks=(status?.providers||[]).filter(p=>p.id==='blocks'),ready=blocks.some(p=>p.queryable);row('Source blocks',ready?'A provider reports available':'Checked when requested','Local data is preferred; missing evidence can be fetched. Raw blocks need not be armed to read source blocks.','blocks');
+ if(d.id==='sat-state')row('Saved Sat input identities','Managed internally','A new state processes from genesis. The historical TXIO and UTXO indexes are not prerequisites.');
+ else if(d.id==='utxo-state')row('Unspent state','Genesis or authenticated resume','A sparse range cannot establish a complete UTXO set. Mandatory facts and undo remain local.');
+ else if(d.id==='txo-spender')row('Input translation','Retained or on demand','TX ID Locators can help resolve native references; missing evidence remains unresolved.','tx-locator');
+ else if(d.district_instance){row('Exact outcome producer','Required','Completed source-aligned outcomes must come from this exact index and profile. Saved outcomes can be read while its producer is Off.',d.district_instance);if(d.kind==='parcel')row('Parent provenance','Conditional','Missing saved identity evidence waits; inspecting this requirement starts no dependency index.','sat-state');}
+ else if(d.id==='address-history')row('Historical outputs','Independent creation ranges','Current-address membership is not required; historical receipts are not a current balance.');
+}
 function showRules() {
-  const d = selectedDefinition(); if (!d) return;
-  $('mode').closest('.field').hidden = d.id !== 'bitmap';
-  const fromField = $('from').closest('.field'); if (fromField) fromField.hidden = d.id === 'bitmap';
-  $('definition-summary').textContent = d.theory + (d.id === 'bitmap' ? ' Base claims only: ownership, parcels and full historical compatibility are not available.' : ' Reveal occurrences only: canonical inscription numbers are not available.');
+  const d = selectedDefinition(); if (!d || d.locked) return;showRequirements();
+  const isUTXO=d.id==='utxo-state',isAddress=d.id==='address-state',isSat=d.id==='sat-state',isState=isUTXO||isAddress||isSat;$('utxo-build-panel').hidden=!isUTXO;$('address-state-build-panel').hidden=!isAddress;$('sat-build-panel').hidden=!isSat;$('plan-form').closest('section').hidden=isState;$('index-details-nav').hidden=isState;$('selected-index-label').hidden=isState;
+  $('txio-enrichment').hidden=!['txo-spender','blocks'].includes(d.id);
+  $('current-job-panel').hidden=!d.buildable;const peerSupported=false;$('peer-unavailable').hidden=peerSupported;$('peer-claims').hidden=!peerSupported;$('peer-form').hidden=!peerSupported;
+  $('mode').closest('.field').hidden = !['bitmap','inscriptions'].includes(d.id);
+  $('mode').options[0].textContent=d.id==='inscriptions'?'Lean — positional inscription list':'Lean — accepted district claims';
+  $('mode').options[1].textContent=d.id==='inscriptions'?'Full — content and reveal evidence':'Full — candidates and evidence';
+  $('mode-note').textContent=d.id==='inscriptions'?'Lean saves inscription coordinates; Full retains content and reveal metadata. Neither establishes numbering or current ownership from partial history.':'Existing indexes resume in their original format. Full records are not a complete contestability audit.';
+  $('inscription-enrichment').hidden=d.id!=='inscriptions';$('enrich-inscription-ids').hidden=d.id!=='inscriptions'||!status?.instances?.some(x=>x.definition==='inscriptions'&&x.checkpoint);
+  $('conventional-ids').disabled=!inscriptionLocatorsAvailable();$('enrich-inscription-ids').disabled=!inscriptionLocatorsAvailable();if(!inscriptionLocatorsAvailable())$('conventional-ids').checked=false;
+  $('enrichment-note').textContent=inscriptionLocatorsAvailable()?'Save sparse transaction hashes for inscription reveals only. Positional resolution works with this off; the full TX ID Locators index is not required.':'Available in the Transaction stage. Positional inscriptions work now; conventional ID locators and retroactive enrichment remain locked.';
+  const fromField = $('from').closest('.field'); if (fromField) fromField.hidden = false;
+  $('definition-summary').textContent = d.theory+(d.id==='inscriptions'?' Reveal positions are independent of optional transaction-hash locators. Canonical numbering and current ownership require additional historical evidence.':'');
+  $('combined-outputs').hidden=d.id!=='blocks';
+  $('sat-history-field').hidden=!['blocks','sat-state'].includes(d.id)||!definitions.some(x=>x.id==='sat-state'&&!x.locked);
+  const choices=$('output-choices');choices.replaceChildren();
+  if(d.id==='blocks')for(const [id,label,note] of [['sat-state','Sats','Continuous history from genesis is required.'],['tx-locator','TX ID Locators','Positions in the selected blocks.'],['inscriptions','Inscriptions','Stable identifiers; canonical numbers require compatible continuous history.'],['bitmap','Bitmaps','Applicable from block 792435.'],['txo-spender','IO Links','Positive spend evidence; coverage bounds absence claims.']]){
+   const definition=definitions.find(x=>x.id===id),labelNode=element('label',undefined,'check'),input=element('input');input.type='checkbox';input.value=id;input.dataset.output=id;input.checked=!definition?.locked&&!!status?.live?.find(x=>x.index==='blocks')?.outputs?.includes(id);input.disabled=!definition?.buildable||!!definition?.locked;labelNode.title=definition?.lock_reason||note;input.addEventListener('change',()=>{invalidatePlan();syncOutputEnrichment();});labelNode.append(input,element('span',label+' — '+note+(input.disabled?' Unavailable in this build.':'')));choices.append(labelNode);
+  }
   $('rule-theory').textContent = d.theory;
   $('rule-json').textContent = pretty(d);
+  const rangePolicy=window.GatewayIndexTransport.rangePolicy(d,(status?.run?.run?.consumers||[]).find(c=>c.index===d.id));$('from').disabled=['complete_prefix','snapshot_projection'].includes(rangePolicy?.mode);$('from').title=$('from').disabled?rangePolicy.text:'Global In/Out in the timeline own the shared scope.';
   $('from').placeholder = String(d.start_height);
-  $('from-note').textContent = d.id === 'bitmap' ? 'Bitmap history always begins at block ' + d.start_height + '. Choose only the last block to index.' : (d.arbitrary_start ? 'A bounded scan may start at any block. Resume with the same first block.' : 'Fresh state starts at block ' + d.start_height + '; a mid-history fresh start is not valid.');
+  $('from-start-note').textContent=d.id==='inscriptions'&&d.network==='bitcoin-mainnet'?'Mainnet inscriptions suggest 767430 (inscription zero). Custom starts remain available; this is not preceding sat history.':'Block heights are inclusive. Review the plan before fetching data.';
+  $('from-note').textContent = d.id==='address-history'?'Choose inclusive output-creation ranges. Overlapping ranges reuse saved coverage; separate ranges and earlier history are supported. Gaps remain unknown.':d.id === 'bitmap' ? 'Bitmap history always begins at block ' + d.start_height + '. Choose only the last block to index.' : (d.arbitrary_start ? 'A fresh bounded scan may start at any block. Compatible overlapping or adjacent ranges reuse saved coverage; disjoint ranges and prepending history are not supported.' : 'Fresh state starts at block ' + d.start_height + '; a mid-history fresh start is not valid.');
   metadata($('rule-meta'), [['Definition', d.name + ' · ' + d.id], ['Version / network', d.version + ' / ' + d.network], ['Rule identity', d.rule_hash], ['Dependencies', d.dependencies.join(' → ') || 'None'], ['Build support', d.buildable ? 'Available in this release' : 'No derivation executor; inspect provider capabilities'], ['Checkpoint / output schema', d.checkpoint_schema + ' / ' + d.output_schema], ['Encoding', d.canonical_encoding]]);
   $('rule-list').replaceChildren(...d.rules.map(x => element('li', x)));
+  syncOutputEnrichment();
 }
+function jobLocked(job) { return [job?.index,...(job?.outputs||[])].some(id=>definitions.find(d=>d.id===id)?.locked) || !!job?.retain_sat_history && !!definitions.find(d=>d.id==='sat-state')?.locked; }
 function showJob(job) {
   const active = ['running', 'waiting', 'pausing'].includes(job?.state);
   $('pause').disabled = !active || job.state === 'pausing';
-  $('resume').disabled = !job?.id || active;
-  $('resume').textContent = job?.state === 'failed' ? 'Retry from checkpoint' : 'Resume from checkpoint';
-  $('job-json').textContent = pretty(job);
+  $('resume').disabled = jobLocked(job) || !job?.id || active || (job.queue_managed ? !['paused','failed'].includes(job.group_state||job.state) : ['complete','cancelled','queued','yielded'].includes(job.state));
+  $('resume').textContent = jobLocked(job) ? '🔒 Saved job locked for testing' : job?.state === 'failed' ? 'Retry from checkpoint' : 'Resume from checkpoint';
+  $('job-json').textContent = pretty(job);$('job-limitations').hidden=!job?.limitations?.length;$('job-limitations').textContent=(job?.limitations||[]).join(' ');
   if (!job?.id) { $('job-summary').textContent = 'No index job has been started.'; $('job-meta').replaceChildren(); $('job-error').textContent = ''; $('job-progress').hidden = true; return; }
-  $('job-summary').textContent = job.index + ' · ' + human(job.state);
+  $('job-summary').textContent = (selectedDefinition()?.name||job.index) + ' · ' + human(job.state)+(job.queue_position?' · queue position '+job.queue_position:'')+(job.waiting_reason?' · '+job.waiting_reason:'')+(job.outputs?.length?' · Shared with '+[job.parent_index||job.index,...job.outputs].filter((x,i,all)=>all.indexOf(x)===i).join(', ')+'. Pausing pauses this shared job.':'');
   const completed = job.height >= job.from ? job.height : 'None yet';
-  metadata($('job-meta'), [['Selected range', job.from + ' → ' + (job.to >= 0 ? job.to : 'Waiting for verified tip')], ['Last committed height', completed], ['Blocks checked', job.blocks_checked ?? 0], ['Districts found', job.districts_found ?? 0], ['Source retention', human(job.retention)], ['Job ID', job.id]]);
+  metadata($('job-meta'), [[job.live?'Current bounded job range':'Selected range', job.from + ' → ' + (job.to >= 0 ? job.to : 'Waiting for verified tip')], ['Last committed height', completed], ['Blocks checked', job.blocks_checked ?? 0], ['Reused derived blocks', job.reused_blocks ?? 'See plan'], ['Newly committed blocks', job.added_blocks ?? 'See committed height'], [selectedIndex==='bitmap'?'Districts found':'Records found', job.districts_found ?? job.records_found ?? 'See records'], ['Job ID', job.id]]);
   $('job-error').textContent = job.error || '';
-  $('job-progress').hidden = job.to < job.from;
+  $('job-progress').hidden = job.live || job.to < job.from;
   if (job.to >= job.from) { $('job-progress').max = job.to - job.from + 1; $('job-progress').value = Math.max(0, Math.min(job.to, job.height) - job.from + 1); }
-  if (active) $('build').disabled = true;
-  else if (reviewedRequest) $('build').disabled = !selectedDefinition()?.buildable;
+  if (reviewedRequest) $('build').disabled = !selectedDefinition()?.buildable;
+  $('build').textContent=['running','waiting','pausing'].includes(status?.job?.state)?'Queue reviewed plan':'Start reviewed plan';
 }
 function showInstances(instances) {
   const holder = $('instances'); holder.replaceChildren();
-  if (!instances?.length) { holder.append(element('p', 'Your first index starts with a small, reviewed range. Derived answers will appear here as blocks are committed.', 'small muted')); const button = element('button', 'Plan your first index'); button.addEventListener('click', () => { selectView('build'); $('index').focus(); }); holder.append(button); return; }
+  if (!instances?.length) { holder.append(element('p', 'No saved index is established. Choose Arm and Live on the timeline, then press Play once. Active runs admit new tracks only at their current safe boundary; required earlier state is reported in Indexing status.', 'small muted')); const button = element('button', 'Inspect indexing settings'); button.addEventListener('click', () => { selectIndex(selectedIndex || 'blocks', 'build'); }); holder.append(button); return; }
   for (const instance of instances) {
     const card = element('article', undefined, 'index-entry'); card.append(element('h3', instance.definition));
     const list = element('dl', undefined, 'index-meta');
-    metadata(list, [['Coverage', ranges(instance.coverage)], ['Gaps', instance.gaps?.length ? ranges(instance.gaps) : 'None within committed coverage'], ['Completeness', human(instance.completeness)], ['Verification', human(instance.verification)], ['Provenance', human(instance.provenance)], ['Source retention', human(instance.retention)], ['Queryable / shareable', (instance.queryable ? 'Yes' : 'No') + ' / ' + (instance.serveable ? 'Yes' : 'No')]]);
+    metadata(list, [['Coverage', ranges(instance.coverage)], ['Gaps', instance.gaps?.length ? ranges(instance.gaps) : 'None within committed coverage'], ['Completeness', human(instance.completeness)], ['Verification', human(instance.verification)], ['Provenance', human(instance.provenance)], ['Queryable / shareable', (instance.queryable ? 'Yes' : 'No') + ' / ' + (instance.serveable ? 'Yes' : 'No')]]);
     card.append(list, element('p', instance.note || '', 'small muted'));
     const actions = element('div', undefined, 'actions');
-    for (const [action, label] of [['publish', 'Publish / refresh this checkpoint'], ['unpublish', 'Withdraw publication']]) {
+    for (const [action, label] of (['inscriptions','bitmap'].includes(instance.definition) ? [['publish', 'Publish / refresh this checkpoint'], ['unpublish', 'Withdraw publication']] : [])) {
       const button = element('button', label); button.type = 'button';
       button.addEventListener('click', async () => {
         button.disabled = true;
@@ -134,7 +274,7 @@ function showInstances(instances) {
       });
       actions.append(button);
     }
-    const sharing = element('details'); sharing.append(element('summary', 'Share this checkpoint'), element('p', 'Explicit publication exposes this frozen checkpoint when Serve data is enabled. Later work stays private.', 'small muted'), actions); card.append(sharing); details(card, 'Checkpoint and evidence', instance); holder.append(card);
+    if(actions.children.length){const sharing = element('details'); sharing.append(element('summary', 'Share this checkpoint'), element('p', 'Explicit publication exposes this frozen checkpoint when Serve data is enabled. Later work stays private.', 'small muted'), actions); card.append(sharing)}else card.append(element('p','This derived Bitcoin index is local. Peer checkpoint publication is not supported in this version.','small muted'));details(card, 'Checkpoint and evidence', instance); holder.append(card);
   }
 }
 function showProviders(providers) {
@@ -143,71 +283,186 @@ function showProviders(providers) {
   for (const provider of providers || []) {
     const card = element('article', undefined, 'index-entry'); card.append(element('h3', provider.id + ' · ' + human(provider.provider)));
     const list = element('dl', undefined, 'index-meta');
-    metadata(list, [['Queryable / shareable', (provider.queryable ? 'Yes' : 'No') + ' / ' + (provider.serveable ? 'Yes' : 'No')], ['Coverage', ranges(provider.coverage)], ['Completeness', human(provider.completeness)], ['Verification', human(provider.verification)]]);
+    metadata(list, [['Readiness', human(provider.readiness || 'Coverage dependent')], ['Resolver enabled / shareable', (provider.queryable ? 'Yes' : 'No') + ' / ' + (provider.serveable ? 'Yes' : 'No')], ['Coverage', ranges(provider.coverage)], ['Completeness', human(provider.completeness)], ['Verification', human(provider.verification)]]);
     card.append(list, element('p', provider.note || '', 'small muted')); details(card, 'Provider evidence and public coverage', provider); holder.append(card);
   }
 }
-async function refresh() {
-  if (fetching) return; fetching = true;
-  try {
-    status = await api('status'); $('status-json').textContent = pretty(status);
-    if (!definitions.length) {
-      definitions = status.definitions || []; $('index').replaceChildren(...definitions.filter(d => d.buildable).map(d => { const option = element('option', d.name + (d.buildable ? '' : ' · inspect only')); option.value = d.id; return option; }));
-      $('index').value = definitions.some(x => x.id === 'bitmap') ? 'bitmap' : definitions[0]?.id || ''; showRules();
-    }
-    showJob(status.job);
-    if ($('message').dataset.error !== 'true' && /^(Build started|Pause requested)/.test($('message').textContent) && ['complete','paused','failed'].includes(status.job?.state)) message(status.job.state === 'complete' ? 'Build complete. Your local results are ready in My results.' : status.job.state === 'paused' ? 'Build paused. Committed progress is saved.' : 'Build stopped. Review the job details.');
-    const nextInstances = pretty(status.instances), nextProviders = pretty(status.providers);
-    if (nextInstances !== instancesKey) { showInstances(status.instances); instancesKey = nextInstances; }
-    if (nextProviders !== providersKey) { showProviders(status.providers); providersKey = nextProviders; }
-    $('workspace-state').textContent = (status.instances?.length || 0) + ' local index instance' + (status.instances?.length === 1 ? '' : 's') + ' · ' + (status.job?.id ? human(status.job.state) + ' job' : 'Ready to plan');
-    if (status.errors?.length) message(status.errors.join('\n'), true);
-  } catch (error) { message(error.message, true); } finally { fetching = false; }
+
+function showSelectedStatus(){
+ indexExport?.update({status});
+ if(!selectedIndex||!status||selectedDefinition()?.locked)return;
+ $('sat-build-panel').hidden=selectedIndex!=='sat-state';$('utxo-build-panel').hidden=selectedIndex!=='utxo-state';$('address-state-build-panel').hidden=selectedIndex!=='address-state';$('current-job-panel').hidden=['utxo-state','address-state','sat-state'].includes(selectedIndex)||!selectedDefinition()?.buildable;utxoPanel?.render(status,$('index-timeline').dataset.healthy!=='false');addressPanel?.render(status,$('index-timeline').dataset.healthy!=='false');satPanel?.render(status,$('index-timeline').dataset.healthy!=='false');
+ showJob(window.GatewayIndexCards.jobFor(selectedIndex,status));
+ const instances=(status.instances||[]).filter(x=>x.definition===selectedIndex),providers=(status.providers||[]).filter(x=>x.id===selectedIndex);
+ const ik=selectedIndex+pretty(instances),pk=selectedIndex+pretty(providers);
+ if(ik!==instancesKey){showInstances(instances);instancesKey=ik}if(pk!==providersKey){showProviders(providers);providersKey=pk}
+ $('lookup-form').closest('section').hidden=currentView!=='results'||selectedIndex!=='bitmap';$('sat-lookup-panel').hidden=currentView!=='results'||selectedIndex!=='sat-state';
+ const queue=$('job-queue');queue.replaceChildren();
+ const jobs=(status.jobs||[]).filter(x=>(x.index===selectedIndex||(x.outputs||[]).includes(selectedIndex))&&x.queue_managed&&['queued','paused'].includes(x.state));
+ for(const job of jobs){const row=element('div',undefined,'queue-entry');row.append(element('p',human(job.state)+(job.queue_position?' #'+job.queue_position:'')+' · '+job.from+'–'+job.to+' · '+(job.waiting_reason||'Saved request')));const controls=element('div',undefined,'actions');
+  for(const [action,label] of (job.state==='queued'?[['up','Earlier'],['down','Later'],['pause','Pause queued plan'],['cancel','Cancel queued plan']]:[['resume','Resume queued plan'],['cancel','Cancel plan']])){const button=element('button',label);button.type='button';if(jobLocked(job)&&action!=='cancel'){button.disabled=true;button.title='This saved job requires an index locked in this testing build.';}button.addEventListener('click',async()=>{button.disabled=true;try{await api('queue',{id:job.id,action});await refresh()}catch(error){message(error.message,true);button.disabled=false}});controls.append(button)}row.append(controls);queue.append(row);
+ }
 }
-$('index').addEventListener('change', () => { $('from').value = ''; invalidatePlan(); showRules(); });
-for (const id of ['from', 'to', 'retention', 'mode']) $(id).addEventListener('input', invalidatePlan);
+$('job-records').addEventListener('click',()=>{selectView('results');showSelectedStatus();loadRecords()});
+$('inspect-inscription-storage').addEventListener('click',async()=>{
+  const button=$('inspect-inscription-storage');button.disabled=true;$('inscription-storage-state').textContent='Inspecting saved files within the inspection limit…';
+  try{const report=await api('storage?index=inscriptions');const labels={coordinates:'Lean inscription coordinates',full_reveal_records:'Full reveal records',inscription_checkpoint_overhead:'Inscription checkpoint overhead',inscription_reverse_shards:'Inscription reverse lookup shards',unclassified_inscription_commits:'Other inscription commits',related_transaction_records:'Related transaction locator records',related_transaction_reverse_shards:'Related transaction lookup shards',source_block_cache:'Source block cache',resolved_content_cache:'Resolved content cache'};metadata($('inscription-storage-bytes'),Object.entries(report.bytes||{}).map(([key,bytes])=>[labels[key]||human(key),Number.isSafeInteger(bytes)?bytes.toLocaleString()+' bytes':'Unavailable']));$('inscription-storage-state').textContent=human(report.state)+' inspection · '+Number(report.files_inspected||0).toLocaleString()+' files inspected'+(report.file_limit?' (limit '+Number(report.file_limit).toLocaleString()+')':'')+(report.entries_inspected!==undefined?' · '+Number(report.entries_inspected).toLocaleString()+' entries inspected'+(report.entry_limit?' (limit '+Number(report.entry_limit).toLocaleString()+')':''):'')+'. '+(report.limitations||[]).join(' ');$('inscription-storage-json').textContent=pretty(report);}
+  catch(error){$('inscription-storage-state').textContent=error.message;}
+  finally{button.disabled=false;}
+});
+
+async function refresh({progressOnly=false}={}) {
+  if(!progressOnly)fullRefreshPending=true;
+  cancelProgressPoll();
+  if (fetching) { refreshAgain=true; return refreshPromise; }
+  fetching = true;
+  refreshPromise = (async () => {
+    try { do {
+      refreshAgain=false;const revision=statusRevision;
+    try {
+      const action=fullRefreshPending?'status':'progress';fullRefreshPending=false;
+      const result = await api(action);
+      if (revision !== statusRevision) { refreshAgain=true; fullRefreshPending=true; continue; } // A pending control superseded this status read.
+      const terminalRefresh=observeTerminalWork(status,result,action==='progress');
+      status = window.GatewayIndexTransport.visibleSnapshot(result); definitions = status.definitions || [];
+      if(terminalRefresh){fullRefreshPending=true;refreshAgain=true;}
+      $('status-json').textContent = pretty(status);
+      const healthy=!(status.errors || []).some(x => String(x).startsWith('live:'));
+      const recovering=$('index-timeline').dataset.healthy==='false';
+      timeline.health(healthy,{render:false}); timeline.render(status);
+      resources?.updateStatus?.();
+      // Position can change while requests are paused. Resume the latest
+      // playhead rather than the block that was focused before status loss.
+      if(recovering && healthy && explorer?.state().resource==='block' && selectedIndex && !selectedDefinition()?.locked && timeline.getPlayhead()!==null) explorer?.focus({index:selectedIndex,height:timeline.getPlayhead(),immediate:false});
+      explorer?.health(healthy);
+      viewport?.available(healthy&&definitions.some(x=>x.id==='inscriptions'&&!x.locked));
+      if (!selectedIndex && definitions.length) {
+        const first=definitions.find(d=>d.id==='headers'&&!d.locked)||definitions.find(d=>!d.locked);
+        if(first) selectIndex(first.id,first.buildable?'build':'providers');
+      }
+      showSelectedStatus();showRequirements();
+      syncRetainedStart();
+      rangePicker.update(selectedDefinition(),status);
+      const workspaceStatus={type:'gateway:index-status',localIndexes:status.instances?.length||0,following:(status.live||[]).filter(x=>x.enabled&&x.on).length,sharingLocked:true};
+      $('workspace-state').textContent=workspaceStatus.localIndexes+' local indexes · '+workspaceStatus.following+' following new blocks · Gateway sharing locked'+(status.observation?.mode==='progress'?' · Coverage detail snapshot '+(Number.isFinite(status.observation.details_age_milliseconds)?(status.observation.details_age_milliseconds/1000).toFixed(1)+' seconds old':'age unavailable')+(status.observation.details_refreshing?' · refreshing':''):'');
+      if(document.body.classList.contains('embedded'))parent.postMessage(workspaceStatus,location.origin);
+      if (status.errors?.length) message(status.errors.join('\n'), true);
+      if (!terminalRefresh && selectedIndex && currentView === 'results' && $('follow-records').checked) {
+        const instance = status.instances?.find(x => x.definition === selectedIndex);
+        const progressCommit=status.observation?.mode==='progress'?status.run?.run?.consumers?.find(consumer=>consumer.index===selectedIndex)?.commitment:null;
+        const key = selectedIndex + ':' + (progressCommit || instance?.checkpoint?.commitment || 'empty') + ':' + (instance?.verification || '');
+        if (key !== recordKey && !recordLoading) { if (await loadRecords()) recordKey = key; }
+      }
+    } catch (error) { timeline.health(false);utxoPanel?.health(false);addressPanel?.health(false);satPanel?.health(false); explorer?.health(false); message('Status unavailable: ' + error.message, true); }
+    } while(refreshAgain); } finally { fetching = false; scheduleProgressPoll(); }
+  })();
+  return refreshPromise;
+}
+function observeTerminalWork(before,after,progressOnly){
+ const active=new Set(['running','waiting','pausing','queued']),terminal=new Set(['complete','completed','complete_with_errors','failed','error','paused','cancelled','canceled','stopped','rebuild_required','yielded']);
+ const records=value=>[...(value?.run?.run?.id?[['run:'+value.run.run.id,value.run.run]]:[]),...[value?.job,...(value?.jobs||[])].filter(job=>job?.id).map(job=>['job:'+job.id,job])],previous=new Map(records(before));let refreshDetails=false;
+ for(const[key,record]of new Map(records(after))){if(active.has(record.state)){terminalObservations.delete(key);continue;}if(!terminal.has(record.state))continue;const fingerprint=JSON.stringify([record.state,record.height,record.block_hash,record.commitment,record.updated,(record.consumers||[]).map(consumer=>[consumer.index,consumer.height,consumer.block_hash,consumer.commitment])]);if(active.has(previous.get(key)?.state)&&terminalObservations.get(key)!==fingerprint){terminalObservations.set(key,fingerprint);if(progressOnly)refreshDetails=true;}}
+ while(terminalObservations.size>128)terminalObservations.delete(terminalObservations.keys().next().value);
+ return refreshDetails;
+}
+function cancelProgressPoll(){if(progressTimer!==null){clearTimeout(progressTimer);progressTimer=null;}}
+function progressPollDelay(){return [status?.run?.run,status?.job,...(status?.jobs||[])].some(job=>['running','waiting','pausing'].includes(job?.state))?1000:5000;}
+function scheduleProgressPoll(){cancelProgressPoll();if(!workspaceVisible||document.hidden)return;progressTimer=setTimeout(()=>{progressTimer=null;if(workspaceVisible&&!document.hidden)refresh({progressOnly:true});},progressPollDelay());}
+function syncLiveForm(){ $('end-field').hidden = $('initial-live').checked; $('to').disabled = $('initial-live').checked; rangePicker.update(selectedDefinition(),status); }
+$('initial-live').addEventListener('change',()=>{syncLiveForm();invalidatePlan();});
+for (const id of ['from', 'to', 'retention', 'mode', 'retain-sat-history', 'conventional-ids','retain-output-values','retain-output-scripts']) $(id).addEventListener('input', invalidatePlan);
+$('enrich-inscription-ids').addEventListener('click',()=>{const saved=status?.instances?.find(x=>x.definition==='inscriptions')?.checkpoint;if(!saved||selectedIndex!=='inscriptions'||!inscriptionLocatorsAvailable())return;$('conventional-ids').checked=true;$('initial-live').checked=false;$('from').value=String(saved.from);$('to').value=String(saved.height);syncLiveForm();invalidatePlan();message('Conventional ID enrichment selected for the retained inscription range. Review the plan before fetching any missing reveal blocks.');$('plan-button').focus();});
+$('plan-form').addEventListener('submit',event=>{event.preventDefault();event.stopImmediatePropagation();message('Use Play in the timeline to start the selected tracks. Requirements appear in Indexing status.');},true);
 $('plan-form').addEventListener('submit', async event => {
-  event.preventDefault(); invalidatePlan(); $('plan-button').disabled = true;
+  event.preventDefault(); invalidatePlan(); const serial=planSerial; $('plan-button').disabled = true;
   try {
     const body = request(), key = JSON.stringify(body), plan = await api('plan', body);
-    if (JSON.stringify(request()) !== key) return;
+    if (serial !== planSerial || selectedIndex !== body.index || selectedDefinition()?.locked || JSON.stringify(request()) !== key) return;
     reviewedRequest = key; $('plan').hidden = false;
-    metadata($('plan-meta'), [['Index', plan.definition.name], ['Build range', plan.from + ' → ' + (plan.to < 0 ? 'Verified tip at start' : plan.to)], ['Dependency order', plan.dependencies.map(x => x.name).join(' → ') || 'None'], ['Sequential history', plan.sequential ? 'Required' : 'Bounded range permitted'], ['Source retention', human(plan.retention)], ['Storage estimate', plan.storage_estimate], ['Verification', human(plan.verification)]]);
-    $('plan-notes').replaceChildren(...plan.notes.map(x => element('li', x))); $('plan-json').textContent = pretty(plan);
+    metadata($('plan-meta'), [['Index', plan.definition.name], ['Build range', plan.from + ' → ' + (plan.live ? 'Latest available, then follow' : plan.to < 0 ? 'Verified tip at start' : plan.to)], ['Dependency order', plan.dependencies.map(x => x.name).join(' → ') || 'None'], ['Sequential history', plan.sequential ? 'Required' : 'Bounded range permitted'], ['Storage estimate', plan.storage_estimate], ['Verification', human(plan.verification)]]);
+    $('plan-notes').replaceChildren(...plan.notes.map(x => element('li', x)),...(plan.outputs||[]).map(x=>element('li',(x.index||'Output')+': '+(x.reason||x.recovery||'planned')+' · Reuse: '+ranges(x.reuse)+' · Add: '+ranges(x.add)))); $('plan-json').textContent = pretty(plan);
     $('plan-buildability').textContent = plan.definition.buildable ? 'Starting may fetch Bitcoin data. Peers can observe requests. Derived records remain private.' : 'This definition has no derivation executor in this release. Existing providers may support related on-demand queries.';
-    $('build').disabled = !plan.definition.buildable || ['running', 'waiting', 'pausing'].includes(status?.job?.state); message('Plan ready. Review the range, dependencies and retention before starting.');
-  } catch (error) { message(error.message, true); } finally { $('plan-button').disabled = false; }
+    $('build').disabled = !plan.definition.buildable; $('build').textContent=['running','waiting','pausing'].includes(status?.job?.state)?'Queue reviewed plan':'Start reviewed plan'; message('Plan ready. Review the range, dependencies and retention before starting.');
+  } catch (error) { if(serial===planSerial)message(error.message, true); } finally { if(serial===planSerial)$('plan-button').disabled = false; }
 });
 $('build').addEventListener('click', async () => {
+  const id=selectedIndex;
   try {
-    const body = request(); if (!reviewedRequest || JSON.stringify(body) !== reviewedRequest) throw new Error('Review this exact plan before starting.');
-    $('build').disabled = true; const job = await api('build', body); reviewedRequest = ''; showJob(job); message('Build started. Committed progress is shown below.'); await refresh();
-  } catch (error) { message(error.message, true); }
+    const body = request(), key = JSON.stringify(body); if (!reviewedRequest || key !== reviewedRequest) throw new Error('Review this exact plan before starting.');
+    $('build').disabled = true; const job = await api('build', body);
+    if (reviewedRequest === key) reviewedRequest = '';
+    if (selectedIndex === body.index && !selectedDefinition()?.locked && JSON.stringify(request()) === key) { showJob(job); selectView('results'); loadRecords(); }
+    const name=definitions.find(d=>d.id===body.index)?.name||body.index;
+    message(job.state==='queued'?'Plan queued for '+name+'. Its position and waiting reason appear with that index.':'Build started for '+name+'. Progress counts committed blocks.'); await refresh();
+  } catch (error) { message((definitions.find(d=>d.id===id)?.name||id)+': '+error.message, true); }
 });
-$('pause').addEventListener('click', async () => { $('pause').disabled = true; try { showJob(await api('pause', {})); message('Pause requested. Waiting for any source request to finish.'); await refresh(); } catch (error) { message(error.message, true); } });
+$('pause').addEventListener('click', async () => { const id=selectedIndex; $('pause').disabled = true; try { const job=await api('pause', {index:id}); if(selectedIndex===id)showJob(job); message('Pause requested for '+(definitions.find(d=>d.id===id)?.name||id)+'. Waiting for any source request to finish.'); await refresh(); } catch (error) { message(error.message, true); } });
 $('resume').addEventListener('click', async () => {
-  const job = status?.job; if (!job?.id) return;
+  const projected = window.GatewayIndexCards.jobFor(selectedIndex,status||{}); if (!projected?.id) return;
+  const job=(status.jobs||[]).find(x=>x.id===projected.id)||(status.job?.id===projected.id?status.job:projected);
+  if(job.queue_managed){try{await api('queue',{id:job.id,action:'resume'});message('Resume requested for this index.');await refresh()}catch(error){message(error.message,true)}return;}
+  selectIndex(job.index, 'build');
   $('index').value = job.index; $('from').value = job.from; $('to').value = job.to >= 0 ? job.to : ''; $('retention').value = job.retention;
   $('mode').value = job.mode || 'full';
-  invalidatePlan(); showRules(); selectView('build');
-  try { $('resume').disabled = true; showJob(await api('build', request())); message('Resuming from the committed checkpoint.'); await refresh(); } catch (error) { message(error.message, true); $('resume').disabled = false; }
+  $('conventional-ids').checked=inscriptionLocatorsAvailable()&&(job.conventional_ids??true);
+  $('retain-output-values').checked=Boolean(job.retain_output_values);$('retain-output-scripts').checked=Boolean(job.retain_output_scripts);
+  invalidatePlan(); showRules();$('initial-live').checked=!!job.live;$('retain-sat-history').checked=!!job.retain_sat_history;for(const input of $('output-choices').querySelectorAll('input'))input.checked=(job.outputs||[]).includes(input.value);syncLiveForm(); selectView('build');
+  try { const body=request(); $('resume').disabled = true; const resumed=await api('build', body); if(selectedIndex===body.index)showJob(resumed); message('Resuming '+(definitions.find(d=>d.id===body.index)?.name||body.index)+' from the committed checkpoint.'); await refresh(); } catch (error) { message(error.message, true); if(selectedIndex===job.index)$('resume').disabled = false; }
 });
-$('query-form').addEventListener('submit', async event => {
-  event.preventDefault(); const button = event.currentTarget.querySelector('button'); button.disabled = true;
+async function loadRecords() {
+  const id = selectedIndex || $('query-index').value, serial = ++recordSerial;
+  const definition=definitions.find(x => x.id === id);
+  if (!definition?.buildable || definition.locked) return;
+  recordLoading = true;
   try {
-    const id = $('query-index').value, result = await api('query?index=' + encodeURIComponent(id) + '&limit=' + encodeURIComponent($('query-limit').value));
-    $('query-json').textContent = pretty(result); $('query-results').replaceChildren();
-    $('query-summary').textContent = querySummary(result);
-    for (let row of result.rows || []) {
-      if (row.schema === 'bitmap-lean-v2') { row.lean=true; row.accepted=true; }
-      if (typeof row === 'string') { const split = row.indexOf(':'); row = {district:row.slice(0,split),inscription:row.slice(split+1),accepted:true,lean:true}; }
-      const card = element('article', undefined, 'index-entry');
-      card.append(element('h3', id === 'bitmap' ? (row.district === undefined ? 'Rejected candidate' : row.district + '.bitmap') : 'Inscription occurrence'));
-      card.append(element('p', row.inscription || row.id, 'mono'));
-      card.append(element('p', id === 'bitmap' ? row.lean ? 'Accepted base claim. Reveal block ' + (row.reveal_height ?? 'unknown') + '. Lean record; audit details were not retained.' : (row.accepted ? 'Accepted base claim. ' : 'Rejected base claim. ') + human(row.reason) + '. Ownership: ' + human(row.ownership) + '. Historical compatibility: ' + human(row.compatibility) + '.' : 'Reveal block ' + row.block_height + ', transaction ' + row.tx_index + ', input ' + row.input_index + ', envelope ' + row.envelope_index + '. Canonical number unknown.', 'small'));
-      details(card, 'Raw record and evidence', row); $('query-results').append(card);
+    const result = await api('query?index=' + encodeURIComponent(id) + '&limit=50');
+    if (serial !== recordSerial || id !== selectedIndex || currentView !== 'results') return;
+    $('query-json').textContent = pretty(result);
+    const previous=receivedRecordKeys,keys=new Set(),receipt=new Date().toLocaleTimeString(),hadReceipt=!!lastRecordReceipt;let newRows=0;
+    lastRecordReceipt=receipt;
+    $('query-summary').textContent = querySummary({...result,rows:id==='inscriptions'?inscriptionRows(result.rows):result.rows}) + ' Latest 50 within the last 512 block batches; full-history pagination is not available yet.';
+    const table = element('table', undefined, 'records-table'), head = element('thead'), header = element('tr'), body = element('tbody');
+    table.append(element('caption', 'Local stored records. Chain state: ' + human(result.chain_state) + '.'));
+    for (const label of [id === 'bitmap' ? 'District' : ['blocks','tx-locator'].includes(id) ? 'Block' : id==='sat-state'?'Sat snapshot':id==='txo-spender'?'Spent output':'Inscription', 'Identifier', 'Block height', ...(['bitmap','inscriptions'].includes(id)?['Inscription number','Sat number']:[]), 'Details']) header.append(element('th', label));
+    head.append(header); table.append(head, body);
+    const recordRows=id==='inscriptions'?inscriptionRows(result.rows):(result.rows||[]);
+    if(id==='inscriptions')viewport?.setKnown(recordRows.map(row=>row.reveal_coordinate||window.GatewayInscriptionViewport.coordinate(row)||row.inscription||row.id));
+    for (let row of recordRows.slice(0,50)) {
+      if (typeof row === 'string') { const i = row.indexOf(':'); row = i>=0?{district:row.slice(0,i),inscription:row.slice(i+1)}:{reveal_coordinate:row}; }
+      const key=String(row.inscription||row.id||(row.txid?row.txid+':'+row.vin:null)||row.block_hash||pretty(row));keys.add(key);const isNew=hadReceipt&&!previous.has(key);if(isNew)newRows++;
+      const tr = element('tr',undefined,isNew?'record-received':'');tr.addEventListener('animationend',()=>{tr.className=''});
+      const blockCount=[row.data?.transaction_count,row.transaction_count,Array.isArray(row.data?.txids)?row.data.txids.length:null].find(value=>Number.isSafeInteger(value)&&value>=0),locatorCount=Array.isArray(row.block?.["tx's"])?row.block["tx's"].length:null;
+      tr.append(element('td', id === 'bitmap' ? row.district === undefined ? 'Candidate' : String(row.district) + '.bitmap' : id==='sat-state'?(row.data?.outputs??'Unknown')+' unspent outputs':id==='txo-spender'?row.prev_txid+':'+row.vout:id==='blocks'?blockCount===undefined?'Block metadata':blockCount+' transactions':id==='tx-locator'?locatorCount===null?'Transaction locations':locatorCount+(locatorCount===1?' indexed location':' indexed locations'):'Reveal'));
+      tr.append(element('td', row.reveal_coordinate || window.GatewayInscriptionViewport.coordinate(row) || row.inscription || row.id || row.txid || row.block_hash || (Number.isSafeInteger(row.block?.height)?row.block.height+'.bitcoin':'Unknown'), 'record-id'));
+      tr.append(element('td', String(row.reveal_height ?? row.height ?? row.block_height ?? row.block?.height ?? 'Unknown')));
+      if(['bitmap','inscriptions'].includes(id)){
+       tr.append(element('td',Number.isSafeInteger(row.canonical_number)?String(row.canonical_number):'Not established'));
+       const sat=element('td');
+       const foundSat=discoveredSats.get(row.inscription||row.id);if(foundSat?.known)row.sat_number=foundSat.sat_number;
+       if(Number.isSafeInteger(row.sat_number)&&row.sat_number>=0){if(definitions.some(d=>d.id==='sat-state'&&!d.locked)){const open=element('button',String(row.sat_number),'text-button mono');open.type='button';open.setAttribute('aria-label','Open sat '+row.sat_number);open.onclick=()=>navigateWorkspace(row.sat_number+'.sat');sat.append(open);}else sat.textContent=String(row.sat_number);}
+       else if(row.numbering_state==='unbound'||row.sat_state==='unbound')sat.textContent='Unbound';
+       else if(id==='inscriptions')sat.textContent='Not established';
+       else{const discover=element('button','Discover sat number');discover.type='button';discover.disabled=!(row.inscription||row.id)||satDiscoveryPending.has(row.inscription||row.id);if(satDiscoveryPending.has(row.inscription||row.id))discover.textContent='Discovering…';discover.addEventListener('click',async()=>{discover.disabled=true;discover.textContent='Discovering…';satDiscoveryPending.add(row.inscription||row.id);try{const result=await api('discover-sat',{id:row.inscription||row.id});satDiscoveryPending.delete(row.inscription||row.id);discoveredSats.set(row.inscription||row.id,result);if(id!==selectedIndex)return;if(serial!==recordSerial){await loadRecords();return;}sat.replaceChildren(element('span',result.known&&Number.isSafeInteger(result.sat_number)?String(result.sat_number):result.state==='unbound'?'Unbound':'Not established'));if(result.note)sat.append(element('small',result.note,'block muted'));}catch(error){satDiscoveryPending.delete(row.inscription||row.id);discover.textContent='Retry sat discovery';discover.disabled=false;message(error.message,true)}});sat.append(discover)}
+       tr.append(sat);
+      }
+      const cell = element('td');if(id==='inscriptions'){const open=element('button','View inscription');open.type='button';const position=row.reveal_coordinate||window.GatewayInscriptionViewport.coordinate(row)||row.inscription||row.id;open.disabled=!position;open.onclick=()=>viewport?.open(position);cell.append(open);}details(cell, 'Evidence', row); tr.append(cell); body.append(tr);
     }
-  } catch (error) { message(error.message, true); } finally { button.disabled = false; }
+    receivedRecordKeys=keys;
+    $('query-summary').textContent+=' Received '+receipt+(newRows?' · '+newRows+' newly received record'+(newRows===1?'':'s')+' in this response.':'.');
+    $('query-results').replaceChildren(table);
+    if (!(result.rows || []).length) $('query-results').append(element('p', 'No records in this preview window. This is not proof of global absence.', 'small muted'));
+    return true;
+  } catch (error) { if (serial === recordSerial && id === selectedIndex && currentView === 'results') { recordKey = ''; message(error.message, true); } }
+  finally { if (serial === recordSerial) recordLoading = false; }
+}
+$('query-form').addEventListener('submit', async event => { event.preventDefault(); await loadRecords(); });
+$('follow-records').addEventListener('change', () => { recordSerial++; recordLoading = false; recordKey = ''; $('query-freshness').hidden = $('follow-records').checked; if ($('follow-records').checked) loadRecords(); });
+$('sat-lookup-form').addEventListener('submit',async event=>{
+ event.preventDefault();const button=event.currentTarget.querySelector('button'),index=selectedIndex;button.disabled=true;$('sat-lookup-summary').textContent='Reading local sat evidence…';
+ try{const sat=$('sat-lookup-number').value;if(!/^(0|[1-9][0-9]*)$/.test(sat))throw Error('Use a sat number without leading zeros.');const result=await api('sat?sat='+encodeURIComponent(sat));if(index!==selectedIndex)return;
+  $('sat-lookup-summary').textContent=result.note|| (result.known?'Sat identity established at the indexed snapshot.':'Sat identity or placement is not established by this index.');
+  const point=result.satpoint;metadata($('sat-lookup-meta'),[['Sat number',result.sat_number??sat],['State',human(result.state)],['Current placement at snapshot',point?point.txid+':'+point.vout+':'+point.offset:'Not established'],['Snapshot block',result.snapshot?.height??'Not established'],['Chain state',human(result.chain_state)],['Origin',result.origin?pretty(result.origin):'Not established'],['Full historical output ranges',result.history_retained?'Genesis through snapshot':'Not complete; see retained ranges'],['History recording',result.history_recording?'On for newly indexed blocks':'Off'],['Retained history coverage',ranges(result.history_coverage)]]);$('sat-lookup-json').textContent=pretty(result);
+ }catch(error){if(index===selectedIndex)$('sat-lookup-summary').textContent=error.message}finally{button.disabled=false}
 });
 $('lookup-form').addEventListener('submit', async event => {
   event.preventDefault(); const button = event.currentTarget.querySelector('button'); button.disabled = true;
@@ -237,9 +492,69 @@ $('peer-form').addEventListener('submit', async event => {
     $('peer-preview-summary').textContent = 'Peer claim only. Bitcoin replay performed: ' + String(result.bitcoin_replay_performed) + '. Stored: ' + String(result.stored) + '. Local Bitcoin replay is required before accepting this as verified index state.';
   } catch (error) { $('peer-preview-summary').textContent = error.message; message(error.message, true); } finally { button.disabled = false; }
 });
-$('refresh').addEventListener('click', refresh);
-refresh();
-setInterval(() => { if (!document.hidden) refresh(); }, 5000);
+function prepareTimelineRange(id, from, to) {
+  const definition=definitions.find(d=>d.id===id);
+  if(!definition?.buildable || definition.locked) return;
+  if(!Number.isSafeInteger(from)||!Number.isSafeInteger(to)||from<0||to<from) { message('Choose an ordered range of whole block heights.',true); return; }
+  if(selectedIndex!==id) selectIndex(id,'build');
+  const first=$('from').readOnly?Number($('from').value):Math.max(definition.start_height||0,from);
+  if(to<first){message('This index must start at block '+first+'. Choose a range ending at or after that block.',true);return;}
+  $('from').value=String(first); $('to').value=String(to); $('initial-live').checked=false;
+  syncLiveForm(); invalidatePlan(); selectView('build'); showSelectedStatus();
+  $('timeline-details').open=true;
+  message((first!==from?'This index keeps its required first block at '+first+'. ':'Range selected. ')+'Review the plan before starting any work.');
+  $('plan-button').focus();
+}
+function openTimelineEntity(id,height) {
+  const definition=definitions.find(d=>d.id===id);
+  if(!definition || definition.locked || !Number.isSafeInteger(height) || height<0) return;
+  explorer?.focus({index:id,height,immediate:true});
+}
+let movingEntity=false,workspaceReady=false,pendingAddress=null,pendingIndex=null,workspaceVisible=true,resources;
+let navigationContext={id:null,historyMode:'replace',focus:false,published:false};
+function focusedAddress(value){return value.address||value.query||(value.kind==='transaction'&&Number.isSafeInteger(value.txIndex)?value.txIndex+'.'+value.height+'.bitcoin':value.height+'.bitcoin');}
+function publishAddress(address,resolved=true){if(parent!==window){parent.postMessage({type:'gateway:workspace-focused',address,resolved,historyMode:navigationContext.published?'replace':navigationContext.historyMode,...(Number.isSafeInteger(navigationContext.id)?{navigationId:navigationContext.id}:{})},location.origin);}navigationContext.published=true;if(navigationContext.focus){navigationContext.focus=false;requestAnimationFrame(()=>{const panel=document.querySelector('#timeline-inspector [role="tabpanel"]:not([hidden])'),heading=panel?.querySelector('h1,h2');if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}});}}
+function publishFocus(value){if(Number.isSafeInteger(value.height)&&value.height>=0)publishAddress(focusedAddress(value),value.resolved===true);}
+function syncFocusedEntity(value){if(!value||!Number.isSafeInteger(value.height)||value.height<0)return;movingEntity=true;try{timeline.syncResource(value,value.metadata);timeline.acceptGlobalResource?.(value);}finally{movingEntity=false;}publishFocus(value);}
+function focusEntity(value,options={}){if(!value?.address)return;indexExport?.update({index:''});resources?.closeBitmapSettings?.();navigationContext={id:null,historyMode:'replace',focus:false,published:false};if(value.kind==='satpoint'){explorer.entity(value);return;}explorer.navigate(value.address).catch(error=>message(error.message,true));}
+function isInscriptionAddress(value){return /^(?:[0-9]+|[0-9a-f]{64})(?:\.)?i[0-9]+(?:\.[0-9]+(?:\.bitcoin)?)?$/i.test(value)||value.endsWith('.ord');}
+function inspectIndex(id,options={}){if(!definitions.some(d=>d.id===id))return;if(window.GatewayIndexTransport.parcelDefinition((status?.definitions||[]).find(d=>d.id===id)||{id}))return;selectIndex(id,'advanced');if(options.rebuild_snapshot&&addressPanel?.reviewRebuild(options.rebuild_snapshot)===false)return;if(Object.keys(options).length)timeline.setConsumerOptions?.(id,options);}
+function resourceIntent(){indexExport?.update({index:''});resources?.closeBitmapSettings?.();timeline?.cancelPendingNavigation();navigationContext={id:null,historyMode:'push',focus:false,published:false};}
+async function navigateWorkspace(value,options={}){
+ const address=String(typeof value==='string'?value:value?.address||value?.query||'').trim();if(!address||address.length>1024||/[\x00-\x1f]/.test(address))return;if(!workspaceReady){pendingAddress={address,options};return;}
+ indexExport?.update({index:''});resources?.closeBitmapSettings?.();
+ timeline.cancelPendingNavigation();timeline.acceptGlobalResource?.({resource:'pending',address});navigationContext={id:options.navigationId??null,historyMode:options.historyMode||'push',focus:options.focus===true,published:false};
+ if(['settings.gateway','peers.gateway'].includes(address)){if(parent!==window)parent.postMessage({type:'gateway:navigate',address},location.origin);else location.href='/?resolve='+encodeURIComponent(address);return;}
+ const saved=resources.classify(address);if(saved){resources.open(saved.name,saved.address,saved.target);return;}
+ if(['.gateway','home.gateway','gateway.gateway','bitcoin.gateway','ord.gateway','indexes.gateway','activity.gateway','storage.gateway','sync.gateway','satline.gateway'].includes(address)){resources.overview(address);return;}
+ if(isInscriptionAddress(address)){if(!definitions.some(d=>d.id==='inscriptions'&&!d.locked)){message('Inscriptions are unavailable in this build.',true);return;}const result=await viewport.open(address,{block:options.blockHint});if(result?.resolution_state==='location_unknown'&&parent!==window)parent.postMessage({type:'gateway:workspace-location-needed',address},location.origin);return result;}
+ return explorer.navigate(address,{blockHint:options.blockHint});
+}
+window.addEventListener('message',event=>{if(event.source!==parent||event.origin!==location.origin)return;
+ if(event.data?.type==='gateway:workspace-address')navigateWorkspace(event.data.address,{blockHint:event.data.blockHint,navigationId:event.data.navigationId,historyMode:event.data.historyMode||'replace',focus:event.data.focus}).catch(error=>message(error.message,true));
+ if(event.data?.type==='gateway:workspace-visibility'){workspaceVisible=event.data.visible===true;if(!workspaceVisible){indexExport?.update({index:''});cancelProgressPoll();timeline.cancelPendingNavigation();explorer.cancelResource?.();resources?.suspend();}else{indexExport?.update({index:selectedIndex==='inscriptions'?selectedIndex:'',status});refresh().catch(error=>message(error.message,true));}}
+ if(event.data?.type==='gateway:workspace-select-index'){const id=event.data.index;if(typeof id!=='string')return;const value={index:id,rebuild_snapshot:event.data.rebuild_snapshot};if(!workspaceReady){pendingIndex=value;return;}if(definitions.some(d=>d.id===id&&(!d.locked||window.GatewayBitmapWorkspace.instanceID(id))))openIndexBuild(value);}
+});
+function openIndexBuild(value){inspectIndex(value.index,value.rebuild_snapshot?{rebuild:true,rebuild_snapshot:value.rebuild_snapshot}:{});}
+document.addEventListener('gateway:timeline-delete-selection',event=>resources?.deleteSelection?.(event.detail?.indices));
+document.addEventListener('gateway:timeline-inspect-index',event=>{const detail=event.detail||{};if(typeof detail.id==='string'&&definitions.some(d=>d.id===detail.id&&(!d.locked||window.GatewayBitmapWorkspace.instanceID(detail.id))))inspectIndex(detail.id,detail.options||{});});
+function showSemantic(){timeline.zoomIntoFocus();}
+utxoPanel=window.GatewayUTXOPanel.mount({root:$('utxo-build-panel'),api,refresh,notify:message});
+satPanel=window.GatewaySatPanel?.mount({root:$('sat-build-panel'),api,refresh,notify:message});
+addressPanel=window.GatewayAddressPanel?.mount({root:$('address-state-build-panel'),api,refresh,notify:message,select:selectIndex});
+timeline=window.GatewayIndexTimeline.mount({document,root:$('index-timeline'),workspace:$('index-workspace'),api,refresh,select:selectIndex,notify:message,buildRange:()=>message('Use the global In and Out controls in the timeline.'),openEntity:openTimelineEntity,onFocus:value=>{if(movingEntity)return;indexExport?.update({index:''});resources?.closeBitmapSettings?.();navigationContext={id:null,historyMode:'replace',focus:false,published:false};explorer?.focus(value);if(value.immediate!==false)publishFocus({...value,kind:'block'});},onDetail:showSemantic,onEntity:focusEntity,loadHierarchy:(entity,options)=>explorer.loadHierarchy(entity,options),loadRevealMarkers:async(value,{signal})=>{const result=await api('query?index=inscriptions&height='+value.height+'&limit=1000',undefined,{signal});return {markers:inscriptionRows(result.rows).map(inscriptionMarker).filter(Boolean),known:result.known===true,truncated:result.truncated};},onInscription:marker=>{resourceIntent();return viewport.open(marker.address);}});
+indexExport=window.GatewayIndexExport.mount({root:$('index-export-panel'),timeline,getStatus:()=>status});
+for(const id of ['index-requirements','utxo-build-panel','sat-build-panel','address-state-build-panel','index-export-panel'])$('timeline-details').before($(id));
+window.GatewayIndexWorkspace.mountLayout($('index-timeline'),$('message'));
+explorer=window.GatewayTimelineExplorer.mount({root:$('timeline-inspector'),document,notify:message,viewport:$('workspace-viewport-body'),onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:resourceIntent});
+viewport=window.GatewayInscriptionViewport.mount({document,explorer,viewport:$('workspace-viewport-body'),contentOrigin:workspaceBoot.content_origin,notify:message,onEntity:syncFocusedEntity,onNavigate:navigateWorkspace,onNavigateIntent:resourceIntent});
+resources=window.GatewayWorkspaceResources.mount({document,explorer,timeline,status:()=>status,inspect:inspectIndex,onNavigate:navigateWorkspace,onResolved:(address)=>publishAddress(address,true),refresh,notify:message});
+document.addEventListener('gateway:bitmap-overview',()=>navigateWorkspace('bitmap.gateway'));
+for(const id of ['mode','retain-output-values','retain-output-scripts','conventional-ids'])$(id).addEventListener('change',()=>{if(!selectedIndex)return;const owner=id.startsWith('retain-output-')?'txo-spender':selectedIndex,patch=id==='mode'?{mode:$('mode').value}:id==='conventional-ids'?{conventional_ids:inscriptionLocatorsAvailable()&&$('conventional-ids').checked}:{[id==='retain-output-values'?'retain_output_values':'retain_output_scripts']:$(id).checked};timeline.setConsumerOptions?.(owner,patch);});
+selectView('catalog');
+refresh().then(()=>{workspaceReady=true;if(pendingIndex){openIndexBuild(pendingIndex);pendingIndex=null;}const params=new URLSearchParams(location.search),request=pendingAddress||{address:params.get('focus')||(params.get('viewer')==='1'?'ord.gateway':'.gateway'),options:{navigationId:params.has('navigationId')?Number(params.get('navigationId')):null,historyMode:'replace',focus:params.get('focusPanel')==='1'}};pendingAddress=null;return navigateWorkspace(request.address,request.options);}).catch(error=>message(error.message,true));
+window.addEventListener('pagehide',()=>{cancelProgressPoll();resources?.teardown();viewport?.teardown();explorer?.teardown();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelProgressPoll();else if(workspaceVisible)refresh({progressOnly:true});});
 </script>
 </body>
 </html>

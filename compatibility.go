@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	appVersion              = "0.6.2"
+	appVersion              = "0.7.8"
 	bodWireVersion          = 1
 	minBODWireVersion       = 1
 	overlayProtocolVersion  = bodWireVersion
@@ -34,6 +34,9 @@ type compatibilityView struct {
 	RawBlockRedownload     bool   `json:"raw_block_redownload_required"`
 	IndexSchema            int    `json:"index_schema"`
 	IndexRebuild           bool   `json:"index_rebuild_required"`
+	BlockBodySchema        int    `json:"block_body_schema"`
+	TXIOSchema             int    `json:"txio_schema"`
+	UTXOSchema             int    `json:"utxo_schema"`
 	CacheMetadataSchema    int    `json:"cache_metadata_schema"`
 	CacheMetadataRebuild   bool   `json:"cache_metadata_rebuild_required"`
 	CoreMountSchema        int    `json:"core_mount_schema"`
@@ -46,8 +49,7 @@ type compatibilityView struct {
 	GatewayProtocol        int    `json:"gateway_protocol"`
 	MinimumGatewayProtocol int    `json:"minimum_gateway_protocol"`
 
-	// Legacy UI aliases retained so the 0.3.x frontend does not break while
-	// transport terminology moves from "overlay" to BOD wire protocol.
+	// Retained metadata aliases used by existing development tooling.
 	OverlayProtocol        int    `json:"overlay_protocol"`
 	MinimumOverlayProtocol int    `json:"minimum_overlay_protocol"`
 	StorageIndexRebuild    bool   `json:"storage_index_rebuild_on_upgrade"`
@@ -72,6 +74,9 @@ func currentCompatibility() compatibilityView {
 		RawBlockRedownload:     false,
 		IndexSchema:            indexSchemaVersion,
 		IndexRebuild:           false,
+		BlockBodySchema:        3,
+		TXIOSchema:             3,
+		UTXOSchema:             utxoCheckpointSchema,
 		CacheMetadataSchema:    cacheMetadataSchema,
 		CacheMetadataRebuild:   false,
 		CoreMountSchema:        coreMountSchemaVersion,
@@ -87,7 +92,7 @@ func currentCompatibility() compatibilityView {
 		MinimumOverlayProtocol: minBODWireVersion,
 		StorageIndexRebuild:    false,
 		BlockVerifier:          blockVerifierVersion, DerivedRecheck: true, OrdStorage: 1, ArchiveStorage: 1,
-		Note: "Repair candidate for discovery, managed sessions, header rollback recovery and public-data boundaries. Public graph schema 2 is rebuilt from explicitly public blocks; legacy graph files are preserved. Bitcoin/BOD/Gateway wire formats, header records and raw blocks are unchanged. Public propagation remains to be measured.",
+		Note: "New Raw Blocks records retain serialized Bitcoin bytes in segmented body schema 3 with block-level metadata; general transaction lookup remains an explicit Locator choice. Legacy decoded and schema 2 Raw records remain readable without automatic conversion. Schema 3 bodies require this development build; an older executable may not read new records. UTXO and Sats retain their independent genesis-first state and recovery rules; positional TXIO and Addresses remain independently selected. Full consensus validation and Gateway peerhood remain deferred. This local development build is not a published release or updater promotion.",
 	}
 }
 

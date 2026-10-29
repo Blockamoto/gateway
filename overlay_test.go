@@ -72,6 +72,9 @@ func fakeCoreWithScanCounter(t *testing.T) (string, func(), *atomic.Int64) {
 }
 
 func TestCoreLookupAndOverlay(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway exchange remains locked; ordinary Bitcoin serving is tested separately")
+	}
 	dir, stopCore, scans := fakeCoreWithScanCounter(t)
 	defer stopCore()
 	txid := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -164,6 +167,9 @@ func TestRPCUserPasswordFallbackWithoutCookie(t *testing.T) {
 }
 
 func TestLightPeerServesVerifiedCacheAndHeaderLocation(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway exchange remains locked; ordinary Bitcoin serving is tested separately")
+	}
 	dataDir := t.TempDir()
 	for _, p := range []string{filepath.Join(dataDir, "headers"), filepath.Join(dataDir, "blocks", "raw"), filepath.Join(dataDir, "blocks", "hex"), filepath.Join(dataDir, "blocks", "json")} {
 		if err := os.MkdirAll(p, 0755); err != nil {

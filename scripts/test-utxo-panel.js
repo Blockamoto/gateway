@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const context=vm.createContext({window:{},console});vm.runInContext(fs.readFileSync('ui/shell/index-cards.js','utf8'),context);vm.runInContext(fs.readFileSync('ui/shell/utxo-panel.js','utf8'),context);
+const panel=context.window.GatewayUTXOPanel,plain=value=>JSON.parse(JSON.stringify(value));
+assert.deepEqual(plain(panel.request()),{index:'utxo-state',from:0,live:true,live_configured:true,retention:'pruned'});
+assert.deepEqual(plain(panel.request({rebuild:true})),{index:'utxo-state',from:0,live:true,live_configured:true,retention:'pruned',rebuild:true},'Rebuild is an explicit request; ordinary resume never sets it');
+assert.equal(panel.model({job:{index:'utxo-state',state:'complete',height:170}}).state,'ready','Job completion cannot invent complete UTXO state');
+for(const evidence of [{processed_height:170,target_height:170},{processed_height:170,target_height:170,processed_hash:'old',target_hash:'new'},{processed_height:169,target_height:170,processed_hash:'same',target_hash:'same'}])assert.equal(panel.model({utxo:{...evidence,state:'current'}}).state,'reconciling','Current requires both exact target height and block identity');
+assert.equal(panel.model({utxo:{state:'current',processed_height:0,target_height:0,processed_hash:'genesis',target_hash:'genesis'}}).state,'current','Genesis is a real processed height, not an empty sentinel');
+const absent=panel.model({utxo:{state:'paused',processed_height:null,target_height:null,live_output_count:null,live_value_sats:null,storage_bytes:null}});assert.equal(absent.processed,null);assert.equal(absent.target,null);assert.equal(absent.storage_bytes,null,'No fabricated storage measurement');
+for(const state of ['building','paused','waiting','reconciling','rebuild_required'])assert.equal(panel.model({utxo:{state}}).state,state);
+assert.equal(panel.model({utxo:{state:'paused'},jobs:[{id:'pending-pause',index:'utxo-state',state:'pausing'}]}).state,'pausing','Resume remains unavailable while the current operation is still pausing');
+console.log('UTXO panel model PASS: genesis-only pruned requests, unknown measurements, exact tip identity and distinct recovery/work states.');

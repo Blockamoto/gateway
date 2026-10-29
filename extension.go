@@ -140,7 +140,7 @@ func (a *app) handleMeta(w http.ResponseWriter, r *http.Request) {
 		GatewayProtocols: a.localGatewayProtocols(),
 		ActiveSkin:       a.activeSkinName(),
 		Compatibility:    currentCompatibility(),
-		VerificationRule: "Gateway Client routes addresses; Bitcoin on Demand locates Bitcoin data; live Bitcoin Core or the independent BOD header mirror supplies chain authority. Retrieval may precede local anchoring when neither authority covers the object and is labelled accordingly.",
+		VerificationRule: "Gateway Client routes addresses; Bitcoin on Demand locates Bitcoin data; live Bitcoin Core or the independent Gateway header mirror supplies chain authority. Retrieval may precede local anchoring when neither authority covers the object and is labelled accordingly.",
 	})
 }
 
@@ -162,10 +162,16 @@ func (a *app) bundledModuleManifests() []moduleManifest {
 	if !ordEnabled {
 		ordStatus = "disabled"
 	}
+	if !releaseFeatureAvailable("satline") {
+		satStatus = "locked"
+	}
+	if !releaseFeatureAvailable("inscriptions") {
+		ordStatus = "locked"
+	}
 	return []moduleManifest{
-		{ID: "bitcoin-on-demand", Name: "Bitcoin on Demand", Version: appVersion, HostAPI: moduleHostAPIVersion, Description: "Bundled Bitcoin data, storage, graph and positional resolution module.", ProtocolID: bodProtocolID, ProtocolVersion: fmt.Sprintf("%d", bodWireVersion), Status: "bundled_active", CLINamespace: "bitcoin", APIPrefix: "/api/v1", NetworkAdvertised: true},
+		{ID: "bitcoin-on-demand", Name: "Bitcoin on Demand", Version: appVersion, HostAPI: moduleHostAPIVersion, Description: "Bitcoin headers, blocks and block-scoped positional resolution. Additional indexes are locked for later testing.", ProtocolID: bodProtocolID, ProtocolVersion: fmt.Sprintf("%d", bodWireVersion), Status: "bundled_active", CLINamespace: "bitcoin", APIPrefix: "/api/v1", NetworkAdvertised: releaseFeatureAvailable("gateway-peerhood")},
 		{ID: satlineModuleID, Name: "Satline", Version: appVersion, HostAPI: moduleHostAPIVersion, Description: "On-demand ordinal sat lineage with restart-safe local checkpoints.", ProtocolID: satlineProtocolID, ProtocolVersion: "1", Status: satStatus, RequiredCapabilities: []string{"block_retrieval", "transaction_retrieval", "prevout_value_resolution", "spender_lookup", "chain_authority"}, CLINamespace: "satline", APIPrefix: "/api/satline", FrontendEntrypoint: "/satline", StorageSchema: satlineStorageSchema, NetworkAdvertised: a.satlineNetworkingEnabled()},
-		{ID: ordModuleID, Name: "Ord on Demand", Version: appVersion, HostAPI: moduleHostAPIVersion, Description: "Known inscription IDs, witness-authenticated reveal data and isolated content. Optional local ord adapter.", Status: ordStatus, RequiredCapabilities: []string{"block_retrieval", "transaction_retrieval"}, APIPrefix: "/api/v1/ord", FrontendEntrypoint: "/?resolve=ord.gateway", StorageSchema: 1},
+		{ID: ordModuleID, Name: "Inscriptions", Version: appVersion, HostAPI: moduleHostAPIVersion, Description: "Known inscription IDs, witness-authenticated reveal data and isolated content. Optional local ord adapter.", Status: ordStatus, RequiredCapabilities: []string{"block_retrieval", "transaction_retrieval"}, APIPrefix: "/api/v1/ord", FrontendEntrypoint: "/?resolve=ord.gateway", StorageSchema: 1},
 	}
 }
 
@@ -175,7 +181,7 @@ func (a *app) handleModules(w http.ResponseWriter, r *http.Request) {
 	mods = append(mods, a.discoverModuleManifests()...)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"client": "Gateway Client", "host_api": moduleHostAPIVersion,
-		"status":  "Gateway Client hosts Bitcoin on Demand, Satline and Ord on Demand as separate bundled modules. Satline depends on BOD capabilities and can be disabled independently; Satline wire v1 is opt-in; only explicitly published snapshots are served.",
+		"status":  "Headers, Bitcoin Blocks and Inscriptions are available for testing. Related transaction locators, additional indexes, Satline and Gateway peerhood remain locked until separately validated.",
 		"modules": mods,
 	})
 }

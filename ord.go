@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"mime"
 	"net"
@@ -21,30 +22,59 @@ import (
 const ordModuleID = "a2765aa747891677136419b516a7fde8896b0cc97141cdd419cda33454f5aebcb"
 
 type ordRecord struct {
-	Schema          int             `json:"schema"`
-	VerifierVersion int             `json:"verifier_version"`
-	ID              string          `json:"id"`
-	TxID            string          `json:"txid"`
-	Index           int             `json:"index"`
-	BlockHash       string          `json:"block_hash,omitempty"`
-	Height          int64           `json:"height"`
-	Envelope        ordEnvelope     `json:"envelope"`
-	Size            int             `json:"content_size"`
-	SHA256          string          `json:"content_sha256"`
-	Evidence        string          `json:"evidence"`
-	Provider        string          `json:"provider"`
-	Profile         string          `json:"interpretation_profile"`
-	Interpretation  string          `json:"interpretation"`
-	InitialSatpoint *satlinePoint   `json:"initial_satpoint,omitempty"`
-	InitialState    string          `json:"initial_state,omitempty"`
-	ContentURL      string          `json:"content_url,omitempty"`
-	Note            string          `json:"note,omitempty"`
-	AdapterMetadata json.RawMessage `json:"adapter_metadata,omitempty"`
-	Updated         time.Time       `json:"updated"`
+	RevealCoordinate string          `json:"reveal_coordinate,omitempty"`
+	TxIndex          *int            `json:"tx_index,omitempty"`
+	ResolutionState  string          `json:"resolution_state,omitempty"`
+	ParserFlags      []string        `json:"parser_flags,omitempty"`
+	ViewerSession    string          `json:"viewer_session,omitempty"`
+	DependencyURL    string          `json:"dependency_status_url,omitempty"`
+	SatNumber        *uint64         `json:"sat_number,omitempty"`
+	CanonicalNumber  *int64          `json:"canonical_number,omitempty"`
+	NumberingProfile string          `json:"numbering_profile,omitempty"`
+	Schema           int             `json:"schema"`
+	VerifierVersion  int             `json:"verifier_version"`
+	ID               string          `json:"id"`
+	TxID             string          `json:"txid"`
+	Index            int             `json:"index"`
+	BlockHash        string          `json:"block_hash,omitempty"`
+	Height           int64           `json:"height"`
+	Envelope         ordEnvelope     `json:"envelope"`
+	Size             int             `json:"content_size"`
+	SHA256           string          `json:"content_sha256"`
+	Evidence         string          `json:"evidence"`
+	Provider         string          `json:"provider"`
+	Profile          string          `json:"interpretation_profile"`
+	Interpretation   string          `json:"interpretation"`
+	InitialSatpoint  *satlinePoint   `json:"initial_satpoint,omitempty"`
+	InitialState     string          `json:"initial_state,omitempty"`
+	ContentURL       string          `json:"content_url,omitempty"`
+	RawURL           string          `json:"raw_url,omitempty"`
+	PreviewURL       string          `json:"preview_url,omitempty"`
+	Note             string          `json:"note,omitempty"`
+	AdapterMetadata  json.RawMessage `json:"adapter_metadata,omitempty"`
+	Updated          time.Time       `json:"updated"`
 }
 
 func (a *app) ordRoot() string               { return filepath.Join(a.dataDir, "ord") }
 func (a *app) ordPath(id, ext string) string { return filepath.Join(a.ordRoot(), id+ext) }
+
+func (a *app) ordRecordFromOccurrence(o inscriptionOccurrence, provider string) (ordRecord, error) {
+	sum := sha256.Sum256(o.Body)
+	if o.ParserProfile != inscriptionParserProfile || o.ID != fmt.Sprintf("%si%d", o.TxID, o.Index) || !isInscriptionID(o.ID) || !validHash(o.BlockHash) || o.BlockHeight < 0 || o.TxIndex < 0 || hex.EncodeToString(sum[:]) != o.ContentSHA256 {
+		return ordRecord{}, fmt.Errorf("committed inscription occurrence identity/profile/content mismatch")
+	}
+	position := o.TxIndex
+	env := o.Envelope
+	env.Body = o.Body
+	rec := ordRecord{Schema: 1, VerifierVersion: blockVerifierVersion, ID: o.ID, TxID: o.TxID, Index: int(o.Index), BlockHash: o.BlockHash, Height: o.BlockHeight, TxIndex: &position, RevealCoordinate: inscriptionCoordinate(uint32(o.TxIndex), o.Index, o.BlockHeight), ResolutionState: "resolved", ParserFlags: append([]string(nil), o.ParserFlags...), Envelope: env, Size: len(o.Body), SHA256: o.ContentSHA256, Evidence: o.VerificationState, Provider: provider, Profile: o.ParserProfile, Interpretation: "envelope_extracted", InitialState: "not_resolved", ContentURL: a.ordContentURL(o.ID), Updated: time.Now().UTC(), Note: "Witness-authenticated reveal content. Global numbers, historical binding, provenance and current ownership are not inferred. Parent fields remain claims."}
+	if env.Unbound {
+		rec.InitialState = "unbound_even_field"
+	}
+	if env.Duplicate || env.Incomplete || env.Stutter || env.Pushnum {
+		rec.Interpretation = "historical_context_required"
+	}
+	return rec, nil
+}
 func (a *app) loadOrdRecord(id string) (ordRecord, []byte, error) {
 	var rec ordRecord
 	if !isInscriptionID(id) {
@@ -57,7 +87,7 @@ func (a *app) loadOrdRecord(id string) (ordRecord, []byte, error) {
 	if e = json.Unmarshal(b, &rec); e != nil {
 		return rec, nil, e
 	}
-	if rec.ID != id || rec.VerifierVersion != blockVerifierVersion {
+	if rec.ID != id || rec.VerifierVersion != blockVerifierVersion || rec.Provider == "bitcoin_on_demand_witness" && rec.Profile != inscriptionParserProfile {
 		return rec, nil, fmt.Errorf("inscription cache needs recheck")
 	}
 	body, e := os.ReadFile(a.ordPath(id, ".bin"))
@@ -72,17 +102,34 @@ func (a *app) loadOrdRecord(id string) (ordRecord, []byte, error) {
 	return rec, body, nil
 }
 func (a *app) saveOrdRecord(rec ordRecord, body []byte) error {
+	if !isInscriptionID(rec.ID) || len(body) > 8*1024*1024 {
+		return fmt.Errorf("invalid or oversized inscription cache record")
+	}
+	// Viewer URLs and bearer sessions belong to one running process, never to
+	// committed content or restart-safe records.
+	rec.ContentURL, rec.RawURL, rec.PreviewURL, rec.ViewerSession, rec.DependencyURL = "", "", "", "", ""
 	a.ordMu.Lock()
 	defer a.ordMu.Unlock()
 	if e := atomicWriteBytes(a.ordPath(rec.ID, ".bin"), body); e != nil {
 		return e
 	}
-	return atomicWriteJSON(a.ordPath(rec.ID, ".json"), rec)
+	if err := atomicWriteJSON(a.ordPath(rec.ID, ".json"), rec); err != nil {
+		return err
+	}
+	return a.pruneOrdContentCache(rec.ID)
 }
-func (a *app) resolveInscription(ctx context.Context, id, blockHint string) (ordRecord, error) {
+func (a *app) resolveInscription(ctx context.Context, id, blockHint string) (record ordRecord, err error) {
+	if err := requireReleaseFeature("inscriptions"); err != nil {
+		return ordRecord{}, err
+	}
+	defer func() {
+		if err == nil {
+			a.enrichOrdIdentity(&record)
+		}
+	}()
 	stem := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(id)), ".bitcoin")
 	if c, ok := parseBODCoordinate(stem); ok && c.Kind == coordInscription {
-		resolved, err := a.resolveCoordinate(c)
+		resolved, err := a.resolveCoordinateContext(ctx, c)
 		if err != nil {
 			return ordRecord{}, err
 		}
@@ -92,52 +139,76 @@ func (a *app) resolveInscription(ctx context.Context, id, blockHint string) (ord
 	enabled := a.settings.OrdEnabled
 	a.settingsMu.RUnlock()
 	if !enabled {
-		return ordRecord{}, fmt.Errorf("Ord on Demand is disabled")
+		return ordRecord{}, fmt.Errorf("Inscriptions module is disabled")
 	}
 	txid, index, e := inscriptionParts(id)
 	if e != nil {
 		return ordRecord{}, e
 	}
 	id = fmt.Sprintf("%si%d", txid, index)
+	if blockHint == "" {
+		if r, found, err := a.indexedInscription(ctx, id); found || err != nil {
+			return r, err
+		}
+	}
 	if rec, _, e := a.loadOrdRecord(id); e == nil && blockHint == "" {
 		if rec.Provider == "local_ord_adapter" {
 			return rec, nil
 		}
-		if h, e := a.canonicalHashAtHeight(rec.Height); e == nil && strings.EqualFold(h, rec.BlockHash) {
+		if a.ordRecordSelectedContext(ctx, rec) {
 			return rec, nil
 		}
 	}
-	var txr txResolutionView
 	if strings.TrimSpace(blockHint) != "" {
-		t, e := a.resolveBlockTarget(blockHint)
+		t, e := a.resolveBlockTargetContext(ctx, blockHint)
 		if e != nil {
 			return ordRecord{}, e
 		}
-		v, e := a.fetchAndDecodeTarget(t)
+		block, e := a.fetchAndDecodeTargetContext(ctx, t)
 		if e != nil {
 			return ordRecord{}, e
 		}
-		for _, tx := range v.Transactions {
-			if tx.TxID == txid {
-				txr = txResolutionView{TxID: txid, Height: v.Height, BlockHash: v.Hash, Transaction: tx}
-				break
-			}
-		}
-		if txr.TxID == "" {
-			return ordRecord{}, fmt.Errorf("reveal transaction not in supplied block")
-		}
-	} else {
-		txr, e = a.resolveTransactionViaOverlay(txid)
-		if e != nil {
-			return a.resolveOrdAdapter(ctx, id, e)
-		}
+		return a.resolveInscriptionInBlock(ctx, block, txid, index)
+	}
+	loc, located, e := a.inscriptionTransactionLocation(ctx, txid)
+	if e != nil {
+		return ordRecord{}, e
+	}
+	if !located {
+		return a.resolveOrdAdapter(ctx, id, ordResolutionFailure(ordLocationUnknown, nil, fmt.Errorf("reveal transaction location is unknown; provide a Bitcoin positional address or containing block")))
 	}
 	if e := ctx.Err(); e != nil {
 		return ordRecord{}, e
 	}
-	block, e := a.fetchBlockAtLocation(txr.Height, txr.BlockHash, "Ord reveal locator")
+	block, e := a.fetchBlockAtLocationContext(ctx, loc.Height, loc.BlockHash, "Inscription reveal locator")
 	if e != nil {
+		return a.resolveOrdAdapter(ctx, id, ordResolutionFailure(ordBytesUnavailable, &loc, e))
+	}
+	if e := verifyInscriptionTransactionLocation(txid, loc, block); e != nil {
 		return ordRecord{}, e
+	}
+	return a.resolveInscriptionInBlock(ctx, block, txid, index)
+}
+
+// resolveInscriptionInBlock consumes an already integrity-checked block. It
+// never consults a transaction locator, adapter or cached inscription, so an
+// explicit block constraint cannot be replaced by unrelated cached knowledge.
+func (a *app) resolveInscriptionInBlock(ctx context.Context, block blockView, txid string, index int) (ordRecord, error) {
+	if err := requireReleaseFeature("inscriptions"); err != nil {
+		return ordRecord{}, err
+	}
+	if e := ctx.Err(); e != nil {
+		return ordRecord{}, e
+	}
+	a.settingsMu.RLock()
+	enabled := a.settings.OrdEnabled
+	a.settingsMu.RUnlock()
+	if !enabled {
+		return ordRecord{}, fmt.Errorf("Inscriptions module is disabled")
+	}
+	txid = strings.ToLower(strings.TrimSpace(txid))
+	if !validHash(txid) || index < 0 {
+		return ordRecord{}, fmt.Errorf("invalid inscription identity")
 	}
 	if !integrityVerified(block) || !block.Verification.WitnessCommitment {
 		return ordRecord{}, fmt.Errorf("reveal content requires an authenticated witness commitment")
@@ -154,20 +225,32 @@ func (a *app) resolveInscription(ctx context.Context, id, blockHint string) (ord
 	if !found {
 		return ordRecord{}, fmt.Errorf("reveal transaction absent from checked block")
 	}
-	envelopes := parseOrdEnvelopes(tx)
-	if index >= len(envelopes) {
-		return ordRecord{}, fmt.Errorf("reveal has %d recognized envelopes; inscription i%d does not exist", len(envelopes), index)
+	// Indexing and on-demand resolution use the same pinned extraction handler.
+	// In particular, iN counts all recognized occurrences across this transaction,
+	// rather than a separate parser's interpretation of each witness input.
+	parsed, e := extractInscriptionOccurrences(block)
+	if e != nil {
+		return ordRecord{}, e
 	}
-	env := envelopes[index]
-	digest := sha256.Sum256(env.Body)
-	rec := ordRecord{Schema: 1, VerifierVersion: blockVerifierVersion, ID: id, TxID: txid, Index: index, BlockHash: block.Hash, Height: block.Height, Envelope: env, Size: len(env.Body), SHA256: hex.EncodeToString(digest[:]), Evidence: block.VerificationState, Provider: "bitcoin_on_demand_witness", Profile: ordInterpretationProfile, Interpretation: "envelope_extracted", InitialState: "not_resolved", ContentURL: a.ordContentURL(id), Updated: time.Now().UTC(), Note: "Content bytes are witness-authenticated. Global number, curse/vindication history, and complete provenance are not inferred from one reveal. Parent fields are claims."}
-	if env.Unbound {
-		rec.InitialState = "unbound_even_field"
+	var occurrence *inscriptionOccurrence
+	for i := range parsed.Occurrences {
+		o := &parsed.Occurrences[i]
+		if o.TxIndex == tx.Index && int(o.Index) == index {
+			occurrence = o
+			break
+		}
 	}
-	if env.Duplicate || env.Incomplete || env.Stutter || env.Pushnum {
-		rec.Interpretation = "historical_context_required"
+	if occurrence == nil {
+		return ordRecord{}, fmt.Errorf("inscription i%d is absent from the selected reveal transaction under the pinned parser profile", index)
 	}
-	if e = a.saveOrdRecord(rec, env.Body); e != nil {
+	rec, e := a.ordRecordFromOccurrence(*occurrence, "bitcoin_on_demand_witness")
+	if e != nil {
+		return ordRecord{}, e
+	}
+	if err := ctx.Err(); err != nil {
+		return ordRecord{}, err
+	}
+	if e := a.saveOrdRecord(rec, occurrence.Body); e != nil {
 		return rec, e
 	}
 	return rec, nil
@@ -177,17 +260,10 @@ func (a *app) resolveOrdInitial(ctx context.Context, rec ordRecord) (satlinePoin
 		return satlinePoint{}, fmt.Errorf("native initial location needs locally checked Bitcoin reveal evidence")
 	}
 	env := rec.Envelope
-	if env.Unbound {
-		return satlinePoint{}, fmt.Errorf("inscription is unbound by its even field")
+	if state, note := inscriptionPlacementRuleState(rec.Height, env); state != "" {
+		return satlinePoint{}, fmt.Errorf("%s", note)
 	}
-	if env.Duplicate || env.Incomplete || env.Pushnum || env.Stutter {
-		return satlinePoint{}, fmt.Errorf("historical binding requires indexed Ord context for this envelope")
-	}
-	// Do not assign ambiguous pre-jubilee non-first envelopes using modern rules.
-	if rec.Height < 824544 && (env.Input != 0 || env.Offset != 0 || env.Pointer != nil) {
-		return satlinePoint{}, fmt.Errorf("pre-jubilee binding requires indexed Ord context")
-	}
-	block, e := a.fetchBlockAtLocation(rec.Height, rec.BlockHash, "Ord initial satpoint")
+	block, e := a.fetchBlockAtLocationContext(ctx, rec.Height, rec.BlockHash, "Ord initial satpoint")
 	if e != nil {
 		return satlinePoint{}, e
 	}
@@ -198,37 +274,37 @@ func (a *app) resolveOrdInitial(ctx context.Context, rec ordRecord) (satlinePoin
 			break
 		}
 	}
-	if env.Input >= len(tx.Inputs) {
-		return satlinePoint{}, fmt.Errorf("input unavailable")
-	}
 	resolver := newSatlineResolver(contextSatlineBackend{appSatlineBackend{a}, ctx})
 	resolver.ctx = ctx
-	position, e := resolver.inputPosition(tx, env.Input, 0, block.Height)
+	resolver.primeInputValues(tx, block.Height)
+	placement, e := deriveInscriptionInitialPlacement(ctx, tx, block.Height, env, func(i int) (uint64, error) {
+		in := tx.Inputs[i]
+		return resolver.prevoutValue(in.PrevTxID, in.PrevVout, block.Height)
+	})
 	if e != nil {
 		return satlinePoint{}, e
 	}
-	own := tx.Inputs[env.Input]
-	value, e := resolver.prevoutValue(own.PrevTxID, own.PrevVout, block.Height)
-	if e != nil {
-		return satlinePoint{}, e
+	if placement.State == "unbound" || placement.State == "historical_context_required" {
+		return satlinePoint{}, fmt.Errorf("%s", placement.Note)
 	}
-	if value == 0 {
-		return satlinePoint{}, fmt.Errorf("zero-value inscription input is unbound")
-	}
-	total, e := sumOutputs(tx)
-	if e != nil {
-		return satlinePoint{}, e
-	}
-	if env.Pointer != nil && *env.Pointer < total {
-		position = *env.Pointer
-	}
+	position := placement.Position
 	dest := tx
-	if position >= total {
+	if placement.State == "fee_to_coinbase" {
+		total, e := sumOutputs(tx)
+		if e != nil {
+			return satlinePoint{}, e
+		}
 		prior, e := resolver.priorBlockFees(block, tx.Index)
 		if e != nil {
 			return satlinePoint{}, e
 		}
-		position = position - total + prior + subsidyAtHeight(block.Height)
+		position, e = addUint64(position-total, prior)
+		if e == nil {
+			position, e = addUint64(position, subsidyAtHeight(block.Height))
+		}
+		if e != nil {
+			return satlinePoint{}, e
+		}
 		dest = block.Transactions[0]
 	}
 	vout, off, ok := mapStreamPosition(position, dest.Outputs)
@@ -296,10 +372,16 @@ func (a *app) resolveOrdAdapter(ctx context.Context, id string, nativeErr error)
 	tx, index, _ := inscriptionParts(id)
 	h := sha256.Sum256(body)
 	rec := ordRecord{Schema: 1, VerifierVersion: blockVerifierVersion, ID: id, TxID: tx, Index: index, Height: -1, Envelope: ordEnvelope{ContentType: ct, HasBody: true}, Size: len(body), SHA256: hex.EncodeToString(h[:]), Evidence: "provider_reported", Provider: "local_ord_adapter", Profile: ordInterpretationProfile, Interpretation: "provider_derived", InitialState: "provider_context", ContentURL: a.ordContentURL(id), AdapterMetadata: meta, Note: "Local ord supplied this answer; the witness could not be independently authenticated here. Native lookup: " + nativeErr.Error(), Updated: time.Now().UTC()}
+	if err := ctx.Err(); err != nil {
+		return ordRecord{}, err
+	}
 	e = a.saveOrdRecord(rec, body)
 	return rec, e
 }
 func (a *app) handleOrdResolve(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "inscriptions") {
+		return
+	}
 	var q struct {
 		ID        string `json:"id"`
 		BlockHash string `json:"block_hash,omitempty"`
@@ -312,26 +394,19 @@ func (a *app) handleOrdResolve(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 400, e)
 		return
 	}
-	if rec.Envelope.Delegate != "" {
-		seen := map[string]bool{rec.ID: true}
-		id := rec.Envelope.Delegate
-		for i := 0; i < 8 && id != ""; i++ {
-			if seen[id] {
-				rec.Note += " Delegate cycle detected."
-				break
-			}
-			seen[id] = true
-			next, e := a.resolveInscription(r.Context(), id, "")
-			if e != nil {
-				rec.Note += " Delegate is not available: " + e.Error()
-				break
-			}
-			id = next.Envelope.Delegate
-		}
+	a.enrichOrdIdentity(&rec)
+	if !a.attachOrdViewerForRequest(r, &rec) {
+		return
 	}
 	satlineReply(w, rec)
 }
 func (a *app) handleOrdFollow(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "inscriptions") {
+		return
+	}
+	if !releaseHTTPFeature(w, "satline") {
+		return
+	}
 	var q struct {
 		ID string `json:"id"`
 	}
@@ -364,7 +439,12 @@ func (a *app) handleOrdFollow(w http.ResponseWriter, r *http.Request) {
 	satlineReply(w, map[string]any{"satpoint": p, "job_id": job, "global_sat_number_known": false})
 }
 func (a *app) startOrdContent() error {
-	ln, e := net.Listen("tcp", "127.0.0.1:0")
+	if !releaseFeatureAvailable("inscriptions") {
+		return nil
+	}
+	// A distinct loopback IP is also a distinct browser site. Different ports
+	// alone do not isolate an active content renderer from the management UI.
+	ln, e := net.Listen("tcp", "127.0.0.2:0")
 	if e != nil {
 		return e
 	}
@@ -396,6 +476,9 @@ func (a *app) ordContentURL(id string) string {
 }
 
 func (a *app) allowOrdContentRequest(r *http.Request, id string) bool {
+	if !releaseFeatureAvailable("inscriptions") {
+		return false
+	}
 	a.settingsMu.RLock()
 	enabled := a.settings.OrdEnabled
 	a.settingsMu.RUnlock()
@@ -432,21 +515,33 @@ func (a *app) allowOrdContentRequest(r *http.Request, id string) bool {
 }
 
 func (a *app) serveOrdContent(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "inscriptions") {
+		return
+	}
 	if r.Method != "GET" && r.Method != "HEAD" {
 		http.Error(w, "read-only content service", 405)
 		return
 	}
-	// This origin has no management API. Recursion is cache-only and cannot
-	// trigger arbitrary network work, publish a record, or access local files.
+	// This origin has no management API. Intended viewers may resolve bounded
+	// inscription-ID dependencies; no arbitrary URLs, files or writes exist.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=(), display-capture=(), usb=(), serial=(), payment=()")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'none'; sandbox allow-scripts allow-same-origin")
 	prefix := "/content/"
-	metadata := false
+	metadata, status, preview := false, false, false
 	if strings.HasPrefix(r.URL.Path, "/r/inscription/") {
 		prefix = "/r/inscription/"
 		metadata = true
+	}
+	if strings.HasPrefix(r.URL.Path, "/r/status/") {
+		prefix = "/r/status/"
+		status = true
+	}
+	if strings.HasPrefix(r.URL.Path, "/preview/") {
+		prefix = "/preview/"
+		preview = true
 	}
 	if !strings.HasPrefix(r.URL.Path, prefix) {
 		http.NotFound(w, r)
@@ -465,13 +560,56 @@ func (a *app) serveOrdContent(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
 	}
-	rec, body, e := a.loadOrdRecord(id)
+	session := a.contentViewer(w, r, id)
+	if status {
+		if session == nil {
+			jsonError(w, 404, fmt.Errorf("intended viewer session required"))
+			return
+		}
+		session.mu.Lock()
+		dependency, found := session.dependencies[id]
+		session.mu.Unlock()
+		if !found {
+			dependency = ordDependency{ID: id, State: "not_requested"}
+		}
+		writeJSON(w, dependency)
+		return
+	}
+	rec, body, e := a.viewerInscription(r.Context(), session, id)
 	if e != nil {
-		http.Error(w, "Inscription is not in the local content cache. Resolve it in Gateway first.", 404)
+		a.ordContentFailure(w, session, id, e)
 		return
 	}
 	if rec.Envelope.ContentEncoding != "" && rec.Envelope.ContentEncoding != "gzip" && rec.Envelope.ContentEncoding != "br" {
 		http.Error(w, "Unsupported inscription content encoding", 415)
+		return
+	}
+	if preview {
+		// The outer sandbox receives only application-authored markup. Every
+		// media byte still comes from the separate read-only content origin.
+		inner := a.ordContentURL(id)
+		if session != nil {
+			u, _ := url.Parse(inner)
+			q := u.Query()
+			q.Set("session", session.token)
+			u.RawQuery = q.Encode()
+			inner = u.String()
+		}
+		ct := strings.ToLower(strings.TrimSpace(strings.SplitN(rec.Envelope.ContentType, ";", 2)[0]))
+		tag := "iframe"
+		attrs := ` sandbox="allow-scripts allow-same-origin"`
+		if strings.HasPrefix(ct, "image/") && ct != "image/svg+xml" {
+			tag = "img"
+			attrs = ` alt="Inscription content"`
+		} else if strings.HasPrefix(ct, "audio/") {
+			tag = "audio"
+			attrs = ` controls preload="metadata"`
+		} else if strings.HasPrefix(ct, "video/") {
+			tag = "video"
+			attrs = ` controls preload="metadata"`
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>html,body{margin:0;height:100%%;background:#16191d;color:#fff}body{display:flex;align-items:center;justify-content:center}img,video{max-width:100%%;max-height:100%%;object-fit:contain}audio{width:95%%}iframe{width:100%%;height:100%%;border:0;background:#fff;color:#16191d}</style><%s%s src="%s"></%s>`, tag, attrs, html.EscapeString(inner), tag)
 		return
 	}
 	if metadata {
@@ -479,16 +617,16 @@ func (a *app) serveOrdContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	seen := map[string]bool{id: true}
-	for depth := 0; rec.Envelope.Delegate != ""; depth++ {
+	for depth := 0; r.URL.Query().Get("download") != "1" && rec.Envelope.Delegate != ""; depth++ {
 		next := rec.Envelope.Delegate
 		if depth >= 8 || seen[next] {
 			http.Error(w, "Delegate cycle or depth limit", 409)
 			return
 		}
 		seen[next] = true
-		rec, body, e = a.loadOrdRecord(next)
+		rec, body, e = a.viewerInscription(r.Context(), session, next)
 		if e != nil {
-			http.Error(w, "Delegate is not locally cached", 404)
+			a.ordContentFailure(w, session, next, e)
 			return
 		}
 	}
@@ -505,14 +643,22 @@ func (a *app) serveOrdContent(w http.ResponseWriter, r *http.Request) {
 	if rec.Envelope.ContentEncoding == "br" || rec.Envelope.ContentEncoding == "gzip" {
 		w.Header().Set("Content-Encoding", rec.Envelope.ContentEncoding)
 	}
-	if !strings.HasPrefix(ct, "text/") && !strings.HasPrefix(ct, "image/") && !strings.HasPrefix(ct, "audio/") && !strings.HasPrefix(ct, "video/") && !strings.HasPrefix(ct, "application/json") {
+	if r.URL.Query().Get("download") == "1" || !strings.HasPrefix(ct, "text/") && !strings.HasPrefix(ct, "image/") && !strings.HasPrefix(ct, "audio/") && !strings.HasPrefix(ct, "video/") && !strings.HasPrefix(ct, "application/json") {
 		w.Header().Set("Content-Disposition", "attachment; filename=inscription")
+	}
+	if session != nil && !session.chargeBytes(len(body)) {
+		http.Error(w, "Viewer content byte budget exceeded", 429)
+		return
 	}
 	if r.Method == "GET" {
 		_, _ = w.Write(body)
 	}
 }
 func (a *app) handleOrdStatus(w http.ResponseWriter, r *http.Request) {
+	if !releaseFeatureAvailable("inscriptions") {
+		writeJSON(w, map[string]any{"enabled": false, "locked": true, "note": releaseLockReason("inscriptions")})
+		return
+	}
 	a.settingsMu.RLock()
 	s := a.settings
 	a.settingsMu.RUnlock()
@@ -523,5 +669,5 @@ func (a *app) handleOrdStatus(w http.ResponseWriter, r *http.Request) {
 			count++
 		}
 	}
-	satlineReply(w, map[string]any{"enabled": s.OrdEnabled, "backend": s.OrdURL, "profile": ordInterpretationProfile, "cached_inscriptions": count, "network_advertised": false, "content_origin": a.contentURL, "scope": "Known-ID content and reveal evidence; global inventory/numbering require indexed Ord context."})
+	satlineReply(w, map[string]any{"enabled": s.OrdEnabled, "backend": s.OrdURL, "profile": inscriptionParserProfile, "adapter_profile": ordInterpretationProfile, "cached_inscriptions": count, "content_cache": a.ordContentCacheStatus(), "network_advertised": false, "content_origin": a.contentURL, "scope": "Positional and already-located inscription content/reveal evidence; global numbering and current ownership remain separate."})
 }

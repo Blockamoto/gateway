@@ -1,105 +1,100 @@
-# Gateway roadmap notes
+# Gateway roadmap
 
-This document records the direction discussed during the 0.6.1 testing review. It is a roadmap, not a claim that every item is implemented in the current release.
+The [public v0.7.7 Sats prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.7) builds on Addresses and the UTXO/TXIO stages. The next development work combines timeline controls, coordinated indexing, dependency handling and experimental Bitmap consumers. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for exact publication and validation evidence.
 
-## Current release work
+## In development: timeline workspace and Bitmap
 
-Gateway supports a compact, positional inscription address derived from Bitcoin evidence:
+The user has brought timeline controls forward from the earlier after-Bitmap plan. The [timeline brief](TIMELINE-CONTROLS-BRIEF.md) and [index dependency review](INDEX-DEPENDENCIES.md) define the preparation on a separate development branch. The authorized development pass implements the reviewed controls and workspace together with distinct experimental Bitmap consumers. It does not change the published app, main or updater.
 
-```
-<transaction-index>.i<inscription-index>.<block-height>
-```
+- Arm available tracks, choose Live where supported, and use shared Start/Pause/Resume controls. Configuration alone must not start work.
+- Coordinate one fetch/decode of a required block for ready armed consumers in the same pass, sharing parser/output facts while preserving per-index checkpoints and dependency order.
+- Put everyday controls in the tracks and keep deeper settings/evidence in the Inspector. Review all write paths, including Live, browsing, legacy cache enrichment and automatic address projection.
+- Correct Sat ranges ordering under TXIO, use one stable timeline disclosure, and show all available built-ins by default. Preserve Plus as disabled for future custom indexes.
+- Add one global precise In/Out pair and Previous/Next/Skip navigation at the current block/transaction/output/local-Sat level without starting indexing. Per-track ranges remain deferred.
+- Keep resource details, requirements and advanced settings inside the persistent timeline workspace; preserve Settings and Peers as separate destinations.
+- Implement Districts, Parcels and Bitmap Chain as separate development consumers, sharing ingestion while preserving explicit provenance/outcome dependencies, coverage gaps and experimental profile labels.
 
-All indexes are zero-based. `0.i0.0` illustrates the grammar only: genesis contains no inscription, so it must return an absence/error, not invented content. Both `0i0.0` and `0.i0.0` are accepted. The optional `.bitcoin` suffix supports browser namespace routing. The middle `i` marker identifies the inscription occurrence index; the existing input grammar keeps its leading `i` marker. The address resolves by fetching and verifying the referenced Bitcoin block from peers; it does not require an Ord node or a local Bitcoin node. The result still includes the transaction ID, block hash, reveal evidence, and other native identifiers.
+## Available: v0.7.7 Sats
 
-The existing positional Bitcoin forms remain supported for blocks, transactions, inputs, outputs, and satpoints. Their grammar and numbering conventions should remain versioned and documented as the schema expands.
+- Derive Sat identities from genesis, retaining live ordered output ranges, Sat-number lookup, terminal states and shared output facts at exact selected-chain checkpoints.
+- Add a Sat explorer, compatible address UTXO/range views, P2PK destination navigation and known inscription holdings with explicit identity coverage.
+- Defer Satline on-demand history tracing for this version; block new and resumed traces while preserving saved evidence. Saved Sat lookup/ranges and fee receipts remain. Complete historical output ranges are optional and off by default.
+- Retain the newest two savepoints at multiples of 12 and the newest two at multiples of 144, sharing matching heights. Restore an eligible selected-chain point and replay; preserve incompatible prior state for reviewed rebuild.
+- The published app uses reviewed per-index Build/Pause/Resume/Live controls. Shared transport, arming and hierarchy cleanup are now in the before-Bitmap preparation above; general deletion/replay management remains separate later work.
+- Authorized Sats testing correction: ordinary vertical wheel input scrolls across the left track-name column and actual track lanes; Ctrl/Command is required for wheel zoom in the timeline time/data area. Preserve Shift horizontal pan and trackpad/touch pinch zoom. This shipped gesture correction is separate from the shared-control preparation above.
+- Route bare integers inside Gateway using the selected chain tip, with explicit `.sat`/`.bitcoin` overrides and `.sat` browser-companion handoff. Browser bare-number search stays unchanged.
+- Keep full consensus validation, assumed snapshots and Gateway peer/state sharing outside this scope. Sats is published and selected by the verified updater; publication and validation evidence are in status.
 
-## Index layers and comparison
+See [the Sats feature breakdown](SATS-FEATURES-0.7.7.md), [brief](IMPLEMENTATION-BRIEF-0.7.7.md), [guide](SATS-INDEX.md) and [test guide](TESTING-0.7.7.md).
 
-- Keep the default Bitmap index sparse: a compact district-to-inscription representation.
-- Offer richer audit output separately, including candidates, evidence, rule profile, and contestability findings.
-- Make the rule set visible and bind its fingerprint to checkpoints and exports.
-- Add a user-facing extraction action that packages the persisted index without rebuilding it.
-- Add comparison for two or more imported indexes using canonical district/inscription serialization and a range-scoped fingerprint. A matching fingerprint proves equality of the compared data, not correctness against Bitcoin.
-- Support known schemas first, preview ambiguous external JSON before importing, and preserve OCI's native sat-number and delta representation rather than pretending it is an inscription-ID index.
+## Available: v0.7.6 Addresses
 
-## Peer and browser architecture
+- Build Current UTXOs from saved complete UTXO state, with checkpoint-specific balances and a deeper paginated output view.
+- Offer independently retained Historical outputs over explicit sparse creation ranges, with coverage and range totals rather than inferred balances.
+- Share existing output values/scripts and retain address-to-output blocator membership; do not copy complete decoded blocks.
+- Add typed-address entry, clickable output addresses and independent Current/Historical timeline bands.
+- Include exact compressed/uncompressed P2PK public-key destinations, with explicit upgrade/backfill requirements for older conventional-only coverage.
+- The Addresses release defers inscription holdings and Sat tracking to Sats; full consensus validation remains future work. Its publication and verified update delivery are recorded in status.
 
-- Proposed transport evolution: a Gateway node would be dual-stack: native Bitcoin peer access on one side and a Gateway browser/peer protocol on the other.
-- Prefer direct WebRTC for Gateway-aware browsers and peers, with signaling and TURN relay fallback when direct connectivity fails. Show when a connection is relayed.
-- Keep Bitcoin-native discovery as an explicit opt-in capability; ordinary Bitcoin block and header access remains independent.
-- Define authenticated, capability-scoped requests and explicit publication controls for indexes, evidence, and cached data.
-- Treat hosted sessions as isolated and ephemeral by default. A public node chooses what it publishes; a browser or inscription chooses what it shares.
-- Add connectors for other WebRTC or peer protocols only when their signaling and application protocols are understood and their operators permit participation.
+See [the Addresses brief](IMPLEMENTATION-BRIEF-0.7.6.md) and [guide](ADDRESSES-INDEX.md).
 
-## Browser and inscription clients
+## Available: v0.7.5 UTXO set
 
-- Allow a Gateway-enabled inscription to connect over the browser transport and request verified results without embedding a Bitcoin node.
-- IndexedDB remains origin-local. An inscription must explicitly export selected records, expose a connector, or speak the Gateway protocol; Gateway must not silently read another origin's database.
-- A future browser index standard (working names include Gateway DB) can define namespaces, schemas, versions, sync rules, and optional proofs for client-side indexes such as Atlas-style browsing data.
+- Build a complete live-output state from genesis to an explicit processed selected-chain tip, with exact values/scripts, blocator creation identity and a durable native-prevout bridge.
+- Pause/resume at an atomic head; retain a fixed 288 complete recovery transitions, independently of raw-body retention. Deeper reorganizations require an explicit reviewed rebuild and preserve prior state archives.
+- Add optional TXIO Values and ScriptPubKeys output history with independent coverage and shared fact retention. Transaction Locator and TXIO remain separate stores/tracks.
+- Group Blocks into Headers/raw bodies and TXIO into Positional links/Values/ScriptPubKeys; give UTXO its own state/build panel with honest progress, anchors and measured storage.
+- Report header-anchored processing with `consensus_validated=false`. Independent full consensus validation is deferred to v0.8; this release adds no snapshot, new peer/state-sharing, Sats, fees or address features.
 
-## Deferred work
+Exact packaging, public release and hosted delivery acceptance are recorded in [status](STATUS.md). See [the implementation brief](IMPLEMENTATION-BRIEF-0.7.5.md), [UTXO guide](UTXO-INDEX.md) and [test guide](TESTING-0.7.5.md).
 
-Full historical inscription numbering, complete contestability profiles, ownership and parcel layers, automatic external index import, broad cross-stack interoperability, and the complete security/privacy audit remain later stages. Experimental sat-line tooling may stay behind development controls while it is being validated.
+## Available in the 0.7.4 prerelease
 
-## Testing review decisions and acceptance
+- TXIO has one canonical spend set and automatic Input/Output lookup, retaining legacy identifiers and unknown-state distinctions.
+- Bitcoin Blocks store verified serialized bodies with compact ordered transaction metadata, shared temporary decoding and resumable compatible legacy migration.
+- Legacy duplicate bodies remain until explicit cleanup; migration does not automatically reclaim their space, and broad destructive index management is deferred.
+- The inscription potential-range boundary is corrected and map controls remain accessible outside the visualization.
+- The public prerelease's exact approved artifacts are delivered through the existing signed channel, respecting each installation's update preferences. Renewal, independent downloads of all renewed artifacts and normal refreshed-client acceptance passed without changing the approved application or header payloads.
 
-- Keep fresh Bitmap indexing anchored at height 792435 internally; hide the editable start field and expose only the ending height. Resume must reuse validated checkpoints.
-- Display blocks checked (committed coverage) and districts found (unique accepted claims), preserving counts across resume and correcting them after reorganization.
-- Temporary peer block unavailability should wait and retry with a visible reason, keep pause available, and preserve committed work. Failed jobs need an obvious retry action.
-- Default new Bitmap builds to lean records serialized as `"district:inscription-id"` strings. Keep checkpoint and rule metadata outside each record. Preserve old full indexes without silent conversion; future migration should be explicit.
-- Default lean records have no contested flag. A proposed optional **Audit contestability** control would add comparison status and linked evidence without replacing the base winner. Distinguish not evaluated, no disagreement found under named profiles, disagreement, and missing historical context. Full retained records today do not imply that full audit exists.
-- Keep inscriptions accessible. Hide Satline UI entry points under a Settings development-password visibility gate for testing; store no plaintext password. This is not an authorization boundary for the public network or local APIs.
-- Fix stale version labels consistently in future packaging. Installer-specific feedback remains for a separate user review.
+## Scope in 0.7.1
 
-## Comparison and OCI details
+- Foundational Headers index, selected-chain tracking, validated bootstrap snapshot and ordinary Bitcoin catch-up.
+- Bitcoin Blocks on demand, bounded index jobs, persistent coverage and configurable source retention.
+- Explorer and schema for known blocks, transactions, inputs, outputs and output-relative positions.
+- A docked timeline, resizable Inspector/Block Explorer pane, anchored zoom, playhead navigation and explicit range selection for preparing indexing plans.
+- Optional read-only Bitcoin Core and mounted block sources.
+- Ordinary Bitcoin peer controls and serving, private-cache controls and optional peer address reveal.
+- Windows installer and portable packages, Linux packages, optional Windows browser registration and `.bitcoin` address entry.
+- Signed application and incremental header delivery, with manual, automatic-check and explicitly chosen automatic-install modes.
 
-The proposed comparison UI accepts the local index plus one or multiple external indexes. Auto-detect supported layouts, preview the district/ID mapping, and ask for field selection only when ambiguous. Sort numerically by district, define strict serialization and duplicate handling, and bind the range and format version to the digest. Hash first, then show changed, missing, and extra district mappings when fingerprints differ. Raw source ordering must not change equality.
+See [status](STATUS.md) for release acceptance and [the timeline tester guide](TESTING-0.7.1.md) for behavior to verify. The [setup and browser checklist](TESTING-0.7.0.md) covers the other enabled features.
 
-OCI uses sat numbers/deltas; its exact adapter awaits the inscription reference and format inspection. Compare normalized native OCI data where compatible. OCI versus an inscription-ID index requires a translation with explicit coverage and provenance. Do not assume that equal raw deltas, sat identifiers, and inscription identifiers represent the same thing. A sat may host multiple inscriptions. Historical sat reconstruction may require substantial Bitcoin history; never hide that as a cheap import.
+## Later workspace and index management
 
-## Browser, inscription and extension ideas (not release commitments)
+The shared transport, arming, track-local controls and hierarchy work formerly scheduled here have moved to the before-Bitmap preparation. Broader management remains a separate scope:
 
-The user wants a hosted lightweight Gateway client and API/SDK for arbitrary websites, with per-user local execution and selected browser storage. Prefer data flowing directly from Gateway peers to the browser; the website may deliver code and discovery/signaling. A server that relays payloads still pays bandwidth costs, including TURN. Direct Bitcoin TCP access is not available to ordinary browser WebRTC clients; a Gateway peer supplies that bridge. Network transport support does not establish correctness: clients should verify the evidence they need, not treat a fingerprint alone as Bitcoin validation.
+- Clear per-index deletion, replay/rescan and refresh/upgrade controls. Distinguish saved-job Resume from a newly selected range and expose destination-type coverage upgrades. Existing reviewed recovery rebuilds and P2PK upgrades remain available; removing a track does not delete its index, and status refresh does not replay data.
+- Custom index registration and the future Plus menu, with its own capability and storage contract.
 
-Consider peer-stack extensions that join an existing network as a compatible client, without requiring that network to adopt Gateway. Kenobi/Ord Drops, Switch and Block Forge were mentioned as examples to research, not verified integrations. Each needs its own discovery/signaling and application-protocol support. Do not promise complete peer visibility from WebRTC alone.
+Further interaction and index-specific features will be scoped individually as testing informs later briefs.
 
-Consider a Gateway inscription backed by IndexedDB, tentatively Gateway DB or Gateway Dex. Atlas was described by the user as using recursion and OCI, caching resolved content, history, feeds and subscriptions locally. A future shared schema/connector could expose selected index data. Host origin policies, sandboxing, storage eviction and background execution limits need testing against actual inscription hosts. Browsing history remains private by default. Cross-origin database access is not automatic.
+The inscription and transaction stages are available; Gateway peers remain a locked stage with separate scope and validation before promotion:
 
-Privacy controls should let people choose what to serve, direct versus relay-only transport, and what metadata they expose. TURN fallback alone does not guarantee that addresses were never exchanged. Formal security review is deferred until a working implementation, while explicit publication and permission boundaries belong in the initial design.
+1. **Inscriptions:** a content viewport within the timeline workspace, compact positional indexing, Lean/Full storage choices and visible unresolved content dependencies. Positional lookup works from a known block without a global transaction index.
+2. **Transactions:** the Transaction Index, plus the optional inscription-related transaction locator choice and its retroactive action in the Inscription inspector, connect conventional transaction/inscription IDs to block positions. Both inscription enrichment controls were gated during the earlier inscription-only stage.
+3. **Gateway peers:** enable verified locator requests and explicitly public locator serving. The shared protocol foundation is implemented alongside the earlier stages but remains gated. Peers supply location hints; fetched evidence is checked locally.
 
-## Human-readable addressing direction
+These stages describe order, not promised dates. They do not establish wallet ownership, complete parent-child enumeration, universal Sat history or unrelated index features.
 
-Make structural paths first-class in Gateway interfaces and pursue a documented interoperable Gateway grammar, not a change to Bitcoin consensus. Retain native hashes and chain anchors. Block-height paths resolve against the selected chain and can change after reorganization. Output offsets locate historical output positions; a sat number is a stable ordinal identity whose location changes. Revealed inscription content stays in transaction witness data. Deriving a global sat number or current ownership can require ancestry/history beyond one reveal block and must not be claimed from the path alone.
+- Refine the timeline workspace from tester feedback; dependency visualization and deeper index-specific views remain future work.
+- Roll out additional features, with the individual capabilities selected as that brief takes shape.
+- Act on first public testing feedback, especially onboarding, address entry, data availability and recovery.
+- Continue testing hosted delivery and renewal, including expiration, unavailable-service behavior and idle-service startup.
+- Improve documentation and diagnostics where testers cannot distinguish downloaded headers, stored blocks and committed index coverage.
+- Promote additional indexes individually only after their dependency, replay, restart, reorganization, missing-data, performance and UI checks are adequate.
 
-## Next-version note: inscription ID block-location fallback
+## Future, currently locked
 
-When an inscription ID cannot be resolved because Gateway cannot locate its reveal transaction, prompt the user for the reveal block height and retry with the original inscription ID preserved. Missing local block bytes alone should not require this prompt when the block location is already known. The ID supplies the transaction ID and inscription index; the user should not also need to supply a transaction position.
+Beyond the published inscription/transaction/TXIO/UTXO/Addresses/Sats stages, Bitmap and parcel capabilities remain locked. **Bitmap: Terrain Claim Chains** is the name of the existing locked Terrain Claim Chains feature; the proposed District/Parcel/audit consumers require their own later implementation brief and do not enable it. Fee receipts prepare future Satline traversal, which remains disabled; a separate fee-market explorer is not added. UTXO values/scripts alone do not identify individual sats; the Sats index supplies ordinal ranges and provenance with separate recovery/history coverage.
 
-Resolve the supplied height against the selected header chain, fetch the block from available Bitcoin peers, verify the block and witness commitment, locate the matching transaction, and extract the requested inscription. This should work without a local full Bitcoin node, an external Ord server, or a Gateway locator peer. A wrong block must produce an explicit transaction-not-found result; unavailable block sources should allow waiting or retry. This resolves inscription content, not its current owner or global sat lineage.
-
-Build on the existing optional block-hash hint by making the fallback contextual and accepting a block height. This is a follow-up feature request recorded after publication of v0.6.2, not functionality claimed by that release.
-
-## Next-version candidates: Bitmap names, parcels and audit
-
-The user proposed a parcel indexer, Bitmap index audit, comparison tool, and Bitmap address resolution for the next development pass. The comparison tool is a larger project; this records proposed scope, not completed functionality or a guaranteed release bundle.
-
-Use `DISTRICT.bitmap` to resolve the district's accepted Bitmap inscription, and `PARCEL.DISTRICT.bitmap` to resolve the parcel's inscription through the corresponding indexes. These are compact positional addresses with no additional labels. Integrate them consistently wherever Gateway accepts resource addresses, including the browser address bar. Bind results to the applicable rule profile and indexed chain coverage; distinguish missing coverage, no accepted claim, and unavailable inscription content. A parcel number must not be treated as an inscription index. Parcel rules and indexing requirements need to be specified and tested before claiming parcel resolution support.
-
-When the required district or parcel index is absent or lacks coverage, offer an actionable way to obtain it: build the required index locally or fetch a compatible published index from a Gateway peer. Recommend an available route according to peer capabilities and the required coverage, while making the source and work involved clear. Preserve the requested address and retry resolution once the dependency is ready. Peer-provided indexes must satisfy the applicable rule-profile, chain-anchor and verification requirements; a downloaded fingerprint alone does not establish correctness. If no suitable peer is available, retain the local-build option rather than returning an unexplained lookup failure. This acquisition flow is planned work, not a claim of automatic peer import in the current release.
-
-## Next-version refinement: reveal location included by default
-
-Include inscription reveal block heights by default in Bitmap indexes and exports intended for address resolution, with an explicit smaller-format option that omits them. Reveal height is distinct from the district number. Reuse authenticated block-batch context where available instead of duplicating the height in every internal record; preserve the location when producing a standalone export. This refines the earlier minimal district/ID default without adding full audit records. Define and version the extended export format before implementation.
-
-Explain the smaller-format tradeoff in the UI: "Without reveal block heights, Bitmap numbers still resolve to inscription IDs. Fetching inscription content may require a block hint or another provider." Do not claim all Bitmap lookup becomes impossible without heights. Conversely, including heights enables locating the required block but does not guarantee peer availability. This is a next-version decision, not a change to the published release.
-
-Latest decision: retain reveal block location as required information in the standard lean Bitmap index and its standard export, with no normal-user toggle to remove it. The standard index should support locating inscription content, not merely return an ID that needs another locator. This supersedes the optional-height UI proposal above. Lean still excludes full audit records; internal block-batch context may supply the location without per-record duplication. A future IDs-only comparison/export utility can remain separate from the standard resolvable index format. Available block sources are still required to fetch content.
-
-## Implemented after v0.6.2: focused Bitmap resolution patch
-
-The source now accepts `DISTRICT.bitmap` through the shared resolver and advertises the Bitmap browser namespace. District resolution uses the local accepted claim, checks the index checkpoint against the selected chain, and passes its saved reveal block hash to native inscription extraction. Missing coverage offers the Indexes workspace; automatic peer-index import and parcel resolution remain deferred. Existing Windows DNS integration needs to be reapplied to add the new namespace.
-
-Lean query rows now use the explicit `bitmap-lean-v2` object projection with `district`, `inscription`, and `reveal_height`. Exact lookup includes `reveal_height` and `reveal_block_hash`. Immutable internal batches retain their existing encoding and supply the reveal location through their authenticated checkpoints, so existing indexes do not need migration. This is query JSON, not a new complete-index download/export feature.
-
-Inscription resolution accepts a reveal block height or hash through the existing block-hint field. Failed bare-ID navigation offers a Supply reveal block action that preserves the ID and opens the hint field. Main Go tests, the reveal-location projection regression, index workspace interaction tests, browser companion tests, and real-browser shell navigation passed. Fresh live Bitcoin-peer resolution of a district and the new fallback flow have not yet been exercised. This patch is not part of the published v0.6.2 assets.
+Gateway-to-Gateway peerhood and index sharing also remain locked. Their eventual scope and trust model require separate validation. Related schema and reference-project alignment can inform future work without implying conformance or a release commitment today.

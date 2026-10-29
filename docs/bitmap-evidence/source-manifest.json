@@ -90,16 +90,16 @@
       "sha256": "68c2274d1b9a1d56933522fd2018ca7a23322e78d8089b5b5394b0d9400ba26e",
       "bytes": 6010,
       "retrieved_date": "2026-09-29",
-      "stored_file": "opi-head.json",
-      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here."
+      "stored_file": null,
+      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here. Redundant GitHub API response snapshot omitted from this source distribution; upstream URL, digest and retrieval date are retained for provenance."
     },
     {
       "url": "https://api.github.com/repos/Blockamoto/gitbook/commits/caf9e3a6f1e8be195f9f74f264f36983a55fec91",
       "sha256": "be98d67a8650b98c201ed8edd6f4f6612520968f98cc63976a544ddedba7daf8",
       "bytes": 5320,
       "retrieved_date": "2026-09-29",
-      "stored_file": "bitmap-source-head.json",
-      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here."
+      "stored_file": null,
+      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here. Redundant GitHub API response snapshot omitted from this source distribution; upstream URL, digest and retrieval date are retained for provenance."
     },
     {
       "url": "https://raw.githubusercontent.com/Blockamoto/gitbook/caf9e3a6f1e8be195f9f74f264f36983a55fec91/bitmap-theory-whitepaper/theory.md",
@@ -113,8 +113,8 @@
       "sha256": "ed40c6f3ecc8ef7ff7da8bdd9e4cea65a8602f0933f6a9be47f52c9c7bbfb3b3",
       "bytes": 3459,
       "retrieved_date": "2026-09-29",
-      "stored_file": "tap-head.json",
-      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here."
+      "stored_file": null,
+      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here. Redundant GitHub API response snapshot omitted from this source distribution; upstream URL, digest and retrieval date are retained for provenance."
     },
     {
       "url": "https://raw.githubusercontent.com/Trac-Systems/tap-protocol-specs/0ba25b37d51e41e8b8958b0eb4a2c420a84a6361/README.md",
@@ -128,8 +128,8 @@
       "sha256": "6b5042b390be5ef56dec341162658990caf17329f0df749e5f3ba7bf8f27040b",
       "bytes": 4592,
       "retrieved_date": "2026-09-29",
-      "stored_file": "trac-head.json",
-      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here."
+      "stored_file": null,
+      "note": "Response was retrieved through the main-branch commits endpoint; returned SHA matches the pinned URL recorded here. Redundant GitHub API response snapshot omitted from this source distribution; upstream URL, digest and retrieval date are retained for provenance."
     },
     {
       "url": "https://raw.githubusercontent.com/BennyTheDev/trac-bitmap-public-endpoint/b0130f1d66178da7f3e89c6db1a0244be6ea4d3c/README.md",

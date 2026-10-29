@@ -135,7 +135,7 @@ func (a *app) startSync(req syncRequest) error {
 	a.syncJob = syncJobState{Mode: mode, From: from, To: to, SnapshotTip: tip, Follow: req.Follow, Current: from - 1, Running: true, StartedAt: time.Now().UTC().Format(time.RFC3339), UpdatedAt: time.Now().UTC().Format(time.RFC3339)}
 	a.syncMu.Unlock()
 	_ = a.saveSyncState()
-	go a.runSync(ctx)
+	a.startUpdateAwareWorker(func() { a.runSync(ctx) })
 	return nil
 }
 
@@ -148,7 +148,7 @@ func (a *app) resumeSyncIfNeeded() {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.syncCancel = cancel
 	a.syncMu.Unlock()
-	go func() { time.Sleep(1500 * time.Millisecond); a.runSync(ctx) }()
+	a.startUpdateAwareWorker(func() { time.Sleep(1500 * time.Millisecond); a.runSync(ctx) })
 }
 
 func (a *app) stopSync() {
@@ -194,6 +194,9 @@ func (a *app) runSync(ctx context.Context) {
 
 			view, err := a.fetchAndDecode(strconv.FormatInt(h, 10))
 			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
 				a.failSync(err)
 				return
 			}

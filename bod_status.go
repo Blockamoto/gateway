@@ -21,25 +21,24 @@ type extensionCapability struct {
 }
 
 type bodStatus struct {
-	Wire                   int                   `json:"wire"`
-	ProtocolID             string                `json:"protocol_id"`
-	GatewayFeatureID       string                `json:"gateway_feature_id"`
-	GatewayWire            int                   `json:"gateway_wire"`
-	ExperimentalServiceBit uint                  `json:"experimental_service_bit"`
-	Snapshot               chainSnapshot         `json:"snapshot"`
-	Capabilities           []string              `json:"capabilities"`
-	Profiles               []string              `json:"profiles"`
-	BlockRanges            []heightInterval      `json:"block_ranges,omitempty"`
-	BlockRangeCount        int                   `json:"block_range_count"`
-	RangesTruncated        bool                  `json:"ranges_truncated"`
-	TxLocationCoverage     []heightInterval      `json:"tx_location_coverage,omitempty"`
-	SpenderCoverage        []heightInterval      `json:"spender_coverage,omitempty"`
-	SpenderLookup          bool                  `json:"spender_lookup"`
-	SpenderSnapshot        *chainSnapshot        `json:"spender_snapshot,omitempty"`
-	GraphThroughHeight     int64                 `json:"graph_through_height,omitempty"`
-	GraphThroughHash       string                `json:"graph_through_hash,omitempty"`
-	CacheBlocks            int                   `json:"cache_blocks"`
-	Extensions             []extensionCapability `json:"extensions,omitempty"`
+	Wire               int                   `json:"wire"`
+	ProtocolID         string                `json:"protocol_id"`
+	GatewayFeatureID   string                `json:"gateway_feature_id"`
+	GatewayWire        int                   `json:"gateway_wire"`
+	Snapshot           chainSnapshot         `json:"snapshot"`
+	Capabilities       []string              `json:"capabilities"`
+	Profiles           []string              `json:"profiles"`
+	BlockRanges        []heightInterval      `json:"block_ranges,omitempty"`
+	BlockRangeCount    int                   `json:"block_range_count"`
+	RangesTruncated    bool                  `json:"ranges_truncated"`
+	TxLocationCoverage []heightInterval      `json:"tx_location_coverage,omitempty"`
+	SpenderCoverage    []heightInterval      `json:"spender_coverage,omitempty"`
+	SpenderLookup      bool                  `json:"spender_lookup"`
+	SpenderSnapshot    *chainSnapshot        `json:"spender_snapshot,omitempty"`
+	GraphThroughHeight int64                 `json:"graph_through_height,omitempty"`
+	GraphThroughHash   string                `json:"graph_through_hash,omitempty"`
+	CacheBlocks        int                   `json:"cache_blocks"`
+	Extensions         []extensionCapability `json:"extensions,omitempty"`
 }
 
 func mergeIntervals(in []heightInterval) []heightInterval {
@@ -204,7 +203,7 @@ func (a *app) buildBODStatus() bodStatus {
 		graphThroughHash = spenderSnapshot.Hash
 	}
 	return bodStatus{
-		Wire: bodWireVersion, ProtocolID: bodProtocolID, GatewayFeatureID: gatewayFeatureID, GatewayWire: gatewayWireVersion, ExperimentalServiceBit: 25,
+		Wire: bodWireVersion, ProtocolID: bodProtocolID, GatewayFeatureID: gatewayFeatureID, GatewayWire: gatewayWireVersion,
 		Snapshot: snapshot, Capabilities: uniqueStrings(caps), Profiles: profiles,
 		BlockRanges: blockRanges, BlockRangeCount: len(blockRangesAll), RangesTruncated: truncated,
 		TxLocationCoverage: txCov, SpenderCoverage: spenderCov,

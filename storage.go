@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"strings"
 )
 
 type storageHit struct {
+	Decoded   *blockView
 	Raw       []byte
 	Source    string // human-readable source
 	Network   string // core|core_mount|cache
@@ -19,12 +21,28 @@ type storageHit struct {
 // and the read-only Core block-store mount participate in the unified local
 // store without forcing duplicate BOD block copies.
 func (a *app) localStorageBlock(target blockTarget) (storageHit, error) {
+	return a.localStorageBlockContext(context.Background(), target)
+}
+
+func (a *app) localStorageBlockContext(ctx context.Context, target blockTarget) (storageHit, error) {
+	return a.localStorageBlockProvidersContext(ctx, target, true)
+}
+
+func (a *app) localStorageBlockProvidersContext(ctx context.Context, target blockTarget, privateIndex bool) (storageHit, error) {
+	if err := ctx.Err(); err != nil {
+		return storageHit{}, err
+	}
+	if privateIndex {
+		if raw, decoded, err := readIndexedRawBody(a.dataDir, target, nil); err == nil {
+			return storageHit{Raw: raw, Decoded: &decoded, Source: "Gateway durable raw Blocks body", Network: "index_retained", Height: target.Height}, nil
+		}
+	}
 	// 0.4.0 presents one logical local Bitcoin data space. Existing BOD-owned
 	// cache objects are checked first, then a live Core RPC backend, then Core's
 	// blk*.dat files through the read-only mount. A mounted Core hit is never
 	// copied into the BOD cache merely because it was read.
 	if bd, err := a.cachedBlockPayloadUnverified(target.HashDisplay); err == nil {
-		return storageHit{Raw: bd.Raw, Source: "BOD local cache", Network: "cache", FromCache: true, Height: bd.Height}, nil
+		return storageHit{Raw: bd.Raw, Source: "Gateway local cache", Network: "cache", FromCache: true, Height: bd.Height}, nil
 	}
 
 	if raw, err := a.archiveBlock(target.HashDisplay); err == nil {
@@ -36,13 +54,17 @@ func (a *app) localStorageBlock(target blockTarget) (storageHit, error) {
 	a.settingsMu.RLock()
 	settings := a.settings
 	a.settingsMu.RUnlock()
-	if raw, err := coreRawBlock(settings, target.HashDisplay); err == nil {
+	if raw, err := coreRawBlockContext(ctx, settings, target.HashDisplay); err == nil {
 		return storageHit{Raw: raw, Source: "Bitcoin Core live RPC", Network: "core", Height: target.Height}, nil
 	}
-	return storageHit{}, fmt.Errorf("block not present in BOD cache or mounted/live Bitcoin Core storage")
+	return storageHit{}, fmt.Errorf("block not present in Gateway cache or mounted/live Bitcoin Core storage")
 }
 
 func coreRawBlock(s appSettings, hash string) ([]byte, error) {
+	return coreRawBlockContext(context.Background(), s, hash)
+}
+
+func coreRawBlockContext(ctx context.Context, s appSettings, hash string) ([]byte, error) {
 	if !validHash(hash) {
 		return nil, fmt.Errorf("invalid block hash")
 	}
@@ -51,7 +73,7 @@ func coreRawBlock(s appSettings, hash string) ([]byte, error) {
 		return nil, err
 	}
 	var rawHex string
-	if err := c.call("getblock", []any{strings.ToLower(hash), 0}, &rawHex); err != nil {
+	if err := c.callContext(ctx, "getblock", []any{strings.ToLower(hash), 0}, &rawHex); err != nil {
 		return nil, err
 	}
 	raw, err := hex.DecodeString(strings.TrimSpace(rawHex))
@@ -61,14 +83,17 @@ func coreRawBlock(s appSettings, hash string) ([]byte, error) {
 	return raw, nil
 }
 
-func (a *app) storageBlockForServing(hash string) (blockData, error) {
+func (a *app) storageBlockForServing(ctx context.Context, hash string) (blockData, error) {
+	if err := ctx.Err(); err != nil {
+		return blockData{}, err
+	}
 	if !validHash(hash) {
 		return blockData{}, fmt.Errorf("invalid block hash")
 	}
 	hash = strings.ToLower(hash)
 	var target blockTarget
 	var e error
-	if t, err := a.coreTargetByHash(hash); err == nil {
+	if t, err := a.coreTargetByHashContext(ctx, hash); err == nil {
 		target = t
 	} else {
 		height, _, err := a.findSelectedHeader(hash)
@@ -80,7 +105,14 @@ func (a *app) storageBlockForServing(hash string) (blockData, error) {
 			return blockData{}, e
 		}
 	}
-	hit, e := a.localStorageBlock(target)
+	ready := a.currentBitcoinServing()
+	if ready.Limited && target.Height < ready.Height-287 {
+		return blockData{}, fmt.Errorf("block is outside limited Bitcoin serving window")
+	}
+	// A private index body is not a serving provider. Excluding it here also
+	// prevents it from shadowing an independently shared cache/archive/Core
+	// copy of the same public Bitcoin block.
+	hit, e := a.localStorageBlockProvidersContext(ctx, target, false)
 	if e != nil {
 		return blockData{}, e
 	}
@@ -98,16 +130,19 @@ func (a *app) storageBlockForServing(hash string) (blockData, error) {
 			a.settingsMu.RLock()
 			settings := a.settings
 			a.settingsMu.RUnlock()
-			if !settings.ServeData || !a.currentBitcoinServing().Archival {
+			if !settings.ServeData || !(ready.Archival || ready.Limited) {
 				return blockData{}, fmt.Errorf("cached block is private or not shared")
 			}
-			raw, err := coreRawBlock(settings, hash)
+			raw, err := coreRawBlockContext(ctx, settings, hash)
 			if err != nil {
 				a.invalidateBitcoinServing("Core block provider failed: " + err.Error())
 				return blockData{}, err
 			}
 			hit = storageHit{Raw: raw, Source: "Bitcoin Core explicit serving provider", Network: "core", Height: target.Height}
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return blockData{}, err
 	}
 	view, e := parseBlockDetailed(target.Height, hash, target.ExpectedHeader, hit.Raw, hit.Source, hit.FromCache)
 	if e != nil || !integrityVerified(view) {

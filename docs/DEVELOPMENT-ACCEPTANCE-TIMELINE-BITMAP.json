@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "kind": "local-development-preview",
+  "runtime_source": "5b2b1c01368a2dd745148bff98146e29e2100e7a",
+  "client_sha256": "66df5502d7e8709ad7e6540d29280b2dbca65c082c2cdee109517f117cf39e4f",
+  "archive_sha256": "8795c18736c77ca402ab2e8d79dfebc782ad2b38348e91ad0e515bd1929b2727",
+  "artifact_name": "Gateway-Timeline-Bitmap-Development-5b2b1c0.zip",
+  "application_compatibility_version": "0.7.7",
+  "published": false,
+  "main_or_updater_changed": false,
+  "native_checks": {
+    "sats": "passed",
+    "bitmap_read_only_routes": "passed",
+    "viewport": "passed",
+    "controls_setup_theme_updater_offline": "passed",
+    "inscription_security_media_layout": "passed_after_fixture_readiness_correction"
+  },
+  "source_checks": [
+    "transport_coordinate_and_intent",
+    "composed_resource_workspace_and_mixed_live_review",
+    "timeline_review_desktop_narrow_help_notches_handles",
+    "timeline_sparse_coverage",
+    "timeline_gestures_and_hierarchy",
+    "global_selection",
+    "addresses",
+    "sats",
+    "utxo",
+    "bitmap_views"
+  ],
+  "backend": {
+    "full_suite_source": "c8c5c509d6b164f08fd89557fc17c87df273d151",
+    "passes": 1184,
+    "skips": 45,
+    "failures": 1,
+    "failure": "outdated Bitmap availability expectation; exposed legacy Bitmap diagnostic guard classification",
+    "correction": "availability fixture corrected; legacy dispatch guards narrowed to exact development consumers",
+    "corrected_focused_passes": 13,
+    "full_corrected_rerun": false,
+    "static_analysis": "passed",
+    "race_tested_locally": false
+  },
+  "test_fixture_corrections": [
+    "Bitmap native no-head assertion checks actual bitmap-development-v1 paths",
+    "Inscription native harness waits for workspaceReady before viewport.open"
+  ],
+  "bitmap_reference_review": {
+    "repository": "Blockamoto/bitmap",
+    "branch": "new-main",
+    "revision": "1751e0d37073ab920cbd8b5548c61b74c37716d1",
+    "review": "BITMAP-NEW-MAIN-REVIEW.md",
+    "chain_review": "BITMAP-CHAIN-NEW-MAIN-REVIEW.md",
+    "runtime_reinterpreted": false,
+    "configurable_profiles_implemented": false
+  },
+  "limits": [
+    "bounded genuine and authenticated synthetic fixtures, no whole-chain performance claim",
+    "experimental Bitmap profiles, incomplete general Parcel parent proof",
+    "no canonical-profile serialization or full consensus claim",
+    "older preview preserved; revised preview served separately"
+  ]
+}

@@ -38,7 +38,24 @@ func Test050RawOutpointSatpointResolution(t *testing.T) {
 	if _, e = a.fetchAndDecodeTarget(target); e != nil {
 		t.Fatal(e)
 	}
+	store, e := openIndexStore(a.dataDir, "blocks")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = store.appendBlock(v, 0, "ephemeral"); e != nil {
+		t.Fatal(e)
+	}
 	id := v.Transactions[0].TxID
+	if _, e = a.resolveSearchInput(id + ":0"); e == nil {
+		t.Fatal("Raw-only store unexpectedly resolved a transaction-ID outpoint")
+	}
+	locators, e := openIndexStore(a.dataDir, "tx-locator")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = locators.appendBlock(v, 0, "ephemeral"); e != nil {
+		t.Fatal(e)
+	}
 	for _, q := range []string{id + ":0", id + ":0:0", id + ":0:4999999999"} {
 		r, e := a.resolveSearchInput(q)
 		if e != nil || r.Tx == nil {

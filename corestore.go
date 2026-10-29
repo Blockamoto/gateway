@@ -392,24 +392,55 @@ func (a *app) saveCoreStoreManifest() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(a.coreStoreManifestPath(), b, 0644)
+	return atomicWriteBytes(a.coreStoreManifestPath(), b)
 }
 
 func (a *app) refreshCoreBlockStoreAsync() {
-	go a.refreshCoreBlockStore()
+	a.startUpdateAwareWorker(a.refreshCoreBlockStore)
 }
 
 func (a *app) coreStoreMaintenanceLoop() {
+	if a.network != nil {
+		select {
+		case <-a.network.ctx.Done():
+			return
+		default:
+		}
+	}
 	a.refreshMountedWhenPermitted()
 	ticker := time.NewTicker(60 * time.Second)
 	defer ticker.Stop()
-	for range ticker.C {
-		a.refreshMountedWhenPermitted()
+	var stopped <-chan struct{}
+	if a.network != nil {
+		stopped = a.network.ctx.Done()
+	}
+	for {
+		select {
+		case <-stopped:
+			return
+		case <-ticker.C:
+			if stopped != nil {
+				select {
+				case <-stopped:
+					return
+				default:
+				}
+			}
+			a.refreshMountedWhenPermitted()
+		}
 	}
 }
 
 func (a *app) refreshCoreBlockStore() {
 	a.coreStoreMu.Lock()
+	if a.network != nil {
+		select {
+		case <-a.network.ctx.Done():
+			a.coreStoreMu.Unlock()
+			return
+		default:
+		}
+	}
 	if a.coreStore.Status.ScanRunning {
 		a.coreStoreMu.Unlock()
 		return
@@ -789,7 +820,7 @@ func (a *app) unifiedContinuationHeight() int64 {
 func (a *app) reconfigureCoreBlockStore() {
 	a.initCoreBlockStore()
 	// A mount change must not silently start an archival scan.
-	go a.refreshMountedWhenPermitted()
+	a.startUpdateAwareWorker(a.refreshMountedWhenPermitted)
 }
 
 func (a *app) refreshMountedWhenPermitted() {

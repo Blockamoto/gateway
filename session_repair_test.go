@@ -24,8 +24,7 @@ func sessionRepairManaged(t *testing.T, a *app, c net.Conn, address string) *bit
 	s := &bitcoinSession{n: a.network, peer: &peerConn{conn: c, addr: address, gateway: true, bod: true, gatewayProtocols: protocols, localProtocols: protocols}, done: make(chan struct{}), slot: make(chan struct{}, 1), serveQueue: make(chan message, 4), view: networkPeerView{Address: address, State: "connected", Direction: "outbound", Role: "gateway_member", Gateway: true, BOD: true, Connected: time.Now()}}
 	a.network.mu.Lock()
 	a.network.sessions[address] = s
-	a.network.tokens = 0
-	a.network.tokenAt = time.Now().Add(24 * time.Hour)
+	a.network.nextDial = time.Now().Add(24 * time.Hour)
 	a.network.mu.Unlock()
 	var loops sync.WaitGroup
 	loops.Add(2)
@@ -123,7 +122,7 @@ func TestSessionLateRepliesCannotCompleteNextRequest(t *testing.T) {
 			if err := <-firstDone; !errors.Is(err, context.Canceled) {
 				t.Fatalf("first request: %v", err)
 			}
-			requireScoutRepairOpen(t, s)
+			requireSessionOpen(t, s)
 			second, stop := context.WithTimeout(context.Background(), 2*time.Second)
 			defer stop()
 			got, err := s.request(second, command, requests[1], func(m message) bool { return true })
@@ -154,16 +153,16 @@ func TestSessionHeaderTimeoutPreservesOtherServices(t *testing.T) {
 		if err == nil {
 			m, err = readMessage(remote)
 		}
-		var req bodEnvelope
-		if err == nil && (m.command != "bodmsg" || json.Unmarshal(m.payload, &req) != nil) {
+		var request []byte
+		if err == nil && m.command != "getdata" {
 			err = fmt.Errorf("next command %s", m.command)
 		}
+		request = append([]byte(nil), m.payload...)
 		if err == nil {
 			err = writeMessage(remote, "headers", []byte{0})
 		}
 		if err == nil {
-			raw, _ := json.Marshal(bodEnvelope{Wire: 1, Kind: "response", Type: req.Type, ID: req.ID, Status: "ok", Payload: json.RawMessage(`{}`)})
-			err = writeMessage(remote, "bodmsg", raw)
+			err = writeMessage(remote, "notfound", request)
 		}
 		remoteDone <- err
 	}()
@@ -174,7 +173,7 @@ func TestSessionHeaderTimeoutPreservesOtherServices(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
-	requireScoutRepairOpen(t, s)
+	requireSessionOpen(t, s)
 	if _, err := s.request(context.Background(), "getheaders", nil, func(m message) bool { return true }); err == nil {
 		t.Fatal("timed-out uncorrelated header role was reused")
 	}
@@ -188,8 +187,8 @@ func TestSessionHeaderTimeoutPreservesOtherServices(t *testing.T) {
 	}
 	bodCtx, done := context.WithTimeout(context.Background(), time.Second)
 	defer done()
-	if _, err := s.bodRequest(bodCtx, overlayRequest{Type: "status"}); err != nil {
-		t.Fatalf("late headers poisoned BOD request: %v", err)
+	if _, err := s.request(bodCtx, "getdata", sessionRepairBlockRequest(mainnetBlockOne(t)), func(m message) bool { return m.command == "notfound" }); err != nil {
+		t.Fatalf("late headers poisoned Bitcoin block request: %v", err)
 	}
 	if err := <-remoteDone; err != nil {
 		t.Fatal(err)
@@ -213,13 +212,16 @@ func TestSessionProviderSelectionRequiresBitcoinService(t *testing.T) {
 }
 
 func TestSessionInboundIsFullDuplexAndCountedOnce(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion")
+	}
 	a, b := independentTestApp(t), independentTestApp(t)
 	a.settings.ServeData, b.settings.ServeData = true, true
 	if err := b.source.start(); err != nil {
 		t.Fatal(err)
 	}
 	endpoint := b.source.tcp.Addr().String()
-	a.network.add(endpoint, "manual_gateway", gatewayExperimentalServiceBit)
+	a.network.add(endpoint, "manual_gateway", 0)
 	a.network.maintain()
 	eventually051(t, func() bool {
 		for _, n := range []*bitcoinNetwork{a.network, b.network} {
@@ -274,7 +276,7 @@ func TestSessionInboundIsFullDuplexAndCountedOnce(t *testing.T) {
 		}
 	}
 	b.network.mu.Lock()
-	ephemeralQueued := b.network.ledger[right.peer.addr] != nil
+	ephemeralQueued := b.network.addresses[right.peer.addr] != nil
 	b.network.mu.Unlock()
 	if ephemeralQueued {
 		t.Fatal("inbound source port became a discovery target")
@@ -284,6 +286,9 @@ func TestSessionInboundIsFullDuplexAndCountedOnce(t *testing.T) {
 }
 
 func TestSessionBODBudgetRenewsWithoutDisconnect(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion")
+	}
 	_, b, client, server := sessionRepairPair(t)
 	var clock int64
 	atomic.StoreInt64(&clock, time.Now().UnixNano())
@@ -302,7 +307,7 @@ func TestSessionBODBudgetRenewsWithoutDisconnect(t *testing.T) {
 	if err := call(); err == nil || !strings.Contains(err.Error(), "busy") {
 		t.Fatalf("exhausted budget: %v", err)
 	}
-	requireScoutRepairOpen(t, server)
+	requireSessionOpen(t, server)
 	atomic.AddInt64(&clock, int64(time.Minute))
 	for i := 0; i < 32; i++ {
 		if err := call(); err != nil {
@@ -312,6 +317,9 @@ func TestSessionBODBudgetRenewsWithoutDisconnect(t *testing.T) {
 }
 
 func TestSessionReceiveOnlyRepliesAndControlPlaneStayAvailable(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion")
+	}
 	_, b, client, server := sessionRepairPair(t)
 	b.settingsMu.Lock()
 	b.settings.ServeData, b.settings.SatlineServePublished = false, false
@@ -337,11 +345,14 @@ func TestSessionReceiveOnlyRepliesAndControlPlaneStayAvailable(t *testing.T) {
 	if _, err := server.bodRequest(ctx, overlayRequest{Type: "status"}); err != nil {
 		t.Fatalf("receive-only node lost its client role: %v", err)
 	}
-	requireScoutRepairOpen(t, client)
-	requireScoutRepairOpen(t, server)
+	requireSessionOpen(t, client)
+	requireSessionOpen(t, server)
 }
 
 func TestSessionRemoteAddressScanIsUnsupported(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion")
+	}
 	_, _, client, _ := sessionRepairPair(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -352,6 +363,9 @@ func TestSessionRemoteAddressScanIsUnsupported(t *testing.T) {
 }
 
 func TestSessionSatlineBudgetRenewsWithoutDisconnect(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion")
+	}
 	_, b, client, _ := sessionRepairPair(t)
 	_, query, result := satlinePeerFixture(t)
 	b.settingsMu.Lock()
@@ -392,6 +406,9 @@ func TestSessionSatlineBudgetRenewsWithoutDisconnect(t *testing.T) {
 }
 
 func TestSessionReceiveOnlyGatewayControlReplies(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion")
+	}
 	a, s, remote := sessionRepairRaw(t)
 	a.settingsMu.Lock()
 	a.settings.ServeData = false
@@ -414,10 +431,13 @@ func TestSessionReceiveOnlyGatewayControlReplies(t *testing.T) {
 	if err != nil || m.command != "addr" {
 		t.Fatalf("discovery control reply: %s %v", m.command, err)
 	}
-	requireScoutRepairOpen(t, s)
+	requireSessionOpen(t, s)
 }
 
 func TestSessionOutboundDisableKeepsInboundServing(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion")
+	}
 	_, b, client, server := sessionRepairPair(t)
 	b.network.mu.Lock()
 	server.view.Direction, server.view.Role = "inbound", "gateway_inbound"
@@ -431,7 +451,7 @@ func TestSessionOutboundDisableKeepsInboundServing(t *testing.T) {
 	if _, err := client.bodRequest(ctx, overlayRequest{Type: "status"}); err != nil {
 		t.Fatalf("outbound disable stopped independent inbound serving: %v", err)
 	}
-	requireScoutRepairOpen(t, server)
+	requireSessionOpen(t, server)
 }
 
 func TestSessionCancelledRequestDoesNotWaitForServiceWriter(t *testing.T) {
@@ -440,7 +460,10 @@ func TestSessionCancelledRequestDoesNotWaitForServiceWriter(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
 	defer cancel()
 	finished := make(chan error, 1)
-	go func() { _, err := s.bodRequest(ctx, overlayRequest{Type: "status"}); finished <- err }()
+	go func() {
+		_, err := s.request(ctx, "getheaders", nil, func(m message) bool { return true })
+		finished <- err
+	}()
 	select {
 	case err := <-finished:
 		if !errors.Is(err, context.DeadlineExceeded) {
@@ -455,71 +478,13 @@ func TestSessionCancelledRequestDoesNotWaitForServiceWriter(t *testing.T) {
 	if _, err := readMessage(remote); err == nil {
 		t.Fatal("cancelled request was written after its deadline")
 	}
-	requireScoutRepairOpen(t, s)
-}
-
-func TestSessionOrdinaryReceiveOnlyPeerIsBoundedScout(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { listener.Close() })
-	peerDone := make(chan struct{})
-	go func() {
-		defer close(peerDone)
-		c, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		defer c.Close()
-		_ = c.SetDeadline(time.Now().Add(3 * time.Second))
-		m, err := readMessage(c)
-		if err != nil || m.command != "version" {
-			return
-		}
-		version := makeVersionPayload(listener.Addr().String(), 0)
-		binary.LittleEndian.PutUint32(version[:4], 70016)
-		if writeMessage(c, "version", version) != nil || writeMessage(c, "verack", nil) != nil {
-			return
-		}
-		for {
-			m, err := readMessage(c)
-			if err != nil {
-				return
-			}
-			if m.command == "getaddr" {
-				_ = writeMessage(c, "addr", []byte{0})
-			}
-			if m.command == "ping" {
-				_ = writeMessage(c, "pong", m.payload)
-			}
-		}
-	}()
-	a := independentTestApp(t)
-	a.network.add(listener.Addr().String(), "manual_bitcoin", 0)
-	a.network.maintain()
-	eventually051(t, func() bool { return len(a.network.listSessions()) == 1 })
-	s := a.network.listSessions()[0]
-	a.network.mu.Lock()
-	bounded := s.scout && s.view.Role == "gateway_search" && !s.peer.gateway
-	s.view.Connected = time.Now().Add(-a.network.policy.ProbeWindow - time.Second)
-	a.network.tokens, a.network.tokenAt = 0, time.Now().Add(time.Hour)
-	a.network.mu.Unlock()
-	if !bounded {
-		t.Fatal("ordinary receive-only peer occupied permanent Bitcoin transport capacity")
-	}
-	a.network.maintain()
-	if len(a.network.listSessions()) != 0 {
-		t.Fatal("ordinary receive-only scout survived its deadline")
-	}
-	select {
-	case <-peerDone:
-	case <-time.After(time.Second):
-		t.Fatal("retired scout transport did not close")
-	}
+	requireSessionOpen(t, s)
 }
 
 func TestSessionSlowProviderDoesNotBlockPingOrReverseRequest(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion")
+	}
 	a, s, remote := sessionRepairRaw(t)
 	entered, release := make(chan struct{}), make(chan struct{})
 	var enterOnce, releaseOnce sync.Once
@@ -612,5 +577,14 @@ func TestSessionIdleRepliesAreDiscarded(t *testing.T) {
 	if pending != nil {
 		t.Fatal("unsolicited replies created a request mailbox")
 	}
-	requireScoutRepairOpen(t, s)
+	requireSessionOpen(t, s)
+}
+
+func requireSessionOpen(t *testing.T, s *bitcoinSession) {
+	t.Helper()
+	select {
+	case <-s.done:
+		t.Fatal("session unexpectedly closed")
+	default:
+	}
 }

@@ -74,6 +74,10 @@ func ordinaryBitcoinHandshake(t *testing.T, addr string) (net.Conn, uint64) {
 		switch m.command {
 		case "verack":
 			gotVerack = true
+		case "feature":
+			if !releaseFeatureAvailable("gateway-peerhood") {
+				t.Fatal("locked Gateway feature offered to ordinary Bitcoin peer")
+			}
 		case "ping":
 			_ = writeMessage(c, "pong", m.payload)
 		default:

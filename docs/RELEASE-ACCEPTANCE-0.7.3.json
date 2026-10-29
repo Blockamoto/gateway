@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "version": "0.7.3",
+  "title": "The transactions update",
+  "status": "approved-local-review-draft-preparation",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-11",
+  "published": false,
+  "release_kind": "draft",
+  "source_identity": "SOURCE-REVISION.txt and artifact-manifest.json identify the final committed packaging source. Earlier development-runtime results remain attributed to their exact hashes; the CI navigation correction requires refreshed draft packages and independent exact-binary checks.",
+  "enabled_indexes": ["headers", "blocks", "inscriptions", "tx-locator"],
+  "related_inscription_locator_construction_available": true,
+  "gated_features": ["gateway-peerhood", "sat-state", "satline", "txo-spender", "bitmap", "bitmap-compatibility", "address-history", "address-state"],
+  "validation": {
+    "windows_go_clean_suite": {
+      "result": "PASS",
+      "passed": 941,
+      "expected_skips": 48,
+      "failed": 0,
+      "scope": "Full clean suite before the final narrow gesture, CSS raster-policy and flow-note corrections; targeted follow-up checks validate those later changes."
+    },
+    "static_and_linux_build": {"result": "PASS", "linux_ci_for_final_committed_source": "pending after navigation race correction"},
+    "initial_main_ci": {
+      "source_revision": "e3b2b53d0553dc7103eedfaa0a88c465cc1d1e5b",
+      "url": "https://github.com/Blockamoto/gateway/actions/runs/38140548740",
+      "result": "FAIL",
+      "go_tests": {"passed": 920, "skipped": 52, "failed": 0},
+      "race_tests": {"passed": 576, "skipped": 18, "failed": 0},
+      "failure": "Inscription workspace browser timed out waiting for transaction-level hierarchy. A delayed same-block resolved callback can cancel a newer hierarchy descent.",
+      "scope": "Build, full Go tests, vet, races, browser helpers and packaging checks passed. Later native browser suites were not reached. Original failure retained; a focused production correction and regression are required."
+    },
+    "resolved_navigation_regression": {
+      "result": "PASS",
+      "script": "scripts/test-hierarchy-resolved-echo-browser.js",
+      "before_fix": "FAIL: releasing a held older same-block transaction response canceled a newer held hierarchy descent",
+      "cases": ["same-block transaction and inscription response preservation", "actual map, output and inscription navigation cancellation", "cross-block resolved synchronization", "explicit global navigation cancellation", "same-height changed block anchor invalidation", "indexing selections preserved and no builds started"],
+      "affected_workspace_browser_suites": "PASS: original inscription workspace, hierarchy, Explorer and composed transaction workspace; controller helper and changed JavaScript syntax checks also passed",
+      "scope": "Controlled deterministic request ordering. This does not establish ordinary Bitcoin-network retrieval or final packaged runtime behavior."
+    },
+    "final_local_windows_runtime": {
+      "sha256": "4c4c414e2331c6d3094444fadea6a2888419df7428036cb79e00f4f179e441a7",
+      "native_content_guards": "PASS",
+      "native_saved_choices_setup_shell": "PASS",
+      "native_real_map_flow_and_split": "PASS",
+      "scope": "Exact user-reviewed development executable before the later CI navigation-race correction. Refreshed full-header release packages and installer require their own exact-binary checks."
+    },
+    "affected_source_browser_suites": {
+      "result": "PASS",
+      "count": 7,
+      "scope": "Coverage and keyboard, docked workspace gestures, explicit modifier selections, composed transaction workspace, viewport navigation and raster policy, inscription isolation and stale responses, and progressive hierarchy. Controlled fixtures do not establish Bitcoin witness evidence."
+    },
+    "reference_geometry": {
+      "mempool": {"result": "PASS", "reference_commit": "adde1343c8ab3e2258175197a7b618bec1589933", "vectors": 27},
+      "bitfeed": {"result": "PASS", "reference_commit": "d2272e720c48fe098653c9e39b8204ff3e4000ce", "cases": 10, "ordered_squares": 704},
+      "whole_render_pixel_parity": "not_established",
+      "native_zoom_sharpness": "pending_user_review"
+    },
+    "real_bitcoin_viewport": {
+      "result": "PASS",
+      "complete_blocks": [{"height": 840000, "transaction_count": 3050}, {"height": 840003, "transaction_count": 5288}],
+      "output_local_sat_count": 4075061499,
+      "exact_last_offset": 4075061498,
+      "positional_inscription": "7i0.840000",
+      "scope": "Ordinary Bitcoin data, complete maps, block-to-transaction-to-output navigation, exact output-local offsets, real isolated inscription content and persisted block cache. No synthetic picker entries are claimed as Bitcoin data."
+    },
+    "native_content_browser": {
+      "result": "PASS",
+      "separate_content_site": true,
+      "image_audio_video_wrappers": "PASS",
+      "uncached_recursive_dependency_without_third_party_cookies": "PASS",
+      "foreign_requests_with_known_viewer_grant": "denied",
+      "management_and_cancel_with_read_only_viewer_token": "denied",
+      "hostile_html_svg": "isolated",
+      "infinite_script_parent_responsive": true,
+      "scope": "Actual Go content server and browser security boundaries with explicit provider-reported local adapter fixtures; separate from native selected-chain reveal proof."
+    },
+    "draft_package_structure": "pending",
+    "exact_package_native_runtime": "pending",
+    "local_signed_upgrade": "pending",
+    "exact_file_defender_diagnostics": "pending",
+    "system_installation": "not_established"
+  },
+  "hosted_delivery": "not_activated",
+  "notes": [
+    "This draft does not approve a new hosted updater release or change feed renewal policy.",
+    "Independent Transaction and Inscription browse-index policies default off and persist separately.",
+    "Indexing records, source block bytes and on-demand inscription content cache remain distinct.",
+    "Verified reveal-output assignments are not claims of current ownership or complete sat history.",
+    "Windows executables remain unsigned; local antivirus diagnostics do not establish cloud or other-machine clearance.",
+    "Development profiles, credentials, peer addresses and private local audit records are excluded from release inputs."
+  ]
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -67,10 +68,14 @@ func (a *app) coreTargetByHeight(height int64) (blockTarget, error) {
 }
 
 func (a *app) coreTargetByHash(hash string) (blockTarget, error) {
+	return a.coreTargetByHashContext(context.Background(), hash)
+}
+
+func (a *app) coreTargetByHashContext(ctx context.Context, hash string) (blockTarget, error) {
 	a.settingsMu.RLock()
 	settings := a.settings
 	a.settingsMu.RUnlock()
-	loc, err := coreBlockLocationByHash(settings, hash)
+	loc, err := coreBlockLocationByHashContext(ctx, settings, hash)
 	if err != nil {
 		return blockTarget{}, err
 	}

@@ -51,9 +51,6 @@ func independentTestApp(t *testing.T) *app {
 		t.Fatal(e)
 	}
 	s := defaultSettings()
-	// Historical network fixtures exercise Bitcoin-native discovery deliberately.
-	// Production defaults and migration are tested separately with this opt-in off.
-	s.BitcoinGatewayDiscovery = true
 	s.CoreDisabled = true
 	s.CoreMountDisabled = true
 	s.BitcoinDataDir = ""
@@ -143,10 +140,7 @@ func ordinaryFixture051(t *testing.T, block []byte, gossip string) string {
 						_ = writeMessage(c, "pong", m.payload)
 					case "getaddr":
 						if gossip != "" {
-							p, e := makeAddrAnnouncement(gossip, gatewayExperimentalServiceBit)
-							if e == nil {
-								_ = writeMessage(c, "addr", p)
-							}
+							_ = writeMessage(c, "addr", encodeAddressList([]advertisedPeer{{Addr: gossip, Services: nodeNetworkService}}))
 						}
 					case "getheaders":
 						out := []byte{0}
@@ -177,7 +171,10 @@ func Test051StandaloneKnownHashBeforeHeadersAndRestart(t *testing.T) {
 	display := reverseHex(hash[:])
 	addr := ordinaryFixture051(t, block, "")
 	a := independentTestApp(t)
-	a.network.add(addr, "fixture_bootstrap", 0)
+	if _, e := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "blocks", Armed: true}}}); e != nil {
+		t.Fatal("configure actual Raw storage consent", e)
+	}
+	a.network.add(addr, "manual_bitcoin", 0)
 	a.network.start()
 	eventually051(t, func() bool { return len(a.network.listSessions()) == 1 })
 	if _, e := a.resolveBlockTarget("1"); e == nil || !strings.Contains(e.Error(), "WAITING_FOR_HEADERS") {
@@ -223,57 +220,17 @@ func Test051StandaloneKnownHashBeforeHeadersAndRestart(t *testing.T) {
 		t.Fatal("restart lost headers or saved addresses")
 	}
 	again, e := b.fetchAndDecode("1")
-	if e != nil || !again.FromCache || again.SourceNetwork != "cache" || !again.Verification.HeaderChainMatch {
+	if e != nil || again.FromCache || again.SourceNetwork != "index_retained" || !again.Verification.HeaderChainMatch {
 		t.Fatalf("offline reuse: %+v %v", again, e)
 	}
-	t.Logf("Core disabled, no mount: ordinary peer %s supplied block1 %s before headers; header synchronization and offline cache restart passed", addr, display)
-}
-func Test051IndirectGatewayDiscoveryAndBODRequest(t *testing.T) {
-	server := independentTestApp(t)
-	server.settings.ServeData = true
-	server.settings.ShareCache = true
-	if e := server.source.start(); e != nil {
+	target, e := b.localBlockTarget(1)
+	if e != nil {
 		t.Fatal(e)
 	}
-	endpoint := server.source.tcp.Addr().String()
-	ordinary := ordinaryFixture051(t, nil, endpoint)
-	client := independentTestApp(t)
-	client.network.add(ordinary, "fixture_bootstrap", 0)
-	client.network.start()
-	eventually051(t, func() bool { return len(client.network.gatewayPeers()) == 1 })
-	peer := client.network.gatewayPeers()[0]
-	if peer.Addr != endpoint || peer.DiscoverySource != "bitcoin_addr:"+ordinary || !peer.BIP434 || !peer.ServiceHint {
-		t.Fatalf("not indirect discovery: %+v", peer)
+	if saved, _, e := readIndexedRawBody(b.dataDir, target, nil); e != nil || !bytes.Equal(saved, block) {
+		t.Fatal("retained body changed across header anchoring and restart", e)
 	}
-	reply, e := client.queryGatewayPeer(peer, overlayRequest{Version: bodWireVersion, Type: "blockloc", Height: 0})
-	if e != nil || reply.BlockLocation == nil || reply.BlockLocation.BlockHash != genesisHashDisplay {
-		t.Fatalf("BOD exchange: %+v %v", reply, e)
-	}
-	snap := client.network.snapshot()
-	if snap["gateway_connected"].(int) != 1 || snap["bod_available"].(int) != 1 || snap["connected"].(int) != 2 {
-		t.Fatalf("shared socket counts: %+v", snap)
-	}
-	recorder := httptest.NewRecorder()
-	client.handlePeers(recorder, httptest.NewRequest("GET", "/api/v1/peers?core=1", nil))
-	var body map[string]json.RawMessage
-	_ = json.Unmarshal(recorder.Body.Bytes(), &body)
-	var connections []map[string]any
-	_ = json.Unmarshal(body["connections"], &connections)
-	if len(connections) != 2 {
-		t.Fatalf("peers omitted sockets: %s", recorder.Body.String())
-	}
-	t.Logf("A learned B %s only through ordinary Bitcoin peer %s; negotiated Gateway and completed blockloc", endpoint, ordinary)
-}
-func Test051FalseServiceBitDoesNotEstablishGateway(t *testing.T) {
-	ordinary := ordinaryFixture051(t, nil, "")
-	a := independentTestApp(t)
-	a.network.add(ordinary, "bitcoin_addr:fixture", gatewayExperimentalServiceBit)
-	a.network.start()
-	eventually051(t, func() bool { return len(a.network.listSessions()) == 1 })
-	snap := a.network.snapshot()
-	if snap["gateway_connected"].(int) != 0 || snap["bod_available"].(int) != 0 {
-		t.Fatalf("hint promoted to support: %+v", snap)
-	}
+	t.Logf("Core disabled, no mount: ordinary peer %s supplied block1 %s before headers; header synchronization and offline retained-body restart passed", addr, display)
 }
 func Test051UnavailableAnchorPreservesCompletedHops(t *testing.T) {
 	a := independentTestApp(t)
@@ -284,7 +241,7 @@ func Test051UnavailableAnchorPreservesCompletedHops(t *testing.T) {
 	if e := a.saveSatlineRecord(q.Kind, q.key(), q.Input, result); e != nil {
 		t.Fatal(e)
 	}
-	got := a.runSatlineLocal(context.Background(), q, "step", 1, nil)
+	got, _ := a.prepareSatlineBase(q, false, context.Background())
 	if len(got.Hops) != 2 || got.OperationalReason != "WAITING_FOR_CHAIN_ANCHOR" || got.State == "STALE_CHAIN" {
 		t.Fatalf("unavailable != conflict: %+v", got)
 	}
@@ -311,6 +268,9 @@ func Test051TriStateCheckpointAndTipExtension(t *testing.T) {
 	}
 }
 func Test051UnavailableZeroHopIsNotReorg(t *testing.T) {
+	if !releaseFeatureAvailable("satline") {
+		t.Skip("0.6.6 release lock: live Satline traversal is unavailable; anchor-state unit checks remain active")
+	}
 	a := independentTestApp(t)
 	a.status = appStatus{HeaderHeight: -1}
 	q := satlineQuery{Kind: "sat", Input: "0"}

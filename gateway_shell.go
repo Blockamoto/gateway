@@ -15,11 +15,13 @@ var gatewayShell embed.FS
 
 func writeJSON(w http.ResponseWriter, v any) { satlineReply(w, v) }
 func (a *app) registerGatewayRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/v1/appearance", a.handleAppearance)
 	mux.HandleFunc("/api/v1/setup", a.handleSetup)
 	mux.HandleFunc("/api/v1/headers", a.handleHeaderControl)
 	mux.HandleFunc("/api/v1/network", a.handleNetworkStatus)
-	mux.HandleFunc("/api/v1/discovery", a.handleDiscovery)
 	mux.HandleFunc("/api/v1/data-coverage", a.handleDataCoverage)
+	mux.HandleFunc("/api/v1/index/delete", a.handleIndexDelete)
+	mux.HandleFunc("/api/v1/index/layout", a.handleIndexLayout)
 
 	mux.HandleFunc("/shell/", a.handleShellAsset)
 	mux.HandleFunc("/legacy", func(w http.ResponseWriter, r *http.Request) {
@@ -30,13 +32,21 @@ func (a *app) registerGatewayRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/native", a.handleNativeControl)
 	mux.HandleFunc("/api/v1/jobs", a.handleJobs)
 	mux.HandleFunc("/api/v1/navigate", a.handleNavigate)
+	mux.HandleFunc("/api/v1/navigate/number", a.handleNumberNavigation077)
 	mux.HandleFunc("/api/v1/block/transactions", a.handleBlockPage)
 	mux.HandleFunc("/api/v1/flow", a.handleFlow)
 	mux.HandleFunc("/api/v1/peers", a.handlePeers)
 	mux.HandleFunc("/api/v1/migration", a.handleMigration)
+	mux.HandleFunc("/api/v1/address/view", a.handleAddressView)
+	mux.HandleFunc("/api/v1/sats/view", a.handleSatView077)
+	mux.HandleFunc("/api/v1/sats/output", a.handleSatOutput077)
+	mux.HandleFunc("/api/v1/sats/point", a.handleSatPoint077)
+	mux.HandleFunc("/api/v1/sats/address", a.handleSatAddress077)
+	mux.HandleFunc("/api/v1/sats/reverse", a.handleSatReverse077)
 	mux.HandleFunc("/api/v1/ord/status", a.handleOrdStatus)
 	mux.HandleFunc("/api/v1/ord/resolve", a.handleOrdResolve)
 	mux.HandleFunc("/api/v1/ord/follow", a.handleOrdFollow)
+	mux.HandleFunc("/api/v1/ord/dependencies", a.handleOrdDependencies)
 }
 func (a *app) serveGatewayShell(w http.ResponseWriter, r *http.Request) {
 	address := r.URL.Query().Get("resolve")
@@ -66,7 +76,7 @@ func (a *app) serveGatewayShell(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("settings") != "" {
 		address = "settings.gateway"
 	}
-	bootstrap, _ := json.Marshal(map[string]any{"version": appVersion, "address": address, "activation": id, "content_origin": a.contentURL, "from_satline": r.URL.Query().Get("from_satline"), "satline_hop": r.URL.Query().Get("satline_hop")})
+	bootstrap, _ := json.Marshal(map[string]any{"version": appVersion, "address": address, "activation": id, "content_origin": a.contentURL, "from_satline": r.URL.Query().Get("from_satline"), "satline_hop": r.URL.Query().Get("satline_hop"), "release_availability": releaseAvailability()})
 	b, e := gatewayShell.ReadFile("ui/shell/index.html")
 	if e != nil {
 		http.Error(w, "Gateway interface unavailable", 500)
@@ -85,7 +95,7 @@ func (a *app) serveGatewayShell(w http.ResponseWriter, r *http.Request) {
 }
 func (a *app) handleShellAsset(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/shell/")
-	if name != "app.js" && name != "workspace.js" && name != "style.css" && name != "network.js" && name != "network.css" && name != "discovery.js" && name != "discovery.css" && name != "gateway-mark.svg" && name != "gateway.ico" {
+	if name != "index-export.js" && name != "explorer-features.js" && name != "explorer-features.css" && name != "index-help.js" && name != "index-help-content.js" && name != "index-help.css" && name != "index-scrollbar-geometry.js" && name != "bitmap-workspace.js" && name != "bitmap-workspace.css" && name != "index-transport.js" && name != "bitmap-view.js" && name != "workspace-resources.js" && name != "sat-view.js" && name != "sat-panel.js" && name != "address-view.js" && name != "address-panel.js" && name != "utxo-panel.js" && name != "theme.js" && name != "theme.css" && name != "app.js" && name != "workspace.js" && name != "style.css" && name != "sparse.css" && name != "updates.js" && name != "updates.css" && name != "index-cards.js" && name != "index-cards.css" && name != "index-timeline.js" && name != "index-timeline.css" && name != "index-workspace.js" && name != "timeline-explorer.js" && name != "block-viewport.css" && name != "block-viewport.js" && name != "transaction-flow-layout.css" && name != "transaction-flow-layout.js" && name != "inscription-viewport.js" && name != "index-semantic.js" && name != "network.js" && name != "network.css" && name != "gateway-mark.svg" && name != "gateway.ico" {
 		http.NotFound(w, r)
 		return
 	}
@@ -123,12 +133,18 @@ func (a *app) handleNavigate(w http.ResponseWriter, r *http.Request) {
 		rec, e = a.resolveInscription(r.Context(), t.SearchQuery, "")
 		result = searchResponse{Kind: "inscription", Module: "ord", Ord: &rec, Query: t.Friendly}
 	} else {
-		result, e = a.resolveSearchInput(q.Address)
+		result, e = a.resolveSearchInputContext(r.Context(), q.Address)
 	}
 	if e != nil {
 		jsonError(w, 400, e)
 		return
 	}
+	if result.Ord != nil {
+		if !a.attachOrdViewerForRequest(r, result.Ord) {
+			return
+		}
+	}
+	indexing := a.indexBrowsedNavigation(r.Context(), result)
 	// Copy the slice header before trimming. Cached immutable blocks are shared.
 	if result.Block != nil {
 		v := *result.Block
@@ -142,7 +158,7 @@ func (a *app) handleNavigate(w http.ResponseWriter, r *http.Request) {
 		}
 		result.Block = &v
 	}
-	writeJSON(w, map[string]any{"resource": result, "elapsed_ms": time.Since(started).Milliseconds(), "page_size": 40})
+	writeJSON(w, map[string]any{"indexing": indexing, "resource": result, "elapsed_ms": time.Since(started).Milliseconds(), "page_size": 40})
 }
 func (a *app) handleBlockPage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
@@ -155,7 +171,7 @@ func (a *app) handleBlockPage(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 400, fmt.Errorf("negative page offset"))
 		return
 	}
-	v, e := a.fetchAndDecode(q)
+	v, e := a.fetchAndDecodeContext(r.Context(), q)
 	if e != nil {
 		jsonError(w, 400, e)
 		return

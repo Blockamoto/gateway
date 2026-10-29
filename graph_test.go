@@ -23,6 +23,12 @@ func initGraphTestApp(t *testing.T) (*app, blockView) {
 	a.settings.GraphIndex = true
 	a.coverage = newCoverageState()
 	a.initGraphStore()
+	// Graph-enabled reads may schedule delayed cache snapshots. Drain them
+	// before TempDir cleanup, just as the desktop update/shutdown barrier does.
+	t.Cleanup(func() {
+		a.stopKnowledgeWritersForUpdate()
+		waitUpdateWriters064(t, a)
+	})
 	a.status.TipHash = genesisHashDisplay
 	a.refreshCoreBlockStore()
 	h, _ := hex.DecodeString(genesisHeaderHex)
@@ -103,21 +109,14 @@ func TestNativeGraphNegativeRequiresCompleteCoverage(t *testing.T) {
 	}
 	txid := genesis.Transactions[0].TxID
 
-	res, err := a.resolveSpender(txid, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.ConfirmedState != "unspent_at_snapshot" || res.Provider != "bod_native_graph" || res.Snapshot == nil || res.Snapshot.Height != 0 {
-		t.Fatalf("genesis-only complete graph should prove unspent at genesis: %+v", res)
+	snap, why := a.graphCanProveUnspent(txid, 0)
+	if snap == nil || snap.Height != 0 {
+		t.Fatalf("genesis-only complete graph should prove unspent at genesis: %+v %s", snap, why)
 	}
 
 	hash1 := appendGraphTestHeader(t, a, genesisHashDisplay, 2)
-	res, err = a.resolveSpender(txid, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.ConfirmedState != "unknown" {
-		t.Fatalf("missing height 1 graph coverage must be UNKNOWN, got %+v", res)
+	if snap, _ = a.graphCanProveUnspent(txid, 0); snap != nil {
+		t.Fatalf("missing height 1 graph coverage must not prove unspent, got %+v", snap)
 	}
 
 	// Index the whole next block (with no spend of the genesis output). Now the
@@ -126,12 +125,8 @@ func TestNativeGraphNegativeRequiresCompleteCoverage(t *testing.T) {
 	if err := a.graphIndexBlock(v1, true); err != nil {
 		t.Fatal(err)
 	}
-	res, err = a.resolveSpender(txid, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.ConfirmedState != "unspent_at_snapshot" || res.Snapshot == nil || res.Snapshot.Height != 1 {
-		t.Fatalf("complete height 0..1 graph should prove unspent: %+v", res)
+	if snap, _ = a.graphCanProveUnspent(txid, 0); snap == nil || snap.Height != 1 {
+		t.Fatalf("complete height 0..1 graph should prove unspent: %+v", snap)
 	}
 }
 
@@ -227,22 +222,20 @@ func TestCoreNegativeNeedsExistingOutpoint(t *testing.T) {
 	existing := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	settings, stop := fakeCoreUnspentGraph(t, existing)
 	defer stop()
-	a := &app{dataDir: t.TempDir(), settings: settings, status: appStatus{HeaderHeight: -1}, cacheIndex: newCacheIndex(), coverage: newCoverageState()}
-	a.initGraphStore()
-	res, err := a.resolveSpender(existing, 0)
+	exists, hash, err := coreConfirmedUnspent(settings, existing, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.ConfirmedState != "unspent_at_snapshot" || res.Provider != "bitcoin_core_txospenderindex" {
-		t.Fatalf("existing Core UTXO should be authoritative unspent: %+v", res)
+	if !exists || hash != genesisHashDisplay {
+		t.Fatalf("existing Core UTXO should be authoritative unspent: %v %s", exists, hash)
 	}
 	missing := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	res, err = a.resolveSpender(missing, 0)
+	exists, _, err = coreConfirmedUnspent(settings, missing, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.ConfirmedState != "unknown" {
-		t.Fatalf("nonexistent outpoint must not become unspent: %+v", res)
+	if exists {
+		t.Fatal("nonexistent outpoint must not become unspent")
 	}
 }
 
@@ -287,11 +280,7 @@ func TestNativeGraphReorgDropsDetachedSpend(t *testing.T) {
 	if got, ok := a.graphFindSpend(prev, 0); ok {
 		t.Fatalf("detached branch spend remained canonical: %+v", got)
 	}
-	res, err := a.resolveSpender(prev, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.ConfirmedState != "unspent_at_snapshot" || res.Snapshot == nil || res.Snapshot.Hash != hashB {
-		t.Fatalf("replacement branch should prove unspent at B: %+v", res)
+	if snap, why := a.graphCanProveUnspent(prev, 0); snap == nil || snap.Hash != hashB {
+		t.Fatalf("replacement branch should prove unspent at B: %+v %s", snap, why)
 	}
 }

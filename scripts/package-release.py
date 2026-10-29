@@ -5,13 +5,54 @@ import datetime
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
+from urllib.parse import quote, unquote, urlsplit
 import zipfile
+
+# Match build-release.py and the companion files accepted by released helpers.
+PRODUCTION_COMPANION_FILES = ('content.js', 'IDENTITY.txt', 'manifest.json', 'popup.html', 'popup.js', 'README.txt', 'search.js', 'service-worker.js', 'test.js')
+
+
+def copy_production_companion(source, destination):
+    destination.mkdir()
+    for name in PRODUCTION_COMPANION_FILES:
+        shutil.copy2(source/name, destination/name)
 
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def package_document_links(text, source, root, revision, bundled_sources):
+    """Keep existing simple inline links useful without widening update archives.
+
+    Match by source identity: the historical generic acceptance document is not
+    the version-specific document copied under that name in a newer package.
+    """
+    def replace(match):
+        target = match.group(2)
+        parsed = urlsplit(target)
+        if parsed.scheme or parsed.netloc or not parsed.path or parsed.path.startswith('/'):
+            return match.group(0)
+        resolved = (source.parent / unquote(parsed.path)).resolve()
+        try:
+            relative = resolved.relative_to(root)
+        except ValueError:
+            return match.group(0)
+        if not resolved.is_file():
+            return match.group(0)
+        destination = bundled_sources.get(resolved)
+        if destination is None:
+            destination = 'https://github.com/Blockamoto/gateway/blob/' + revision + '/' + quote(relative.as_posix(), safe='/')
+        else:
+            destination = quote(destination, safe='/')
+        return match.group(1) + destination + target[len(parsed.path):] + match.group(3)
+
+    # The repository's document links use this ordinary inline form. Leave
+    # other Markdown constructs intact rather than approximating a full parser.
+    return re.sub(r'(\]\()([^\s)]+)(\))', replace, text)
 
 
 def main():
@@ -24,11 +65,23 @@ def main():
         raise SystemExit('Commit source and validation records before packaging.')
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
     version = (root / 'VERSION.txt').read_text().strip()
+    acceptance = root / 'docs' / f'RELEASE-ACCEPTANCE-{version}.json'
+    if not acceptance.exists():
+        acceptance = root / 'docs' / 'RELEASE-ACCEPTANCE.json'
+    if json.loads(acceptance.read_text())['version'] != version:
+        raise SystemExit('Acceptance record must describe the version being packaged.')
     build, out = args.build.resolve(), args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     installer = f'gateway-client-v{version}-installer.exe'
+    # Released clients and the publisher enforce an exact update-archive
+    # allowlist. Supplemental index/implementation documents stay in source.
+    documents = [f'RELEASE-NOTES-v{version}.md', 'UPDATES.md', 'GATEWAY-ROADMAP.md', 'INDEXING.md', 'STATUS.md', 'RELEASE-ACCEPTANCE.json']
+    if (root / 'docs' / f'TESTING-{version}.md').exists():
+        documents.append(f'TESTING-{version}.md')
+    document_sources = {document: acceptance if document == 'RELEASE-ACCEPTANCE.json' else root / 'docs' / document for document in documents}
+    bundled_sources = {source.resolve(): document for document, source in document_sources.items()}
     artifacts = []
-    for platform, binaries in [('windows-amd64', ['GatewayClient.exe', 'GatewayOnDemand.exe', 'GatewayNativeHost.exe', installer]), ('linux-amd64', ['gateway-client'])]:
+    for platform, binaries in [('windows-amd64', ['GatewayClient.exe', 'GatewayOnDemand.exe', 'GatewayNativeHost.exe', 'GatewayUpdateHelper.exe']), ('linux-amd64', ['gateway-client', 'gateway-update-helper'])]:
         name = f'gateway-client-v{version}-{platform}'
         folder = out / name
         if folder.exists():
@@ -39,36 +92,95 @@ def main():
         if platform.startswith('windows'):
             for launcher in ['TestStandalone.cmd', 'TestFreshStandalone.cmd']:
                 shutil.copy2(root / launcher, folder / launcher)
-            shutil.copytree(root / 'browser-companion', folder / 'browser-companion')
+            copy_production_companion(root / 'browser-companion', folder / 'browser-companion')
             (folder / 'portable.marker').write_text('Gateway portable profile.\n')
-        for document in ['RELEASE-NOTES-v0.6.2.md', 'GATEWAY-ROADMAP.md', 'INDEXING.md', 'INDEX-PEER.md', 'GATEWAY-BOOTSTRAP.md', 'STATUS.md', 'BITMAP-RESEARCH.md', 'RELEASE-ACCEPTANCE.json', 'ZERO-STATE-INDEX-ACCEPTANCE.json']:
-            shutil.copy2(root / 'docs' / document, folder / document)
+        for document, source in document_sources.items():
+            if source.suffix == '.md':
+                text = package_document_links(source.read_text(encoding='utf-8'), source, root, revision, bundled_sources)
+                (folder / document).write_bytes(text.encode('utf-8'))
+            else:
+                shutil.copy2(source, folder / document)
         shutil.copy2(build / 'binary-audit.json', folder / 'BINARY-AUDIT.json')
+        shutil.copy2(root / 'COMPATIBILITY.json', folder / 'COMPATIBILITY.json')
+        for notice in ('LICENSE', 'THIRD-PARTY-NOTICES.txt', 'GO-LICENSE.txt'):
+            shutil.copy2(root / notice, folder / notice)
         (folder / 'SOURCE-REVISION.txt').write_text(f'Repository: https://github.com/Blockamoto/gateway\nCommit: {revision}\nVersion: {version}\nPackaged UTC: {datetime.datetime.now(datetime.timezone.utc).isoformat()}\n')
-        executable = 'GatewayClient.exe' if platform.startswith('windows') else './gateway-client'
         (folder / 'README.txt').write_text(f'''Gateway Client {version}
 
 Extract the whole archive. On Windows, GatewayOnDemand.exe is the portable
-launcher; {installer} is the optional installer with the same client payload.
-On Linux, chmod +x gateway-client, then run ./gateway-client.
+launcher. The separate fresh-install archive and installer include a validated
+header snapshot; this application-only update archive preserves your existing
+header store without downloading that snapshot again.
+On Linux, chmod +x gateway-client gateway-update-helper, then run ./gateway-client.
+Keep the bundled update helper beside the client executable. This release
+configures the bundled Render publisher and public verification key on first
+launch. Fresh profiles check automatically and let you choose when to install.
+The Windows installer has a dedicated Updates page, then a final review. It
+also offers automatic installation or manual updates; upgrades default to keeping
+existing preferences. Expand Advanced: update source to keep the current source,
+use Gateway's hosted service, or enter a custom publisher and independently
+verified public key. Invalid source details block installation before writes.
+The selection applies once; later Settings changes remain in effect. A conflicting
+source change waits for staged-update or recovery work to retain its original
+verification authority. Access credentials are configured only in Settings.
+No publisher signing secrets or GitHub credentials belong in a client package.
 
-Open Indexes in the app, review Bitmap rules and plan, then choose a bounded
-range and source retention. Core and Ord are optional. Example terminal flow:
-  {executable} index plan bitmap --to 792435 --retention ephemeral
-  {executable} index build bitmap --to 792435 --retention ephemeral
-  {executable} index lookup bitmap 0
+This prerelease enables Headers, Bitcoin Blocks, Inscriptions, TX ID Locators,
+TXIO (Transaction Input/Output), the UTXO set index, Addresses, Sats and
+Bitmap Districts Standard V1. Unknown TXIO
+results do not prove unspentness. UTXO processing starts at genesis, retains exact
+live output facts and 288 reversible transitions, and supports Pruned raw-body retention.
+Its state is header-anchored; full consensus validation remains a later release.
+Addresses offers Current UTXOs at the saved UTXO checkpoint and Historical outputs
+within reviewed creation ranges. Sparse received totals are not current balances;
+missing or stale current state stays unavailable. P2PK public-key destinations
+match exact scripts, separately from same-key P2PKH and other key encodings.
+Earlier conventional-only projections require an explicit current rebuild or
+historical rescan for P2PK coverage. Sats calculates ordered sat identities from
+genesis, preferring local blocks and fetching missing evidence. It retains live
+ranges plus the newest two savepoints
+at multiples of 12 and the newest two at multiples of 144, sharing retained pages.
+Recovery uses an eligible selected-chain savepoint and replay; this is not an
+unconditional 288-block Sat recovery guarantee. Historical output ranges are
+optional. The Sat ranges track under Ordinals, Sat explorer, address UTXO ranges and
+known inscription holdings report their own coverage and saved checkpoints.
+Satline history tracing is disabled in this version. New and resumed traces are
+blocked; existing evidence is retained. Saved Sat locations, ordered output ranges
+and known inscription holdings remain available. Opening a view starts no scan.
+The Sat-aware collector preserves live, savepoint and archived shared-fact owners
+while reclaiming otherwise unowned data. Older experimental Sat state requires
+a reviewed rebuild and is preserved. Known inscription holdings are partial;
+missing evidence does not establish a known zero or complete history.
+Raw Blocks can retain verified serialized bodies and compact transaction metadata;
+compatible migration retains legacy copies without automatic deletion. TX ID
+Locators is a separate opt-in reverse transaction lookup; retaining Raw bodies
+alone does not construct it. Related inscription transaction locator construction
+is also available. The
+shared workspace includes complete block maps, transaction flow and an isolated
+positional inscription viewport. The respective TX ID Locators and Inscriptions
+Arm choices govern sparse capture from browsed blocks. Gateway-to-Gateway peerhood and
+later index stages remain gated until separately promoted.
+Bitmap Districts starts at block 792435 and advances in order under its fixed
+standard rules. Parcels are disabled pending Ordinals and parent-provenance
+validation, and Bitmap chains are disabled. Earlier definitions and saved
+evidence remain available; old checkpoints are not silently migrated.
+Ordinary Bitcoin peer header and block access remains available.
+Read TESTING-{version}.md for the QA checklist, including browser registration
+and typing .bitcoin resource addresses in your browser's address bar.
 
-New derived records are private. Publishing an index freezes an explicit
-snapshot; global serving must also be enabled for peer access. Configure your
-own reachable Gateway entrances in Connections. No project server is bundled.
-Experimental Bitcoin-based Gateway discovery is OFF by default; advanced Probe
-requires deliberate opt-in. Ordinary Bitcoin data connections remain independent.
-
-STATUS.md and RELEASE-ACCEPTANCE.json list actual verification and alpha limits.
-This is an unsigned prerelease, not a claim of completed historical compatibility
-or native installer execution. Desktop/narrow browser QA is recorded in the
-acceptance file. SOURCE-REVISION.txt identifies
+STATUS.md and RELEASE-ACCEPTANCE.json list completed checks and testing limits.
+STATUS.md also records publication status and the currently hosted release.
+Windows binaries are not Authenticode signed. Publisher-signed update metadata
+is verified separately using the public key bundled with this release.
+Only checks recorded for this release describe its acceptance. Review the known
+limits before testing; results from other builds do not establish this build's
+installation, browser integration or antivirus acceptance.
+Windows tray actions run natively inside Gateway. Optional Windows DNS setup
+still requires approval and changes only Gateway-owned routing rules.
+SOURCE-REVISION.txt identifies
 the exact source. No wallet, Core data, credentials or node profile is included.
+LICENSE contains Gateway's MIT license. THIRD-PARTY-NOTICES.txt and GO-LICENSE.txt
+contain the accompanying software notices.
 ''')
         files = sorted(p for p in folder.rglob('*') if p.is_file())
         (folder / 'SHA256SUMS.txt').write_text(''.join(f'{digest(p)}  {p.relative_to(folder).as_posix()}\n' for p in files))
@@ -81,9 +193,29 @@ the exact source. No wallet, Core data, credentials or node profile is included.
             for path in sorted(p for p in folder.rglob('*') if p.is_file()):
                 assert hashlib.sha256(z.read(path.relative_to(out).as_posix())).hexdigest() == digest(path)
         artifacts.append(archive)
+        # Fresh installs receive a separate sidecar snapshot. Never put the
+        # installer (which embeds it) or any baseline file in the update ZIP.
+        fresh = out / (name + '-fresh.zip')
+        with zipfile.ZipFile(fresh, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+            fresh_hashes = []
+            for path in sorted(p for p in folder.rglob('*') if p.is_file()):
+                if path.name == 'SHA256SUMS.txt':
+                    continue
+                z.write(path, path.relative_to(out).as_posix())
+                fresh_hashes.append(f'{digest(path)}  {path.relative_to(folder).as_posix()}\n')
+            for item in ('headers-mainnet.bin', 'headers-mainnet.json'):
+                z.write(build/'bootstrap'/item, name+'/bootstrap/'+item)
+                fresh_hashes.append(f'{digest(build/"bootstrap"/item)}  bootstrap/{item}\n')
+            z.writestr(name+'/SHA256SUMS.txt', ''.join(fresh_hashes))
+        artifacts.append(fresh)
     # The installer is also a direct GitHub asset, avoiding source-ZIP confusion.
     shutil.copy2(build / installer, out / installer)
     artifacts.append(out / installer)
+    headers = out / f'gateway-headers-v{version}.zip'
+    with zipfile.ZipFile(headers, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+        for item in ('headers-mainnet.bin', 'headers-mainnet.json'):
+            z.write(build/'bootstrap'/item, item)
+    artifacts.append(headers)
     manifest = {'version': version, 'source_revision': revision, 'verification': 'zip_crc_and_all_file_hashes_pass', 'artifacts': [{'file': p.name, 'bytes': p.stat().st_size, 'sha256': digest(p)} for p in artifacts]}
     (out / 'SHA256SUMS.txt').write_text(''.join(f"{r['sha256']}  {r['file']}\n" for r in manifest['artifacts']))
     (out / 'artifact-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

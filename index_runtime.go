@@ -12,24 +12,67 @@ import (
 )
 
 type indexJob struct {
-	Mode           string `json:"mode,omitempty"`
-	ID             string `json:"id"`
-	Index          string `json:"index"`
-	State          string `json:"state"`
-	From           int64  `json:"from"`
-	To             int64  `json:"to"`
-	Height         int64  `json:"height"`
-	Error          string `json:"error,omitempty"`
-	Retention      string `json:"retention"`
-	BlocksChecked  int    `json:"blocks_checked"`
-	DistrictsFound int    `json:"districts_found"`
+	Rebuild             bool                  `json:"rebuild,omitempty"`
+	OutputHistoryFrom   int64                 `json:"output_history_from"`
+	RetainOutputValues  bool                  `json:"retain_output_values"`
+	RetainOutputScripts bool                  `json:"retain_output_scripts"`
+	ConventionalIDs     *bool                 `json:"conventional_ids,omitempty"`
+	Limitations         []string              `json:"limitations,omitempty"`
+	QueueManaged        bool                  `json:"queue_managed,omitempty"`
+	Outputs             []string              `json:"outputs,omitempty"`
+	Progress            []indexOutputProgress `json:"progress,omitempty"`
+	RetainSatHistory    bool                  `json:"retain_sat_history,omitempty"`
+	QueuePosition       int                   `json:"queue_position,omitempty"`
+	WaitingReason       string                `json:"waiting_reason,omitempty"`
+	Live                bool                  `json:"live,omitempty"`
+	Mode                string                `json:"mode,omitempty"`
+	ID                  string                `json:"id"`
+	Index               string                `json:"index"`
+	State               string                `json:"state"`
+	Stage               string                `json:"stage,omitempty"`
+	From                int64                 `json:"from"`
+	To                  int64                 `json:"to"`
+	Height              int64                 `json:"height"`
+	Error               string                `json:"error,omitempty"`
+	Retention           string                `json:"retention"`
+	BlocksChecked       int                   `json:"blocks_checked"`
+	DistrictsFound      int                   `json:"districts_found"`
 }
+
+// Workers, stored jobs and returned status views own their mutable slices.
+// indexMu protects publication, but cannot protect JSON encoding after a
+// snapshot is returned or the worker's next progress update outside that lock.
+func cloneIndexJob(j indexJob) indexJob {
+	if j.ConventionalIDs != nil {
+		value := *j.ConventionalIDs
+		j.ConventionalIDs = &value
+	}
+	j.Outputs = append([]string(nil), j.Outputs...)
+	j.Limitations = append([]string(nil), j.Limitations...)
+	j.Progress = append([]indexOutputProgress(nil), j.Progress...)
+	for i := range j.Progress {
+		j.Progress[i].Limitations = append([]string(nil), j.Progress[i].Limitations...)
+	}
+	return j
+}
+
 type indexStatusView struct {
-	Definitions []indexDefinition   `json:"definitions"`
-	Providers   []indexProviderView `json:"providers"`
-	Instances   []indexInstance     `json:"instances"`
-	Job         indexJob            `json:"job"`
-	Errors      []string            `json:"errors,omitempty"`
+	Observation        *indexStatusObservation `json:"observation,omitempty"`
+	BitmapCapabilities bitmapCapabilitiesView  `json:"bitmap_capabilities"`
+	Run                indexRunDocument        `json:"run"`
+	Sats               *indexSatStatusView077  `json:"sats,omitempty"`
+	Addresses          *indexAddressStatusView `json:"addresses,omitempty"`
+	UTXO               *indexUTXOStatusView    `json:"utxo,omitempty"`
+	BlockBodyMigration *blocksBodyMigration    `json:"block_body_migration,omitempty"`
+	Browse             []indexBrowsePolicy     `json:"browse"`
+	Timeline           indexTimelineView       `json:"timeline"`
+	Jobs               []indexJob              `json:"jobs"`
+	Definitions        []indexDefinition       `json:"definitions"`
+	Providers          []indexProviderView     `json:"providers"`
+	Instances          []indexInstance         `json:"instances"`
+	Live               []indexLiveView         `json:"live"`
+	Job                indexJob                `json:"job"`
+	Errors             []string                `json:"errors,omitempty"`
 }
 
 func (a *app) loadIndexJobLocked() {
@@ -44,29 +87,77 @@ func (a *app) loadIndexJobLocked() {
 		a.indexJob = indexJob{}
 		return
 	}
-	if a.indexJob.State == "running" || a.indexJob.State == "waiting" {
+	if a.indexJob.State == "running" || a.indexJob.State == "waiting" || a.indexJob.State == "pausing" {
 		a.indexJob.State = "paused"
 		a.indexJob.Error = "Interrupted job; start the same index to resume its committed checkpoint."
+	}
+	// The durable queue owns reviewed cancellation/restart state. Keep the
+	// legacy single-job status consistent on the first read after restart.
+	if a.loadIndexQueueLocked() == nil {
+		for _, entry := range a.indexQueue {
+			if entry.Job.ID == a.indexJob.ID {
+				a.indexJob = cloneIndexJob(entry.Job)
+				a.indexJob.QueueManaged = true
+				break
+			}
+		}
 	}
 }
 func (a *app) indexJobSnapshot() indexJob {
 	a.indexMu.Lock()
 	defer a.indexMu.Unlock()
 	a.loadIndexJobLocked()
-	return a.indexJob
+	return cloneIndexJob(a.indexJob)
 }
 func (a *app) saveIndexJob(j indexJob) error {
 	a.indexMu.Lock()
 	defer a.indexMu.Unlock()
+	if err := a.loadIndexQueueLocked(); err != nil {
+		return err
+	}
+	for _, entry := range a.indexQueue {
+		if entry.Job.ID == j.ID && entry.StopState == "cancelled" && j.State == "paused" {
+			j.State = "cancelled"
+			j.WaitingReason = "Cancelled; committed records are retained."
+		}
+	}
 	if e := atomicWriteJSON(filepath.Join(a.dataDir, "indexes", "job.json"), j); e != nil {
 		return e
 	}
-	a.indexJob = j
-	return nil
+	a.indexJob = cloneIndexJob(j)
+	return a.updateQueuedJobLocked(j)
 }
 func (a *app) indexStatus() indexStatusView {
-	out := indexStatusView{Definitions: indexDefinitions(), Providers: a.indexProviderViews(), Instances: []indexInstance{}, Job: a.indexJobSnapshot()}
-	for _, id := range []string{"inscriptions", "bitmap"} {
+	out := indexStatusView{Definitions: indexDefinitions(), Providers: a.indexProviderViewsWithBrowse(false), Instances: []indexInstance{}, Live: []indexLiveView{}, Job: a.indexJobSnapshot()}
+	out.BitmapCapabilities = bitmapCapabilities()
+	if custom, err := bitmapRuntimeDefinitions(context.Background(), a.dataDir); err != nil {
+		out.Errors = append(out.Errors, "Bitmap profiles: "+err.Error())
+	} else {
+		out.Definitions = append(out.Definitions, custom...)
+	}
+	out.Run = a.indexRunSnapshot()
+	if state, err := readBlocksBodyMigration(a.dataDir); err != nil {
+		out.Errors = append(out.Errors, "Blocks migration: "+err.Error())
+	} else {
+		out.BlockBodyMigration = state
+	}
+	var queueErr error
+	if browse, err := a.indexBrowsePolicies(); err != nil {
+		out.Errors = append(out.Errors, "browse: "+err.Error())
+	} else {
+		out.Browse = browse
+	}
+	out.Jobs, queueErr = a.indexJobsSnapshot()
+	if queueErr != nil {
+		out.Errors = append(out.Errors, "queue: "+queueErr.Error())
+	}
+	if live, err := a.indexLiveViews(); err != nil {
+		out.Errors = append(out.Errors, "live: "+err.Error())
+	} else {
+		out.Live = live
+	}
+	inscriptionInventoryUnknown := false
+	for _, id := range []string{"blocks", "tx-locator", "inscriptions", "bitmap", "txo-spender", "sat-state", "utxo-state"} {
 		s, e := indexStoreHead(a.dataDir, id)
 		if e != nil {
 			out.Errors = append(out.Errors, id+": "+e.Error())
@@ -75,29 +166,210 @@ func (a *app) indexStatus() indexStatusView {
 		if s.checkpoint == nil {
 			continue
 		}
-		out.Instances = append(out.Instances, indexInstance{Definition: id, Version: s.definition.Version, Network: s.definition.Network, Coverage: []heightInterval{{s.checkpoint.From, s.checkpoint.Height}}, Gaps: []heightInterval{}, Completeness: "recorded_contiguous_range; history_rechecked_on_resume", Verification: "locally_derived; " + a.indexChainState(s.checkpoint), Provenance: "Bitcoin block and witness evidence", Retention: s.head.Retention, Queryable: true, Serveable: a.indexPublicationMatches(id, s.checkpoint), Checkpoint: s.checkpoint, Note: "Private derived state. Canonical numbering and ownership are not inferred."})
+		var retainHistory bool
+		if id == "sat-state" {
+			if batch, err := s.readBatch(s.checkpoint.Commitment); err == nil && batch.Sats != nil {
+				retainHistory = batch.Sats.RetainHistory
+			}
+		}
+		out.Instances = append(out.Instances, indexInstance{Mode: s.head.Mode, Definition: id, Version: s.definition.Version, Network: s.definition.Network, Coverage: []heightInterval{{s.checkpoint.From, s.checkpoint.Height}}, Gaps: []heightInterval{}, Completeness: "recorded_contiguous_range; history_rechecked_on_resume", Verification: "locally_derived; " + a.indexChainState(s.checkpoint), Provenance: "Bitcoin block and witness evidence", Retention: s.head.Retention, Queryable: true, Serveable: a.indexPublicationMatches(id, s.checkpoint), Checkpoint: s.checkpoint, Note: a.indexInstanceNote(s)})
+		out.Instances[len(out.Instances)-1].RetainSatHistory = retainHistory
+		if id == "inscriptions" {
+			// Point-source recipes remain readable, but a native head alone
+			// does not turn their known identities into complete inventory.
+			// A bounded, process-cached ancestry check also excludes a complete
+			// newest batch above older point-only records. Writer admission
+			// independently validates the full prefix before extending it.
+			if !inscriptionInventoryPrefixComplete(context.Background(), s) {
+				instance := &out.Instances[len(out.Instances)-1]
+				instance.Coverage = []heightInterval{}
+				instance.Completeness = "known_occurrences_only; complete_block_inventory_unknown"
+				instance.Serveable = false
+				instance.Note = "Known inscription reveal locations remain readable. Complete block inventory has not been established for this saved source; missing occurrences and empty-block status remain unknown."
+				inscriptionInventoryUnknown = true
+			}
+		}
+		if id == "utxo-state" {
+			instance := &out.Instances[len(out.Instances)-1]
+			instance.Completeness = "complete_genesis_prefix_at_snapshot"
+			instance.Verification = "header_anchored_processing; consensus_validated=false; " + a.indexChainState(s.checkpoint)
+			instance.Note = "Live output facts and 288 reversible transitions are retained locally; source bodies may be pruned. Full consensus validation is deferred."
+			instance.Serveable = false
+			instance.Queryable = a.indexChainState(s.checkpoint) == "selected_chain"
+		}
+		if !releaseFeatureAvailable(id) {
+			instance := &out.Instances[len(out.Instances)-1]
+			instance.Queryable, instance.Serveable = false, false
+			instance.Note = releaseLockReason(id)
+		}
+	}
+	out.UTXO = a.indexUTXOStatus(out.Jobs)
+	out.Addresses, out.Instances = a.indexAddressStatus(out.Instances)
+	out.Sats = a.indexSatStatus077()
+	if instances, err := a.bitmapDevelopmentInstancesContext(context.Background()); err == nil {
+		out.Instances = append(out.Instances, instances...)
+	}
+	for i := range out.Instances {
+		instance := &out.Instances[i]
+		if instance.Definition != "sat-state" {
+			continue
+		}
+		instance.Coverage = append([]heightInterval{}, out.Sats.OutputCoverage...)
+		instance.Gaps = []heightInterval{}
+		instance.Completeness = "ranges_for_retained_outputs; separate_identity_and_history_coverage"
+		instance.Verification = "header_anchored_processing; consensus_validated=false"
+		instance.Serveable = false
+		instance.Queryable = out.Sats.State == "ready" && instance.Checkpoint.Commitment == out.Sats.ProcessedCommitment
+		instance.Note = out.Sats.Note
+	}
+	browseSources := make(map[string]indexTimelineSource)
+	out.Timeline = a.indexTimelineWithBrowseSources(out.Definitions, out.Providers, out.Instances, browseSources, out.Errors...)
+	applyStatusBrowseSources(out.Providers, browseSources)
+	if inscriptionInventoryUnknown {
+		for i := range out.Timeline.Tracks {
+			track := &out.Timeline.Tracks[i]
+			if track.ID == "inscriptions" {
+				track.CoverageComplete = false
+				track.Gaps = []heightInterval{}
+				track.Note = "Known inscription reveal locations are separate from complete block inventory. Missing occurrences and empty-block status remain unknown outside independently complete inventory coverage."
+				for j := range track.Sources {
+					if track.Sources[j].Kind == "committed_records" {
+						track.Sources[j].Complete = false
+						track.Sources[j].Note = track.Note
+					}
+				}
+			}
+		}
 	}
 	return out
 }
+
+// Custom recipes exist before their first checkpoint. Project the authenticated
+// executable registry into status rather than inferring available tracks from
+// built instances. This read never creates a job or a derived store.
+func bitmapRuntimeDefinitions(ctx context.Context, root string) ([]indexDefinition, error) {
+	registry, err := bitmapReadProfileDocument(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]indexDefinition, 0, len(registry.Instances))
+	for _, instance := range registry.Instances {
+		d, err := findIndexDefinition(instance.ID)
+		if err != nil {
+			return nil, err
+		}
+		d.Name, d.Kind = instance.Label, instance.Kind
+		d.ConfigurationRevision, d.Classification = bitmapEffectiveConfigurationRevision(instance), "legacy"
+		d.ProfileHash, d.RecipeHash, d.RuleHash = instance.ProfileHash, d.RuleHash, instance.ProfileHash
+		d.DistrictInstance, d.DistrictProfileHash, d.ChainInstance = instance.DistrictInstance, instance.DistrictProfileHash, instance.ChainInstance
+		d.StartHeight = instance.StartHeight
+		d.Dependencies = append([]string{}, d.Dependencies...)
+		for n, dependency := range d.Dependencies {
+			if dependency == "bitmap-districts" {
+				d.Dependencies[n] = instance.DistrictInstance
+			}
+		}
+		d.Theory = "Preserved legacy experimental " + instance.Kind + " definition and saved results. Inspection and data management remain available; this interpretation cannot execute or be called canonical."
+		d.Rules = append([]string{}, instance.Profile.Rules...)
+		if instance.Kind == "chain" {
+			base, _ := findIndexDefinition("bitmap-chain")
+			d.Rules = append(append([]string{}, base.Rules...), d.Rules...)
+			d.Rules = append(d.Rules, "Use only completed outcomes from District instance "+instance.DistrictInstance+" with semantic profile "+instance.DistrictProfileHash+".")
+		}
+		for _, rule := range bitmapRuleRegistryFor(instance.Profile.FingerprintSchema, instance.Profile.Kind) {
+			d.Rules = append(d.Rules, fmt.Sprintf("%s=%d: %s", rule.ID, instance.Profile.Answers[rule.ID], rule.Question))
+		}
+		d.Rules = append(d.Rules, "Body decoder: "+instance.Profile.DecoderPolicy, "Activation: "+instance.Profile.ActivationPolicy, "Prior context: "+instance.Profile.ContextPolicy)
+		if instance.Profile.ParentPolicy != "" {
+			d.Rules = append(d.Rules, "Parent evidence: "+instance.Profile.ParentPolicy)
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
 func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {
-	p, e := planIndex(req)
-	if e != nil {
-		return indexJob{}, e
+	if bitmapConsumerID(req.Index) {
+		return indexJob{}, fmt.Errorf("Bitmap development consumers require a reviewed coordinated timeline run")
 	}
-	if !p.Definition.Buildable {
-		return indexJob{}, fmt.Errorf("%s has no derivation executor; inspect its provider capabilities", req.Index)
+	if err := requireReleaseIndexRequest(req); err != nil {
+		return indexJob{}, err
 	}
+	if err := requireTimelineRawBuild(context.Background(), a.dataDir, req); err != nil {
+		return indexJob{}, err
+	}
+	if !indexRunOptionalWorkAllowed(a.dataDir, req.Index) {
+		return indexJob{}, fmt.Errorf("%s is Off in the timeline; arm it before requesting new work", req.Index)
+	}
+	a.indexLiveControlMu.Lock()
+	defer a.indexLiveControlMu.Unlock()
+	policies, err := a.indexLivePolicies()
+	if err != nil {
+		return indexJob{}, err
+	}
+	if policies[req.Index].Stopped {
+		return indexJob{}, fmt.Errorf("%s indexing is off; switch it on before starting a reviewed build", req.Index)
+	}
+	j, err := a.acceptIndexBuild(req)
+	if err == nil {
+		// An accepted reviewed build is an explicit retry after a Live failure.
+		a.clearLiveIndexRuntime(req.Index)
+	}
+	return j, err
+}
+
+func (a *app) startIndexBuildInternal(req indexBuildRequest, live bool) (indexJob, error) {
+	return a.startIndexBuildID(req, live, "")
+}
+func (a *app) startIndexBuildID(req indexBuildRequest, live bool, id string) (indexJob, error) {
+	if bitmapConsumerID(req.Index) {
+		return indexJob{}, fmt.Errorf("Bitmap development consumers require a coordinated timeline run")
+	}
+	if err := requireReleaseIndexRequest(req); err != nil {
+		return indexJob{}, err
+	}
+	if err := requireTimelineRawBuild(context.Background(), a.dataDir, req); err != nil {
+		return indexJob{}, err
+	}
+	req = cloneIndexBuildRequest(req)
 	a.indexMu.Lock()
 	defer a.indexMu.Unlock()
 	a.loadIndexJobLocked()
 	if a.indexCancel != nil {
-		return a.indexJob, fmt.Errorf("an index build is already active")
+		return cloneIndexJob(a.indexJob), fmt.Errorf("an index build is already active")
 	}
-	s, e := indexStoreHead(a.dataDir, req.Index)
+	var s *indexStore
+	var e error
+	if req.Rebuild && (req.Index == "utxo-state" || req.Index == "address-state" || req.Index == "sat-state") {
+		d, err := findIndexDefinition(req.Index)
+		if err != nil {
+			return indexJob{}, err
+		}
+		s = &indexStore{profileRoot: a.dataDir, definition: d, head: indexHead{Mode: "lean", Retention: "pruned"}}
+	} else {
+		s, e = indexStoreHead(a.dataDir, req.Index)
+	}
 	if e != nil {
 		return indexJob{}, e
 	}
-	if s.checkpoint != nil && s.checkpoint.From != p.From {
+	// Suggested starts apply only to fresh instances. An omitted resume range
+	// retains its authenticated checkpoint even when the current UI suggestion
+	// differs; an explicit conflicting start still fails below.
+	if s.checkpoint != nil && req.From == nil && req.Index != "address-state" && req.Index != "address-history" {
+		from := s.checkpoint.From
+		req.From = &from
+	}
+	p, e := a.planIndexBuild(req)
+	if e != nil {
+		return indexJob{}, e
+	}
+	req.RetainSatHistory, req.SatHistoryConfigured = p.RetainSatHistory, true
+	req.ConventionalIDs = boolPointer(p.ConventionalIDs)
+	req.RetainOutputValues = outputHistoryOption(req.Index, p.RetainOutputValues)
+	req.RetainOutputScripts = outputHistoryOption(req.Index, p.RetainOutputScripts)
+	if !p.Definition.Buildable {
+		return indexJob{}, fmt.Errorf("%s has no derivation executor; inspect its provider capabilities", req.Index)
+	}
+	if s.checkpoint != nil && s.checkpoint.From != p.From && req.Index != "address-history" {
 		return indexJob{}, fmt.Errorf("existing instance begins at %d; use that range to resume", s.checkpoint.From)
 	}
 	if s.checkpoint != nil {
@@ -110,7 +382,44 @@ func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {
 		}
 		p.Mode = existingMode
 	}
-	j := indexJob{Mode: p.Mode, ID: fmt.Sprintf("%d", time.Now().UnixNano()), Index: req.Index, State: "running", From: p.From, To: p.To, Height: p.From - 1, Retention: p.Retention}
+	policies, e := a.indexLivePolicies()
+	if e != nil {
+		return indexJob{}, e
+	}
+	if !live || req.Live {
+		policy := policies[req.Index]
+		policy.Index, policy.Retention = req.Index, p.Retention
+		policy.Outputs, policy.RetainSatHistory = req.Outputs, req.RetainSatHistory
+		policy.ConventionalIDs = req.ConventionalIDs
+		policy.RetainOutputValues, policy.RetainOutputScripts = req.RetainOutputValues, req.RetainOutputScripts
+		policy.SatHistoryConfigured = true
+		if !live && req.LiveConfigured {
+			// An explicitly reviewed fixed-range build turns following off.
+			// Scheduler continuations pass live=true and preserve the policy.
+			policy.Enabled = false
+		}
+		if req.Live {
+			policy.Enabled, policy.Paused, policy.Stopped = true, false, false
+			policy.InitialFrom = &p.From
+			policy.Mode = p.Mode
+		}
+		policy.Updated = time.Now().UTC().Format(time.RFC3339)
+		if e = a.writeIndexLivePolicy(policy); e != nil {
+			return indexJob{}, e
+		}
+	}
+	queueManaged := id != ""
+	if id == "" {
+		id = fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	if e := a.clearIndexPause(id); e != nil {
+		return indexJob{}, e
+	}
+	j := indexJob{Live: live, Mode: p.Mode, ID: id, Index: req.Index, State: "running", From: p.From, To: p.To, Height: p.From - 1, Retention: p.Retention, Outputs: req.Outputs, RetainSatHistory: req.RetainSatHistory, ConventionalIDs: req.ConventionalIDs}
+	j.RetainOutputValues, j.RetainOutputScripts = p.RetainOutputValues, p.RetainOutputScripts
+	j.OutputHistoryFrom = p.OutputHistoryFrom
+	j.Rebuild = req.Rebuild
+	j.QueueManaged = queueManaged
 	if s.checkpoint != nil {
 		j.Height = s.checkpoint.Height
 	}
@@ -119,22 +428,55 @@ func (a *app) startIndexBuild(req indexBuildRequest) (indexJob, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a.indexCancel = cancel
-	a.indexJob = j
-	go a.runIndexBuild(ctx, j, s)
+	a.indexJob = cloneIndexJob(j)
+	if err := a.updateQueuedJobLocked(j); err != nil {
+		cancel()
+		a.indexCancel = nil
+		return j, err
+	}
+	if req.Index == "utxo-state" {
+		go a.runUTXOIndexBuild(ctx, cloneIndexJob(j))
+	} else if req.Index == "sat-state" {
+		go a.runSatIndexBuild077(ctx, cloneIndexJob(j))
+	} else if req.Index == "address-state" || req.Index == "address-history" {
+		go a.runAddressIndexBuild(ctx, cloneIndexJob(j))
+	} else if len(req.Outputs) > 0 || req.Index == "sat-state" || req.Index == "txo-spender" || req.Index == "inscriptions" && p.ConventionalIDs {
+		go a.runSharedIndexBuild(ctx, cloneIndexJob(j))
+	} else {
+		go a.runIndexBuild(ctx, cloneIndexJob(j), s)
+	}
 	return j, nil
 }
 func (a *app) pauseIndexBuild() (indexJob, error) {
+	return a.pauseIndexBuildFor("")
+}
+func (a *app) pauseIndexBuildFor(index string) (indexJob, error) {
+	a.indexLiveControlMu.Lock()
+	defer a.indexLiveControlMu.Unlock()
 	a.indexMu.Lock()
-	defer a.indexMu.Unlock()
 	a.loadIndexJobLocked()
-	if a.indexCancel != nil {
-		a.indexCancel()
+	j := cloneIndexJob(a.indexJob)
+	if index != "" && !indexJobOwns(j, index) {
+		a.indexMu.Unlock()
+		return indexJob{}, fmt.Errorf("no active job belongs to %s", index)
 	}
-	if a.indexCancel == nil {
+	cancel := a.indexCancel
+	// Persist the parent policy before stopping a shared worker. A restart
+	// between cancellation and policy persistence must not resume Live work.
+	if j.Index != "" {
+		if err := a.pauseLivePolicyForJob(j.Index); err != nil {
+			a.indexMu.Unlock()
+			return j, fmt.Errorf("Live policy could not be paused: %w", err)
+		}
+	}
+	if cancel != nil {
+		cancel()
+		j.State = "pausing"
+	}
+	a.indexMu.Unlock()
+	if cancel == nil {
 		return requestIndexPause(a.dataDir)
 	}
-	j := a.indexJob
-	j.State = "pausing"
 	return j, nil
 }
 
@@ -175,7 +517,7 @@ func (a *app) waitIndexBuild(ctx context.Context) (indexJob, error) {
 	for {
 		j := a.indexJobSnapshot()
 		if j.State != "running" && j.State != "waiting" {
-			if j.State == "failed" {
+			if j.State == "failed" || j.State == "rebuild_required" {
 				return j, fmt.Errorf("%s", j.Error)
 			}
 			return j, nil
@@ -198,7 +540,7 @@ func (a *app) indexTarget(height int64) (blockTarget, error) {
 	return t, e
 }
 func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
-	defer func() { a.indexMu.Lock(); a.indexCancel = nil; a.indexMu.Unlock() }()
+	defer a.indexBuildFinished()
 	finish := func(state string, e error) {
 		j.State = state
 		j.Error = ""
@@ -209,10 +551,26 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 			a.indexMu.Lock()
 			j.State = "failed"
 			j.Error = "Cannot persist job status: " + err.Error()
-			a.indexJob = j
+			a.indexJob = cloneIndexJob(j)
 			a.indexMu.Unlock()
 		}
+		if j.Live {
+			if j.State == "failed" {
+				a.failLiveIndexRuntime(j.Index, fmt.Errorf("%s", j.Error))
+			} else if j.State == "complete" {
+				a.clearLiveIndexRuntime(j.Index)
+			}
+		}
 	}
+	if err := requireReleaseIndexRequest(indexBuildRequest{Index: j.Index, Outputs: j.Outputs, ConventionalIDs: j.ConventionalIDs}); err != nil {
+		finish("paused", err)
+		return
+	}
+	if err := requireTimelineRawBuild(ctx, a.dataDir, indexBuildRequest{Index: j.Index, Outputs: j.Outputs}); err != nil {
+		finish("paused", err)
+		return
+	}
+	ctx = legacyRawPublicationContext(ctx, a.dataDir, j.Index)
 	// Validate persisted dependency history off the request goroutine. A large
 	// resume must not freeze the GUI's start request.
 	checked, e := openIndexStoreContext(ctx, a.dataDir, j.Index)
@@ -225,13 +583,31 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		return
 	}
 	s = checked
+	a.configureTXIOStore(s)
+	s.retainOutputValues, s.retainOutputScripts = j.RetainOutputValues, j.RetainOutputScripts
 	s.head.Mode = j.Mode
+	s.retainSatHistory = j.RetainSatHistory
+	liveBlocksProcessed := int64(0)
 	retryDelay := 2 * time.Second
 	wait := func(e error) bool {
+		if j.Live {
+			// Policy changes cancel under this same lock. A failed request that
+			// outlives Pause must not replace its paused status with a retry.
+			a.indexLiveControlMu.Lock()
+			defer a.indexLiveControlMu.Unlock()
+		}
+		if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
+			finish("paused", nil)
+			return false
+		}
 		j.State = "waiting"
 		j.Error = e.Error()
 		if err := a.saveIndexJob(j); err != nil {
 			finish("failed", err)
+			return false
+		}
+		if j.Live {
+			a.deferLiveIndexRetry(j.Index, e)
 			return false
 		}
 		select {
@@ -243,8 +619,20 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 		}
 	}
 	for {
+		if !indexRunOptionalWorkAllowed(a.dataDir, j.Index) {
+			finish("paused", nil)
+			return
+		}
 		if ctx.Err() != nil || a.indexPauseRequested(j.ID) {
 			finish("paused", nil)
+			return
+		}
+		if j.Live && liveBlocksProcessed >= indexLiveBatchBlocks {
+			// Reconciliation can rewind well below the height used to choose a
+			// batch's end. Bound actual new commits too so a deep reorg cannot
+			// give one Live recipe the shared writer for its entire history.
+			j.To = j.Height
+			finish("complete", nil)
 			return
 		}
 		if j.To < 0 {
@@ -291,7 +679,7 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 			finish("failed", e)
 			return
 		}
-		block, e := a.fetchBlockWithPolicy(t, j.Retention)
+		block, e := a.indexSourceBlock(ctx, t, j.Retention)
 		if e != nil {
 			var unavailable blockUnavailableError
 			if !errors.As(e, &unavailable) {
@@ -332,12 +720,29 @@ func (a *app) runIndexBuild(ctx context.Context, j indexJob, s *indexStore) {
 			finish("failed", e)
 			return
 		}
+		if j.Live {
+			a.clearLiveIndexRuntime(j.Index)
+			liveBlocksProcessed++
+		}
 		j.Height = next
 	}
 }
 func (a *app) indexQuery(id string, limit int) (any, error) {
+	if err := requireReleaseFeature(id); err != nil {
+		return nil, err
+	}
 	if limit <= 0 || limit > 1000 {
 		limit = 100
+	}
+	if id == "utxo-state" {
+		return a.queryUTXOIndex(context.Background(), limit)
+	}
+	if id == "sat-state" {
+		return a.indexSatStatus077(), nil
+	}
+	if id == "address-state" || id == "address-history" {
+		view, _ := a.indexAddressStatus(nil)
+		return view, nil
 	}
 	s, e := indexStoreHead(a.dataDir, id)
 	if e != nil {
@@ -347,6 +752,7 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 	total := 0
 	next := s.head.Commitment
 	blocks := 0
+	seenBlocks := map[string]bool{}
 	var child *indexBatch
 	for next != "" && blocks < 512 && len(rows) < limit {
 		b, e := s.readBatch(next)
@@ -356,16 +762,62 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 		if child != nil && (child.Checkpoint.Height != b.Checkpoint.Height+1 || child.PreviousBlockHash != b.Checkpoint.BlockHash) {
 			return nil, fmt.Errorf("query checkpoint discontinuity")
 		}
-		if id == "bitmap" {
-			for _, r := range b.Bitmap {
+		seenBlocks[fmt.Sprintf("%d:%s", b.Checkpoint.Height, b.Checkpoint.BlockHash)] = true
+		if b.Sats != nil {
+			rows = append(rows, struct {
+				Height int64             `json:"block_height"`
+				Hash   string            `json:"block_hash"`
+				Data   *satIndexSnapshot `json:"data"`
+			}{b.Checkpoint.Height, b.Checkpoint.BlockHash, b.Sats})
+			total++
+		} else if b.TransactionLocator != nil {
+			rows = append(rows, b.TransactionLocator)
+			total++
+		} else if b.Bitcoin != nil {
+			data := b.Bitcoin
+			bodyState := "legacy_decoded"
+			if b.Bitcoin.BodySchema == 2 || b.Bitcoin.BodySchema == 3 {
+				// A storage overview never decodes every body on the page.
+				// Known block/transaction detail routes explicitly request bytes.
+				bodyState = "raw_metadata_only; body_verified_on_explicit_detail"
+			}
+			rows = append(rows, struct {
+				Height    int64              `json:"block_height"`
+				Hash      string             `json:"block_hash"`
+				Data      *bitcoinIndexBlock `json:"data"`
+				BodyState string             `json:"body_state"`
+			}{b.Checkpoint.Height, b.Checkpoint.BlockHash, data, bodyState})
+			total++
+		} else if b.Spenders != nil {
+			for i := len(b.Spenders.Rows) - 1; i >= 0; i-- {
+				total++
+				if len(rows) < limit {
+					rows = append(rows, indexSpendMatch{txioSpendRow(b.Spenders, i), b.Checkpoint.Height, b.Checkpoint.BlockHash})
+				}
+			}
+		} else if id == "bitmap" {
+			for i := len(b.Bitmap) - 1; i >= 0; i-- {
+				r := b.Bitmap[i]
+				a.enrichBitmapIdentity(&r, b.Checkpoint.BlockHash)
 				total++
 				if len(rows) < limit {
 					r.Height = b.Checkpoint.Height
 					rows = append(rows, bitmapQueryRecord{r, bitmapCompatibility(r)})
 				}
 			}
+		} else if id == "inscriptions" {
+			coordinates := inscriptionBatchCoordinates(b)
+			rows = append(rows, struct {
+				Inscriptions     []string `json:"inscriptions"`
+				Height           int64    `json:"block_height"`
+				TransactionCount *uint32  `json:"transaction_count,omitempty"`
+				Mode             string   `json:"mode"`
+			}{coordinates, b.Checkpoint.Height, inscriptionBatchCount(b), inscriptionBatchMode(b)})
+			total += len(coordinates)
 		} else {
-			for _, r := range b.Inscriptions {
+			for i := len(b.Inscriptions) - 1; i >= 0; i-- {
+				r := b.Inscriptions[i]
+				a.enrichInscriptionOccurrence(&r)
 				total++
 				if len(rows) < limit {
 					rows = append(rows, r)
@@ -376,6 +828,17 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 		child = &b
 		blocks++
 	}
+	browseComplete := true
+	if indexBrowseAvailable(id) {
+		additional, count, inspected, complete, err := a.browseQueryRows(context.Background(), id, limit-len(rows), seenBlocks)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, additional...)
+		total += count
+		blocks += inspected
+		browseComplete = complete
+	}
 	return struct {
 		Definition      indexDefinition  `json:"definition"`
 		Checkpoint      *indexCheckpoint `json:"checkpoint"`
@@ -385,7 +848,7 @@ func (a *app) indexQuery(id string, limit int) (any, error) {
 		Truncated       bool             `json:"truncated"`
 		ChainState      string           `json:"chain_state"`
 		InspectedBlocks int              `json:"inspected_blocks"`
-	}{s.definition, s.checkpoint, rows, total, next == "", next != "" || total > len(rows), a.indexChainState(s.checkpoint), blocks}, nil
+	}{s.definition, s.checkpoint, rows, total, next == "" && browseComplete, next != "" || !browseComplete || total > len(rows), a.indexChainState(s.checkpoint), blocks}, nil
 }
 
 type indexLookupResult struct {
@@ -400,6 +863,22 @@ type indexLookupResult struct {
 }
 
 func (a *app) indexLookup(id, key string) (any, error) {
+	if err := requireReleaseFeature(id); err != nil {
+		return nil, err
+	}
+	if id == "txo-spender" {
+		return a.lookupIndexSpender(context.Background(), key)
+	}
+	if id == "utxo-state" {
+		return a.lookupUTXOIndex(context.Background(), key)
+	}
+	if id == "address-state" || id == "address-history" {
+		mode := "current"
+		if id == "address-history" {
+			mode = "historical"
+		}
+		return a.addressViewContext(context.Background(), key, mode, "", 50)
+	}
 	if id != "bitmap" {
 		return nil, fmt.Errorf("key lookup is implemented for Bitmap districts")
 	}
@@ -418,6 +897,7 @@ func (a *app) indexLookup(id, key string) (any, error) {
 		for _, r := range b.Bitmap {
 			if r.Accepted && r.District != nil && *r.District == n {
 				copy := r
+				a.enrichBitmapIdentity(&copy, b.Checkpoint.BlockHash)
 				copy.Height = b.Checkpoint.Height
 				result.RevealHeight = b.Checkpoint.Height
 				result.RevealBlockHash = b.Checkpoint.BlockHash

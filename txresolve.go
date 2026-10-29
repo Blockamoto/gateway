@@ -8,6 +8,9 @@ import (
 )
 
 type txResolutionView struct {
+	TxIndex             int             `json:"tx_index"`
+	ResolutionState     string          `json:"resolution_state,omitempty"`
+	Note                string          `json:"note,omitempty"`
 	TxID                string          `json:"txid"`
 	Height              int64           `json:"height"`
 	BlockHash           string          `json:"block_hash"`
@@ -53,15 +56,27 @@ type spenderResolutionView struct {
 }
 
 func (a *app) resolveTransactionViaOverlay(txid string) (txResolutionView, error) {
+	return a.resolveTransactionViaOverlayContext(context.Background(), txid)
+}
+func (a *app) resolveTransactionViaOverlayContext(ctx context.Context, txid string) (txResolutionView, error) {
+	if err := ctx.Err(); err != nil {
+		return txResolutionView{}, err
+	}
 	txid = strings.ToLower(strings.TrimSpace(txid))
 	if !validHash(txid) {
 		return txResolutionView{}, fmt.Errorf("enter a 64-character transaction ID")
+	}
+	if !releaseFeatureAvailable("tx-locator") {
+		if r, found, err := a.indexedTransactionContext(ctx, txid); found || err != nil {
+			return r, err
+		}
+		return txResolutionView{}, fmt.Errorf("transaction is not located in the local Bitcoin Blocks index; supply its containing block height. Standalone transaction locator indexes are locked in this testing build")
 	}
 	a.cacheMu.RLock()
 	loc, ok := a.cacheIndex.Tx[txid]
 	a.cacheMu.RUnlock()
 	if ok {
-		if r, e := a.verifyTxLocation(txid, loc, "local BOD transaction locator"); e == nil {
+		if r, e := a.verifyTxLocationContext(ctx, txid, loc, "local Gateway transaction locator"); e == nil {
 			return r, nil
 		}
 	}
@@ -73,18 +88,27 @@ func (a *app) resolveTransactionViaOverlay(txid string) (txResolutionView, error
 		}
 		if len(locations) == 1 {
 			l := locations[0]
-			if r, e := a.verifyTxLocation(txid, txLocation{TxID: txid, Height: l.Height, BlockHash: l.BlockHash, TxIndex: l.TxIndex}, "BOD native graph locator"); e == nil {
+			if r, e := a.verifyTxLocationContext(ctx, txid, txLocation{TxID: txid, Height: l.Height, BlockHash: l.BlockHash, TxIndex: l.TxIndex}, "Gateway native graph locator"); e == nil {
 				return r, nil
 			}
 		}
+	}
+	if r, found, err := a.indexedTransactionContext(ctx, txid); found || err != nil {
+		return r, err
 	}
 	a.settingsMu.RLock()
 	settings := a.settings
 	a.settingsMu.RUnlock()
 	if loc, e := coreTxLocation(settings, txid); e == nil {
-		if r, e := a.verifyTxLocation(txid, loc, "Bitcoin Core"); e == nil {
+		if r, e := a.verifyTxLocationContext(ctx, txid, loc, "Bitcoin Core"); e == nil {
 			return r, nil
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return txResolutionView{}, err
+	}
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		return txResolutionView{}, fmt.Errorf("transaction location is not known locally; enter a containing-block position. Gateway peer lookup is locked in this testing build")
 	}
 	resp, peer, err := a.queryPeers(overlayRequest{Version: overlayProtocolVersion, Type: "txloc", TxID: txid}, "txloc")
 	if err != nil {
@@ -93,15 +117,23 @@ func (a *app) resolveTransactionViaOverlay(txid string) (txResolutionView, error
 	if resp.TxLocation == nil {
 		return txResolutionView{}, fmt.Errorf("lookup peer returned no transaction location")
 	}
-	return a.verifyTxLocation(txid, *resp.TxLocation, peer.Addr)
+	return a.verifyTxLocationContext(ctx, txid, *resp.TxLocation, peer.Addr)
 }
 
 // verifyTxLocation is deliberately separate from peer discovery: BOD peers
 // provide the hint, while the actual Bitcoin block proves or disproves it.
 func (a *app) verifyTxLocation(txid string, loc txLocation, locatorPeer string) (txResolutionView, error) {
-	block, err := a.fetchBlockAtLocation(loc.Height, loc.BlockHash, locatorPeer)
+	return a.verifyTxLocationContext(context.Background(), txid, loc, locatorPeer)
+}
+func (a *app) verifyTxLocationContext(ctx context.Context, txid string, loc txLocation, locatorPeer string) (txResolutionView, error) {
+	view, _, err := a.verifyTxLocationBlockContext(ctx, txid, loc, locatorPeer)
+	return view, err
+}
+
+func (a *app) verifyTxLocationBlockContext(ctx context.Context, txid string, loc txLocation, locatorPeer string) (txResolutionView, blockView, error) {
+	block, err := a.fetchBlockAtLocationContext(ctx, loc.Height, loc.BlockHash, locatorPeer)
 	if err != nil {
-		return txResolutionView{}, err
+		return txResolutionView{}, blockView{}, err
 	}
 	var found *transactionView
 	for i := range block.Transactions {
@@ -111,15 +143,19 @@ func (a *app) verifyTxLocation(txid string, loc txLocation, locatorPeer string) 
 		}
 	}
 	if found == nil {
-		return txResolutionView{}, fmt.Errorf("peer locator pointed to block %s, but transaction %s was not in it", loc.BlockHash, txid)
+		return txResolutionView{}, blockView{}, fmt.Errorf("peer locator pointed to block %s, but transaction %s was not in it", loc.BlockHash, txid)
 	}
-	return txResolutionView{TxID: txid, Height: loc.Height, BlockHash: loc.BlockHash, LocatorPeer: locatorPeer, BitcoinPeer: block.SourcePeer, SourceNetwork: block.SourceNetwork, FromCache: block.FromCache, LocatorVerified: block.Verification.HeaderChainMatch, TransactionVerified: true, VerificationState: block.VerificationState, Transaction: *found}, nil
+	a.rememberRelationshipTransaction(block, *found)
+	return txResolutionView{TxID: txid, TxIndex: found.Index, Height: loc.Height, BlockHash: loc.BlockHash, LocatorPeer: locatorPeer, BitcoinPeer: block.SourcePeer, SourceNetwork: block.SourceNetwork, FromCache: block.FromCache, LocatorVerified: block.Verification.HeaderChainMatch, TransactionVerified: true, VerificationState: block.VerificationState, Transaction: *found}, block, nil
 }
 
 func (a *app) resolvePrevoutViaOverlay(txid string, vout uint32) (prevoutResolutionView, error) {
 	r, err := a.resolveTransactionViaOverlay(txid)
 	if err != nil {
 		return prevoutResolutionView{}, err
+	}
+	if !r.TransactionVerified {
+		return prevoutResolutionView{}, fmt.Errorf("transaction location is known; verified transaction bytes are required from a block source")
 	}
 	if int(vout) >= len(r.Transaction.Outputs) {
 		return prevoutResolutionView{}, fmt.Errorf("transaction has %d outputs; vout %d does not exist", len(r.Transaction.Outputs), vout)
@@ -133,6 +169,9 @@ func (a *app) resolvePrevoutViaOverlay(txid string, vout uint32) (prevoutResolut
 }
 
 func (a *app) resolveSpenderViaOverlay(txid string, vout uint32) (spenderResolutionView, error) {
+	if err := requireReleaseFeature("txo-spender"); err != nil {
+		return spenderResolutionView{}, err
+	}
 	txid = strings.ToLower(strings.TrimSpace(txid))
 	if !validHash(txid) {
 		return spenderResolutionView{}, fmt.Errorf("invalid txid")
@@ -204,6 +243,9 @@ type addressResolutionView struct {
 }
 
 func (a *app) resolveAddressUTXOsViaOverlay(address string) (addressResolutionView, error) {
+	if err := requireReleaseFeature("address-state"); err != nil {
+		return addressResolutionView{}, err
+	}
 	address = strings.TrimSpace(address)
 	if address == "" {
 		return addressResolutionView{}, fmt.Errorf("enter a Bitcoin address")
@@ -234,14 +276,51 @@ type coordinateResolution struct {
 }
 
 func (a *app) resolveCoordinate(c bodCoordinate) (coordinateResolution, error) {
-	block, err := a.fetchAndDecode(strconv.FormatInt(c.Height, 10))
+	return a.resolveCoordinateContext(context.Background(), c)
+}
+func (a *app) resolveCoordinateContext(ctx context.Context, c bodCoordinate) (coordinateResolution, error) {
+	if c.Kind == coordInscription {
+		if err := requireReleaseFeature("inscriptions"); err != nil {
+			return coordinateResolution{}, err
+		}
+		a.settingsMu.RLock()
+		enabled := a.settings.OrdEnabled
+		a.settingsMu.RUnlock()
+		if !enabled {
+			return coordinateResolution{}, fmt.Errorf("Inscriptions module is disabled")
+		}
+		if c.TxID == "" {
+			if occurrence, found, err := a.indexedInscriptionPositionContext(ctx, c.Height, c.TxIndex, c.InscriptionIndex); found || err != nil {
+				if err != nil {
+					return coordinateResolution{}, err
+				}
+				rec, err := a.ordRecordFromOccurrence(occurrence, "local_occurrence_index")
+				if err != nil {
+					return coordinateResolution{}, err
+				}
+				if err = a.saveOrdRecord(rec, occurrence.Body); err != nil {
+					return coordinateResolution{}, err
+				}
+				return coordinateResolution{Inscription: &rec, Coordinate: c.Raw}, nil
+			}
+		}
+	}
+	block, err := a.fetchAndDecodeContext(ctx, strconv.FormatInt(c.Height, 10))
 	if err != nil {
 		return coordinateResolution{}, err
 	}
-	if c.TxIndex < 0 || c.TxIndex >= len(block.Transactions) {
-		return coordinateResolution{}, fmt.Errorf("block %d has %d transactions; transaction index %d does not exist", c.Height, len(block.Transactions), c.TxIndex)
+	if !integrityVerified(block) {
+		return coordinateResolution{}, fmt.Errorf("coordinate requires an integrity-checked Bitcoin block")
 	}
-	tx := block.Transactions[c.TxIndex]
+	tx, err := coordinateTransaction(c, block)
+	if err != nil {
+		return coordinateResolution{}, err
+	}
+	a.rememberRelationshipTransaction(block, tx)
+	locator := "Gateway positional address " + c.Raw
+	if c.TxID != "" {
+		locator = "Gateway hash-located address " + c.Raw
+	}
 	focusKind, focusIndex := "transaction", -1
 	var focusOffset *uint64
 	switch c.Kind {
@@ -252,12 +331,11 @@ func (a *app) resolveCoordinate(c bodCoordinate) (coordinateResolution, error) {
 		// The reveal is resolved from the authenticated Bitcoin block. The
 		// resulting record is the same native witness evidence used by the
 		// known-ID resolver, but the lookup starts from a human path.
-		id := fmt.Sprintf("%si%d", tx.TxID, c.InscriptionIndex)
-		rec, err := a.resolveInscription(context.Background(), id, block.Hash)
+		rec, err := a.resolveInscriptionInBlock(ctx, block, tx.TxID, c.InscriptionIndex)
 		if err != nil {
 			return coordinateResolution{}, err
 		}
-		return coordinateResolution{Resolution: txResolutionView{TxID: tx.TxID, Height: block.Height, BlockHash: block.Hash, LocatorPeer: "BOD positional address " + c.Raw, BitcoinPeer: block.SourcePeer, SourceNetwork: block.SourceNetwork, FromCache: block.FromCache, LocatorVerified: block.Verification.HeaderChainMatch, TransactionVerified: true, VerificationState: block.VerificationState, Transaction: tx}, Inscription: &rec, Coordinate: c.Raw}, nil
+		return coordinateResolution{Resolution: txResolutionView{TxID: tx.TxID, TxIndex: tx.Index, Height: block.Height, BlockHash: block.Hash, LocatorPeer: locator, BitcoinPeer: block.SourcePeer, SourceNetwork: block.SourceNetwork, FromCache: block.FromCache, LocatorVerified: block.Verification.HeaderChainMatch, TransactionVerified: true, VerificationState: block.VerificationState, Transaction: tx}, Inscription: &rec, Coordinate: c.Raw}, nil
 	case coordOutput:
 		if c.IOIndex < 0 || c.IOIndex >= len(tx.Outputs) {
 			return coordinateResolution{}, fmt.Errorf("transaction %s has %d outputs; output %d does not exist", tx.Coordinate, len(tx.Outputs), c.IOIndex)
@@ -287,8 +365,8 @@ func (a *app) resolveCoordinate(c bodCoordinate) (coordinateResolution, error) {
 	}
 	return coordinateResolution{
 		Resolution: txResolutionView{
-			TxID: tx.TxID, Height: block.Height, BlockHash: block.Hash,
-			LocatorPeer: "BOD positional address " + c.Raw, BitcoinPeer: block.SourcePeer,
+			TxID: tx.TxID, TxIndex: tx.Index, Height: block.Height, BlockHash: block.Hash,
+			LocatorPeer: locator, BitcoinPeer: block.SourcePeer,
 			SourceNetwork: block.SourceNetwork, FromCache: block.FromCache,
 			LocatorVerified: block.Verification.HeaderChainMatch, TransactionVerified: true,
 			VerificationState: block.VerificationState, Transaction: tx,

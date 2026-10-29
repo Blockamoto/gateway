@@ -157,6 +157,9 @@ func owned(root, kind string) bool {
 	return e == nil && json.Unmarshal(b, &c) == nil && c.App != "" && c.Storage > 0 && c.Raw == "bitcoin-serialized-block"
 }
 func Registry(local string) string { return filepath.Join(local, "GatewayClient", "profiles") }
+
+// OwnsProfile recognizes Gateway ownership without creating or changing it.
+func OwnsProfile(root string) bool { return owned(root, "profile") }
 func registryPath(local, root string) string {
 	h := sha256.Sum256([]byte(strings.ToLower(filepath.Clean(root))))
 	return filepath.Join(Registry(local), hex.EncodeToString(h[:])+".json")
@@ -201,7 +204,8 @@ func Discover(local, install string) []Profile {
 		rows = append(rows, Profile{root, kind, source})
 	}
 	if local != "" {
-		add(filepath.Join(local, "BlocksOnDemand", "data"), "profile", "installed data")
+		add(filepath.Join(local, "Gateway", "data"), "profile", "installed data")
+		add(filepath.Join(local, "BlocksOnDemand", "data"), "profile", "recognized legacy data")
 		add(filepath.Join(local, "GatewayClient", "data"), "profile", "recognized legacy data")
 		entries, _ := os.ReadDir(Registry(local))
 		if len(entries) > 512 {
@@ -269,13 +273,13 @@ func ProtectedPaths(root string) []string {
 }
 
 var rootFiles = map[string]bool{
-	"settings.json": true, "compatibility.json": true, "setup.json": true, "runtime.json": true,
-	"bitcoin-peers.json": true, "cache-index.json": true, "coverage.json": true, "sync-state.json": true,
+	"settings.json": true, "appearance.json": true, "compatibility.json": true, "setup.json": true, "runtime.json": true,
+	"bitcoin-peers.json": true, "bitcoin-peers-v2.json": true, "cache-index.json": true, "coverage.json": true, "sync-state.json": true,
 	"core-block-locator-v1.bin": true, "core-block-mount-v1.json": true, "headers.bin": true,
 	"discovery-ledger-v1.wal": true, ".discovery-checkpoint.tmp": true, "windows-tray-v1.ps1": true,
 	Marker: true,
 }
-var rootDirs = map[string]bool{"headers": true, "blocks": true, "graph": true, "satline": true, "ord": true, "archive": true, "migration": true, "indexes": true}
+var rootDirs = map[string]bool{"headers": true, "blocks": true, "graph": true, "satline": true, "ord": true, "archive": true, "migration": true, "indexes": true, "updates": true}
 
 func forbiddenName(name string) bool {
 	name = strings.ToLower(name)
@@ -364,13 +368,20 @@ func Preview(path, kind string, extraProtected []string) (Plan, error) {
 			p.Excluded = append(p.Excluded, path)
 			return nil
 		}
-		st, e := d.Info()
+		// Directory-entry identities are not reliable on every Windows volume.
+		// Capture this exact no-follow path instead, including its identity now:
+		// Windows Lstat defers loading the file ID until SameFile is called. A
+		// deferred ID lookup during Execute could adopt a replacement file.
+		st, e := os.Lstat(path)
 		if e != nil {
 			return e
 		}
-		if !st.Mode().IsRegular() {
+		if !st.Mode().IsRegular() || isReparse(path) {
 			p.Excluded = append(p.Excluded, path)
 			return nil
+		}
+		if !os.SameFile(st, st) {
+			return fmt.Errorf("cannot capture cleanup file identity: %s", path)
 		}
 		p.Items = append(p.Items, Item{path, st.Size(), st})
 		p.Bytes += st.Size()
@@ -539,7 +550,7 @@ func Stop(root string) error {
 func UnrecognizedDefaultData(local, install string) []string {
 	paths := []string{filepath.Join(install, "blocks-on-demand-data")}
 	if local != "" {
-		paths = append(paths, filepath.Join(local, "BlocksOnDemand", "data"), filepath.Join(local, "GatewayClient", "data"))
+		paths = append(paths, filepath.Join(local, "Gateway", "data"), filepath.Join(local, "BlocksOnDemand", "data"), filepath.Join(local, "GatewayClient", "data"))
 	}
 	out := []string{}
 	for _, path := range paths {

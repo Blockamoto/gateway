@@ -35,12 +35,12 @@ func indexInterfaceCall(handler http.Handler, method, path, body string) *httpte
 
 func TestIndexInterfaceCLIPlanMatchesAPI(t *testing.T) {
 	a := &app{}
-	args := []string{"plan", "inscriptions", "--from=850000", "--to", "850002", "--retention", "ephemeral"}
+	args := []string{"plan", "blocks", "--from=850000", "--to", "850002", "--retention", "ephemeral"}
 	cli, err := a.runIndexCLI(args)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := indexInterfaceCall(indexInterfaceHandler(a), "POST", "/api/v1/index/plan", `{"index":"inscriptions","from":850000,"to":850002,"retention":"ephemeral"}`)
+	r := indexInterfaceCall(indexInterfaceHandler(a), "POST", "/api/v1/index/plan", `{"index":"blocks","from":850000,"to":850002,"retention":"ephemeral"}`)
 	if r.Code != 200 {
 		t.Fatal(r.Code, r.Body.String())
 	}
@@ -68,6 +68,7 @@ func TestIndexInterfaceCLIPlanMatchesAPI(t *testing.T) {
 }
 
 func TestIndexInterfacePeerInspectionIsExplicitAndNeverPromotesClaims(t *testing.T) {
+	t.Skip("Gateway peerhood public inspection is intentionally locked in 0.6.6; peer validation helpers retain unit coverage.")
 	provider, _ := indexPeerFixture(t, "bitmap", 2)
 	if _, err := provider.setIndexPublication("bitmap", true); err != nil {
 		t.Fatal(err)
@@ -123,6 +124,7 @@ func TestIndexInterfacePeerInspectionIsExplicitAndNeverPromotesClaims(t *testing
 }
 
 func TestIndexInterfaceExactDistrictLookup(t *testing.T) {
+	t.Skip("Bitmap public district lookup is intentionally locked in 0.6.6; district algorithms retain unit coverage.")
 	a, _ := indexPeerFixture(t, "bitmap", 2)
 	handler := indexInterfaceHandler(a)
 	for _, key := range []string{"0", "1", "42"} {
@@ -194,7 +196,7 @@ func TestIndexInterfaceRejectsInvalidRequestsWithoutStarting(t *testing.T) {
 		}
 	}
 	r := indexInterfaceCall(handler, "POST", "/api/v1/index/build", `{"index":"inscription-numbering"}`)
-	if r.Code != 409 || !strings.Contains(r.Body.String(), "no derivation executor") {
+	if r.Code != 409 || !strings.Contains(r.Body.String(), "locked in this testing build") {
 		t.Fatal("numbering not explicitly unavailable", r.Code, r.Body.String())
 	}
 	if _, err := os.Stat(filepath.Join(a.dataDir, "indexes", "job.json")); !os.IsNotExist(err) {
@@ -203,6 +205,7 @@ func TestIndexInterfaceRejectsInvalidRequestsWithoutStarting(t *testing.T) {
 }
 
 func TestIndexInterfacePublicationFreezesReviewedCheckpoint(t *testing.T) {
+	t.Skip("Gateway peerhood publication is intentionally locked in 0.6.6; raw checkpoint publication retains unit coverage.")
 	a, store := indexPeerFixture(t, "bitmap", 2)
 	handler := indexInterfaceHandler(a)
 	wrong := indexInterfaceCall(handler, "POST", "/api/v1/index/publish", `{"index":"bitmap","checkpoint":"`+strings.Repeat("f", 64)+`"}`)
@@ -258,7 +261,7 @@ func TestIndexInterfaceManagementIsolationAndPageCSP(t *testing.T) {
 	if embedded.Code != 200 || !strings.Contains(embedded.Header().Get("Content-Security-Policy"), "frame-ancestors 'self'") {
 		t.Fatal("same-origin index workspace cannot embed", embedded.Code)
 	}
-	if first.Header().Get("Cache-Control") != "no-store" || !strings.Contains(strings.ToLower(first.Body.String()), "canonical inscription numbers") {
+	if first.Header().Get("Cache-Control") != "no-store" || !strings.Contains(strings.ToLower(first.Body.String()), "numbering or current ownership from partial history") {
 		t.Fatal("cache policy or numbering caveat missing")
 	}
 }
@@ -266,7 +269,8 @@ func TestIndexInterfaceManagementIsolationAndPageCSP(t *testing.T) {
 func TestIndexInterfaceCLIBuildWaitsForCommittedResult(t *testing.T) {
 	a, _ := initGraphTestApp(t)
 	a.settings.CoreDisabled = true
-	result, err := a.runIndexCLI([]string{"build", "inscriptions", "--from", "0", "--to", "0"})
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
+	result, err := a.runIndexCLI([]string{"build", "blocks", "--from", "0", "--to", "0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,11 +278,11 @@ func TestIndexInterfaceCLIBuildWaitsForCommittedResult(t *testing.T) {
 	if !ok || job.State != "complete" || job.Height != 0 {
 		t.Fatal("CLI returned before its build completed", result)
 	}
-	s, err := openIndexStore(a.dataDir, "inscriptions")
+	s, err := openIndexStore(a.dataDir, "blocks")
 	if err != nil || s.checkpoint == nil || s.checkpoint.Height != 0 {
 		t.Fatal("CLI result lacks committed checkpoint", s, err)
 	}
-	query := indexInterfaceCall(indexInterfaceHandler(a), "GET", "/api/v1/index/query?index=inscriptions&limit=50", "")
+	query := indexInterfaceCall(indexInterfaceHandler(a), "GET", "/api/v1/index/query?index=blocks&limit=50", "")
 	if query.Code != 200 || !strings.Contains(query.Body.String(), genesisHashDisplay) {
 		t.Fatal(query.Code, query.Body.String())
 	}
@@ -287,12 +291,13 @@ func TestIndexInterfaceCLIBuildWaitsForCommittedResult(t *testing.T) {
 func TestIndexInterfaceRuntimeForwardingUsesExistingEngine(t *testing.T) {
 	a, _ := initGraphTestApp(t)
 	a.settings.CoreDisabled = true
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "blocks"})
 	server := httptest.NewServer(indexInterfaceHandler(a))
 	defer server.Close()
 	if err := writeRuntimeInfo(a.dataDir, server.URL); err != nil {
 		t.Fatal(err)
 	}
-	command, err := parseIndexCLI([]string{"build", "inscriptions", "--from", "0", "--to", "0"})
+	command, err := parseIndexCLI([]string{"build", "blocks", "--from", "0", "--to", "0"})
 	if err != nil {
 		t.Fatal(err)
 	}

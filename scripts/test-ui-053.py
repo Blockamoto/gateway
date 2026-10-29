@@ -103,7 +103,7 @@ def main():
      if stage==3:
       for name in ['setup-startup','setup-god','setup-domain']:assert not page.locator('#'+name).is_checked()
      if stage==4:
-      assert page.locator('#setup-open-browser').inner_text()=='Open extensions page'
+      assert page.locator('#setup-open-browser').inner_text()=='Copy extensions address & open browser'
       assert page.locator('#setup-open-folder').inner_text()=='Open companion folder'
       assert 'pending' in page.locator('#setup-browser-state').inner_text().lower()
       page.locator('#setup-profile').fill('Profile 2')

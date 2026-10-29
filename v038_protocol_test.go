@@ -1,27 +1,12 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-func TestV038ExperimentalServiceBitIsBit25(t *testing.T) {
-	if bodExperimentalServiceBit != uint64(1)<<25 {
-		t.Fatalf("service mask = %x", bodExperimentalServiceBit)
-	}
-	p := makeVersionPayload("127.0.0.1:8333", bodExperimentalServiceBit)
-	if len(p) < 12 {
-		t.Fatal("short version payload")
-	}
-	services := binary.LittleEndian.Uint64(p[4:12])
-	if services&bodExperimentalServiceBit == 0 {
-		t.Fatalf("BOD bit not advertised: %x", services)
-	}
-}
 
 func TestV038BIP434FeatureIdentityIsParseable(t *testing.T) {
 	payload := makeFeaturePayload(bodFeatureID, bodFeatureData())
@@ -34,23 +19,6 @@ func TestV038BIP434FeatureIdentityIsParseable(t *testing.T) {
 	}
 	if w, ok := featureWireVersion(data); !ok || w != bodWireVersion {
 		t.Fatalf("wire negotiation failed w=%d ok=%v", w, ok)
-	}
-}
-
-func TestV038AddrServiceHintRoundTrip(t *testing.T) {
-	p, err := makeAddrAnnouncement("127.0.0.1:48333", bodExperimentalServiceBit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rows, err := parseAddrPayload(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rows) != 1 || rows[0].Services&bodExperimentalServiceBit == 0 {
-		t.Fatalf("bad addr rows: %#v", rows)
-	}
-	if rows[0].Addr != "127.0.0.1:48333" {
-		t.Fatalf("addr = %q", rows[0].Addr)
 	}
 }
 

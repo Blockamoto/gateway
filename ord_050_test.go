@@ -39,9 +39,14 @@ func Test050OrdEnvelopeOrderAndBody(t *testing.T) {
 		t.Fatalf("bad envelope extraction %+v", e)
 	}
 }
-func Test050OrdSkipsMalformedOrNonTaprootWitness(t *testing.T) {
+func Test050OrdPinnedWitnessSelectionAndMalformedScript(t *testing.T) {
 	script := ordScript050(nil, []byte("body"))
-	cases := [][]string{{hex.EncodeToString(script), "00"}, {hex.EncodeToString(append(script, 0x4c)), hex.EncodeToString(append([]byte{0xc0}, make([]byte, 32)...))}, {hex.EncodeToString(script)}}
+	// The pinned reference recognizes unversioned witness leaves, rather than
+	// assuming a P2TR prevout or a c0 control block from one reveal transaction.
+	if len(parseOrdEnvelopes(transactionView{Inputs: []inputView{{Witness: []string{hex.EncodeToString(script), "00"}}}})) != 1 {
+		t.Fatal("pinned unversioned witness leaf was rejected")
+	}
+	cases := [][]string{{hex.EncodeToString(append(script, 0x4c)), hex.EncodeToString(append([]byte{0xc0}, make([]byte, 32)...))}, {hex.EncodeToString(script)}}
 	for _, w := range cases {
 		if len(parseOrdEnvelopes(transactionView{Inputs: []inputView{{Witness: w}}})) != 0 {
 			t.Fatal("accepted non tapscript or malformed script")
@@ -104,6 +109,9 @@ func saveOrdFixture050(t *testing.T, a *app, id, delegate string, body []byte) {
 	}
 }
 func Test050OrdContentOriginIsReadOnlySandboxed(t *testing.T) {
+	if !releaseFeatureAvailable("inscriptions") {
+		t.Skip("0.6.6 release lock: inscription content origin is unavailable")
+	}
 	a := ordContentSecurityApp(t)
 	id := strings.Repeat("ab", 32) + "i0"
 	body := []byte(`<script>window.parent.postMessage('test','*')</script>`)
@@ -133,10 +141,22 @@ func Test050OrdDelegateCycleAndCorruptBody(t *testing.T) {
 	two := strings.Repeat("bb", 32) + "i0"
 	saveOrdFixture050(t, a, one, two, []byte("a"))
 	saveOrdFixture050(t, a, two, one, []byte("b"))
-	w := httptest.NewRecorder()
-	a.serveOrdContent(w, ordContentSameOriginRequest(a, "GET", "/content/"+one))
-	if w.Code != 409 {
-		t.Fatal("cycle not bounded", w.Code)
+	t.Run("delegate_cycle", func(t *testing.T) {
+		if !releaseFeatureAvailable("inscriptions") {
+			t.Skip("0.6.6 release lock: delegated content serving is unavailable")
+		}
+		w := httptest.NewRecorder()
+		a.serveOrdContent(w, ordContentSameOriginRequest(a, "GET", "/content/"+one))
+		if w.Code != http.StatusConflict {
+			t.Fatal("cycle not bounded", w.Code)
+		}
+	})
+	if !releaseFeatureAvailable("inscriptions") {
+		w := httptest.NewRecorder()
+		a.serveOrdContent(w, ordContentSameOriginRequest(a, "GET", "/content/"+one))
+		if w.Code != http.StatusForbidden {
+			t.Fatal("locked inscription content was exposed", w.Code)
+		}
 	}
 	if e := os.WriteFile(a.ordPath(one, ".bin"), []byte("altered"), 0600); e != nil {
 		t.Fatal(e)

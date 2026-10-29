@@ -56,6 +56,9 @@ func indexClaimStub(t *testing.T, a *app, address string, answer func(overlayReq
 }
 
 func TestIndexPeerClientClaimsLimitedToFourKnownNegotiatedPeers(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion")
+	}
 	a := independentTestApp(t)
 	counts := []*atomic.Int64{}
 	for i := 0; i < 6; i++ {
@@ -91,10 +94,13 @@ func TestIndexPeerClientClaimsLimitedToFourKnownNegotiatedPeers(t *testing.T) {
 }
 
 func TestIndexPeerClientDoesNotPromoteConfiguredHintsOrStartDiscovery(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion")
+	}
 	a := &app{}
 	a.settings.ManualPeer = "127.0.0.1:61399"
 	a.settings.LANDiscovery = true
-	a.overlayPeers = []overlayPeer{{Addr: "127.0.0.1:61398", ServiceHint: true, Protocol: bodWireVersion}}
+	a.overlayPeers = []overlayPeer{{Addr: "127.0.0.1:61398", Protocol: bodWireVersion}}
 	result, err := a.indexPeerClaims()
 	if err != nil {
 		t.Fatal(err)
@@ -113,8 +119,11 @@ func TestIndexPeerClientDoesNotPromoteConfiguredHintsOrStartDiscovery(t *testing
 }
 
 func TestIndexPeerClientPreviewReceivesCheckedClaimWithoutStoreWrites(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion")
+	}
 	provider, store := indexPeerFixture(t, "bitmap", 2)
-	manifest, err := provider.setIndexPublication("bitmap", true)
+	manifest, err := provider.storeIndexPublication("bitmap", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,8 +163,11 @@ func TestIndexPeerClientPreviewReceivesCheckedClaimWithoutStoreWrites(t *testing
 }
 
 func TestIndexPeerClientRejectsBadManifestAndReportsPerPeerFailure(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion")
+	}
 	provider, _ := indexPeerFixture(t, "bitmap", 1)
-	m, err := provider.setIndexPublication("bitmap", true)
+	m, err := provider.storeIndexPublication("bitmap", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,8 +193,11 @@ func TestIndexPeerClientRejectsBadManifestAndReportsPerPeerFailure(t *testing.T)
 }
 
 func TestIndexPeerClientPreviewRejectsAlteredPage(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion")
+	}
 	provider, _ := indexPeerFixture(t, "bitmap", 1)
-	if _, err := provider.setIndexPublication("bitmap", true); err != nil {
+	if _, err := provider.storeIndexPublication("bitmap", true); err != nil {
 		t.Fatal(err)
 	}
 	client := independentTestApp(t)
@@ -202,6 +217,9 @@ func TestIndexPeerClientPreviewRejectsAlteredPage(t *testing.T) {
 }
 
 func TestIndexPeerClientPreviewReportsLargeBatchLimitation(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion")
+	}
 	provider, store := indexPeerFixture(t, "inscriptions", 1)
 	b, err := store.readBatch(store.checkpoint.Commitment)
 	if err != nil {
@@ -216,7 +234,7 @@ func TestIndexPeerClientPreviewReportsLargeBatchLimitation(t *testing.T) {
 	if err = atomicWriteJSON(filepath.Join(store.dir, "head.json"), indexHead{Commitment: b.Checkpoint.Commitment}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.setIndexPublication("inscriptions", true); err != nil {
+	if _, err = provider.storeIndexPublication("inscriptions", true); err != nil {
 		t.Fatal(err)
 	}
 	client := independentTestApp(t)

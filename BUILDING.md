@@ -1,43 +1,59 @@
-# Building Gateway Client v0.6.0-alpha.1
+# Building Gateway
 
-Baseline: the supplied v0.5.3 discovery candidate. Go 1.23+, Python 3 and `GO111MODULE=off` are required for compilation. The Go program uses the standard library with no fetched modules. Node is used for companion/UI checks; Chromium and Python Playwright are rendering-test dependencies, not shipped runtime dependencies.
+Gateway uses Go's standard library, with `GO111MODULE=off`. Go 1.23 or newer and Python 3 are required for builds; Node is used for helper tests. Browser tests use Playwright and Chromium. These test dependencies are not shipped with Gateway.
+
+## Development build
+
+From the repository root on Linux:
 
 ```sh
 export GO111MODULE=off
-python3 scripts/build-release.py --out ./build
-GATEWAY_TEST_BINARY="$PWD/build/gateway-client" go test -race -count=1 -json -timeout=600s ./... > go-test-race.jsonl
-go vet ./...
-node browser-companion/test.js
-node scripts/test-ui-helpers.js
-node --check ui/shell/discovery.js
-python3 scripts/build-release.py --out ./build
-python3 scripts/audit-release.py --build ./build --out ./binary-audit.json
-python3 scripts/test-ui-054.py --binary ./build/gateway-client --out ./ui-results
-python3 scripts/probe-public-network.py --binary ./build/gateway-client --out ./public-probe
+export CGO_ENABLED=0
+python3 scripts/build-release.py --out build/development --without-header-baseline
 ```
 
-The build emits Linux amd64, Windows amd64 client, GUI launcher, native host and GUI installer. Windows icon COFF resources are regenerated from the checked-in ICO with Python's standard library. The installer embeds the exact same three Windows executables and companion that portable distribution uses. These builds are unsigned. Cross-compilation and icon inspection are not native installation or execution tests.
+In PowerShell, set `$env:GO111MODULE='off'` and `$env:CGO_ENABLED='0'`, then run the Python command using your Python executable. A development build explicitly omits the full snapshot and synchronizes headers normally. Test with a disposable `-data` directory rather than a working installation's profile.
 
-`Test053ScaleResources` measures 50,000 and 250,000 synthetic endpoints. Run it without `-race` for representative instrumentation-free timings, and with `-race` for concurrency checking. Both remain controlled Linux measurements, not public-network performance estimates.
+## Public release build
 
-`Test053UnknownGatewayThroughNoisyGraph` drives the production scheduler across 6,301 retained endpoints per variant, with repeats and simulated failed dials for synthetic noise. Actual local TCP Bitcoin intermediaries introduce the unknown Gateway. Gateway/BOD negotiation, block lookup and retrieval use production handlers and a non-genesis Bitcoin block fixture. It deliberately never opens public sockets to synthetic addresses. The two variants defer an early target and introduce another target late. The test fixture uses accelerated scheduling, not production wall-clock limits.
+Build the exact approved source commit from a neutral workspace outside personal home directories and outside `GOPATH`, for example `C:\GatewayReleaseBuild\0.7.0\source` on Windows or `/opt/gateway-release/0.7.0/source` on Linux. Restrict that workspace to the release operator. Gateway's relative imports retain an absolute package identity when `GO111MODULE=off`; `-trimpath` alone does not remove a username from that identity. Moving the source into `GOPATH/src` is not supported by these relative imports.
 
-`Test053AbruptProcessRecovery` starts a child test process, commits a planned attempt, writes a partial append and exits abruptly without normal shutdown. Recovery must preserve committed evidence and expose the interrupted state. Tests also cover canonical endpoints, budget exhaustion, exact counts, negative gossip, fair retries, legacy import, corruption and I/O failure.
+Use `--headers-baseline PATH` pointing to a completed genesis-first mainnet header file. `--update-channels PATH` supplies a reviewed public channel descriptor containing the publisher URL and public verification key. It must contain no private key or service credential. From the neutral source workspace, for example:
 
-`test-ui-054.py` starts an isolated offline binary and imports explicitly synthetic documentation-range endpoint records. Its screenshots therefore show real runtime/API results for fixture data, not public peers. It exercises candidate details, no-dial local lookup, budget persistence, complete NDJSON export, restart, existing navigation and seven setup stages at desktop/narrow widths. Browser fetch is bridged through Python in this environment; browser-native origin/CSP, actual extension approval and Windows integration are separate gates.
+```powershell
+python scripts/build-release.py --out build/release-0.7.0 --headers-baseline C:/GatewayReleaseBuild/0.7.0/headers.bin --update-channels assets/bootstrap/update-channels.json
+```
 
-`probe-public-network.py` uses actual normal Bitcoin bootstrap without supplied Gateway addresses. A zero-connection result remains unsuccessful even if the diagnostic script itself exits normally.
+Installer staging defaults to `build/release-work` inside that source workspace, independently of the user's temporary directory. `--work-dir` may select another directory inside the neutral source workspace. The public builder rejects personal source paths and `GOPATH` locations, and checks the Go package identity in every built executable. Explicit development builds remain usable from normal checkouts.
 
-## Discovery storage and scheduling ownership
+Before packaging, run `go version -m` against the five Windows executables and both Linux executables. Their `path` entries must refer only to the neutral workspace, with no personal home prefix such as `_/C_/Users/<name>` or `_/home/<name>`. Also inspect the final bytes for your actual workstation path in UTF-8 and UTF-16; normal Windows API strings are not evidence of a personal-path leak. See [header delivery](docs/HEADER-BASELINE.md) and [updates](docs/UPDATES.md).
 
-`discovery_ledger_053.go` owns canonical record admission, evidence and counter definitions. `discovery_scheduler_053.go` rebuilds the bounded working set and allocates shared dial opportunities. `discovery_persistence_053.go` journals committed records and cursors. `discovery_api_053.go` exposes bounded pages, local lookup, budget updates and deliberate export. Existing `network_051.go` / `network_052.go` remain the managed transport; this is not a second peer manager.
+## Validation
 
-Older low-level network helpers remain for legacy/nil-manager fixtures. Runtime initialization creates `app.network`; overlay, header and data requests use managed sessions. The unused older `superviseHeaderMirror` path is not started by main; `superviseIndependentHeaders` is. Do not enable legacy helper paths to bypass ledger eligibility.
+Example Linux checks against a fresh runtime:
 
-## v0.5.4 repair gates
+```sh
+export GATEWAY_TEST_BINARY="$PWD/build/development/gateway-client"
+go test -count=1 -json -timeout=900s . ./internal/... ./packaging/...
+go vet . ./internal/... ./packaging/...
+CGO_ENABLED=1 go test -race -count=1 -timeout=900s . ./internal/... ./packaging/...
+node browser-companion/test.js
+node scripts/test-ui-helpers.js
+node scripts/test-index-workspace.js
+node scripts/test-index-cards.js
+node scripts/test-shell-063.js
+node scripts/test-home-state-063.js
+python3 scripts/test-update-packaging.py
+```
 
-`discovery_054_test.go` tests stable/fresh public-IP election, immutable/rate-limited announcements, protected negative checks after EOF and restart, evidence-class fairness, exact masks and candidate pagination, indirect discovery plus retention of an empty Gateway, and multi-range BOD sample selection. The source still uses the v0.5.3 exact ledger and the same Bitcoin transport.
+Race checks require a supported compiler environment. On Windows, use the built Windows application as `GATEWAY_TEST_BINARY` and run native suites with `-p 1` after packaging. Parallel process-startup fixtures can contend on Windows. Report failed checks and justified reruns rather than hiding them.
 
-`internal/cleanup` is shared by the runtime and the custom Windows installer. Tests cover explicit preview/removal, wallet/provider/export preservation, links, root/overlap rejection, exclusive locks, changed files, ambiguous legacy data, and separately configured archives. `Test054RebuiltRuntimeCleanProfile` requires GATEWAY_TEST_BINARY; it starts the rebuilt host runtime, requests authenticated shutdown, runs the same removal engine, verifies the external sentinel and restarts with only fresh offline test isolation settings. It is not a Windows uninstaller execution test.
+The [CI workflow](.github/workflows/development-checks.yml) specifies browser and race coverage. Native installer previews, browser registration, ordinary Bitcoin-network retrieval and live hosted updates need separate acceptance checks. Fixtures do not prove those external paths work. The [QA guide](docs/TESTING-0.7.0.md) covers manual checks; skipped optional fixtures must remain identified as skips.
 
-`test-ui-054.py` imports 120 synthetic endpoints, including 112 hints. It pages all 112, checks weak/attempted filters and imported uncertainty, verifies server-exported 64-bit masks and the existing setup/privacy/header/restart flows. Synthetic data is labelled in the fixture; no public peers are dialled by this test.
+## Packaging and evidence
+
+Run the build and packaging scripts with `--help` for supported inputs. Fresh packages contain a validated external snapshot; application-update packages omit it. Include the MIT license, third-party notices, Go license and tester guide in redistributed packages.
+
+Record the source revision, tool versions, commands, results, artifact sizes and SHA-256 values. A release tag must resolve to the same commit recorded in `SOURCE-REVISION.txt` and `artifact-manifest.json`; the publisher checks this correspondence. A documentation-only change after packaging does not change the packaged source identity.
+
+Before release, check fresh startup, restart, Headers/Blocks, optional local sources, locked API/CLI/job paths, update signatures and recovery, and the actual hosted delivery path. Do not infer acceptance of a new binary from tests or antivirus results for another binary. Keep test profiles and credentials out of source and artifacts.

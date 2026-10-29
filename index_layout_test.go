@@ -1,0 +1,287 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestIndexLayoutProjectsSavedOrdinalsReadOnly(t *testing.T) {
+	for _, schema := range []int{1, 2} {
+		t.Run(fmt.Sprint(schema), func(t *testing.T) {
+			ctx, root := context.Background(), t.TempDir()
+			stored := indexLayoutDocument{Schema: schema, Revision: 11, Order: map[string][]string{
+				"root":       {"group:blocks", "group:txio", "group:addresses", "inscriptions", "group:bitmap"},
+				"group:txio": {"txio-values", "txio-sat-ranges", "txio-links", "utxo-state"},
+			}}
+			stored.Checksum = indexLayoutDigest(stored)
+			if err := atomicWriteJSON(indexLayoutPath(root), stored); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(indexLayoutPath(root))
+			if err != nil {
+				t.Fatal(err)
+			}
+			view, err := readIndexLayout(ctx, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if view.Schema != 2 || view.Revision != 11 || strings.Join(view.Order["root"], ",") != "group:blocks,group:txio,group:addresses,group:ordinals,group:bitmap" || strings.Join(view.Order["group:ordinals"], ",") != "txio-sat-ranges,inscriptions" || strings.Join(view.Order["group:txio"], ",") != "txio-values,txio-links,utxo-state" {
+				t.Fatal("Ordinals projection changed saved identities/order", view)
+			}
+			after, err := os.ReadFile(indexLayoutPath(root))
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("read projection rewrote saved layout", err)
+			}
+			normalized, err := normalizeIndexLayout(ctx, root, view.Order)
+			if err != nil || !reflect.DeepEqual(normalized, view.Order) {
+				t.Fatal("projected layout cannot be saved", normalized, err)
+			}
+			for _, wrong := range []map[string][]string{{"root": {"inscriptions"}}, {"group:txio": {"txio-sat-ranges"}}, {"group:ordinals": {"utxo-state"}}} {
+				if _, err := normalizeIndexLayout(ctx, root, wrong); err == nil {
+					t.Fatal("new request accepted obsolete/foreign parent", wrong)
+				}
+			}
+			for _, path := range []string{"run.json", "live.json", "job.json", "queue.json"} {
+				if _, err := os.Stat(filepath.Join(root, "indexes", path)); !os.IsNotExist(err) {
+					t.Fatal("layout touched execution state", path, err)
+				}
+			}
+		})
+	}
+}
+
+func TestIndexLayoutOrdinalsProjectionPreservesExplicitOrder(t *testing.T) {
+	order := map[string][]string{
+		"root":           {"inscriptions", "group:bitmap", "group:ordinals", "group:txio"},
+		"group:ordinals": {"inscriptions", "txio-sat-ranges"},
+		"group:txio":     {"txio-sat-ranges", "txio-links"},
+	}
+	before, _ := json.Marshal(order)
+	view, err := normalizeIndexLayoutVersion(context.Background(), t.TempDir(), order, true)
+	if err != nil || strings.Join(view["root"], ",") != "group:bitmap,group:ordinals,group:txio" || strings.Join(view["group:ordinals"], ",") != "inscriptions,txio-sat-ranges" || strings.Join(view["group:txio"], ",") != "txio-links" {
+		t.Fatal(view, err)
+	}
+	after, _ := json.Marshal(order)
+	if !bytes.Equal(before, after) {
+		t.Fatal("projection mutated input map")
+	}
+	satOnly, err := normalizeIndexLayoutVersion(context.Background(), t.TempDir(), map[string][]string{"root": {"group:addresses", "group:bitmap"}, "group:txio": {"txio-sat-ranges"}}, true)
+	if err != nil || strings.Join(satOnly["root"], ",") != "group:addresses,group:ordinals,group:bitmap" || strings.Join(satOnly["group:ordinals"], ",") != "txio-sat-ranges" {
+		t.Fatal(satOnly, err)
+	}
+	defaultRoot, err := normalizeIndexLayoutVersion(context.Background(), t.TempDir(), map[string][]string{"group:txio": {"txio-sat-ranges"}}, true)
+	if err != nil || len(defaultRoot["root"]) != 0 || strings.Join(defaultRoot["group:ordinals"], ",") != "txio-sat-ranges" {
+		t.Fatal("child-only saved order displaced the default root order", defaultRoot, err)
+	}
+}
+
+func TestIndexLayoutPersistsAcrossPortsWithoutChangingIndexing(t *testing.T) {
+	root := t.TempDir()
+	request := func(a *app, port, method, body string) *httptest.ResponseRecorder {
+		origin := "http://127.0.0.1:" + port
+		r := httptest.NewRequest(method, origin+"/api/v1/index/layout", strings.NewReader(body))
+		r.RemoteAddr = "127.0.0.1:40000"
+		r.Header.Set("Origin", origin)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		a.handleIndexLayout(w, r)
+		return w
+	}
+	a := &app{dataDir: root}
+	if w := request(a, "50101", "GET", ""); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(indexLayoutPath(root)); !os.IsNotExist(err) {
+		t.Fatal("reading layout wrote a file")
+	}
+	w := request(a, "50101", "POST", `{"order":{"root":["group:ordinals","group:bitmap","group:txio"],"group:ordinals":["txio-sat-ranges","inscriptions"],"group:txio":["txio-links","txio-values","txio-scripts"],"group:bitmap":["bitmap-districts","bitmap-parcels"]}}`)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	restarted := &app{dataDir: root}
+	w = request(restarted, "50999", "GET", "")
+	var got indexLayoutDocument
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Schema != 2 || got.Revision != 1 || got.Order["root"][0] != "group:ordinals" || got.Order["group:ordinals"][0] != "txio-sat-ranges" || got.Order["group:bitmap"][1] != "bitmap-parcels" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if got.Checksum != "" {
+		t.Fatal("internal file checksum leaked into public layout DTO")
+	}
+	for _, path := range []string{"run.json", "live.json", "job.json", "queue.json"} {
+		if _, err := os.Stat(filepath.Join(root, "indexes", path)); !os.IsNotExist(err) {
+			t.Fatal("layout changed indexing state:", path)
+		}
+	}
+	w = request(restarted, "50999", "POST", `{"order":{"root":["bitmap-parcels"]}}`)
+	if w.Code != 400 {
+		t.Fatal("reparent accepted", w.Code, w.Body.String())
+	}
+	w = request(restarted, "50999", "GET", "")
+	json.Unmarshal(w.Body.Bytes(), &got)
+	if got.Revision != 1 || got.Order["root"][0] != "group:ordinals" {
+		t.Fatal("invalid layout overwrote saved order")
+	}
+	w = request(restarted, "50999", "POST", `{"order":{"group:bitmap":["unknown-old-track","bitmap-districts","bitmap-districts"]}}`)
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || len(got.Order["group:bitmap"]) != 1 {
+		t.Fatal("stale/duplicate identities not filtered", w.Code, w.Body.String())
+	}
+}
+
+func TestIndexLayoutMigratesParcelOrderWithoutWritingOrReparenting(t *testing.T) {
+	ctx, root := context.Background(), t.TempDir()
+	district := bitmapTestCreateProfile(t, root, "Custom District", 1, true)
+	instances, err := bitmapProfileInstances(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parcel, chain string
+	for _, i := range instances {
+		if i.DistrictInstance == district.ID {
+			if i.Kind == "parcel" {
+				parcel = i.ID
+			} else if i.Kind == "chain" {
+				chain = i.ID
+			}
+		}
+	}
+	if parcel == "" || chain == "" {
+		t.Fatal("missing linked fixtures")
+	}
+	legacy := indexLayoutDocument{Schema: 1, Revision: 7, Order: map[string][]string{
+		"root":                      {"group:bitmap", "group:txio"},
+		"group:bitmap":              {parcel, "bitmap-parcels", district.ID, "bitmap-districts"},
+		"district:" + district.ID:   {chain},
+		"district:bitmap-districts": {"bitmap-chain"},
+	}}
+	legacy.Checksum = indexLayoutDigest(legacy)
+	if err = atomicWriteJSON(indexLayoutPath(root), legacy); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(indexLayoutPath(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := readIndexLayout(ctx, root)
+	if err != nil || got.Schema != 2 || got.Revision != 7 {
+		t.Fatal(got, err)
+	}
+	if ids := got.Order["group:bitmap"]; len(ids) != 4 || ids[0] != parcel || ids[1] != "bitmap-parcels" || ids[2] != district.ID || ids[3] != "bitmap-districts" {
+		t.Fatal("saved sibling order changed", ids)
+	}
+	if len(got.Order["district:"+district.ID]) != 0 {
+		t.Fatal("custom Parcel remained nested", got.Order)
+	}
+	if len(got.Order["district:bitmap-districts"]) != 0 {
+		t.Fatal("legacy Parcel remained nested", got.Order)
+	}
+	after, err := os.ReadFile(indexLayoutPath(root))
+	if err != nil || string(before) != string(after) {
+		t.Fatal("reading migration rewrote saved layout", err)
+	}
+	if _, err = normalizeIndexLayout(ctx, root, map[string][]string{"district:bitmap-districts": {parcel}}); err == nil {
+		t.Fatal("Parcel moved to a different District")
+	}
+	if _, err = normalizeIndexLayout(ctx, root, map[string][]string{"group:bitmap": {parcel}}); err != nil {
+		t.Fatal("new sibling layout was refused", err)
+	}
+}
+
+func TestIndexLayoutRejectsForeignOriginAndNonJSON(t *testing.T) {
+	a := &app{dataDir: t.TempDir()}
+	for _, tc := range []struct {
+		origin, content, body string
+		want                  int
+	}{
+		{"https://untrusted.invalid", "application/json", `{"order":{}}`, 403},
+		{"http://127.0.0.1:5000", "text/plain", `{"order":{}}`, 400},
+		{"http://127.0.0.1:5000", "application/json", `{"order":{},"unexpected":true}`, 400},
+		{"http://127.0.0.1:5000", "application/json", `{"order":{}} {}`, 400},
+	} {
+		r := httptest.NewRequest("POST", "http://127.0.0.1:5000/api/v1/index/layout", strings.NewReader(tc.body))
+		r.RemoteAddr = "127.0.0.1:40000"
+		r.Header.Set("Origin", tc.origin)
+		r.Header.Set("Content-Type", tc.content)
+		w := httptest.NewRecorder()
+		a.handleIndexLayout(w, r)
+		if w.Code != tc.want {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	if _, err := os.Stat(indexLayoutPath(a.dataDir)); !os.IsNotExist(err) {
+		t.Fatal("rejected requests created layout state")
+	}
+}
+
+func TestIndexLayoutMovesSavedTransactionIndexIntoTransactionsReadOnly(t *testing.T) {
+	ctx, root := context.Background(), t.TempDir()
+	stored := indexLayoutDocument{Schema: 2, Revision: 4, Order: map[string][]string{
+		"root":       {"inscriptions", "tx-locator", "utxo-state", "group:txio", "group:blocks"},
+		"group:txio": {"txio-scripts", "txio-links", "txio-values", "txio-sat-ranges"},
+	}}
+	stored.Checksum = indexLayoutDigest(stored)
+	if err := atomicWriteJSON(indexLayoutPath(root), stored); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(indexLayoutPath(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := readIndexLayout(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(view.Order["root"], ",") != "group:ordinals,group:txio,group:blocks" || strings.Join(view.Order["group:txio"], ",") != "txio-scripts,txio-links,txio-values,tx-locator,utxo-state" || view.Revision != 4 {
+		t.Fatal("Transaction Index migration changed identities or sibling order", view)
+	}
+	after, err := os.ReadFile(indexLayoutPath(root))
+	if err != nil || string(after) != string(before) {
+		t.Fatal("read migration wrote saved layout", err)
+	}
+	if _, err := normalizeIndexLayout(ctx, root, map[string][]string{"root": {"tx-locator"}}); err == nil {
+		t.Fatal("new layout accepted standalone Transaction Index")
+	}
+	if _, err := normalizeIndexLayout(ctx, root, view.Order); err != nil {
+		t.Fatal("projected Transactions layout refused", err)
+	}
+	for _, path := range []string{"run.json", "live.json", "job.json"} {
+		if _, err := os.Stat(filepath.Join(root, "indexes", path)); !os.IsNotExist(err) {
+			t.Fatal("layout migration touched indexing state", path, err)
+		}
+	}
+}
+
+func TestIndexLayoutProjectsSavedNestedParcelsIntoBitmapSiblings(t *testing.T) {
+	ctx, root := context.Background(), t.TempDir()
+	stored := indexLayoutDocument{Schema: 2, Revision: 4, Order: map[string][]string{"group:bitmap": {bitmapCanonicalV1DistrictID}, "district:" + bitmapCanonicalV1DistrictID: {bitmapCanonicalV1ParcelID}}}
+	stored.Checksum = indexLayoutDigest(stored)
+	if err := atomicWriteJSON(indexLayoutPath(root), stored); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(indexLayoutPath(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := readIndexLayout(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := view.Order["group:bitmap"]
+	if len(ids) != 2 || ids[0] != bitmapCanonicalV1DistrictID || ids[1] != bitmapCanonicalV1ParcelID || len(view.Order["district:"+bitmapCanonicalV1DistrictID]) != 0 {
+		t.Fatal(view)
+	}
+	after, err := os.ReadFile(indexLayoutPath(root))
+	if err != nil || string(after) != string(before) {
+		t.Fatal("read-only layout migration changed saved file", err)
+	}
+	if _, err = normalizeIndexLayout(ctx, root, map[string][]string{"group:bitmap": {bitmapCanonicalDistrictID, bitmapCanonicalParcelID}}); err != nil {
+		t.Fatal("current Bitmap sibling tracks rejected", err)
+	}
+}

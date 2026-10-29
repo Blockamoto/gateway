@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -30,7 +32,7 @@ func indexPeerFixture(t *testing.T, id string, count int) (*app, *indexStore) {
 	}
 	settings, stop := fakeCoreRPC(t, s.checkpoint.Height, s.checkpoint.BlockHash)
 	t.Cleanup(stop)
-	settings.ServeData = true
+	settings.ServeGatewayData = true
 	a := &app{dataDir: root, settings: settings}
 	a.source = newOverlayServer(a)
 	return a, s
@@ -59,32 +61,32 @@ func cloneIndexPeerPage(t *testing.T, p indexPeerPage) indexPeerPage {
 
 func TestIndexPeerPublicationPrivateFrozenAndRevocable(t *testing.T) {
 	a, s := indexPeerFixture(t, "bitmap", 2)
-	if len(a.publishedIndexManifests()) != 0 {
+	if len(a.readPublishedIndexManifests()) != 0 {
 		t.Fatal("private build was advertised")
 	}
 	m := indexManifestForCheckpoint(s.definition, *s.checkpoint)
 	r := indexPeerFirstRequest(m, 1)
-	if _, err := a.serveIndexPeerPage(r); err == nil {
+	if _, err := a.readIndexPeerPage(r); err == nil {
 		t.Fatal("private range served")
 	}
-	if _, err := a.setIndexPublication("bitmap", true, strings.Repeat("f", 64)); err == nil {
+	if _, err := a.storeIndexPublication("bitmap", true, strings.Repeat("f", 64)); err == nil {
 		t.Fatal("changed GUI checkpoint was silently published")
 	}
-	if len(a.publishedIndexManifests()) != 0 {
+	if len(a.readPublishedIndexManifests()) != 0 {
 		t.Fatal("failed publication still exposed the snapshot")
 	}
-	m, err := a.setIndexPublication("bitmap", true, m.Checkpoint.Commitment)
+	m, err := a.storeIndexPublication("bitmap", true, m.Checkpoint.Commitment)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(a.publishedIndexManifests()) != 1 || !a.indexPublicationMatches("bitmap", s.checkpoint) {
+	if len(a.readPublishedIndexManifests()) != 1 || !a.storedIndexPublicationMatches("bitmap", s.checkpoint) {
 		t.Fatal("explicit publication missing")
 	}
-	resp, status := a.answerBODRequest(overlayRequest{Type: "index_manifest"})
+	resp, status := a.buildIndexPeerResponse(overlayRequest{Type: "index_manifest"})
 	if status != "ok" || len(resp.IndexManifests) != 1 {
 		t.Fatalf("wire dispatch: %+v %s", resp, status)
 	}
-	p, err := a.serveIndexPeerPage(r)
+	p, err := a.readIndexPeerPage(r)
 	if err != nil || len(p.Batches) != 1 {
 		t.Fatalf("serve: %v", err)
 	}
@@ -92,34 +94,34 @@ func TestIndexPeerPublicationPrivateFrozenAndRevocable(t *testing.T) {
 	if err = s.appendBlock(private, 792435, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
-	if a.indexPublicationMatches("bitmap", s.checkpoint) {
+	if a.storedIndexPublicationMatches("bitmap", s.checkpoint) {
 		t.Fatal("publication automatically advanced")
 	}
-	if got := a.publishedIndexManifests(); len(got) != 1 || got[0].Checkpoint.Commitment != m.Checkpoint.Commitment {
+	if got := a.readPublishedIndexManifests(); len(got) != 1 || got[0].Checkpoint.Commitment != m.Checkpoint.Commitment {
 		t.Fatal("frozen snapshot changed")
 	}
-	if _, err = a.serveIndexPeerPage(indexPeerFirstRequest(indexManifestForCheckpoint(s.definition, *s.checkpoint), 1)); err == nil {
+	if _, err = a.readIndexPeerPage(indexPeerFirstRequest(indexManifestForCheckpoint(s.definition, *s.checkpoint), 1)); err == nil {
 		t.Fatal("unpublished private tail served")
 	}
 	a.settingsMu.Lock()
-	a.settings.ServeData = false
+	a.settings.ServeGatewayData = false
 	a.settingsMu.Unlock()
-	if len(a.publishedIndexManifests()) != 0 {
+	if len(a.readPublishedIndexManifests()) != 0 {
 		t.Fatal("disabled serving advertised")
 	}
-	if _, err = a.serveIndexPeerPage(r); err == nil {
+	if _, err = a.readIndexPeerPage(r); err == nil {
 		t.Fatal("disabled serving answered")
 	}
 	a.settingsMu.Lock()
-	a.settings.ServeData = true
+	a.settings.ServeGatewayData = true
 	a.settingsMu.Unlock()
-	if _, err = a.setIndexPublication("bitmap", false); err != nil {
+	if _, err = a.storeIndexPublication("bitmap", false); err != nil {
 		t.Fatal(err)
 	}
-	if len(a.publishedIndexManifests()) != 0 {
+	if len(a.readPublishedIndexManifests()) != 0 {
 		t.Fatal("unpublished snapshot advertised")
 	}
-	if _, err = a.serveIndexPeerPage(r); err == nil {
+	if _, err = a.readIndexPeerPage(r); err == nil {
 		t.Fatal("revoked snapshot served")
 	}
 	if _, err = os.Stat(filepath.Join(s.dir, "head.json")); err != nil {
@@ -127,14 +129,40 @@ func TestIndexPeerPublicationPrivateFrozenAndRevocable(t *testing.T) {
 	}
 }
 
+func TestIndexPeerReleaseLockHidesStoredPublication(t *testing.T) {
+	a, s := indexPeerFixture(t, "bitmap", 1)
+	m, err := a.storeIndexPublication("bitmap", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.storedIndexPublicationMatches("bitmap", s.checkpoint) || len(a.readPublishedIndexManifests()) != 1 {
+		t.Fatal("retained publication fixture is not active")
+	}
+	if a.indexPublicationMatches("bitmap", s.checkpoint) || len(a.publishedIndexManifests()) != 0 {
+		t.Fatal("locked publication leaked through runtime availability")
+	}
+	request := indexPeerFirstRequest(m, 1)
+	if _, err = a.serveIndexPeerPage(request); err == nil {
+		t.Fatal("locked range served")
+	}
+	for _, req := range []overlayRequest{{Type: "index_manifest"}, {Type: "index_range", IndexRange: &request}} {
+		if _, status := a.answerIndexPeerRequest(req); status != "unsupported" {
+			t.Fatal("locked wire request answered")
+		}
+	}
+	if _, err = a.setIndexPublication("bitmap", true); err == nil {
+		t.Fatal("release lock allowed publication")
+	}
+}
+
 func TestIndexPeerBoundedContinuationsAndPrivateCommitProtection(t *testing.T) {
 	a, _ := indexPeerFixture(t, "bitmap", 5)
-	m, err := a.setIndexPublication("bitmap", true)
+	m, err := a.storeIndexPublication("bitmap", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := indexPeerFirstRequest(m, 2)
-	p, err := a.serveIndexPeerPage(r)
+	p, err := a.readIndexPeerPage(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +173,7 @@ func TestIndexPeerBoundedContinuationsAndPrivateCommitProtection(t *testing.T) {
 		t.Fatal(err)
 	}
 	next := indexPeerRangeRequest{Index: m.Definition, RuleHash: m.RuleHash, Checkpoint: m.Checkpoint.Commitment, From: p.Next.Height - 1, To: p.Next.Height, Cursor: p.Cursor, Anchor: p.Next}
-	page, err := a.serveIndexPeerPage(next)
+	page, err := a.readIndexPeerPage(next)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,36 +182,36 @@ func TestIndexPeerBoundedContinuationsAndPrivateCommitProtection(t *testing.T) {
 	}
 	bad := next
 	bad.Cursor = bad.Cursor[:len(bad.Cursor)-1] + "x"
-	if _, err = a.serveIndexPeerPage(bad); err == nil {
+	if _, err = a.readIndexPeerPage(bad); err == nil {
 		t.Fatal("forged cursor accepted")
 	}
 	bad = next
 	bad.Anchor = &indexPeerAnchor{Commitment: strings.Repeat("a", 64), Height: next.To, BlockHash: strings.Repeat("b", 64)}
-	if _, err = a.serveIndexPeerPage(bad); err == nil {
+	if _, err = a.readIndexPeerPage(bad); err == nil {
 		t.Fatal("arbitrary private/orphan commit accepted")
 	}
 	bad = r
 	bad.From = m.Checkpoint.From
-	if _, err = a.serveIndexPeerPage(bad); err == nil {
+	if _, err = a.readIndexPeerPage(bad); err == nil {
 		t.Fatal("oversized range accepted")
 	}
 	// Re-publication rotates cursor authentication even at an unchanged head.
-	if _, err = a.setIndexPublication("bitmap", true); err != nil {
+	if _, err = a.storeIndexPublication("bitmap", true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = a.serveIndexPeerPage(next); err == nil {
+	if _, err = a.readIndexPeerPage(next); err == nil {
 		t.Fatal("old publication cursor survived replacement")
 	}
 }
 
 func TestIndexPeerRejectsMissingRangeFingerprintAndTampering(t *testing.T) {
 	a, _ := indexPeerFixture(t, "bitmap", 3)
-	m, err := a.setIndexPublication("bitmap", true)
+	m, err := a.storeIndexPublication("bitmap", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := indexPeerFirstRequest(m, 2)
-	p, err := a.serveIndexPeerPage(r)
+	p, err := a.readIndexPeerPage(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,12 +236,12 @@ func TestIndexPeerRejectsMissingRangeFingerprintAndTampering(t *testing.T) {
 
 func TestIndexPeerSemanticallyFalseSelfConsistentClaimsNeverBecomeVerified(t *testing.T) {
 	a, s := indexPeerFixture(t, "bitmap", 1)
-	m, err := a.setIndexPublication("bitmap", true)
+	m, err := a.storeIndexPublication("bitmap", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := indexPeerFirstRequest(m, 1)
-	p, err := a.serveIndexPeerPage(r)
+	p, err := a.readIndexPeerPage(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,12 +277,12 @@ func TestIndexPeerSemanticallyFalseSelfConsistentClaimsNeverBecomeVerified(t *te
 
 func TestIndexPeerStripsRemoteVerificationReceipts(t *testing.T) {
 	a, _ := indexPeerFixture(t, "inscriptions", 1)
-	m, err := a.setIndexPublication("inscriptions", true)
+	m, err := a.storeIndexPublication("inscriptions", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := indexPeerFirstRequest(m, 1)
-	p, err := a.serveIndexPeerPage(r)
+	p, err := a.readIndexPeerPage(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,22 +300,22 @@ func TestIndexPeerStripsRemoteVerificationReceipts(t *testing.T) {
 
 func TestIndexPeerStalePublishedCheckpointAndMissingBatch(t *testing.T) {
 	a, s := indexPeerFixture(t, "bitmap", 1)
-	m, err := a.setIndexPublication("bitmap", true)
+	m, err := a.storeIndexPublication("bitmap", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := indexPeerFirstRequest(m, 1)
 	settings, stop := fakeCoreRPC(t, s.checkpoint.Height, strings.Repeat("e", 64))
 	defer stop()
-	settings.ServeData = true
+	settings.ServeGatewayData = true
 	a.settingsMu.Lock()
 	old := a.settings
 	a.settings = settings
 	a.settingsMu.Unlock()
-	if len(a.publishedIndexManifests()) != 0 {
+	if len(a.readPublishedIndexManifests()) != 0 {
 		t.Fatal("stale checkpoint advertised")
 	}
-	if _, err = a.serveIndexPeerPage(r); err == nil {
+	if _, err = a.readIndexPeerPage(r); err == nil {
 		t.Fatal("stale fork served")
 	}
 	a.settingsMu.Lock()
@@ -296,10 +324,10 @@ func TestIndexPeerStalePublishedCheckpointAndMissingBatch(t *testing.T) {
 	if err = os.Remove(filepath.Join(s.dir, "commits", s.checkpoint.Commitment+".json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = a.serveIndexPeerPage(r); err == nil {
+	if _, err = a.readIndexPeerPage(r); err == nil {
 		t.Fatal("missing committed range served")
 	}
-	if len(a.publishedIndexManifests()) != 0 {
+	if len(a.readPublishedIndexManifests()) != 0 {
 		t.Fatal("missing committed snapshot still advertised")
 	}
 }
@@ -311,6 +339,9 @@ func TestIndexPeerOversizedWholeBatchFailsWithoutPartialCoverage(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.Inscriptions[0].Body = []byte(strings.Repeat("x", maxIndexPeerBatchBytes))
+	b.Inscriptions[0].Envelope.Body = b.Inscriptions[0].Body
+	digest := sha256.Sum256(b.Inscriptions[0].Body)
+	b.Inscriptions[0].ContentSHA256 = hex.EncodeToString(digest[:])
 	b.Checkpoint.RecordsHash = batchRecordsHash(b)
 	b.Checkpoint.Commitment = checkpointHash(b.Checkpoint)
 	if err = atomicWriteJSON(filepath.Join(s.dir, "commits", b.Checkpoint.Commitment+".json"), b); err != nil {
@@ -319,19 +350,19 @@ func TestIndexPeerOversizedWholeBatchFailsWithoutPartialCoverage(t *testing.T) {
 	if err = atomicWriteJSON(filepath.Join(s.dir, "head.json"), indexHead{Commitment: b.Checkpoint.Commitment}); err != nil {
 		t.Fatal(err)
 	}
-	m, err := a.setIndexPublication("inscriptions", true)
+	m, err := a.storeIndexPublication("inscriptions", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	page, err := a.serveIndexPeerPage(indexPeerFirstRequest(m, 1))
+	page, err := a.readIndexPeerPage(indexPeerFirstRequest(m, 1))
 	if err == nil || len(page.Batches) != 0 {
 		t.Fatal("large block was partially exported as complete")
 	}
 }
 
-func TestIndexPeerBODFrameDispatch(t *testing.T) {
+func TestIndexPeerBODFrameLockedInTestingRelease(t *testing.T) {
 	a, _ := indexPeerFixture(t, "bitmap", 1)
-	m, err := a.setIndexPublication("bitmap", true)
+	m, err := a.storeIndexPublication("bitmap", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,15 +386,12 @@ func TestIndexPeerBODFrameDispatch(t *testing.T) {
 	if err = json.Unmarshal(msg.payload, &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if envelope.ID != "index-test-1" || envelope.Type != "index_range" || envelope.Status != "ok" {
+	if envelope.ID != "index-test-1" || envelope.Type != "index_range" || envelope.Status != "unsupported" {
 		t.Fatalf("bad envelope: %+v", envelope)
 	}
 	var response overlayResponse
-	if err = json.Unmarshal(envelope.Payload, &response); err != nil || response.IndexPage == nil {
-		t.Fatalf("missing page: %v", err)
-	}
-	if _, err = validateIndexPeerPage(m, r, *response.IndexPage); err != nil {
-		t.Fatal(err)
+	if err = json.Unmarshal(envelope.Payload, &response); err != nil || response.IndexPage != nil {
+		t.Fatalf("locked response exposed a page: %v", err)
 	}
 	<-done
 }

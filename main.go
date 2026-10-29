@@ -2,7 +2,11 @@ package main
 
 import (
 	"./internal/cleanup"
+	"./internal/datadir"
+	"./internal/updateapply"
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -17,9 +21,29 @@ import (
 )
 
 type app struct {
-	indexMu            sync.Mutex
+	updater               *desktopUpdater
+	updateAPIWork         sync.WaitGroup
+	updateBackgroundWork  sync.WaitGroup
+	indexMu               sync.Mutex
+	indexRunMu            sync.Mutex
+	indexStatusPoll       indexStatusPollCache
+	indexRunLoaded        bool
+	indexRunState         indexRunDocument
+	indexRunError         error
+	indexRunActiveID      string             // guarded by indexMu
+	indexRunSourceBlock   indexRunSourceFunc // optional injected source; fixed before a run starts
+	indexLiveMu           sync.Mutex
+	indexLiveControlMu    sync.Mutex // policy changes, pause and supervisor decisions
+	indexLiveLast         string
+	indexLiveRuntime      map[string]indexLiveRuntime
+	timelineMu            sync.Mutex
+	timelineSourceHeights map[string]timelineHeaderHint
+
 	indexJob           indexJob
 	indexCancel        func()
+	indexQueueLoaded   bool
+	indexQueueError    error
+	indexQueue         []indexQueueEntry
 	servingMu          sync.Mutex
 	servingReadiness   bitcoinServingReadiness
 	servingRefreshing  bool
@@ -45,9 +69,9 @@ type app struct {
 	fetchMu           sync.Mutex
 	objectsMu         sync.Mutex
 	objects           map[string]*objectFetch
-	decoded           map[string]blockView
-	decodedOrder      []string
+	blockBaseAcquire  func(context.Context, blockTarget, appSettings) (blockView, error) // explicit test/source injection
 	knowledgeMu       sync.Mutex
+	knowledgeClosing  bool
 	knowledgeSeen     map[string]bool
 	cacheSaveMu       sync.Mutex
 	cacheWritePending bool
@@ -58,6 +82,8 @@ type app struct {
 	migrationCancel   func()
 	migration         migrationJob
 	ordMu             sync.Mutex
+	ordViewerMu       sync.Mutex
+	ordViewers        map[string]*ordViewerSession
 	headerSyncMu      sync.Mutex
 
 	settingsMu      sync.RWMutex
@@ -105,12 +131,11 @@ type app struct {
 }
 
 func main() {
-	dataFlag := flag.String("data", "", "Bitcoin on Demand data directory (legacy storage path retained for compatibility)")
+	verifyBootstrap := flag.Bool("verify-release-bootstrap", false, "validate embedded release headers and update provisioning without opening a profile")
+	dataFlag := flag.String("data", "", "Gateway data directory (optional custom profile)")
 	peerFlag := flag.String("peer", "", "optional Bitcoin peer host:port to try first")
 	gatewayPeerFlag := flag.String("gateway-peer", "", "optional manual Gateway peer host:port")
 	legacyBODPeerFlag := flag.String("bod-peer", "", "deprecated alias for -gateway-peer")
-	advertiseGatewayFlag := flag.String("advertise-gateway", "", "optional reachable Gateway host:port to advertise into Bitcoin addr gossip")
-	legacyAdvertiseFlag := flag.String("advertise-bod", "", "deprecated alias for -advertise-gateway")
 	gatewayListenFlag := flag.String("gateway-listen", "", "optional Gateway TCP listen address; custom addresses disable LAN UDP discovery")
 	setupFlag := flag.Bool("setup", false, "open the resumable guided setup")
 	noOpen := flag.Bool("no-open", false, "do not open the browser automatically")
@@ -126,6 +151,10 @@ func main() {
 	skinFlag := flag.String("skin", "", "optional custom skin directory or index.html")
 	flag.Usage = cliHelp
 	flag.Parse()
+	if *verifyBootstrap {
+		fatalIf(verifyReleaseBootstrap())
+		return
+	}
 
 	// System-integration maintenance commands are intentionally handled before
 	// any Bitcoin/network startup. The portable build never calls these unless
@@ -154,8 +183,38 @@ func main() {
 	}
 
 	dataDir, err := chooseDataDir(*dataFlag)
+	var migrationRecovery *datadir.RecoveryRequired
+	if errors.As(err, &migrationRecovery) {
+		request := migrationRecovery.Request
+		if !request.Busy {
+			cmd := exec.Command(request.HelperPath, "-recover", "-plan", request.PlanPath, "-plan-sha256", request.PlanSHA256)
+			cmd.Dir = filepath.Dir(request.HelperPath)
+			hideUpdateHelper(cmd)
+			fatalIf(cmd.Start())
+		}
+		fmt.Println("Gateway is completing an update. Reopen it afterward to move your data to the Gateway folder.")
+		return
+	}
 	fatalIf(err)
 	fatalIf(os.MkdirAll(dataDir, 0755))
+	// Direct desktop launches use the same authenticated interruption recovery
+	// as the launcher. The helper's own child must reach its startup handshake.
+	if os.Getenv("GATEWAY_UPDATE_ACK_PATH") == "" {
+		exe, exeErr := os.Executable()
+		fatalIf(exeErr)
+		recovery, recoveryErr := updateapply.PendingRecovery(filepath.Dir(exe), dataDir)
+		fatalIf(recoveryErr)
+		if recovery != nil {
+			if !recovery.Busy {
+				cmd := exec.Command(recovery.HelperPath, "-recover", "-plan", recovery.PlanPath, "-plan-sha256", recovery.PlanSHA256)
+				cmd.Dir = filepath.Dir(recovery.HelperPath)
+				hideUpdateHelper(cmd)
+				fatalIf(cmd.Start())
+			}
+			fmt.Println("Gateway is recovering or completing an update. Your profile has been retained.")
+			return
+		}
+	}
 	cliArgs := flag.Args()
 	if handled, code := runEarlyIndexCLI(dataDir, cliArgs); handled {
 		os.Exit(code)
@@ -207,8 +266,12 @@ func main() {
 	a.cacheIndex = newCacheIndex()
 	a.loadCacheIndex()
 	a.loadCoverage()
-	a.initGraphStore()
-	a.initSatlineStore()
+	if releaseFeatureAvailable("txo-spender") {
+		a.initGraphStore()
+	}
+	if releaseFeatureAvailable("satline") {
+		a.initSatlineStore()
+	}
 	a.loadDurableJobs()
 	a.loadMigration()
 	a.loadSyncState()
@@ -219,13 +282,6 @@ func main() {
 	if manualGateway != "" {
 		a.settings.ManualPeer = manualGateway
 	}
-	advertiseGateway := strings.TrimSpace(*advertiseGatewayFlag)
-	if advertiseGateway == "" {
-		advertiseGateway = strings.TrimSpace(*legacyAdvertiseFlag)
-	}
-	if advertiseGateway != "" {
-		a.settings.AdvertiseAddr = advertiseGateway
-	}
 	if dir, name, err := resolveSkinPath(*skinFlag); err != nil {
 		fatalIf(err)
 	} else {
@@ -233,10 +289,9 @@ func main() {
 	}
 	a.gatewayListen = strings.TrimSpace(*gatewayListenFlag)
 	a.source = newOverlayServer(a)
-	if (a.settings.ServeData || (a.settings.SatlineEnabled && a.settings.SatlineServePublished)) && !cliOnly {
-		if err := a.source.start(); err != nil {
+	if !cliOnly {
+		if err := a.startBitcoinListener(); err != nil {
 			fmt.Println("P2P share warning:", err)
-			a.settings.ServeData = false
 		}
 	}
 
@@ -246,13 +301,22 @@ func main() {
 	a.headerWake = make(chan struct{}, 1)
 	a.network = newBitcoinNetwork(a)
 	a.network.start()
-	go a.coreStoreMaintenanceLoop()
-	go a.superviseIndependentHeaders()
+	a.startUpdateAwareWorker(a.coreStoreMaintenanceLoop)
+	a.startUpdateAwareWorker(a.superviseIndependentHeaders)
 	a.refreshPeersAsync()
 
 	if handled, code := runCLI(a, cliArgs); handled {
 		os.Exit(code)
 	}
+	a.startUpdateAwareWorker(func() {
+		// The profile lock excludes other processes. Builders also enter the
+		// migration lock before opening Blocks; readers retain the old snapshot
+		// until the complete verified replacement root is published.
+		if err := migrateBlockBodiesContext(a.network.ctx, a.dataDir); err != nil {
+			fmt.Fprintln(os.Stderr, "Blocks body migration deferred (legacy data retained):", err)
+		}
+		a.superviseLiveIndexes(a.network.ctx)
+	})
 
 	ln, err := net.Listen("tcp", *httpAddr)
 	fatalIf(err)
@@ -343,6 +407,20 @@ func main() {
 	a.registerSatlineRoutes(mux)
 	a.registerGatewayRoutes(mux)
 	a.registerIndexRoutes(mux)
+	a.registerTXIORoutes(mux)
+	executable, exeErr := os.Executable()
+	if exeErr == nil && portablePreviewBuild == "" {
+		restartArgs, restartErr := desktopUpdateRestartArgs(os.Args[1:], dataDir, url)
+		if restartErr != nil {
+			restartArgs = os.Args[1:]
+		}
+		a.updater = newDesktopUpdater(dataDir, executable, appVersion, restartArgs, func() bool { a.settingsMu.RLock(); defer a.settingsMu.RUnlock(); return !a.settings.NetworkDisabled }, a.shutdownForUpdate)
+		a.updater.headerCheck = a.syncHeaderUpdates
+		if restartErr != nil {
+			a.updater.restartError = restartErr.Error()
+		}
+	}
+	a.registerUpdateRoutes(mux)
 	if err := a.startOrdContent(); err != nil {
 		fmt.Println("Ord content preview unavailable:", err)
 	}
@@ -357,11 +435,10 @@ func main() {
 	}
 
 	fmt.Println("Gateway Client v" + appVersion)
-	fmt.Println("Gateway Client · Bitcoin on Demand: route resource addresses and fetch only the Bitcoin data you need.")
+	fmt.Println("Gateway Client: explore Bitcoin blocks and fetch only the data you request.")
 	fmt.Println("UI:", url)
 	fmt.Println("Data:", dataDir)
-	fmt.Println("Gateway On Demand/BOD wire: Bitcoin P2P TCP", overlayTCPPort, "· bit 25 => possible Gateway On Demand · BIP 434 Gateway On Demand · Gateway On Demand wire", gatewayWireVersion, "· BOD wire", bodWireVersion)
-	fmt.Println("Gateway discovery: configured and remembered peers; Bitcoin-only discovery is an explicit Probe opt-in. No project seed is bundled.")
+	fmt.Println("Bitcoin P2P supplies headers and requested blocks. Gateway peerhood is locked in this testing build.")
 	fmt.Println("Compatibility: app >=", minCompatibleAppVersion, "· storage schema", storageSchemaVersion, "· headers reusable")
 	fmt.Printf("Local API: v%d · skin API v%d · skin %s\n", localAPIVersion, skinAPIVersion, a.activeSkinName())
 	fmt.Println()
@@ -388,6 +465,10 @@ func main() {
 	}()
 
 	server := &http.Server{Handler: a.guardGateway(a.guardSatlineAPI(mux)), ReadHeaderTimeout: 5 * time.Second}
+	go a.acknowledgeUpdateStartup()
+	if a.updater != nil {
+		go a.updater.supervise(a.network.ctx)
+	}
 	fatalIf(server.Serve(ln))
 }
 
@@ -606,38 +687,11 @@ func openBrowser(url string) error {
 	}
 }
 func chooseDataDir(s string) (string, error) {
-	if s != "" {
-		return filepath.Abs(s)
-	}
 	exe, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	exeDir := filepath.Dir(exe)
-	// Installed Windows builds keep durable data outside the application folder
-	// so uninstalling/replacing binaries cannot accidentally erase headers,
-	// indexes or cached Bitcoin data. Portable builds deliberately stay local.
-	if runtime.GOOS == "windows" {
-		if _, err := os.Stat(filepath.Join(exeDir, "portable.marker")); err == nil {
-			return filepath.Join(exeDir, "blocks-on-demand-data"), nil
-		}
-		if _, err := os.Stat(filepath.Join(exeDir, "installed.marker")); err == nil {
-			if local := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); local != "" {
-				newDir := filepath.Join(local, "BlocksOnDemand", "data")
-				oldDir := filepath.Join(exeDir, "blocks-on-demand-data")
-				if _, oldErr := os.Stat(oldDir); oldErr == nil {
-					if _, newErr := os.Stat(newDir); os.IsNotExist(newErr) {
-						_ = os.MkdirAll(filepath.Dir(newDir), 0755)
-						if err := os.Rename(oldDir, newDir); err != nil {
-							return oldDir, nil
-						}
-					}
-				}
-				return newDir, nil
-			}
-		}
-	}
-	return filepath.Join(exeDir, "blocks-on-demand-data"), nil
+	return datadir.ResolveSelected(filepath.Dir(exe), os.Getenv("LOCALAPPDATA"), runtime.GOOS, s, os.Getenv("GATEWAY_UPDATE_ACK_PATH") != "")
 }
 func fatalIf(err error) {
 	if err != nil {

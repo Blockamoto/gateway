@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,9 @@ import (
 
 // Both local interfaces delegate state and work to the same index runtime.
 func (a *app) registerIndexRoutes(mux *http.ServeMux) {
+	a.registerBitmapDevelopmentRoutes(mux)
+	a.registerIndexExportRoutes(mux)
+	mux.HandleFunc("/api/v1/index/raw-coverage", a.handleRawCoverage)
 	mux.HandleFunc("/indexes", a.handleIndexPage)
 	mux.HandleFunc("/api/v1/index/", a.handleIndexAPI)
 }
@@ -52,8 +56,19 @@ func (a *app) handleIndexPage(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("embedded") == "1" {
 		ancestors = "'self'"
 	}
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'self' 'nonce-"+nonce+"'; connect-src 'self'; frame-ancestors "+ancestors+"; base-uri 'none'; form-action 'self'")
-	io.WriteString(w, strings.ReplaceAll(string(body), "__INDEX_NONCE__", nonce))
+	contentSource := ""
+	if content, e := url.Parse(a.contentURL); e == nil && (content.Scheme == "http" || content.Scheme == "https") && content.Host != "" && content.User == nil {
+		contentSource = " " + content.Scheme + "://" + content.Host
+	}
+	frameSource := contentSource
+	if frameSource == "" {
+		frameSource = " 'none'"
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'self' 'nonce-"+nonce+"'; connect-src 'self'; img-src 'self' data:"+contentSource+"; media-src"+frameSource+"; frame-src"+frameSource+"; object-src 'none'; frame-ancestors "+ancestors+"; base-uri 'none'; form-action 'self'")
+	bootstrap, _ := json.Marshal(map[string]any{"content_origin": a.contentURL})
+	page := strings.ReplaceAll(string(body), "__INDEX_NONCE__", nonce)
+	page = strings.Replace(page, "__INDEX_BOOTSTRAP__", string(bootstrap), 1)
+	io.WriteString(w, page)
 }
 
 func indexMethod(w http.ResponseWriter, r *http.Request, method string) bool {
@@ -110,9 +125,31 @@ func indexQueryLimit(raw string) (int, error) {
 }
 
 func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/api/v1/index/run" || strings.HasPrefix(r.URL.Path, "/api/v1/index/run/") {
+		a.handleIndexRun(w, r)
+		return
+	}
 	var result any
 	var err error
 	switch strings.TrimPrefix(r.URL.Path, "/api/v1/index/") {
+	case "block-map":
+		a.handleIndexBlockMap(w, r)
+		return
+	case "browse":
+		if !indexMethod(w, r, http.MethodPost) {
+			return
+		}
+		var req indexBrowseRequest
+		if !indexRequestBody(w, r, &req) {
+			return
+		}
+		result, err = a.setIndexBrowsePolicy(r.Context(), req)
+	case "sat":
+		a.handleIndexSat(w, r)
+		return
+	case "discover-sat":
+		a.handleInscriptionDiscoverSat(w, r)
+		return
 	case "rules":
 		if !indexMethod(w, r, http.MethodGet) {
 			return
@@ -122,7 +159,17 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 		if !indexMethod(w, r, http.MethodGet) {
 			return
 		}
-		result = a.indexStatus()
+		result = a.indexStatusSnapshot()
+	case "progress":
+		if !indexMethod(w, r, http.MethodGet) {
+			return
+		}
+		result, err = a.indexProgressStatus(r.Context())
+	case "storage":
+		if !indexMethod(w, r, http.MethodGet) {
+			return
+		}
+		result, err = a.indexStorage(r.Context(), r.URL.Query().Get("index"))
 	case "plan", "build":
 		if !indexMethod(w, r, http.MethodPost) {
 			return
@@ -131,7 +178,13 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 		if !indexRequestBody(w, r, &req) {
 			return
 		}
-		result, err = planIndex(req)
+		result, err = a.planIndexBuild(req)
+		if err != nil && strings.HasSuffix(r.URL.Path, "/build") {
+			if definition, e := findIndexDefinition(req.Index); e == nil && !definition.Buildable {
+				jsonError(w, http.StatusConflict, err)
+				return
+			}
+		}
 		if err == nil && strings.HasSuffix(r.URL.Path, "/build") {
 			result, err = a.startIndexBuild(req)
 			if err != nil {
@@ -145,10 +198,35 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 		if !indexMethod(w, r, http.MethodPost) {
 			return
 		}
-		if !indexRequestBody(w, r, &struct{}{}) {
+		var pause struct {
+			Index string `json:"index,omitempty"`
+		}
+		if !indexRequestBody(w, r, &pause) {
 			return
 		}
-		result, err = a.pauseIndexBuild()
+		result, err = a.pauseIndexBuildFor(pause.Index)
+	case "queue":
+		if !indexMethod(w, r, http.MethodPost) {
+			return
+		}
+		var req indexQueueRequest
+		if !indexRequestBody(w, r, &req) {
+			return
+		}
+		result, err = a.controlIndexQueue(req)
+	case "live":
+		if !indexMethod(w, r, http.MethodPost) {
+			return
+		}
+		var request indexLiveRequest
+		if !indexRequestBody(w, r, &request) {
+			return
+		}
+		result, err = a.setIndexLivePolicy(request)
+		if err != nil {
+			jsonError(w, http.StatusConflict, err)
+			return
+		}
 	case "publish", "unpublish":
 		if !indexMethod(w, r, http.MethodPost) {
 			return
@@ -177,7 +255,17 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 		var limit int
 		limit, err = indexQueryLimit(r.URL.Query().Get("limit"))
 		if err == nil {
-			result, err = a.indexQuery(r.URL.Query().Get("index"), limit)
+			if rawHeight := r.URL.Query().Get("height"); rawHeight != "" {
+				var height int64
+				height, err = strconv.ParseInt(rawHeight, 10, 64)
+				if err == nil && height >= 0 {
+					result, err = a.indexQueryBlock(r.Context(), r.URL.Query().Get("index"), height, limit)
+				} else {
+					err = fmt.Errorf("height must be a non-negative integer")
+				}
+			} else {
+				result, err = a.indexQuery(r.URL.Query().Get("index"), limit)
+			}
 		}
 	case "lookup":
 		if !indexMethod(w, r, http.MethodGet) {
@@ -213,11 +301,13 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 type indexCLICommand struct {
-	Action  string
-	Request indexBuildRequest
-	Limit   int
-	Key     string
-	Peer    string
+	Action        string
+	LiveAction    string
+	Request       indexBuildRequest
+	Limit         int
+	Key           string
+	Peer          string
+	BrowseEnabled *bool
 }
 
 func parseIndexCLI(args []string) (indexCLICommand, error) {
@@ -228,6 +318,13 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 	c.Action = strings.ToLower(args[0])
 	args = args[1:]
 	switch c.Action {
+	case "browse":
+		if len(args) != 2 || (args[1] != "enable" && args[1] != "disable") {
+			return c, fmt.Errorf("usage: index browse <index-id> <enable|disable>")
+		}
+		c.Request.Index = args[0]
+		c.BrowseEnabled = boolPointer(args[1] == "enable")
+		return c, nil
 	case "status", "pause", "peers":
 		if len(args) != 0 {
 			return c, fmt.Errorf("index %s takes no arguments", c.Action)
@@ -259,6 +356,15 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 		}
 		c.Peer, c.Request.Index = args[0], args[1]
 		return c, nil
+	case "live":
+		if len(args) < 2 || strings.HasPrefix(args[0], "-") {
+			return c, fmt.Errorf("usage: index live <index-id> <enable|pause|resume|disable> [--retention ephemeral|cache|retain]")
+		}
+		c.Request.Index, c.LiveAction = args[0], strings.ToLower(args[1])
+		if c.LiveAction != "enable" && c.LiveAction != "pause" && c.LiveAction != "resume" && c.LiveAction != "disable" {
+			return c, fmt.Errorf("live action must be enable, pause, resume or disable")
+		}
+		args = args[2:]
 	case "plan", "build", "query":
 		if len(args) == 0 || strings.HasPrefix(args[0], "-") {
 			return c, fmt.Errorf("index %s requires an index ID", c.Action)
@@ -266,7 +372,7 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 		c.Request.Index = args[0]
 		args = args[1:]
 	default:
-		return c, fmt.Errorf("index action must be rules, plan, build, pause, status, query, lookup, peers, peer, publish or unpublish")
+		return c, fmt.Errorf("index action must be rules, plan, build, live, pause, status, query, lookup, peers, peer, publish or unpublish")
 	}
 	seen := make(map[string]bool)
 	for len(args) > 0 {
@@ -282,6 +388,26 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 			}
 			value, args = args[0], args[1:]
 		}
+		if c.Action == "live" {
+			if (key == "--retain-output-values" || key == "--retain-output-scripts") && (value == "true" || value == "false") {
+				if key == "--retain-output-values" {
+					c.Request.RetainOutputValues = boolPointer(value == "true")
+				} else {
+					c.Request.RetainOutputScripts = boolPointer(value == "true")
+				}
+				continue
+			}
+			if key == "--conventional-ids" && (value == "true" || value == "false") {
+				v := value == "true"
+				c.Request.ConventionalIDs = &v
+				continue
+			}
+			if key != "--retention" || value == "" || !validIndexRetention(value) {
+				return c, fmt.Errorf("index live accepts --retention ephemeral|cache|retain and --conventional-ids true|false")
+			}
+			c.Request.Retention = value
+			continue
+		}
 		if c.Action == "query" {
 			if key != "--limit" {
 				return c, fmt.Errorf("index query only accepts --limit")
@@ -294,6 +420,37 @@ func parseIndexCLI(args []string) (indexCLICommand, error) {
 			continue
 		}
 		switch key {
+		case "--rebuild":
+			if value != "true" && value != "false" {
+				return c, fmt.Errorf("rebuild requires true or false")
+			}
+			c.Request.Rebuild = value == "true"
+		case "--retain-output-values", "--retain-output-scripts":
+			if value != "true" && value != "false" {
+				return c, fmt.Errorf("%s requires true or false", key)
+			}
+			if key == "--retain-output-values" {
+				c.Request.RetainOutputValues = boolPointer(value == "true")
+			} else {
+				c.Request.RetainOutputScripts = boolPointer(value == "true")
+			}
+		case "--conventional-ids":
+			if value != "true" && value != "false" {
+				return c, fmt.Errorf("conventional-ids requires true or false")
+			}
+			v := value == "true"
+			c.Request.ConventionalIDs = &v
+		case "--outputs":
+			if value == "" {
+				return c, fmt.Errorf("outputs requires comma-separated index IDs")
+			}
+			c.Request.Outputs = strings.Split(value, ",")
+		case "--retain-sat-history":
+			c.Request.SatHistoryConfigured = true
+			if value != "true" && value != "false" {
+				return c, fmt.Errorf("retain-sat-history requires true or false")
+			}
+			c.Request.RetainSatHistory = value == "true"
 		case "--from", "--to":
 			n, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
@@ -327,14 +484,18 @@ func (a *app) runIndexCLI(args []string) (any, error) {
 		return nil, err
 	}
 	switch c.Action {
+	case "browse":
+		return a.setIndexBrowsePolicy(context.Background(), indexBrowseRequest{Index: c.Request.Index, Enabled: c.BrowseEnabled})
 	case "rules":
 		return indexRules(c.Request.Index)
 	case "status":
 		return a.indexStatus(), nil
 	case "plan":
-		return planIndex(c.Request)
+		return a.planIndexBuild(c.Request)
 	case "pause":
 		return a.pauseIndexBuild()
+	case "live":
+		return a.setIndexLivePolicy(indexLiveRequest{Index: c.Request.Index, Action: c.LiveAction, Retention: c.Request.Retention, ConventionalIDs: c.Request.ConventionalIDs, RetainOutputValues: c.Request.RetainOutputValues, RetainOutputScripts: c.Request.RetainOutputScripts})
 	case "query":
 		return a.indexQuery(c.Request.Index, c.Limit)
 	case "lookup":
@@ -351,12 +512,13 @@ func (a *app) runIndexCLI(args []string) (any, error) {
 		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
-		if _, err = a.startIndexBuild(c.Request); err != nil {
-			return nil, err
+		started, startErr := a.startIndexBuild(c.Request)
+		if startErr != nil {
+			return nil, startErr
 		}
-		job, err := a.waitIndexBuild(ctx)
+		job, err := a.waitQueuedIndexJob(ctx, started.ID)
 		if ctx.Err() != nil {
-			_, _ = a.pauseIndexBuild()
+			_, _ = a.controlIndexQueue(indexQueueRequest{started.ID, "pause"})
 		}
 		return job, err
 	}
@@ -383,12 +545,14 @@ func runEarlyIndexCLI(dataDir string, args []string) (bool, int) {
 	if err != nil {
 		return done(nil, err)
 	}
-	// Definitions and planning have no state or network dependency.
+	// Definitions have no state or network dependency. Offline planning reads
+	// local evidence without starting runtime services or acquiring write locks.
 	if c.Action == "rules" {
 		return done(indexRules(c.Request.Index))
 	}
 	if c.Action == "plan" {
-		return done(planIndex(c.Request))
+		reader := &app{dataDir: dataDir, headersPath: filepath.Join(dataDir, "headers", "headers.bin"), settings: appSettings{CoreDisabled: true, CoreMountDisabled: true, NetworkDisabled: true}}
+		return done(reader.planIndexBuild(c.Request))
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -512,6 +676,8 @@ func forwardIndexCLI(ctx context.Context, dataDir string, command indexCLIComman
 		body = command.Request
 	case "pause":
 		body = struct{}{}
+	case "live":
+		body = indexLiveRequest{Index: command.Request.Index, Action: command.LiveAction, Retention: command.Request.Retention, ConventionalIDs: command.Request.ConventionalIDs, RetainOutputValues: command.Request.RetainOutputValues, RetainOutputScripts: command.Request.RetainOutputScripts}
 	case "publish", "unpublish":
 		body = struct {
 			Index string `json:"index"`
@@ -527,7 +693,8 @@ func forwardIndexCLI(ctx context.Context, dataDir string, command indexCLIComman
 	}
 	for {
 		var snapshot struct {
-			Job indexJob `json:"job"`
+			Job  indexJob   `json:"job"`
+			Jobs []indexJob `json:"jobs"`
 		}
 		result, err = remote.request(ctx, "/api/v1/index/status", nil)
 		if err == nil {
@@ -535,7 +702,7 @@ func forwardIndexCLI(ctx context.Context, dataDir string, command indexCLIComman
 		}
 		if ctx.Err() != nil {
 			pauseCtx, pauseCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_, pauseErr := remote.request(pauseCtx, "/api/v1/index/pause", struct{}{})
+			_, pauseErr := remote.request(pauseCtx, "/api/v1/index/queue", indexQueueRequest{started.ID, "pause"})
 			pauseCancel()
 			if pauseErr != nil {
 				return nil, true, fmt.Errorf("interrupted; could not confirm pause: %w", pauseErr)
@@ -545,10 +712,16 @@ func forwardIndexCLI(ctx context.Context, dataDir string, command indexCLIComman
 		if err != nil {
 			return nil, true, fmt.Errorf("lost contact with index job %s; inspect its status before restarting: %w", started.ID, err)
 		}
+		for _, job := range snapshot.Jobs {
+			if job.ID == started.ID {
+				snapshot.Job = job
+				break
+			}
+		}
 		if snapshot.Job.ID != started.ID {
 			return nil, true, fmt.Errorf("runtime has moved to another index job; inspect retained coverage for job %s", started.ID)
 		}
-		if snapshot.Job.State != "running" && snapshot.Job.State != "waiting" && snapshot.Job.State != "pausing" {
+		if snapshot.Job.State != "running" && snapshot.Job.State != "waiting" && snapshot.Job.State != "pausing" && snapshot.Job.State != "queued" {
 			if snapshot.Job.State == "failed" {
 				return snapshot.Job, true, fmt.Errorf("%s", snapshot.Job.Error)
 			}

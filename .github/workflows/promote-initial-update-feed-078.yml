@@ -1,0 +1,55 @@
+name: Upload approved 0.7.8 canonical bundle only
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: gateway-approved-update-renewal
+  cancel-in-progress: false
+jobs:
+  promote:
+    if: github.repository == 'Blockamoto/gateway' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: gateway-update-renewal
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GO111MODULE: 'off'
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Test before supplying credentials
+        run: |
+          set -euo pipefail
+          go test ./internal/updatepublisher ./packaging/update-publisher
+          python3 scripts/test-promote-initial-update-feed-078.py
+          go build -trimpath -o "$RUNNER_TEMP/publisher" ./packaging/update-publisher
+          python3 scripts/test-prepare-real-078.py --publisher "$RUNNER_TEMP/publisher"
+          python3 scripts/promote-initial-update-feed-078.py --check-frozen
+      - name: Fetch frozen signing output and upload authenticated canonical bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SIGNING_RUN_ID=$(python3 -c "import runpy; print(runpy.run_path('scripts/promote-initial-update-feed-078.py')['SIGNING_RUN_ID'])")
+          mkdir -p "$RUNNER_TEMP/candidate078"
+          gh run download "$SIGNING_RUN_ID" --repo Blockamoto/gateway --pattern 'gateway-initial-feed-078-*' --dir "$RUNNER_TEMP/candidate078"
+          mapfile -t BUNDLES < <(find "$RUNNER_TEMP/candidate078" -type f -name gateway-update-feed-v0.7.8.zip)
+          test "${#BUNDLES[@]}" -eq 1
+          python3 scripts/promote-initial-update-feed-078.py --bundle "${BUNDLES[0]}" --publisher "$RUNNER_TEMP/publisher" --receipt "$RUNNER_TEMP/canonical-078-receipt.json"
+      - name: Preserve sanitized upload receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gateway-canonical-078-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/canonical-078-receipt.json
+          if-no-files-found: ignore
+          retention-days: 30

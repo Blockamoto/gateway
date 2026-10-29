@@ -44,10 +44,54 @@ func testAppWithGenesis(t *testing.T) (*app, []byte) {
 	a := &app{dataDir: dataDir, headersPath: filepath.Join(dataDir, "headers", "headers.bin"), status: appStatus{HeaderCount: 1, HeaderHeight: 0, Ready: true}, settings: appSettings{CacheBlocks: true, ServeData: true}, cacheIndex: newCacheIndex(), coverage: newCoverageState()}
 	a.source = newOverlayServer(a)
 	a.loadCacheIndex()
+	t.Cleanup(func() { drainTestAppWriters064(t, a) })
 	return a, payload
 }
 
+// Temporary profiles outlive all accepted fixture work. A completed index job
+// can still have a delayed cache save pending, so waiting only for its job state
+// lets TempDir cleanup race a real writer on Windows.
+func drainTestAppWriters064(t *testing.T, a *app) {
+	t.Helper()
+	if a.network != nil {
+		a.network.stop()
+	}
+	if a.source != nil {
+		a.source.stopServer()
+	}
+	a.stopKnowledgeWritersForUpdate()
+	a.indexMu.Lock()
+	if a.indexCancel != nil {
+		a.indexCancel()
+	}
+	a.indexMu.Unlock()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		a.indexMu.Lock()
+		active := a.indexCancel != nil
+		a.indexMu.Unlock()
+		if !active {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Error("fixture index writer did not stop before temporary profile cleanup")
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	done := make(chan struct{})
+	go func() { a.updateBackgroundWork.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Error("fixture knowledge writer did not drain before temporary profile cleanup")
+	}
+}
+
 func TestBIP434NegotiationBetweenBODPeers(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway exchange remains locked; ordinary Bitcoin serving is tested separately")
+	}
 	a, _ := testAppWithGenesis(t)
 	if err := a.source.start(); err != nil {
 		t.Skipf("BOD port unavailable: %v", err)
@@ -123,6 +167,9 @@ func TestOrdinaryBitcoinPeerRemainsUsableWithoutBOD(t *testing.T) {
 }
 
 func TestUnknownIsNotNegative(t *testing.T) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("Gateway exchange remains locked; ordinary Bitcoin serving is tested separately")
+	}
 	a, _ := testAppWithGenesis(t)
 	if err := a.source.start(); err != nil {
 		t.Skipf("port: %v", err)

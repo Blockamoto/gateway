@@ -233,6 +233,7 @@ func (a *app) syncIndependentHeaders(ctx context.Context) error {
 		if working == canonical {
 			tip := hash256(headers[len(headers)-1])
 			hash := reverseHex(tip[:])
+			s.n.noteSelectedPeerHeaders(s, count-1, hash)
 			elapsed := time.Since(started).Seconds()
 			a.setStatus(func(st *appStatus) {
 				st.HeaderCount = count
@@ -259,6 +260,8 @@ func (a *app) syncIndependentHeaders(ctx context.Context) error {
 	return nil
 }
 func (a *app) superviseIndependentHeaders() {
+	baselineDone := false
+	var lastHeaderFeed time.Time
 	for {
 		if a.network.ctx.Err() != nil {
 			return
@@ -266,6 +269,31 @@ func (a *app) superviseIndependentHeaders() {
 		a.settingsMu.RLock()
 		settings := a.settings
 		a.settingsMu.RUnlock()
+		if !baselineDone && !settings.HeadersPaused {
+			ctx, cancel := context.WithCancel(a.network.ctx)
+			a.headerControlMu.Lock()
+			a.headerCancel = cancel
+			a.headerControlMu.Unlock()
+			e := a.importPackagedHeaderBaseline(ctx)
+			cancel()
+			a.headerControlMu.Lock()
+			a.headerCancel = nil
+			a.headerControlMu.Unlock()
+			baselineDone = !errors.Is(e, context.Canceled)
+			if e != nil {
+				a.setStatus(func(s *appStatus) {
+					s.HeaderBootstrapState = "error"
+					if errors.Is(e, context.Canceled) {
+						s.HeaderBootstrapState = "paused"
+					}
+					s.HeaderBootstrapError = e.Error()
+					s.Syncing = false
+				})
+			}
+			a.settingsMu.RLock()
+			settings = a.settings
+			a.settingsMu.RUnlock()
+		}
 		reason := ""
 		if settings.HeadersPaused {
 			reason = "Header synchronization is paused by you."
@@ -288,6 +316,19 @@ func (a *app) superviseIndependentHeaders() {
 			a.headerControlMu.Lock()
 			a.headerCancel = cancel
 			a.headerControlMu.Unlock()
+			if a.updater != nil && (lastHeaderFeed.IsZero() || time.Since(lastHeaderFeed) >= updateCheckInterval) {
+				a.updater.mu.Lock()
+				configured := a.updater.config.AutoCheck && a.updater.config.PublisherURL != ""
+				a.updater.mu.Unlock()
+				if configured {
+					lastHeaderFeed = time.Now()
+					feedCtx, stopFeed := context.WithTimeout(ctx, 20*time.Second)
+					if e := a.syncHeaderUpdates(feedCtx); e != nil && ctx.Err() == nil {
+						a.setStatus(func(s *appStatus) { s.HeaderBootstrapError = e.Error() })
+					}
+					stopFeed()
+				}
+			}
 			a.setStatus(func(s *appStatus) {
 				s.Syncing = true
 				s.HeaderState = "connecting"

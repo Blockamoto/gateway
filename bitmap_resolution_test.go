@@ -7,6 +7,7 @@ import (
 )
 
 func TestBitmapAddressAndRevealProjection(t *testing.T) {
+	t.Skip("Public Bitmap resolution is intentionally locked in 0.6.6; Bitmap recipe/validation tests remain active.")
 	for _, input := range []string{"0.bitmap", "god://12.bitmap", "http://123.bitmap/"} {
 		target, err := parseLocalResolverTarget(input)
 		if err != nil || target.Namespace != "bitmap" {

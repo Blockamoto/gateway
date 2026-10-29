@@ -38,6 +38,9 @@ type indexPeerPreviewView struct {
 // fallback, so it must not be called here. Configured endpoints and service-bit
 // hints alone do not authorize this client to contact a new endpoint.
 func (a *app) knownIndexClaimPeers() ([]overlayPeer, error) {
+	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
+		return nil, err
+	}
 	a.settingsMu.RLock()
 	disabled := a.settings.NetworkDisabled
 	a.settingsMu.RUnlock()
@@ -85,7 +88,7 @@ func (a *app) indexPeerClaims() (any, error) {
 	view := indexPeerClaimsView{KnownPeers: len(peers), Peers: []indexPeerClaimResult{}, Verification: indexPeerClaimState,
 		Note: "Published snapshots are peer claims. Bitcoin replay is still required; this inspection stores nothing."}
 	if len(peers) == 0 {
-		view.Note = "No already-negotiated Gateway/BOD peers are available. This action does not start discovery."
+		view.Note = "No already-negotiated Gateway peers are available. This action does not start discovery."
 		return view, nil
 	}
 	if len(peers) > maxIndexClaimPeers {
@@ -133,7 +136,7 @@ func (a *app) indexPeerPreview(peerAddr, id string) (any, error) {
 		}
 	}
 	if selected == nil {
-		return nil, fmt.Errorf("preview requires an already-negotiated Gateway/BOD peer")
+		return nil, fmt.Errorf("preview requires an already-negotiated Gateway peer")
 	}
 	manifests, err := a.queryIndexPeerManifests(*selected)
 	if err != nil {

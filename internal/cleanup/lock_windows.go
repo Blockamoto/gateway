@@ -15,6 +15,19 @@ type Lock struct {
 }
 
 func Acquire(root string) (*Lock, error) {
+	return acquire(root, 0)
+}
+
+// AcquireForMove excludes profile readers/writers while preparing migration.
+// Windows still refuses renaming a directory with any open descendant file.
+// Under a separate migration coordinator, release this handle immediately before
+// rename, then acquire the moved profile and revalidate its contents. A raced-in
+// old writer's open lock handle makes that rename fail instead of moving live data.
+func AcquireForMove(root string) (*Lock, error) {
+	return acquire(root, syscall.FILE_SHARE_DELETE)
+}
+
+func acquire(root string, share uint32) (*Lock, error) {
 	root, e := safeRoot(root)
 	if e != nil {
 		return nil, e
@@ -27,7 +40,7 @@ func Acquire(root string) (*Lock, error) {
 	if e != nil {
 		return nil, e
 	}
-	h, e := syscall.CreateFile(p, syscall.GENERIC_READ|syscall.GENERIC_WRITE, 0, nil, syscall.OPEN_ALWAYS, syscall.FILE_ATTRIBUTE_NORMAL, 0)
+	h, e := syscall.CreateFile(p, syscall.GENERIC_READ|syscall.GENERIC_WRITE, share, nil, syscall.OPEN_ALWAYS, syscall.FILE_ATTRIBUTE_NORMAL, 0)
 	if e != nil {
 		return nil, fmt.Errorf("profile is in use or unavailable: %w", e)
 	}

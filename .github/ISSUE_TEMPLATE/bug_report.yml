@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a problem with Gateway.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing Gateway. For security vulnerabilities, follow SECURITY.md.
+        Do not include passwords, access tokens, wallet data, private files, or an unredacted settings file.
+  - type: input
+    id: version
+    attributes:
+      label: Gateway version and package
+      placeholder: "0.7.0 Windows installer / portable ZIP / Linux ZIP"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and browser
+      description: Include browser/version for setup or address-entry problems.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include a public block or resource address if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Include the exact error and whether retrying changed the result.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Optional screenshots or sanitised logs
+      description: Remove secrets, personal paths, and peer addresses before sharing.

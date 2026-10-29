@@ -20,6 +20,7 @@ type bodCoordinate struct {
 	Kind             coordinateKind
 	Height           int64
 	TxIndex          int
+	TxID             string // Nonempty for an exact transaction identity within Height.
 	IOIndex          int
 	SatOffset        uint64
 	InscriptionIndex int
@@ -53,6 +54,9 @@ func satpointCoordinate(offset uint64, vout, txIndex int, height int64) string {
 
 func parseBODCoordinate(s string) (bodCoordinate, bool) {
 	raw := strings.TrimSpace(strings.ToLower(s))
+	if hasHashCoordinateIdentity(raw) {
+		return parseHashCoordinate(raw)
+	}
 	parts := strings.Split(raw, ".")
 	if len(parts) == 2 {
 		if tx, idx, ok := strings.Cut(parts[0], "i"); ok {
@@ -114,8 +118,8 @@ func parseBODCoordinate(s string) (bodCoordinate, bool) {
 		tx, ok1 := parseNonNeg(parts[0])
 		idx, ok2 := parseNonNeg(strings.TrimPrefix(parts[1], "i"))
 		h, ok3 := parseNonNeg(parts[2])
-		if ok1 && ok2 && ok3 && tx <= maxInt && idx <= maxInt {
-			return bodCoordinate{Kind: coordInscription, Height: h, TxIndex: int(tx), InscriptionIndex: int(idx), IOIndex: -1, Raw: raw}, true
+		if ok1 && ok2 && ok3 && tx <= maxInt && idx <= maxInt && tx <= int64(^uint32(0)) && idx <= int64(^uint32(0)) {
+			return bodCoordinate{Kind: coordInscription, Height: h, TxIndex: int(tx), InscriptionIndex: int(idx), IOIndex: -1, Raw: inscriptionCoordinate(uint32(tx), uint32(idx), h)}, true
 		}
 	}
 	return bodCoordinate{}, false

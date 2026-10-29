@@ -1,0 +1,1282 @@
+{
+  "schema": 1,
+  "version": "0.7.7",
+  "title": "v0.7.7: Sats",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-15",
+  "status": "published-prerelease-hosted-upgrade-and-renewal-accepted",
+  "published": true,
+  "release_kind": "prerelease",
+  "development_base_revision": "7869709d512149bf303c56477c3953a385d1913c",
+  "verified_runtime_source": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+  "source_identity_note": "The released v0.7.7 tag, application components and packaged source identity remain frozen at 0f60051a2560c43b5e78f1b3dc80e14fda64f6a4. The exact Windows client is 4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228. All 376 protected application source/resource files match the main promotion. Main adds release operations and documentation separately. Portable archives received an audited README-only Satline-deferral correction, with unchanged binaries, installer and headers. Published Linux package execution, a genuine Addresses automatic upgrade, both initial and renewed live signed feeds, and current-client renewed-feed acceptance pass. Prior preview and failed operational attempts remain source-specific historical evidence.",
+  "enabled_indexes": [
+    "headers",
+    "blocks",
+    "inscriptions",
+    "tx-locator",
+    "txo-spender",
+    "utxo-state",
+    "address-state",
+    "address-history",
+    "sat-state"
+  ],
+  "gated_features": [
+    "bitmap",
+    "gateway-peerhood",
+    "satline"
+  ],
+  "validation_mode": "header_anchored_processing",
+  "consensus_validated": false,
+  "storage": {
+    "live_ranges": "Ordered sat ranges for currently unspent outputs, with exact saved Sat checkpoints and shared output facts.",
+    "sat_savepoints": {
+      "near_interval_blocks": 12,
+      "near_count": 2,
+      "deep_interval_blocks": 144,
+      "deep_count": 2,
+      "shared_heights": "deduplicated",
+      "recovery": "Restore an eligible selected-chain savepoint and replay available evidence; no unconditional 288-block Sat recovery guarantee."
+    },
+    "utxo_recovery_transitions": 288,
+    "optional_history": "Historical output ranges start off, have independent coverage, and are distinct from on-demand visited Satline evidence.",
+    "shared_fact_ownership": "The Sat-aware collector enumerates live, savepoint and archived Sat owners; the older Addresses blanket sweep deferral is intentionally not applied.",
+    "legacy_experimental_sat_state": "Preserved; incompatible experimental profiles require an explicitly reviewed rebuild.",
+    "p2pk": "Strict SEC public-key destinations retain exact script identities separately from conventional P2PKH and alternative key encodings.",
+    "raw_retention": "Pruned raw bodies remain independent of required live and recovery facts."
+  },
+  "validation": {
+    "prior_sats_p2pk_development_workflow": {
+      "result": "passed",
+      "source_revision": "2abda5d617e6d8bcc708da96a837e83b3bebbca6",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38596598253",
+      "scope": "Full Linux source tests, vet, regression/updater race checks, companion/helpers, packaging and browser/native fixtures on that source; not acceptance of a newly packaged preview."
+    },
+    "prior_windows_p2pk_preview": {
+      "result": "passed",
+      "client_sha256": "3e9ae3113e5588339ae94a32bf3044a80e488f74ba97d26f891afed44a437f76",
+      "receipts": [
+        "work/qa-077/p2pk-native-sats/result.json",
+        "work/qa-077/p2pk-native-viewport/summary.json"
+      ],
+      "scope": "Previously tested Windows preview only: genuine genesis/block-one processing, eviction/restart and P2PK destination navigation. No claim of a final-source full Windows rerun."
+    },
+    "reconciled_preview_source_checks": {
+      "result": "passed-targeted",
+      "checks": [
+        "Nine isolated update-packaging regressions passed in 1.461 seconds.",
+        "Sat 0.7.7 model helpers and index-card model helpers passed.",
+        "Cards verifier Node syntax and package script Python syntax passed.",
+        "Versioned acceptance/notes paths, preserved final Addresses evidence, held 0.7.6 publisher approval and unchanged Sats CI contracts passed."
+      ],
+      "scope": "Targeted reconciliation checks only. The published verifier workflow and Render YAML match the released operational baseline; no YAML parser is available in this check. New preview execution, complete source CI and final packages require their own recorded identities and checks."
+    },
+    "new_windows_preview": {
+      "result": "passed",
+      "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305",
+      "client_sha256": "fda11d0123fe8fdbd40dcb61c0251b138ac5d9c5db359c391fba3905d41c28bf",
+      "receipts": {
+        "native_sat_flow": {
+          "path": "validation/native-sats-preview-d06cdd4/result.json",
+          "sha256": "5982b75cc7bffd5db422ff735240f3ebf85a30f0a392400cf85f0fbbc8b7a3aa",
+          "result": "passed",
+          "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305"
+        },
+        "native_viewport_p2pk": {
+          "path": "validation/native-viewport-preview-d06cdd4/summary.json",
+          "sha256": "233881b10d954d222cd8c7eab64ed291d7525d9f257187917f24dc0a0e6a7870",
+          "result": "passed",
+          "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305"
+        },
+        "native_index_cards": {
+          "path": "validation/native-cards-preview-d06cdd4/result.json",
+          "sha256": "247ce91bf2c13b69b0399764f160aff84bdc4cf095ccdde1d7a64d91ddf9a4df",
+          "result": "passed",
+          "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305"
+        },
+        "header_bootstrap_restart": {
+          "path": "validation/header-bootstrap-preview-d06cdd4/result.json",
+          "sha256": "5ab9fb95e9a5d4f05e49972d112dd2fd486dabb8d4d099601f609add8666a0cc",
+          "result": "passed",
+          "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305"
+        }
+      },
+      "scope": "Exact compiled Windows preview: genuine genesis/block1 Sat build/wait/pause/resume and queries, no implicit traces or builds, raw eviction/restart, narrow themes, P2PK navigation, header import/restart and fresh profile cards/settings. Not a whole-mainnet or system-installation result."
+    },
+    "exact_release_packages_and_installer": {
+      "result": "passed-local-preview",
+      "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305",
+      "receipt": {
+        "path": "validation/package-preview-d06cdd4.json",
+        "sha256": "cba166015ad731460a144b763f59cb8100be47b078fb605f9bd2b1c7dea5ec51",
+        "result": "passed",
+        "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305"
+      },
+      "binary_audit_sha256": "71d7bfe0068e53c00e2b921476229d091a502e1f2a0d0df3211971f1679d187c",
+      "scope": "Windows/Linux components and update/fresh ZIPs, exact archive allowlists and all-file hashes/CRC, clean source provenance, five PE versions and embedded installer payload identity. These local preview packages are not published release acceptance."
+    },
+    "published_linux_acceptance": {
+      "status": "PASS",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\published-linux\\inspection.json",
+        "bytes": 5921,
+        "sha256": "98eb7b220a57404b2bcbac1feea20d686416d1fdd19b3574aebdb43062f49ffc"
+      },
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38742132924",
+      "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "scope": "Exact hosted Linux fresh and application-only update archives, authenticated metadata/payload hashes, release bootstrap, helper refusal without plan, offline fresh-header import/restart and actual compiled Chromium cards/viewport/P2PK layout. No source rebuild is used by the workflow.",
+      "details": "public_validation.published_linux_packages"
+    },
+    "published_076_automatic_upgrade": {
+      "status": "PASS",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\hosted-public-acceptance-final-077\\result.json",
+        "bytes": 5015,
+        "sha256": "71b8d78839958e0ef70b9545a55993f61f82be8b77c05bdfecececd23577af94"
+      },
+      "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "scope": "Public-release hosted acceptance: genuine published 0.7.6 client automatically installs exact public 0.7.7 and restarts with settings and full headers preserved. Separate fresh 0.7.7 automatically checks both app and header feeds without Settings setup; its validated snapshot prefix remains unchanged while ordinary peers may extend the chain.",
+      "details": "public_validation.genuine076_automatic_upgrade"
+    },
+    "signed_hosted_delivery_and_renewal": {
+      "status": "PASS",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\delivery-live-renewed-077\\result.json",
+        "bytes": 79801,
+        "sha256": "c491537a70b192869309f87237f6d180912538ea0088e2f7e3f1b940022038ba"
+      },
+      "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "scope": "Both renewed signed envelopes and all99 actual live downloads authenticated independently.",
+      "details": "public_validation.renewed_signed_hosted_delivery"
+    },
+    "core_recovery_compatibility": {
+      "path": "validation/preview-readiness-20261014/core-go-receipt.json",
+      "sha256": "f7967835f33efc68f21f90e67ff075fb5dfec79c08c6805560c72c8a6e9985b1",
+      "result": "passed",
+      "source_revision": "7869709d512149bf303c56477c3953a385d1913c"
+    },
+    "reconciled_preview_development_workflow": {
+      "result": "passed",
+      "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38625093928",
+      "scope": "Full Linux Go tests, vet, race checks, companion/helpers, packaging and actual browser/native UI stages passed for the exact frozen source."
+    },
+    "released_addresses_profile_compatibility": {
+      "result": "passed",
+      "receipt": {
+        "path": "validation\\addresses076-profile-compat-d06cdd4\\result.json",
+        "sha256": "e4e28bcedbee8554ac8b39b02616ab777217d28b3242fda43dac4d62f392a5dd"
+      },
+      "scope": "Exact new preview read an unchanged copy of genuine released 0.7.6 UTXO/address state through block170 on two offline starts. Existing current/historical P2PK10BTC, commitments, settings and script separation persisted; no jobs or Sat state created. Source fixture preserved. The setup-only Windows path-length correction did not alter production code."
+    },
+    "authentic_first_transfer": {
+      "result": "passed",
+      "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305",
+      "receipt": {
+        "path": "validation\\authentic-sats-transfer170-d06cdd4-r2\\result.json",
+        "sha256": "6ca969fdaa1bc13a79ec209daa749dec89a3983e1d9e0940e6a35c89d4106e73"
+      },
+      "scope": "171 authenticated genuine mainnet blocks replayed from genesis through170 offline, with independently parsed block9 to block170 first-transfer FIFO reference. Recipient10BTC ranges and individual Sat offset/P2PK destination matched. Matching existing address checkpoint joined ranges; raw eviction plus restart preserved exact saved Sat state. No nonzero-fee or forward Satline acceptance is inferred from this zero-fee transfer.",
+      "build_seconds": 21.515,
+      "benchmark_limit": "Small local early-chain fixtures with existing shared facts, not a mainnet throughput/memory/storage benchmark."
+    },
+    "published_linux_packages": {
+      "status": "PASS",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38742132924",
+      "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\published-linux\\inspection.json",
+        "sha256": "98eb7b220a57404b2bcbac1feea20d686416d1fdd19b3574aebdb43062f49ffc"
+      },
+      "scope": "Both exact published Linux archives: payload identities, bootstrap, helper refusal, header import/restart, cards and viewport checks. Separate from Windows upgrade and live signed delivery."
+    }
+  },
+  "publication_hold": {
+    "main_promotion": "completed under explicit user release authorization",
+    "release_publication": "published GitHub prerelease v0.7.7: Sats",
+    "updater_approval": "Sats approved and live; automatic upgrade and renewed feeds accepted",
+    "render_automatic_deployment": "Enabled for main commits; latest verified operational deployment live."
+  },
+  "known_limits": [
+    "No whole-mainnet build, memory, storage or throughput benchmark.",
+    "Fragmented input ranges are still materialized while processing FIFO transactions.",
+    "Visited Satline and fee caches do not establish complete historical range coverage.",
+    "Known inscription holdings do not establish universal inscription completeness.",
+    "Full Bitcoin consensus validation and Gateway peer-state sharing remain deferred.",
+    "Windows binaries are not Authenticode signed; installer wizard execution, OS/browser registration and antivirus acceptance require separate evidence."
+  ],
+  "earlier_addresses_acceptance": "RELEASE-ACCEPTANCE-0.7.6.json",
+  "preview_source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+  "preview_artifacts": [
+    {
+      "file": "gateway-client-v0.7.7-windows-amd64.zip",
+      "bytes": 14026963,
+      "sha256": "26f1040f6d7056e7d9ccd6bad0dec97142028fd87006daa39d00839e3f660166"
+    },
+    {
+      "file": "gateway-client-v0.7.7-windows-amd64-fresh.zip",
+      "bytes": 79933774,
+      "sha256": "aa14406bfbf01790923cb3a86f4f3d06946cd69073247ac215037205508a6287"
+    },
+    {
+      "file": "gateway-client-v0.7.7-linux-amd64.zip",
+      "bytes": 8288406,
+      "sha256": "654e15ca7162e5546089e14d57f1614cd00ab45d7ade2b2c00e62f70cf84944e"
+    },
+    {
+      "file": "gateway-client-v0.7.7-linux-amd64-fresh.zip",
+      "bytes": 74195207,
+      "sha256": "fedadb02d1b5c6a0b9c62307940b7f19c8583422fd4ed70323b2172e76c44843"
+    },
+    {
+      "file": "gateway-client-v0.7.7-installer.exe",
+      "bytes": 118609408,
+      "sha256": "38addea23e6382dc7cb87993719c771958de9d0b65e4f4f0e09682f795330eb5"
+    },
+    {
+      "file": "gateway-headers-v0.7.7.zip",
+      "bytes": 65906545,
+      "sha256": "e9464cad710d0b8cf5cfa94660b8238bc4728c04d16baecb8a56b48d03d48d2f"
+    }
+  ],
+  "client_sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+  "recorded_user_testing_followups": [
+    {
+      "area": "Timeline wheel routing",
+      "status": "implemented; exact corrected 0f6 native/package, complete Windows suite and complete hosted source CI passed",
+      "observed": "Ordinary labels scroll, group headings/gutters fall through to zoom; plain data-lane wheel zoom is now also unwanted. Modifier and any horizontal delta precede label handling.",
+      "requested": "Ordinary vertical wheel scrolls across labels and tracks; Ctrl/Command is required for timeline wheel zoom. Shift remains horizontal pan.",
+      "plan": "Classify the entire rendered label column first, remove unmodified wheel zoom fallback, preserve intentional timeline gestures and add group/gutter/diagonal/boundary/viewport regression coverage.",
+      "record": "IMPLEMENTATION-BRIEF-0.7.7.md",
+      "prior_preview_note": "The previously delivered d06 and provisional4f6 bytes/receipts remain immutable; corrected0f6 has separate exact native/package evidence.",
+      "final_candidate_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "historical_preview_unchanged": true,
+      "historical_preview_unchanged_note": "This boolean describes retention of the original d06/provisional4f6 bytes and receipts; it does not describe current corrected-preview source changes."
+    }
+  ],
+  "current_candidate": {
+    "status": "exact-local-preview-native-package-windows-and-source-ci-passed-public-release-held",
+    "satline": "Deferred: starts/resumes and reverse history discovery blocked; prior evidence retained; saved locations and ranges remain available.",
+    "wheel": "Plain vertical scroll across labels and tracks; explicit Ctrl/Command timeline zoom; intentional pan and pinch preserved.",
+    "navigation": "Internal bare integers classify against selected authoritative tip; explicit suffixes override. Ordinal names decode locally with or without .sat. Browser companion handles explicit numeric/named .sat tokens only.",
+    "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+    "client_sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+    "artifacts": [
+      {
+        "file": "gateway-client-v0.7.7-windows-amd64.zip",
+        "bytes": 14026963,
+        "sha256": "26f1040f6d7056e7d9ccd6bad0dec97142028fd87006daa39d00839e3f660166"
+      },
+      {
+        "file": "gateway-client-v0.7.7-windows-amd64-fresh.zip",
+        "bytes": 79933774,
+        "sha256": "aa14406bfbf01790923cb3a86f4f3d06946cd69073247ac215037205508a6287"
+      },
+      {
+        "file": "gateway-client-v0.7.7-linux-amd64.zip",
+        "bytes": 8288406,
+        "sha256": "654e15ca7162e5546089e14d57f1614cd00ab45d7ade2b2c00e62f70cf84944e"
+      },
+      {
+        "file": "gateway-client-v0.7.7-linux-amd64-fresh.zip",
+        "bytes": 74195207,
+        "sha256": "fedadb02d1b5c6a0b9c62307940b7f19c8583422fd4ed70323b2172e76c44843"
+      },
+      {
+        "file": "gateway-client-v0.7.7-installer.exe",
+        "bytes": 118609408,
+        "sha256": "38addea23e6382dc7cb87993719c771958de9d0b65e4f4f0e09682f795330eb5"
+      },
+      {
+        "file": "gateway-headers-v0.7.7.zip",
+        "bytes": 65906545,
+        "sha256": "e9464cad710d0b8cf5cfa94660b8238bc4728c04d16baecb8a56b48d03d48d2f"
+      }
+    ],
+    "sat_page": "Individual Sat pages use the main address bar. Deep timeline output offsets resolve via authenticated retained range segments to Sat identity; unavailable evidence starts no reconstruction or raw fallback.",
+    "focused_validation": {
+      "satline_backend": "77 passing events, four expected skips; new/resumed/API/CLI traces blocked, private exact-job cancellation preserved, saved state unchanged.",
+      "sat_point_backend": "13 passing events; genuine0/1,2305 output offsets across769 fragments, private read-only guards, anchor/corruption/cancellation checks.",
+      "sat_names": "Known boundary/standard-name vectors,1000 deterministic round trips and invalid/range/overflow checks passed.",
+      "source_browsers": "Wheel, dynamic number/name navigation, Sats/TXIO/transaction views, legacy deferral and retained Sat-point stale/status-recovery guards passed.",
+      "full_suite_note": "Final exact 0f60051 Windows suite passes: 1163 passing, zero failed, 45 skipped test/subtest events in 1118.906 seconds, eight passing packages and two no-test helper packages. Authenticated hosted CI for the same source passes every stage. Prior bc981dd Windows result remains FAIL with 1160 passing, 2 obsolete Satline-provider expectation failures and 46 skipped events; focused test-only 0b0 corrections pass and its canceled older CI remains historical."
+    },
+    "artifact_manifest": {
+      "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\artifacts\\artifact-manifest.json",
+      "bytes": 1261,
+      "sha256": "121945019b88d2e2593262284485463996ecc8008890cde27279fb1c68084198"
+    },
+    "component_payloads": [
+      {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\build\\GatewayClient.exe",
+        "bytes": 13177856,
+        "sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228"
+      },
+      {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\build\\GatewayOnDemand.exe",
+        "bytes": 5414400,
+        "sha256": "39a2a339aa59c265f2b500e6753826b2518404c5603b8aeac06d2d9db5d26409"
+      },
+      {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\build\\GatewayNativeHost.exe",
+        "bytes": 7542272,
+        "sha256": "075e21fee09cb260fde405d0d40c7885801fc054a3fae6041c2f0d1a52cda629"
+      },
+      {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\build\\GatewayUpdateHelper.exe",
+        "bytes": 7646208,
+        "sha256": "4b8fa1d4cf0592c766db4532d533de4b0be14cec24f9b6dc88c4a10c7a36742f"
+      },
+      {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\build\\gateway-client",
+        "bytes": 12779680,
+        "sha256": "430d9992efa77dd39d3c68b09deb5217641fbd0b2e98409ccc078905d947142f"
+      },
+      {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\build\\gateway-update-helper",
+        "bytes": 7405728,
+        "sha256": "0f209c6cd4da96eb55ffe67bb27c14399c68927b4aa8663093b54c4dd0484356"
+      },
+      {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\build\\gateway-client-v0.7.7-installer.exe",
+        "bytes": 118609408,
+        "sha256": "38addea23e6382dc7cb87993719c771958de9d0b65e4f4f0e09682f795330eb5"
+      }
+    ],
+    "client_hash_before_after": {
+      "before": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+      "after": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+      "unchanged": true
+    },
+    "validation": {
+      "actual_composed_workspace_source": {
+        "status": "PASS",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\composed-workspace\\result.json",
+          "bytes": 599,
+          "sha256": "2c63f64149a9abed3d18f20665db11d646b33a4b61704e477f8b07b85743a8ca"
+        },
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "client_sha256": null,
+        "scope": "Real frozen indexes.html + timeline + explorer callback: missing retained ranges cannot fetch a transaction or start history scans; output-relative9 opens numbered109.sat."
+      },
+      "native_sats_and_actual_callback": {
+        "status": "PASS",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\native-sats\\result.json",
+          "bytes": 1299,
+          "sha256": "7446cf3d57e9cde039312434285039101ec9d46632b8deda496948aacc46029e"
+        },
+        "source_revision": null,
+        "client_sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+        "scope": "Exact compiled app: genuine blocks0/1, reviewed pruned genesis build, Waiting/Pause/Resume, numeric/named Sat activation and displayed acknowledgement, dynamic selected-tip navigation, wheel gestures, blocked Satline, actual production iframe Sat selection to individual Sat, raw eviction/restart and narrow themes."
+      },
+      "native_viewport": {
+        "status": "PASS",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\native-viewport\\summary.json",
+          "bytes": 14407,
+          "sha256": "e1d62b4f635e601417ce1f7baa619355a77ea2356476da1542d2bed1c4445fda"
+        },
+        "source_revision": null,
+        "client_sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+        "scope": "Exact compiled genuine genesis map/flow, reserved toolbar and narrow layouts, keyboard controls, fullscreen and P2PK navigation."
+      },
+      "native_cards": {
+        "status": "PASS",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\native-cards\\result.json",
+          "bytes": 1302,
+          "sha256": "80c72c341ed813b288523359a794f2a759ed995f0fc00c7808f6c5efcc74b664"
+        },
+        "source_revision": null,
+        "client_sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+        "scope": "Exact compiled fresh profile, index controls and geometry, themes/setup, held update defaults and no external-origin requests; source expectations pinned to frozen candidate."
+      },
+      "native_aggregate": {
+        "status": "passed",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\native-acceptance-result.json",
+          "bytes": 1100,
+          "sha256": "7608d0349682336446d98131efee8988178d2b0fa77ca6a12e9837ed0d81cdaf"
+        },
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "client_sha256": null,
+        "scope": "Viewport/cards/header commands all exit0; exact client hash unchanged before and after."
+      },
+      "header_bootstrap_restart": {
+        "status": "passed",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\header-bootstrap\\result.json",
+          "bytes": 3605,
+          "sha256": "265dccfa0dffe7e0a0f9dde0608d38cda99a4473aeee5d234dded9c4086fe9ea"
+        },
+        "source_revision": null,
+        "client_sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+        "scope": "969480 authenticated bundled headers; offline import25.824s/restart4.816s, no user profile or configured peers/Core."
+      },
+      "released076_profile_compatibility": {
+        "status": "PASS",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\addresses076-profile-compat\\result.json",
+          "bytes": 4316,
+          "sha256": "8f878b855366b496da8ddd92f5a364778630a70b363bfcfac65ecbf7f56c3f78"
+        },
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "client_sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+        "scope": "Unchanged copied released076 genuine0..170 state, 10BTC current/historical P2PK, same commitments/settings/script separation after two offline starts; no raw bodies/new jobs/Sat state and source fixture unchanged."
+      },
+      "static_package_verification": {
+        "status": "PASS",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\package-verification.json",
+          "bytes": 2650,
+          "sha256": "72cb788fa5818fe9a29706d015599700e5975f18463139f2e76a7e3945af11d3"
+        },
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "client_sha256": null,
+        "scope": "Exact Windows/Linux fresh/update archive allowlists, member hashes and CRC; header snapshot and manifest identity. Static verification is distinct from runtime or live delivery acceptance."
+      },
+      "binary_and_installer_payload_audit": {
+        "status": "PASS",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\build\\binary-audit.json",
+          "bytes": 7556,
+          "sha256": "9d50c4a7bd13de25f7c6a4ad928cab417eddefa822fa3daa6f855e7f17366fd3"
+        },
+        "source_revision": null,
+        "client_sha256": null,
+        "scope": "PE version/icon/architecture and exact embedded installer payload structure; not installer wizard or OS registration execution."
+      },
+      "windows_vet": {
+        "status": "PASS",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\windows-source\\vet-receipt.json",
+          "bytes": 1082,
+          "sha256": "c6b5e7655fcd28fad53b280b267878d91346737c2ad595e9dd04b6cb14353113"
+        },
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "client_sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+        "scope": "go vet ./... on clean exact frozen0f60051 source and4bcd runtime."
+      },
+      "final_windows_full_go_suite": {
+        "status": "PASS",
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "client_sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\windows-source\\inspection.json",
+          "bytes": 4798,
+          "sha256": "59e7f937cc564412b32009221ff0b39587471a9bccaa25f3073ba1d343eb3ebc"
+        },
+        "raw_test_receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\windows-source\\test-receipt.json",
+          "bytes": 14980,
+          "sha256": "1ebc8351a1bd84d839ce2b3a63fc96fe5d0aaa01dd61b4c2effb4e937edbb88e"
+        },
+        "vet_receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\windows-source\\vet-receipt.json",
+          "bytes": 1082,
+          "sha256": "c6b5e7655fcd28fad53b280b267878d91346737c2ad595e9dd04b6cb14353113"
+        },
+        "wall_seconds": 1118.906,
+        "test_subtest_counts": {
+          "pass": 1163,
+          "fail": 0,
+          "skip": 45
+        },
+        "package_counts": {
+          "total": 10,
+          "pass": 8,
+          "fail": 0,
+          "skip": 2
+        },
+        "go_test_log_sha256": "9f0a52c968a86ee1c51edd8be54c598f6a09e82055f4792347acea6d760c93ca",
+        "go_version": "go version go1.27.1 windows/amd64",
+        "command": [
+          "C:\\Users\\camer\\.codex\\worktrees\\d43b\\Gateway\\build\\_tools-0.6.6\\go\\bin\\go.exe",
+          "test",
+          "-json",
+          "-count=1",
+          "-timeout=40m",
+          "./..."
+        ],
+        "runtime_sha256_before": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+        "runtime_sha256_after": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+        "runtime_unchanged": true,
+        "source_clean_before_after_and_at_inspection": true,
+        "vet_status": "PASS",
+        "vet_wall_seconds": 8.453,
+        "scope": "Final complete Windows Go suite on exact frozen source and tested executable: 1163 passing, zero failed and 45 skipped test/subtest events in 1118.906 seconds; eight packages pass and two helper packages have no tests. Source is clean and executable hash unchanged before/after. Counts exclude package events. This is not public-release or system-installer acceptance."
+      },
+      "final_hosted_development_workflow": {
+        "status": "PASS",
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "verification_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "run_id": 38634815067,
+        "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38634815067",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\windows-source\\ci-inspection.json",
+          "bytes": 8081,
+          "sha256": "6aba3a29955057a5f69b429a9ce4041480e954b061e16d16f5bbcdba8a9df11b"
+        },
+        "platform": "GitHub ubuntu-24.04/Linux",
+        "source_archive_sha256": "82958d7a1e0ab544978e67094d572acd2340e8a3c2ab380f6fdea19dce3c06e3",
+        "archived_file_hashes": {
+          "ui/shell/indexes.html": "e6dd0f2b3c8c99347e6584f11659f932b26cb0217ccbee522d47462fac225756",
+          "sat_point_077.go": "0b3b95be29c9a9706bee09bf1f798e98fc859e1b3fffd441e79513bcde275391",
+          "scripts/test-sats-native-077.js": "6071f38ff11baee3f35dea2c2003bcd6c1f1a56e973e401894c0280e3c89f171",
+          "scripts/test-hierarchy-resolved-echo-browser.js": "e16d1a5c755bc33f97978568d39aefcfbb75f8f2e058688034e5932f16532219",
+          ".github/workflows/development-checks.yml": "0bdf9cafde02cc189feecb5fb75b91a70d6f1f28f5a4d63c87e15c17e4e0bc20"
+        },
+        "test_subtest_counts": {
+          "go": {
+            "pass": 1141,
+            "fail": 0,
+            "skip": 50
+          },
+          "race": {
+            "pass": 622,
+            "fail": 0,
+            "skip": 17
+          },
+          "update_race": {
+            "pass": 159,
+            "fail": 0,
+            "skip": 1
+          }
+        },
+        "scope": "Authenticated exact final-source hosted development workflow: Go1141 pass/50 skip/0 fail, regression race622 pass/17 skip/0 fail, updater race159 pass/1 skip/0 fail; vet, companion/helpers, packaging and actual browser/native stages all pass. Archived revision and source blobs match. This source execution is distinct from published-package delivery acceptance."
+      },
+      "published_linux_packages": {
+        "status": "PASS",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\published-linux\\inspection.json",
+          "bytes": 5921,
+          "sha256": "98eb7b220a57404b2bcbac1feea20d686416d1fdd19b3574aebdb43062f49ffc"
+        },
+        "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38742132924",
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "scope": "Exact hosted Linux fresh and application-only update archives, authenticated metadata/payload hashes, release bootstrap, helper refusal without plan, offline fresh-header import/restart and actual compiled Chromium cards/viewport/P2PK layout. No source rebuild is used by the workflow.",
+        "details": "public_validation.published_linux_packages"
+      },
+      "public_upgrade_signed_feeds_and_renewal": {
+        "status": "PASS",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\delivery-live-renewed-077\\result.json",
+          "bytes": 79801,
+          "sha256": "c491537a70b192869309f87237f6d180912538ea0088e2f7e3f1b940022038ba"
+        },
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "scope": "Both renewed signed envelopes and all99 actual live downloads authenticated independently.",
+        "details": "public_validation.renewed_signed_hosted_delivery"
+      }
+    },
+    "historical_records": {
+      "original_d06_preview": {
+        "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305",
+        "client_sha256": "fda11d0123fe8fdbd40dcb61c0251b138ac5d9c5db359c391fba3905d41c28bf",
+        "record_copy": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\source\\docs\\RELEASE-ACCEPTANCE-0.7.7.json",
+          "bytes": 14754,
+          "sha256": "c212aedda24357f9de83fb8cea86515744e479771d9cde533715068ffb300481"
+        },
+        "note": "Original package/source/native/authentic-transfer records stay tied to original bytes; their prior Satline behavior is historical and does not certify revised candidate."
+      },
+      "provisional4f6_preview": {
+        "source_revision": "4f6fa935a8a432381389c60bad3af490bd28dd41",
+        "client_sha256": "2bc1b992cfc10866b8411b6dddaceaa8c09778b22b39c984288cb35ab610ed74",
+        "native_receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\controls-and-navigation\\validation\\native-acceptance-result.json",
+          "bytes": 1146,
+          "sha256": "008a0663cf8e9bd7416045ac4a2642c30761cfecb2bc30c229d55e91a3b0cc02"
+        },
+        "source_browser_group": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\controls-and-navigation\\validation\\source-browsers\\result.json",
+          "bytes": 8033,
+          "sha256": "f210a7f15ab0792b631e4e81166d5d7f312d01bd52fc41f90ed5524c6a3408e8"
+        },
+        "note": "Prior helper/composed/native coverage did not exercise the actual production focusEntity callback. Its passing checks remain bounded; old preview is superseded by0f60051."
+      },
+      "provisional_actual_callback_negative_control": {
+        "result": "EXPECTED_FAILURE_CONFIRMED",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\controls-and-navigation\\validation\\native-actualclick-negative\\expected-negative-result.json",
+          "bytes": 1450,
+          "sha256": "3cd6f807a0f4c81e723074f637b7f62da210bc74420b6f6876dfb8101c45f76e"
+        },
+        "source_revision": "4f6fa935a8a432381389c60bad3af490bd28dd41",
+        "client_sha256": "2bc1b992cfc10866b8411b6dddaceaa8c09778b22b39c984288cb35ab610ed74",
+        "observed": "POST /api/v1/navigate address=123.0.0.1.bitcoin; no UI GET /api/v1/sats/point",
+        "final_correction": "0f60051 routes indexes.html focusEntity satpoint through explorer.entity; final composed and compiled native regressions now exercise actual callback and numbered Sat handoff."
+      },
+      "prior_bc_full_windows": {
+        "source_revision": "bc981dd1a2bf6d38939b614dd5a6e406ccc2a115",
+        "status": "FAIL",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\controls-and-navigation\\validation\\windows-source\\test-receipt.json",
+          "bytes": 16059,
+          "sha256": "dda1bd5be5b2c01794f10a88737936a07e26c0307f6fa8f565789ef013a73ad8"
+        },
+        "test_counts": {
+          "pass": 1160,
+          "fail": 2,
+          "skip": 46
+        },
+        "failed_tests": [
+          "TestIntegrationReadinessRequiresActualPeersAndSyncedCore",
+          "TestIndexProvidersSatlineRequiresActualPublication"
+        ],
+        "note": "1160 passing,2 failing obsolete Satline-provider expectations,46 skipped test/subtest events; this run remains FAIL. Package-level events are distinct and not added to test counts."
+      },
+      "verification_only0b0_correction": {
+        "source_revision": "0b0d55ef03b70bc743f0b042e615309c599fcb1b",
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\controls-and-navigation\\validation\\windows-source\\corrected-provider-expectations-receipt.json",
+          "bytes": 1249,
+          "sha256": "0ff00b8216dcf73d9c0ec5c34787de74af48103fe7c4f0544dbdd5037c6eb472"
+        },
+        "note": "Only two Go test files corrected to assert Satline stays deferred despite prior settings/publications; focused corrections passed. It is not the final runtime/package source."
+      },
+      "canceled0b0_ci": {
+        "receipt": {
+          "path": "C:\\GatewayReleaseBuild\\0.7.7\\controls-and-navigation\\validation\\windows-source\\ci-0b0\\ci-receipt.json",
+          "bytes": 3541,
+          "sha256": "8190e48fa78431467bc71d10463145634e8df6f3c8cb470781ba0807bf4afc70"
+        },
+        "conclusion": "cancelled",
+        "note": "Go tests/vet succeeded before cancellation; race and later stages incomplete. Not a final CI pass."
+      }
+    },
+    "limits": [
+      "No whole-mainnet replay, storage/throughput or extreme-fragmentation peak-memory benchmark.",
+      "Full independent Bitcoin consensus validation and Gateway peer-state sharing remain deferred.",
+      "Satline initiation/resume/identity discovery is disabled; saved evidence is preserved. Retained historical ranges and known inscription holdings have explicit coverage limits.",
+      "Native runtime tests are bounded genuine early blocks and copied released-state fixtures; synthetic fixtures cover fragmentation/joins/recovery separately.",
+      "Windows executables are not Authenticode signed. Static installer-payload checks do not prove installer wizard, OS/browser registration, antivirus or SmartScreen acceptance.",
+      "A prior19-script source group belongs to4f6; final changed actual callback has its own exact-source regression plus exact compiled acceptance, not a relabeled full group."
+    ],
+    "acceptance_record": {
+      "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\PREVIEW-ACCEPTANCE-0.7.7.json",
+      "bytes": 22067,
+      "sha256": "17984264f5c69ddb34e1de6a9a064a61e8018ebeb69eef0c335be97a4819da5a",
+      "draft": false,
+      "status": "local-preview-acceptance-complete-public-release-held",
+      "note": "Final independent external consolidation of exact local/native/package/source-suite and CI acceptance. Public release and updater promotion remain held."
+    }
+  },
+  "historical_original_preview": {
+    "source_revision": "d06cdd4dad78f948d77a9a4a824cb0cce6dc1305",
+    "verified_runtime_source": "2abda5d617e6d8bcc708da96a837e83b3bebbca6",
+    "client_sha256": "fda11d0123fe8fdbd40dcb61c0251b138ac5d9c5db359c391fba3905d41c28bf",
+    "artifacts": [
+      {
+        "file": "gateway-client-v0.7.7-windows-amd64.zip",
+        "bytes": 14050322,
+        "sha256": "e118b20dd623c17fed871ccd1f81cd3bf6a18499a287d897a202bd8e7e7e8fc7"
+      },
+      {
+        "file": "gateway-client-v0.7.7-windows-amd64-fresh.zip",
+        "bytes": 79957127,
+        "sha256": "829584fc564fb1055c30ae11020ffef7e5f477eeb26a22222eadab870c263dd0"
+      },
+      {
+        "file": "gateway-client-v0.7.7-linux-amd64.zip",
+        "bytes": 8312850,
+        "sha256": "68988ab94f8b26a8def79b22719ce45893fef99dcd0f6ebfcb6ec5ca2ea7277e"
+      },
+      {
+        "file": "gateway-client-v0.7.7-linux-amd64-fresh.zip",
+        "bytes": 74219651,
+        "sha256": "958146118232454c6f5884c3763c11d54c414818a02defe74381680e8a06bbb3"
+      },
+      {
+        "file": "gateway-client-v0.7.7-installer.exe",
+        "bytes": 118687744,
+        "sha256": "6101c31e692e145976fa878bdff0f2bc2321de28039a3c23c94ea10b4a543331"
+      },
+      {
+        "file": "gateway-headers-v0.7.7.zip",
+        "bytes": 65906545,
+        "sha256": "2585374a65f06511a67d32a6b2cee84e0ef126f24f0c1d31ca7d1fba387f245d"
+      }
+    ],
+    "note": "Original d06 preview identities and all source-stamped validation entries remain historical; they do not certify the corrected callback candidate."
+  },
+  "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+  "release_url": "https://github.com/Blockamoto/gateway/releases/tag/v0.7.7",
+  "published_at": "2026-10-15T13:21:14Z",
+  "public_release_assets": [
+    {
+      "name": "gateway-client-v0.7.7-windows-amd64.zip",
+      "bytes": 14026977,
+      "sha256": "989ac8dbdf18fee3e95a8e35ecaa3fdf9f0e0eed1b8f78d2f503f0e24b4e677e",
+      "asset_id": 643931160,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.7-windows-amd64-fresh.zip",
+      "bytes": 79933787,
+      "sha256": "dd105b2c9af6f90187dc2b38a6616d0cb09021644b457861e04208edca87eb51",
+      "asset_id": 643931162,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.7-linux-amd64.zip",
+      "bytes": 8288422,
+      "sha256": "b090b303eb726760fd74a851b51633c77db114acb93d17f2bfa717c01f122504",
+      "asset_id": 643931158,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.7-linux-amd64-fresh.zip",
+      "bytes": 74195223,
+      "sha256": "bb91fd0d607f235714c9b1a9ea8d9338f06a33573b6ee8c65b81d719fff0fd2e",
+      "asset_id": 643931159,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.7-installer.exe",
+      "bytes": 118609408,
+      "sha256": "38addea23e6382dc7cb87993719c771958de9d0b65e4f4f0e09682f795330eb5",
+      "asset_id": 643931161,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-headers-v0.7.7.zip",
+      "bytes": 65906545,
+      "sha256": "e9464cad710d0b8cf5cfa94660b8238bc4728c04d16baecb8a56b48d03d48d2f",
+      "asset_id": 643931278,
+      "github_digest_matches": true
+    },
+    {
+      "name": "artifact-manifest.json",
+      "bytes": 1261,
+      "sha256": "9d8cb37e8608a04c51e7162ba59e0f1333844ce7b51ade6ae62030dd42b4c16f",
+      "asset_id": 643931340,
+      "github_digest_matches": true
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 633,
+      "sha256": "cdb1603f68d35214cd40ea45af1a8604460aeaabd14da9cd0e47d54b25581e0f",
+      "asset_id": 643931370,
+      "github_digest_matches": true
+    }
+  ],
+  "public_delivery": {
+    "version": "0.7.7",
+    "application_sequence": 14,
+    "header_sequence": 13,
+    "approved_operational_revision": "44f642e69a8e88b18ab39127937188814d148a99",
+    "actual_automatic_upgrade": "PASS",
+    "renewal_acceptance": "PASS",
+    "current_main_revision": "6f54f0c1974ef107640b3f7b5e34945c08dd8042",
+    "application_expires_at": "2026-11-14T13:37:56Z",
+    "headers_expires_at": "2026-11-14T13:37:56Z",
+    "canonical_bundle_sha256": "12016915cc76a86f14b39aed4d195a0dee010833b0d39d3c35f5f536ce96f9fe",
+    "status": "verified-initial-upgrade-renewal-and-renewed-client",
+    "publisher_url": "https://gateway-updates.onrender.com",
+    "public_key_unchanged": true,
+    "renewal_run": "https://github.com/Blockamoto/gateway/actions/runs/38744241084",
+    "all99_payloads_byte_identical_after_renewal": true
+  },
+  "release_packaging": {
+    "status": "PASS",
+    "receipt": {
+      "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\artifacts\\packaging-readme-correction.json",
+      "bytes": 6316,
+      "sha256": "c880df110e79b4680e2c8ea79eddc9557300ac2110b12fc0515b3d40fa453235"
+    },
+    "scope": "Packaging-only README correction; no executable, installer, header, source identity, compatibility, audit or other payload changes. Original packages preserved unchanged.",
+    "changed_members": [
+      "README.txt",
+      "SHA256SUMS.txt"
+    ],
+    "all_application_installer_and_header_bytes_unchanged": true,
+    "original_preview_packages_preserved": true
+  },
+  "delivery": {
+    "version": "0.7.7",
+    "application_sequence": 14,
+    "header_sequence": 13,
+    "approved_operational_revision": "44f642e69a8e88b18ab39127937188814d148a99",
+    "actual_automatic_upgrade": "PASS",
+    "renewal_acceptance": "PASS",
+    "current_main_revision": "6f54f0c1974ef107640b3f7b5e34945c08dd8042",
+    "application_expires_at": "2026-11-14T13:37:56Z",
+    "headers_expires_at": "2026-11-14T13:37:56Z",
+    "canonical_bundle_sha256": "12016915cc76a86f14b39aed4d195a0dee010833b0d39d3c35f5f536ce96f9fe",
+    "status": "verified-initial-upgrade-renewal-and-renewed-client",
+    "publisher_url": "https://gateway-updates.onrender.com",
+    "public_key_unchanged": true,
+    "renewal_run": "https://github.com/Blockamoto/gateway/actions/runs/38744241084",
+    "all99_payloads_byte_identical_after_renewal": true
+  },
+  "renewal": {
+    "status": "PASS",
+    "workflow_run_id": 38744241084,
+    "workflow_url": "https://github.com/Blockamoto/gateway/actions/runs/38744241084",
+    "receipt": {
+      "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\renewal-38744241084\\receipt.json",
+      "bytes": 744,
+      "sha256": "c863441e6d62ba32166a95b7fecc6b1c52d5d4e13dc0da40f1747e06f783b20a"
+    },
+    "github_asset": {
+      "id": 643982722,
+      "name": "gateway-update-feed-v0.7.7.zip",
+      "size": 88386176,
+      "digest": "sha256:12016915cc76a86f14b39aed4d195a0dee010833b0d39d3c35f5f536ce96f9fe",
+      "state": "uploaded"
+    },
+    "application_sequence": 14,
+    "header_sequence": 13,
+    "application_expires_at": "2026-11-14T13:37:56Z",
+    "headers_expires_at": "2026-11-14T13:37:56Z",
+    "bundle_sha256": "12016915cc76a86f14b39aed4d195a0dee010833b0d39d3c35f5f536ce96f9fe",
+    "client_check": "PASS",
+    "all99_payloads_byte_identical": true
+  },
+  "public_acceptance_record": {
+    "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\PUBLIC-ACCEPTANCE-0.7.7.json",
+    "bytes": 60879,
+    "sha256": "8af4594cbd34ab4cdef5d494a2f3765de58659199682ef084d6a65d5cabb5c6d",
+    "status": "public-prerelease-automatic-delivery-and-renewal-acceptance-complete"
+  },
+  "public_validation": {
+    "published_linux_packages": {
+      "status": "PASS",
+      "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "verification_revision": "43962160a9970de2bcf70c91f1bab4dc8390d4b0",
+      "run_id": 38742132924,
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38742132924",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\published-linux\\inspection.json",
+        "bytes": 5921,
+        "sha256": "98eb7b220a57404b2bcbac1feea20d686416d1fdd19b3574aebdb43062f49ffc"
+      },
+      "passed_steps": 16,
+      "failed_steps": 0,
+      "artifact": {
+        "id": 11976264073,
+        "name": "published-linux-38742132924",
+        "bytes": 9077466,
+        "sha256": "e16a732e8575516ee1443a4c3b128ce1d980f0945bc50796cb294019112809d1",
+        "github_digest_verified": true,
+        "members": 98,
+        "extraction": "bounded regular files; CRC verified"
+      },
+      "evidence_manifest_sha256": "5960314fe12e03caa354a2379288b08979b17cb7d8afb8878f5857a0406c81fe",
+      "inputs": {
+        "version": "0.7.7",
+        "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+        "fresh_sha256": "bb91fd0d607f235714c9b1a9ea8d9338f06a33573b6ee8c65b81d719fff0fd2e",
+        "update_sha256": "b090b303eb726760fd74a851b51633c77db114acb93d17f2bfa717c01f122504",
+        "client_sha256": "430d9992efa77dd39d3c68b09deb5217641fbd0b2e98409ccc078905d947142f",
+        "helper_sha256": "0f209c6cd4da96eb55ffe67bb27c14399c68927b4aa8663093b54c4dd0484356"
+      },
+      "scope": "Exact hosted Linux fresh and application-only update archives, authenticated metadata/payload hashes, release bootstrap, helper refusal without plan, offline fresh-header import/restart and actual compiled Chromium cards/viewport/P2PK layout. No source rebuild is used by the workflow.",
+      "header_baseline": {
+        "sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "count": 969480,
+        "tip_hash": "00000000000000000000dcddaef250e1665ecc5dadbcbdb08769509c0a433253",
+        "import_restart": "PASS",
+        "network_core_disabled": true
+      },
+      "browser_errors": 0,
+      "external_requests": 0,
+      "package_checks": {
+        "fresh": {
+          "archive": "gateway-client-v0.7.7-linux-amd64-fresh.zip",
+          "archive_sha256": "bb91fd0d607f235714c9b1a9ea8d9338f06a33573b6ee8c65b81d719fff0fd2e",
+          "archive_bytes": 74195223,
+          "all_published_payload_hashes_equal_local_corrected_package": true,
+          "client_bootstrap": "PASS",
+          "helper_no_plan_refusal": "PASS",
+          "cards": "PASS",
+          "viewport": "PASS",
+          "browser": "151.0.7922.34",
+          "page_errors": 0,
+          "external_requests": 0,
+          "readme_satline_deferral_verified": true,
+          "strict_docking_geometry": [
+            {
+              "viewport": {
+                "width": 1280,
+                "height": 900
+              },
+              "stable_before_frames": 3,
+              "after_frames": 4,
+              "max_editor_y_delta_px": 0.0,
+              "editor_global_top_px": 444.8125,
+              "containment_and_no_outer_scroll": "PASS"
+            },
+            {
+              "viewport": {
+                "width": 390,
+                "height": 844
+              },
+              "stable_before_frames": 3,
+              "after_frames": 4,
+              "max_editor_y_delta_px": 0.0,
+              "editor_global_top_px": 470.09375,
+              "containment_and_no_outer_scroll": "PASS"
+            }
+          ]
+        },
+        "update": {
+          "archive": "gateway-client-v0.7.7-linux-amd64.zip",
+          "archive_sha256": "b090b303eb726760fd74a851b51633c77db114acb93d17f2bfa717c01f122504",
+          "archive_bytes": 8288422,
+          "all_published_payload_hashes_equal_local_corrected_package": true,
+          "client_bootstrap": "PASS",
+          "helper_no_plan_refusal": "PASS",
+          "cards": "PASS",
+          "viewport": "PASS",
+          "browser": "151.0.7922.34",
+          "page_errors": 0,
+          "external_requests": 0,
+          "readme_satline_deferral_verified": true,
+          "strict_docking_geometry": [
+            {
+              "viewport": {
+                "width": 1280,
+                "height": 900
+              },
+              "stable_before_frames": 3,
+              "after_frames": 4,
+              "max_editor_y_delta_px": 0.0,
+              "editor_global_top_px": 444.8125,
+              "containment_and_no_outer_scroll": "PASS"
+            },
+            {
+              "viewport": {
+                "width": 390,
+                "height": 844
+              },
+              "stable_before_frames": 3,
+              "after_frames": 4,
+              "max_editor_y_delta_px": 0.0,
+              "editor_global_top_px": 470.09375,
+              "containment_and_no_outer_scroll": "PASS"
+            }
+          ]
+        }
+      },
+      "limitations": [
+        "This hosted-package workflow does not run a full-chain Sat/UTXO build, consensus validation or a mainnet-scale performance benchmark.",
+        "This Linux run does not certify Windows system-installer behavior, OS/browser registration, antivirus/SmartScreen or Render automatic upgrade delivery.",
+        "Compiled Chromium DOM/layout checks do not establish native WebView rendering.",
+        "Detailed Sats state, recovery and real block170 transfer acceptance remains covered by the prior frozen-runtime receipts; this run establishes published Linux package identity and its stated smoke scope."
+      ]
+    },
+    "genuine076_automatic_upgrade": {
+      "status": "PASS",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\sat-click-final\\validation\\hosted-public-acceptance-final-077\\result.json",
+        "bytes": 5015,
+        "sha256": "71b8d78839958e0ef70b9545a55993f61f82be8b77c05bdfecececd23577af94"
+      },
+      "source_version": "0.7.6",
+      "installed_version": "0.7.7",
+      "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "source_fixture": {
+        "runtime_version": "0.7.6",
+        "synthetic": false,
+        "published": true,
+        "source_revision": "b666c11c1f248769b3984a1168e9808930a8dc00",
+        "archive_sha256": "5020422fce3d9cb2652d4c72c8abd06c7f64d4179aca43e95717f8e6b05efba1",
+        "client_sha256": "b04d48ee754ecbb327db43b52b074080c6e21356765f1d1c7c74b60f4f9a5c43",
+        "private_signing_key_used": false
+      },
+      "archive_sha256": "989ac8dbdf18fee3e95a8e35ecaa3fdf9f0e0eed1b8f78d2f503f0e24b4e677e",
+      "archive_bytes": 14026977,
+      "installed_component_sha256": {
+        "GatewayClient.exe": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+        "GatewayUpdateHelper.exe": "4b8fa1d4cf0592c766db4532d533de4b0be14cec24f9b6dc88c4a10c7a36742f",
+        "GatewayOnDemand.exe": "39a2a339aa59c265f2b500e6753826b2518404c5603b8aeac06d2d9db5d26409",
+        "GatewayNativeHost.exe": "075e21fee09cb260fde405d0d40c7885801fc054a3fae6041c2f0d1a52cda629"
+      },
+      "update_mode": "automatic",
+      "download_button_pressed": false,
+      "restart_button_pressed": false,
+      "preserved_profile_files": {
+        "settings.json": "13cf6ec2c6caf5ff3c82704e47207a3c363248fa11c6b30e8b6a85a2d464bdc8",
+        "appearance.json": "99529e33f9fdb8c0e22634c7ad88478979f2c6cb778a1a118c4c1aee5680ae49",
+        "keep-user-data.txt": "bf702fd77e4e32611ea28bf263e383eac7e20b85d9851e4abb28d245e9067ab8",
+        "indexes/live.json": "0160f86a376fba8bce8d85ce9141fffee961393dca410dfd25f768c230b9194a",
+        "headers/headers.bin": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467"
+      },
+      "preserved_saved_address_state": {
+        "current_balance_sats": 1000000000,
+        "historical_received_sats": 1000000000,
+        "current_snapshot": {
+          "height": 170,
+          "block_hash": "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee",
+          "commitment": "ca7fd2127d06bc79935163ce1bfe5cb778aeae878e76ad9e5cdfffd879b88185",
+          "validation": "header_anchored_processing",
+          "consensus_validated": false
+        },
+        "historical_snapshot": {
+          "height": 170,
+          "block_hash": "00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee",
+          "commitment": "24c88c119e7e68d5b790cd396975f5df7ae6d9ca33157041d616fab502f1d4f7",
+          "validation": "header_anchored_processing",
+          "consensus_validated": false
+        }
+      },
+      "prepared_saved_data_files": 1719,
+      "preserved_bootstrap_files": {
+        "headers-mainnet.bin": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "headers-mainnet.json": "b630151f4473680e87517d34854f7ace0cb57505a36250ec982014c37cb964f4"
+      },
+      "management_origin_preserved": true,
+      "helper_state": "installed",
+      "fresh_bundled_channel": {
+        "id": "stable",
+        "label": "Gateway updates",
+        "visible": true,
+        "configured_before_ui": true,
+        "automatic_check": true,
+        "automatic_install": false,
+        "manual_configuration_actions": 0,
+        "live_check": true,
+        "up_to_date": true,
+        "last_checked": "2026-10-15T13:36:10Z"
+      },
+      "fresh_header_feed": {
+        "sequence": 12,
+        "digest": "44c579036cb26328a2bc8ba2cc61c8bb05a212506d28aa2161d680d886c9c0ec",
+        "signed_count": 969480,
+        "validated_snapshot_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "complete_file_sha256": "737396edd1f9f90cf75acf185b179459872d8da6f7423c44112acd3d12818d99",
+        "complete_file_count": 971581,
+        "ordinary_peer_extension_headers": 2101,
+        "synchronization": {
+          "ready": true,
+          "state": "current",
+          "count": 971581,
+          "height": 971580
+        },
+        "existing_snapshot_prefix_preserved": true
+      },
+      "disposable_profiles_removed": true,
+      "page_errors": [],
+      "external_browser_requests": [],
+      "no_credentials_private_keys_system_install_or_user_profiles": true,
+      "scope": "Public-release hosted acceptance: genuine published 0.7.6 client automatically installs exact public 0.7.7 and restarts with settings and full headers preserved. Separate fresh 0.7.7 automatically checks both app and header feeds without Settings setup; its validated snapshot prefix remains unchanged while ordinary peers may extend the chain."
+    },
+    "initial_signed_hosted_delivery": {
+      "status": "PASS",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\delivery-live-final-077\\result.json",
+        "bytes": 79801,
+        "sha256": "45a0a040cb5a85bb90c24139238431a1962736e3c9b9bef3a7279c86c2fef8f5"
+      },
+      "offline_bundle_receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\delivery-bundle-final-077\\result.json",
+        "bytes": 52552,
+        "sha256": "70b406adc0c32ccce1e6f96e34a0607ff4e12f32c8b5febc387920a77c438209"
+      },
+      "bundle_sha256": "976b0fea948ccc8cdae3869fe862f3c3161db4659be56e493a1de579f67cead2",
+      "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "application_sequence": 13,
+      "header_sequence": 12,
+      "application_manifest_sha256": "03c42c37479aa0a7e52a27f56f4110f5191c9f94b0cd50c1ac45909b8d97681e",
+      "headers_manifest_sha256": "44c579036cb26328a2bc8ba2cc61c8bb05a212506d28aa2161d680d886c9c0ec",
+      "public_key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
+      "downloaded_application_archives": 2,
+      "downloaded_header_chunks": 97,
+      "live_payload_downloads_verified": 99,
+      "complete_header_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+      "verified_utc": "2026-10-15T13:35:35Z",
+      "application_expires_at": "2026-11-14T13:30:39Z",
+      "headers_expires_at": "2026-11-14T13:30:43Z",
+      "scope": "Trusted signed application/header envelopes match canonical bundle and all99 actual public payload downloads pass size/hash checks."
+    },
+    "renewed_signed_hosted_delivery": {
+      "status": "PASS",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\delivery-live-renewed-077\\result.json",
+        "bytes": 79801,
+        "sha256": "c491537a70b192869309f87237f6d180912538ea0088e2f7e3f1b940022038ba"
+      },
+      "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "bundle_sha256": "12016915cc76a86f14b39aed4d195a0dee010833b0d39d3c35f5f536ce96f9fe",
+      "application_sequence": 14,
+      "header_sequence": 13,
+      "application_manifest_sha256": "bb782baea27bda12a6e318ccc7e50747f9df027c776613e52f06cc97ca8f3056",
+      "header_manifest_sha256": "a917ddf1e196269d1141bd7667a8fd60cf6c1df0e6cfa9bb2a694a9b8de84cce",
+      "downloaded_application_archives": 2,
+      "downloaded_header_chunks": 97,
+      "live_payload_downloads_verified": 99,
+      "complete_header_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+      "application_expires_at": "2026-11-14T13:37:56Z",
+      "headers_expires_at": "2026-11-14T13:37:56Z",
+      "scope": "Both renewed signed envelopes and all99 actual live downloads authenticated independently."
+    },
+    "renewed077_client_startup": {
+      "status": "PASS",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\renewed-feed-client-077-final\\result.json",
+        "bytes": 4542,
+        "sha256": "a33d694d5ab9295897cfbace3e39bda36e56173c8214d41d63bac5a3247ef850"
+      },
+      "client_version": "0.7.7",
+      "source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "client_sha256": "4bcd779b3abae25babdd7a0416cca0d5600444ca362d06b6c5a6609e4fe13228",
+      "initial_pid": 20244,
+      "final_pid": 20244,
+      "unnecessary_restart": false,
+      "downloaded_bytes": 0,
+      "stage_present": false,
+      "installation_helper_requested": false,
+      "manual_check_download_apply_restart_actions": 0,
+      "index_builds_requested": 0,
+      "application_feed": {
+        "sequence": 14,
+        "digest": "bb782baea27bda12a6e318ccc7e50747f9df027c776613e52f06cc97ca8f3056",
+        "issued_at": "2026-10-15T13:37:56Z",
+        "expires_at": "2026-11-14T13:37:56Z"
+      },
+      "header_feed": {
+        "sequence": 13,
+        "digest": "a917ddf1e196269d1141bd7667a8fd60cf6c1df0e6cfa9bb2a694a9b8de84cce",
+        "issued_at": "2026-10-15T13:37:56Z",
+        "expires_at": "2026-11-14T13:37:56Z"
+      },
+      "settings_theme_policy_preserved": true,
+      "preserved_profile_sha256s": {
+        "settings.json": "1582edaa1d94b88d32269649bd5af5c7c700869d8b5d969dc941053c010c1ede",
+        "appearance.json": "99529e33f9fdb8c0e22634c7ad88478979f2c6cb778a1a118c4c1aee5680ae49",
+        "indexes/live.json": "fe86d5b26b0ef18cb98f18f63e98e558ede0fcc1431b560da6b2588a315eb4ae",
+        "keep-user-data.txt": "ba099feda5879237d67f639125a8ebba7b05fc04baed1c3b41a54ca96945d74c"
+      },
+      "header_preservation": {
+        "validated_prefix_count": 969480,
+        "validated_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "full_validated_prefix_preserved": true,
+        "complete_file_count": 969480,
+        "complete_file_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "ordinary_peer_extension_headers": 0
+      },
+      "owned_process_stopped": true,
+      "owned_profile_removed": true,
+      "scope": "Exact published077 normal startup accepted both renewed feeds at14/13, stayed current on same PID and performed no package download, stage, apply, installation helper or restart. Settings/theme/live policy and full validated header prefix preserved."
+    },
+    "renewal_invariance": {
+      "status": "PASS",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\renewal-invariance-final-077.json",
+        "bytes": 1675,
+        "sha256": "432cccfac6bfb4c35785b2e6d1c11fe899efb92646a9e876bd5446bac01549cf"
+      },
+      "initial_bundle_sha256": "976b0fea948ccc8cdae3869fe862f3c3161db4659be56e493a1de579f67cead2",
+      "renewed_bundle_sha256": "12016915cc76a86f14b39aed4d195a0dee010833b0d39d3c35f5f536ce96f9fe",
+      "unchanged_payload_objects": 99,
+      "unchanged_payload_bytes": 88339888,
+      "manifest_changes": {
+        "manifest.json": {
+          "initial_sequence": 13,
+          "renewed_sequence": 14,
+          "initial_issued_at": "2026-10-15T13:30:39Z",
+          "renewed_issued_at": "2026-10-15T13:37:56Z",
+          "initial_expires_at": "2026-11-14T13:30:39Z",
+          "renewed_expires_at": "2026-11-14T13:37:56Z",
+          "validity_hours": 720,
+          "signatures_changed": true
+        },
+        "headers-manifest.json": {
+          "initial_sequence": 12,
+          "renewed_sequence": 13,
+          "initial_issued_at": "2026-10-15T13:30:43Z",
+          "renewed_issued_at": "2026-10-15T13:37:56Z",
+          "initial_expires_at": "2026-11-14T13:30:43Z",
+          "renewed_expires_at": "2026-11-14T13:37:56Z",
+          "validity_hours": 720,
+          "signatures_changed": true
+        }
+      },
+      "scope": "Only two signed manifests change sequence/time/signature; all99 payload objects remain byte identical."
+    },
+    "render_renewed_health": {
+      "status": "PASS",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\render-renewed-health-final-077.json",
+        "bytes": 1627,
+        "sha256": "e0851867884aae32abaa640454031e9f9d3f266ea38d05cf543ce6ec6d145c0f"
+      },
+      "latest_live_deployment": {
+        "id": "dep-db8df0jm8hqs73c3og50",
+        "status": "live",
+        "commit": "6f54f0c1974ef107640b3f7b5e34945c08dd8042",
+        "created_at": "2026-10-15T13:39:14.575208Z",
+        "started_at": "2026-10-15T13:39:14.55151Z",
+        "finished_at": "2026-10-15T13:39:48.404829Z"
+      },
+      "auto_deploy": "yes",
+      "auto_deploy_trigger": "commit",
+      "bounded_recent_error_log_count": 0,
+      "scope": "Read-only deployment/settings and bounded error-log snapshot after renewed14/13 delivery. All99 live payloads separately authenticated in delivery-live-renewed-077/result.json."
+    },
+    "protected_signing_resolution": {
+      "status": "PASS",
+      "successful_workflow_run_id": 38743158813,
+      "comparison_receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\candidate-independent-comparison-38743158813.json",
+        "bytes": 1591,
+        "sha256": "c618dc986ae758ca8a0a81aaf9514f4fc6bce7144396a0ab5c0ff76333912eb2"
+      },
+      "go_toolchain": "1.27.1",
+      "toolchain_pin_revision": "c219a6c2744e71468b745ad24674882a76cd2dd2",
+      "parser_fix_revision": "c800f1f46487b37d0b97ece55853f7d6023483a7",
+      "scope": "First candidate failed JSON parsing of publisher status output. Second candidate was rejected by the strict unchanged-header byte guard. Pinning initial-feed operator to accepted Go1.27.1 produced97 compressed header chunks byte identical to076, independently verified without relaxing the guard. No shipped application/source/installer bytes changed."
+    },
+    "main_application_source_equality": {
+      "status": "PASS",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\main-ci\\source-equality-44f642e.json",
+        "bytes": 5898,
+        "sha256": "a970f88c26025098967e2cf5524276ae3284cb0729edae20d673099f9330beb1"
+      },
+      "release_source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "main_revision": "44f642e69a8e88b18ab39127937188814d148a99",
+      "protected_files": 376,
+      "protected_inventory_sha256": "50359292ee82a32261a452ed8ec958e0cc4f508f0567911ef299a4bf0ec58bef",
+      "protected_application_source_equal": true,
+      "complete_tree_diff_allowed": true,
+      "scope": "Read-only complete Git tree comparison; every changed tracked path is explicit documentation, release approval, packaging prose or initial-feed operation tooling. Application Go, embedded UI/skins, browser companion, internal code, Windows resources, version/compatibility and standalone launchers are identical. No build or test was dispatched.",
+      "later_renewal_status_commit": "6f54f0c1974ef107640b3f7b5e34945c08dd8042",
+      "later_commit_scope": "Only docs/UPDATE-FEED-STATUS.json changed, as verified from its complete Git diff."
+    },
+    "operational_main_development_ci": {
+      "status": "PASS",
+      "conclusion": "success",
+      "run_id": 38743803448,
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38743803448",
+      "main_revision": "44f642e69a8e88b18ab39127937188814d148a99",
+      "release_source_revision": "0f60051a2560c43b5e78f1b3dc80e14fda64f6a4",
+      "receipt": {
+        "path": "C:\\GatewayReleaseBuild\\0.7.7\\release-final\\validation\\main-ci\\inspection.json",
+        "bytes": 7963,
+        "sha256": "c2883898f3e79443d691b0d7e80c77b2007ddc8a55959b33e4fc4b00ab69b6a7"
+      },
+      "full_go_test_events": {
+        "pass": 1141,
+        "fail": 0,
+        "skip": 50
+      },
+      "regression_race_test_events": {
+        "pass": 622,
+        "fail": 0,
+        "skip": 17
+      },
+      "updater_race_test_events": {
+        "pass": 159,
+        "fail": 0,
+        "skip": 1
+      },
+      "protected_application_files_identical": 376,
+      "scope": "All main-promotion source, static, race, companion, packaging and browser/native stages pass; authenticated archive matches Git and all protected application files match the frozen release. The CI runtime digest also matches the original frozen-source CI runtime."
+    }
+  }
+}

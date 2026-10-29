@@ -27,6 +27,9 @@ func ordContentSameOriginRequest(a *app, method, path string) *http.Request {
 }
 
 func TestOrdContentRepairNavigationAndCachedRecursion(t *testing.T) {
+	if !releaseFeatureAvailable("inscriptions") {
+		t.Skip("0.6.6 release lock: inscription content navigation is unavailable")
+	}
 	a := ordContentSecurityApp(t)
 	one, two := strings.Repeat("aa", 32)+"i0", strings.Repeat("bb", 32)+"i0"
 	saveOrdFixture050(t, a, one, "", []byte("<html>viewer</html>"))
@@ -77,8 +80,8 @@ func TestOrdContentRepairNavigationAndCachedRecursion(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatal("same-origin GET without Origin failed")
 	}
-	js, err := gatewayShell.ReadFile("ui/shell/app.js")
-	if err != nil || !strings.Contains(string(js), `sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"`) {
+	js, err := gatewayShell.ReadFile("ui/shell/inscription-viewport.js")
+	if err != nil || !strings.Contains(string(js), `view.setAttribute('sandbox','allow-scripts allow-same-origin')`) || !strings.Contains(string(js), `view.referrerPolicy='no-referrer'`) {
 		t.Fatal("Gateway iframe sandbox does not match the isolated content origin")
 	}
 }
@@ -131,6 +134,9 @@ func TestOrdContentRepairRejectsUntrustedRequestsBeforeCache(t *testing.T) {
 }
 
 func TestOrdContentRepairGrantScopeDisableAndNoManagement(t *testing.T) {
+	if !releaseFeatureAvailable("inscriptions") {
+		t.Skip("0.6.6 release lock: inscription content origin grants are unavailable")
+	}
 	a := ordContentSecurityApp(t)
 	one, two := strings.Repeat("aa", 32)+"i0", strings.Repeat("bb", 32)+"i0"
 	saveOrdFixture050(t, a, one, "", []byte("one"))

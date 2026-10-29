@@ -1,0 +1,26 @@
+# Review paths and access policy before installing this template. This is a
+# distribution-only process: no GitHub credentials or signing private key.
+[Unit]
+Description=Gateway signed preview update delivery
+After=network.target
+
+[Service]
+Type=simple
+User=gateway-publisher
+Group=gateway-publisher
+EnvironmentFile=/etc/gateway-updates/access.env
+ExecStart=/opt/gateway-publisher/update-publisher serve -dir /srv/gateway-updates/preview -public /etc/gateway-updates/preview-public-key.json -listen 127.0.0.1:8786 -require-access-token
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadOnlyPaths=/srv/gateway-updates/preview
+InaccessiblePaths=-/var/lib/gateway-publisher/secrets
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

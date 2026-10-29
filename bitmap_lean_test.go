@@ -67,7 +67,7 @@ func TestLeanBitmapRestartCollisionAndReorg(t *testing.T) {
 func TestInscriptionCoordinateAllEntryForms(t *testing.T) {
 	for _, q := range []string{"12i3.900000", "12.i3.900000", "12.i3.900000.bitcoin", "god://12.i3.900000.bitcoin", "http://12.i3.900000.bitcoin/"} {
 		target, e := parseLocalResolverTarget(q)
-		if e != nil || target.Kind != "inscription_coordinate" || target.SearchQuery != "12.i3.900000" {
+		if e != nil || target.Kind != "inscription_coordinate" || target.SearchQuery != "12i3.900000" || target.Friendly != "12i3.900000.bitcoin" {
 			t.Fatalf("%s: %+v %v", q, target, e)
 		}
 	}

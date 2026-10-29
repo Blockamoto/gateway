@@ -1,0 +1,332 @@
+{
+  "schema": 1,
+  "kind": "local-development-acceptance",
+  "runtime_source": "74e75296984e683a7da3dea92f0368966d09f4bd",
+  "client_sha256": "4465f858531642ee39a0f55f35ed7b22ea045a3abc9a92b0a29d055905b3e664",
+  "archive_sha256": "bee43927813cade161974b1d43700645beed70e0df3aa09f33ee1bf74167fabe",
+  "artifact_name": "Gateway-Bitmap-Rulesets-Development-74e7529.zip",
+  "artifact_directory": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\Gateway-Bitmap-Rulesets-Development-74e7529",
+  "archive_bytes": 80412257,
+  "application_compatibility_version": "0.7.7 development",
+  "published": false,
+  "main_or_updater_changed": false,
+  "preview_url": "http://127.0.0.1:55697",
+  "preview_profile": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\preview-profile-74e7529",
+  "preview_state_note": "Readiness is an initial handoff receipt, not a claim about the current user-controlled running profile. No inspection or mutation of that profile was needed for final receipt consolidation.",
+  "receipts": {
+    "packaging": {
+      "result": "PASS",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\package-74e7529.json",
+      "sha256": "971f02401bbd96071f2ddd92a3769151420de30c35e9dacfddf17e36578b0998",
+      "checks": [
+        "Every archive member matches the portable directory.",
+        "All four Windows components come from the frozen neutral payload.",
+        "Bundled header count and digest match verified bootstrap metadata."
+      ]
+    },
+    "independent_package_audit": {
+      "result": "PASS",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\package-independent-74e7529.json",
+      "sha256": "58c81cb01c21218ca8e3aca01b18bca2d3629bef2a432d47ccfd3d5b83baa099",
+      "checks": [
+        "Exact manifest membership, sizes and SHA-256 hashes.",
+        "ZIP membership unique/safe and every member matches directory; CRC passes.",
+        "Four executables match final neutral payload.",
+        "21 frozen copied source inputs match committed blobs; guide has only stated link transformation.",
+        "Bundled bootstrap count and digest match neutral payload; packaged verifier passes without opening a profile.",
+        "Explicit package assets only; no profile, index, cache, credential or signing directories."
+      ]
+    },
+    "compiled_profile_api": {
+      "result": "PASS",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\native-profile-api-74e7529\\result.json",
+      "sha256": "f7064198b378a680aa1966f98f2deb049527d274fb178ecfc0f15d72e95220d4",
+      "checks": [
+        "compiled profile routes and both embedded workspace assets",
+        "atomic linked District, Chain and Parcel creation",
+        "real status exposes all unbuilt custom tracks and their exact dependencies without work",
+        "instance/profile-bound unknown reads without jobs",
+        "rename preserves executable rules identity",
+        "distinct alternative profile and honest unavailable comparison with Chain Off",
+        "stale deletion refused, confirmed owned-data deletion, definition preserved",
+        "management and inspection never launched an index job",
+        "compiled restart preserves profiles and parent-bound layout across local ports without work"
+      ]
+    },
+    "native_bitmap": {
+      "result": "PASS",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final74e7529-bitmap\\result.json",
+      "sha256": "ad868855c48f46f07234d4f889a528c1b72ada48bb76fb44991c4bb5b22503f3",
+      "scope": "Exact compiled app and real private Bitmap APIs; offline profile; district/parcel/chain reads, custom editor creation with optional linked Parcel and exact attached Chain, unbuilt status persistence, independent Arm/Live/retention staging, Chain-Off unknown comparison, first-Play review without start, confirmed owned-store deletion, no hidden jobs, narrow layout"
+    },
+    "native_sats": {
+      "result": "PASS",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final74e7529-sats\\result.json",
+      "sha256": "f5371878577316fafcac3d865dc49df14afbcf1b3d4377cefd96a459dbe2045d",
+      "scope": "Actual compiled Sat shell/API with genuine genesis and block1; reviewed genesis/pruned/history-off build, missing-source waiting/pause/saved Resume, exact output ranges, saved output-offset identities without scans and Sat origin/location, Sat0 addressless terminal state, deferred Satline status/blocked starts and absent Trace/Follow controls, selected-tip bare numbers and explicit namespaces, authenticated numeric/name.sat native activation/display without registration, compiled plain-wheel scrolling and intentional Ctrl pinch-zoom, compiled own-input BPS and production timeline Satpoint-to-individual-Sat handoff, readable paused queries, savepoints, no implicit builds/traces, raw eviction plus process restart, narrow themes"
+    },
+    "native_viewport": {
+      "result": "PASS",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final74e7529-viewport\\summary.json",
+      "sha256": "a70c5bb5449e709ad4dfbab10fed6b7ffa64d910c2dcb0917bec70f55b910a52",
+      "scope": "Actual compiled Gateway routes and CSS, genuine genesis map and transaction flow, reserved toolbar at desktop/narrow windows and constrained 180/120px panels, keyboard zoom/Fit, fullscreen and exact P2PK destination navigation without implicit indexing"
+    },
+    "native_inscription_security": {
+      "result": "PASS",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final74e7529-inscription\\summary.json",
+      "sha256": "a04f20c8510d38bc1f310c326e5c532ef0173d2791b09489b90d50c2df69d2de",
+      "scope": "Actual native Go runtime and content guards; local Ord adapter fixture (provider-reported bytes); compact compiled workspace layout",
+      "evidence_limit": "The summary schema does not record a binary digest. The workspace reviewer reported executing this suite with the explicitly supplied final-client path; other native summaries bind the digest directly."
+    },
+    "native_controls": {
+      "result": "PASS",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\verification\\final74e7529-controls\\result.json",
+      "sha256": "90a29f83e8359763a12e5ca2ee74bf3df4b3f42a86a0405141e35dc0562fcc58",
+      "scope": "Native offline runtime; actual Chromium DOM/CSP, default available tracks, no duplicate controls, staged Arm/Live and reload persistence, read-only shared review without a hidden job, persistent frame through Settings/Peers, desktop/narrow layout, reviewed updater trust/offline behavior, profile theme persistence and setup stages; no external-origin requests"
+    },
+    "initial_preview_readiness": {
+      "result": "PASS",
+      "path": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\preview-74e7529.readiness.json",
+      "sha256": "889ab9820599268f385848a4ba2229e186f4ee408dda574316387514800eb621"
+    },
+    "full_windows": {
+      "result": "PASS",
+      "path": "C:\\GatewayReleaseBuild\\timeline-bitmap-development\\verification\\bitmap-profiles-chain\\full-windows\\summary.json",
+      "sha256": "699bd7c9e5a6f22bbbfad6caea9d4c9a8e70c5669a2a042b15c465f193061574",
+      "receipt_hashes": "C:\\GatewayReleaseBuild\\timeline-bitmap-development\\verification\\bitmap-profiles-chain\\full-windows\\receipt-hashes.json",
+      "receipt_hashes_sha256": "bd5f1836d29ae3abbc8375badfa320ac75b20b218cf565473bf2eb5fcbc28b8d",
+      "test_passes": 1228,
+      "test_failures": 0,
+      "test_skips": 46,
+      "passing_packages": 8,
+      "no_test_packages": 2,
+      "go_vet": "PASS",
+      "go_source_inventory_count": 343,
+      "final_source_matches_tested_go_files": true,
+      "exact_client_cleanup": {
+        "note": "Real final Windows runtime starts and stops through authenticated loopback requests; owns only temporary test profiles and preserves an external wallet sentinel.",
+        "receipt": "exact-client-cleanup.jsonl",
+        "test_skips": 0,
+        "test_passes": 1,
+        "result": {
+          "completed": "2026-10-16T11:22:00.8907031Z",
+          "client_sha256": "4465f858531642ee39a0f55f35ed7b22ea045a3abc9a92b0a29d055905b3e664",
+          "source_revision": "74e75296984e683a7da3dea92f0368966d09f4bd",
+          "client": "C:\\GatewayReleaseBuild\\bitmap-ruleset-development\\payload-74e7529\\GatewayClient.exe",
+          "exit_code": 0
+        },
+        "test_failures": 0
+      },
+      "race_claimed": false,
+      "skip_details": [
+        {
+          "reason": "bitmap_resolution_test.go:10: Public Bitmap resolution is intentionally locked in 0.6.6; Bitmap recipe/validation tests remain active.",
+          "test": "TestBitmapAddressAndRevealProjection"
+        },
+        {
+          "reason": "cleanup_runtime_054_test.go:19: set GATEWAY_TEST_BINARY to a rebuilt executable for runtime/cleanup integration",
+          "test": "Test054RebuiltRuntimeCleanProfile"
+        },
+        {
+          "reason": "graph_public_repair_test.go:87: 0.6.6 release lock: graph acquisition and public peer serving are unavailable",
+          "test": "TestPublicGraphPrivateKnowledgeStaysLocal"
+        },
+        {
+          "reason": "index_card_controls_test.go:159: Public Bitmap/inscription preview is intentionally locked in 0.6.6; raw ordering and checkpoint tests remain active.",
+          "test": "Test063PreviewShowsNewestInBlockWithoutChangingStoredOrder"
+        },
+        {
+          "reason": "index_explorer_integration_test.go:64: Inscription Live is intentionally locked in the 0.6.6 public release; raw range planning is covered separately.",
+          "test": "TestIntegrationDefaultAndReviewedInitialLiveRanges"
+        },
+        {
+          "reason": "index_explorer_integration_test.go:391: Standalone transaction locator/graph providers are intentionally locked in 0.6.6.",
+          "test": "TestIntegrationNativeLocatorSurvivesRawDeletionWithCoreSourcePreserved"
+        },
+        {
+          "reason": "index_explorer_integration_test.go:464: Public inscription resolution is intentionally locked in 0.6.6; raw retained-record verification remains covered.",
+          "test": "TestIntegrationIndexedInscriptionWithoutRawBlock"
+        },
+        {
+          "reason": "index_interface_test.go:71: Gateway peerhood public inspection is intentionally locked in 0.6.6; peer validation helpers retain unit coverage.",
+          "test": "TestIndexInterfacePeerInspectionIsExplicitAndNeverPromotesClaims"
+        },
+        {
+          "reason": "index_interface_test.go:127: Bitmap public district lookup is intentionally locked in 0.6.6; district algorithms retain unit coverage.",
+          "test": "TestIndexInterfaceExactDistrictLookup"
+        },
+        {
+          "reason": "index_interface_test.go:208: Gateway peerhood publication is intentionally locked in 0.6.6; raw checkpoint publication retains unit coverage.",
+          "test": "TestIndexInterfacePublicationFreezesReviewedCheckpoint"
+        },
+        {
+          "reason": "index_live_fresh_test.go:215: Multi-index scheduling requires Bitmap/inscriptions, intentionally locked in 0.6.6. Blocks Live history/following remains active.",
+          "test": "Test064FreshBitmapStartsAtRecipeEpochAndRotatesBoundedHistory"
+        },
+        {
+          "reason": "index_live_scheduling_test.go:77: Multi-index scheduling requires derived indexes, intentionally locked in 0.6.6. Blocks-only Live and saved locked-work rejection remain covered.",
+          "test": "Test063LiveUnavailableSourceYieldsToAnotherIndex"
+        },
+        {
+          "reason": "index_live_scheduling_test.go:100: Multi-index scheduling requires derived indexes, intentionally locked in 0.6.6. Blocks-only Live and saved locked-work rejection remain covered.",
+          "test": "Test063LiveSourceRetryBackoffIsBoundedAndPauseIsDurable"
+        },
+        {
+          "reason": "index_live_scheduling_test.go:142: Multi-index scheduling requires derived indexes, intentionally locked in 0.6.6. Blocks-only Live and saved locked-work rejection remain covered.",
+          "test": "Test063LiveFailedStartDoesNotStarveSiblingOrRetryContinuously"
+        },
+        {
+          "reason": "index_live_scheduling_test.go:182: Multi-index scheduling requires derived indexes, intentionally locked in 0.6.6. Blocks-only Live and saved locked-work rejection remain covered.",
+          "test": "Test063ReviewedManualBuildClearsLiveFailure"
+        },
+        {
+          "reason": "index_peer_client_test.go:60: Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion",
+          "test": "TestIndexPeerClientClaimsLimitedToFourKnownNegotiatedPeers"
+        },
+        {
+          "reason": "index_peer_client_test.go:98: Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion",
+          "test": "TestIndexPeerClientDoesNotPromoteConfiguredHintsOrStartDiscovery"
+        },
+        {
+          "reason": "index_peer_client_test.go:123: Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion",
+          "test": "TestIndexPeerClientPreviewReceivesCheckedClaimWithoutStoreWrites"
+        },
+        {
+          "reason": "index_peer_client_test.go:167: Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion",
+          "test": "TestIndexPeerClientRejectsBadManifestAndReportsPerPeerFailure"
+        },
+        {
+          "reason": "index_peer_client_test.go:197: Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion",
+          "test": "TestIndexPeerClientPreviewRejectsAlteredPage"
+        },
+        {
+          "reason": "index_peer_client_test.go:221: Gateway peerhood is locked in this public-testing release; wire-client integration resumes with feature promotion",
+          "test": "TestIndexPeerClientPreviewReportsLargeBatchLimitation"
+        },
+        {
+          "reason": "index_shared_065_test.go:133: Public Sat history builds and scheduling are intentionally locked in 0.6.6; raw history algorithms remain covered.",
+          "test": "Test065VerifierProvenanceAndHistoryChoice"
+        },
+        {
+          "reason": "index_shared_065_test.go:194: Public multi-output builds require derived indexes, intentionally locked in 0.6.6; planning algorithms and saved shared-job rejection remain covered.",
+          "test": "Test065SharedOutputsCommitAndReuseWithoutRawRetention"
+        },
+        {
+          "reason": "index_shared_065_test.go:241: Public multi-output builds require derived indexes, intentionally locked in 0.6.6; planning algorithms and saved shared-job rejection remain covered.",
+          "test": "Test065SharedOutputFailurePreservesSiblingCommits"
+        },
+        {
+          "reason": "index_shared_065_test.go:273: Public combined derivation planning requires locked indexes in 0.6.6; rejection and retained recipe algorithms remain covered.",
+          "test": "Test065CombinedHistoricalPrerequisitesAndMissingDerivations"
+        },
+        {
+          "reason": "ordinal_state_tree_test.go:192: set GATEWAY_TEST_GC_DIRECTORY for an actual coarse-timestamp filesystem",
+          "test": "TestOrdinalCollectionCoarseTimestampFilesystem"
+        },
+        {
+          "reason": "overlay_test.go:76: Gateway exchange remains locked; ordinary Bitcoin serving is tested separately",
+          "test": "TestCoreLookupAndOverlay"
+        },
+        {
+          "reason": "overlay_test.go:171: Gateway exchange remains locked; ordinary Bitcoin serving is tested separately",
+          "test": "TestLightPeerServesVerifiedCacheAndHeaderLocation"
+        },
+        {
+          "reason": "peer_readiness_073_test.go:107: Future peer readiness requires the isolated test-source overlay; the production Gateway peer gate remains closed",
+          "test": "Test073PeerReadinessLoopbackBitcoinBytesAndTransactionPublication"
+        },
+        {
+          "reason": "peer_readiness_073_test.go:187: Future peer readiness requires the isolated test-source overlay; the production Gateway peer gate remains closed",
+          "test": "Test073PeerReadinessLoopbackSparseInscriptionSnapshotsAndPrivateBrowse"
+        },
+        {
+          "reason": "peer_readiness_073_test.go:339: Future peer readiness requires the isolated test-source overlay; the production Gateway peer gate remains closed",
+          "test": "Test073PeerReadinessFiveExplicitManifestsOverLoopback"
+        },
+        {
+          "reason": "satline_network_test.go:212: 0.6.6 release lock: interactive Satline traversal and publication are unavailable",
+          "test": "TestSatlineExplicitPublicationAndStepStart"
+        },
+        {
+          "reason": "satline_network_test.go:328: 0.6.6 release lock: Satline network exchange is unavailable",
+          "test": "TestSatlineTwoProcessExchange"
+        },
+        {
+          "reason": "satline_network_test.go:370: subprocess fixture",
+          "test": "TestSatlineProcessHelper"
+        },
+        {
+          "reason": "satline_store_test.go:163: 0.6.6 release lock: persistent Satline traversal is unavailable",
+          "test": "TestSatlinePersistentSatReusesBirthCheckpoint"
+        },
+        {
+          "reason": "session_repair_test.go:216: Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion",
+          "test": "TestSessionInboundIsFullDuplexAndCountedOnce"
+        },
+        {
+          "reason": "session_repair_test.go:290: Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion",
+          "test": "TestSessionBODBudgetRenewsWithoutDisconnect"
+        },
+        {
+          "reason": "session_repair_test.go:321: Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion",
+          "test": "TestSessionReceiveOnlyRepliesAndControlPlaneStayAvailable"
+        },
+        {
+          "reason": "session_repair_test.go:354: Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion",
+          "test": "TestSessionRemoteAddressScanIsUnsupported"
+        },
+        {
+          "reason": "session_repair_test.go:367: Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion",
+          "test": "TestSessionSatlineBudgetRenewsWithoutDisconnect"
+        },
+        {
+          "reason": "session_repair_test.go:410: Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion",
+          "test": "TestSessionReceiveOnlyGatewayControlReplies"
+        },
+        {
+          "reason": "session_repair_test.go:439: Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion",
+          "test": "TestSessionOutboundDisableKeepsInboundServing"
+        },
+        {
+          "reason": "session_repair_test.go:486: Gateway peerhood is locked in this public-testing release; end-to-end serving resumes with feature promotion",
+          "test": "TestSessionSlowProviderDoesNotBlockPingOrReverseRequest"
+        },
+        {
+          "reason": "standalone_051_test.go:262: 0.6.6 release lock: live Satline traversal is unavailable; anchor-state unit checks remain active",
+          "test": "Test051UnavailableZeroHopIsNotReorg"
+        },
+        {
+          "reason": "wire_test.go:93: Gateway exchange remains locked; ordinary Bitcoin serving is tested separately",
+          "test": "TestBIP434NegotiationBetweenBODPeers"
+        },
+        {
+          "reason": "wire_test.go:171: Gateway exchange remains locked; ordinary Bitcoin serving is tested separately",
+          "test": "TestUnknownIsNotNegative"
+        }
+      ]
+    }
+  },
+  "features": [
+    "Immutable per-ruleset District and linked Parcel tracks with preserved legacy identities.",
+    "Attached District Chain, Full or Pruned retention, authenticated recovery and saved-outcome-only processing.",
+    "Actual saved-result comparisons independent of Chain, with aligned coverage and bounded candidate audit detail.",
+    "One reviewed Play/Start preserving each track Arm and Live choice; fair Live scheduling and unchanged-tip idle behavior.",
+    "Pressed icon controls, sibling-only saved track order, no track-number column and corrected label/grip spacing.",
+    "Reviewed owned-index clearing with writer/dependency/staleness checks and preserved shared data."
+  ],
+  "bitmap_reference_repository": {
+    "name": "Blockamoto/bitmap-old",
+    "default_branch": "main",
+    "main_commit": "1751e0d37073ab920cbd8b5548c61b74c37716d1",
+    "old_commit": "3dbe009313a34abf0fc0cce51a2bde39fc92d1ff",
+    "new_repository_created": false
+  },
+  "limits": [
+    "Development preview only; no release or live-updater promotion.",
+    "Windows full suite counts test and subtest events separately from packages. The 46 skip reasons remain recorded; the opt-in exact-client cleanup test passed separately.",
+    "No local race result or whole-mainnet replay/performance benchmark is claimed.",
+    "Unsupported rule combinations remain unavailable; incomplete provenance or coverage remains unknown.",
+    "Existing previews, indexes and user jobs are preserved.",
+    "The next visual review notes, including reversible panel maximization and compact Chain mini lanes, are captured separately and are not implemented in these frozen bytes."
+  ]
+}

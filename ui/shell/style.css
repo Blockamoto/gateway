@@ -12,8 +12,54 @@ body{background:var(--bg)}button,a,input,select,textarea{touch-action:manipulati
 
 .settings-sections{display:flex;gap:6px;overflow-x:auto;margin-bottom:24px;border-bottom:1px solid var(--line);padding-bottom:12px}.settings-sections button{white-space:nowrap;background:transparent}.settings-sections button[aria-pressed=true]{color:var(--accent);border-color:var(--accent)}[hidden]{display:none!important}
 
+.destination-link{white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;max-width:100%}
 .indexes-frame{min-height:0;height:1000px}.sidebar{overflow-y:auto;scrollbar-width:thin}.sidebar nav{flex-shrink:0}.sidebar-bottom{margin-top:26px}@media(max-width:780px){.sidebar{overflow:visible}.embedded main{padding:24px 16px}.indexes-frame{min-height:0}}
+.address-balance{margin-bottom:20px}.address-balance,.address-outputs{overflow-wrap:anywhere}.address-balance-value{font-size:clamp(30px,5vw,46px)!important;font-weight:580;letter-spacing:-1px;margin:16px 0}.address-outputs>summary{font-size:16px;color:var(--text);font-weight:550;padding:4px 0}.address-output-list{display:grid;gap:0;margin:16px 0}.address-output-row{display:flex;justify-content:space-between;gap:20px;border-top:1px solid var(--line);padding:14px 0;min-width:0}.address-output-row>div{min-width:0}.address-output-row p{margin:4px 0}.address-output-facts{display:flex;flex-direction:column;align-items:flex-end;gap:7px}.address-output-facts strong{white-space:nowrap}.address-balance #address-snapshot{overflow-wrap:anywhere}.address-output-row .text-button{font-size:12px;overflow-wrap:anywhere;white-space:normal;text-align:left;max-width:100%}.address-balance .actions{margin-top:16px}@media(max-width:600px){.address-output-row{flex-direction:column;gap:8px}.address-output-facts{align-items:flex-start}.address-outputs{padding:18px}.address-outputs .actions{align-items:stretch;flex-direction:column}}
 
 body:not(.dev-mode) [data-route="satline.gateway"],body:not(.dev-mode) [data-follow],body:not(.dev-mode) #ord-follow,body:not(.dev-mode) .check:has(#satline-enabled),body:not(.dev-mode) .check:has(#setup-satline){display:none!important}
 
 body:not(.dev-mode) #jobs-list,body:not(.dev-mode) .satline-experimental,body:not(.dev-mode) label:has(#setup-satline){display:none!important}
+
+/* Indexes is a viewport-sized workspace with its own independent panel scrolling. */
+body.indexes-workspace{height:100vh;height:100dvh;overflow:hidden}
+body.indexes-workspace .app-shell{height:100%;min-height:0}
+body.indexes-workspace .main-shell{height:100%;min-height:0;display:flex;flex-direction:column}
+body.indexes-workspace .topbar{flex-shrink:0;position:relative}
+body.indexes-workspace .network-strip{flex:0 0 auto;max-height:22dvh;overflow:auto;overscroll-behavior:contain}
+body.indexes-workspace #notice{flex:0 0 auto;max-height:15dvh;overflow:auto;margin:4px 12px}
+body.indexes-workspace #content{display:flex;flex:1 1 0;min-height:0;max-width:none;width:100%;margin:0;padding:0;overflow:hidden}
+body.indexes-workspace .indexes-frame{display:block;flex:1;width:100%;height:100%;min-height:0;border:0;border-radius:0}
+body.indexes-workspace .app-footer{display:none}
+.topbar #runtime-status{display:inline-flex;align-items:center;justify-content:center;flex:none;letter-spacing:0;font-size:11px;min-height:30px;padding:6px 9px}
+.topbar #runtime-status[aria-expanded=true]{border-color:var(--accent);color:var(--text);background:var(--panel2)}
+.global-status-popover{position:absolute;top:calc(100% + 5px);right:12px;z-index:30;width:420px;max-width:calc(100vw - 24px);max-height:70dvh;overflow:auto;overscroll-behavior:contain;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px 16px;box-shadow:0 8px 24px #0003;font-size:12px}
+.global-status-popover[hidden]{display:none}
+.workspace-location-hint{position:absolute;top:calc(100% + 5px);left:12px;z-index:29;width:500px;max-width:calc(100vw - 24px);padding:12px 15px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:0 8px 24px #0003}
+.workspace-location-hint[hidden]{display:none}.workspace-location-hint p{margin:0 0 8px}
+.topbar .workspace-location-hint form{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;padding:0;border:0;background:transparent;border-radius:0;max-width:none}
+.workspace-location-hint label{grid-column:1/-1;font-size:11px;color:var(--muted)}.topbar .workspace-location-hint input{width:100%;padding:7px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}.workspace-location-hint button{font-size:11px;padding:5px 9px}
+.global-status-popover>details{margin:0}.global-status-popover>details>summary{line-height:1.7;font-size:11px;color:var(--text)}
+.global-status-popover .network-expanded{padding-bottom:0}.global-status-popover .network-expanded .actions{gap:6px}.global-status-popover .network-expanded button{padding:6px 9px;min-height:30px;font-size:11px}
+@media(max-width:440px){.topbar #runtime-status{font-size:10px;padding:6px;min-width:30px}.topbar .top-nav{padding-left:6px;padding-right:6px}.global-status-popover{right:6px;max-width:calc(100vw - 12px)}}
+.sat-search input{max-width:100%;width:280px}.sat-search label{align-self:center}.sat-evidence .utxo-policy dd{overflow-wrap:anywhere}.sat-output-ranges{grid-column:1/-1;min-width:0;width:100%;border-top:1px solid var(--line);padding-top:12px}.sat-output-ranges summary{cursor:pointer}.sat-range-list{display:grid;gap:8px;margin:12px 0}.sat-range-row{display:flex;align-items:baseline;flex-wrap:wrap;gap:5px}.sat-output-ranges .actions{margin-top:12px}.sat-output-ranges input{max-width:100%;min-width:0;flex:1;width:230px}.address-holdings .address-output-row{grid-template-columns:minmax(0,1fr) auto}.address-holdings .address-output-row>span{grid-column:1/-1}@media(max-width:600px){.sat-search input{width:100%}.sat-search label{width:100%}.address-holdings .address-output-row{grid-template-columns:1fr}.address-holdings .address-output-row>span{grid-column:auto}}
+
+body.workspace-panel-maximized #content{position:fixed;inset:0;z-index:40;margin:0;padding:0;max-width:none;width:100%;height:100dvh}
+
+/* A brief first-arrival accent; the usable workspace never moves or fades. */
+.gateway-arrival{position:fixed;z-index:21;pointer-events:none;overflow:hidden;opacity:0}
+.gateway-arrival[hidden]{display:none!important}.gateway-arrival *{pointer-events:none}
+.gateway-arrival[data-active=true]{animation:gateway-arrival-finish 1s linear both}
+.gateway-arrival-parchment{position:absolute;inset:0;background:radial-gradient(ellipse at 8% 30%,color-mix(in srgb,var(--amber) 14%,transparent),transparent 62%),linear-gradient(100deg,color-mix(in srgb,var(--panel) 65%,transparent),transparent 75%);animation:gateway-arrival-light 1s ease-out both}
+.gateway-arrival-stone{position:absolute;inset:0;width:100%;height:100%;fill:none;stroke:color-mix(in srgb,var(--muted) 55%,var(--line));stroke-linecap:square}
+.gateway-arrival-arch{vector-effect:non-scaling-stroke;animation:gateway-arrival-stone 1s ease-out both}
+.gateway-arrival-joints{stroke-width:1;vector-effect:non-scaling-stroke;animation:gateway-arrival-joints 1s ease-out both}
+.gateway-arrival-lantern{position:absolute;left:24px;top:38%;width:15px;height:22px;border:1px solid var(--muted);border-radius:3px;background:var(--panel);animation:gateway-arrival-lantern 1s ease-out both}
+.gateway-arrival-lantern:before{content:'';position:absolute;left:3px;right:3px;top:-7px;height:7px;border:1px solid var(--muted);border-bottom:0;border-radius:5px 5px 0 0}
+.gateway-arrival-lantern:after{content:'';position:absolute;inset:5px 4px 4px;border-radius:50% 50% 35% 35%;background:var(--amber);animation:gateway-arrival-kindle 1s ease-out both}
+@keyframes gateway-arrival-finish{0%,75%{opacity:1}100%{opacity:0}}
+@keyframes gateway-arrival-light{0%{opacity:.05}32%{opacity:.5}100%{opacity:0}}
+@keyframes gateway-arrival-stone{0%,28%{stroke-width:2;opacity:.65}80%{stroke-width:.7;opacity:.25}100%{stroke-width:.5;opacity:0}}
+@keyframes gateway-arrival-joints{0%,25%{opacity:.35}70%,100%{opacity:0}}
+@keyframes gateway-arrival-lantern{0%{opacity:.25}28%,55%{opacity:.8}100%{opacity:0}}
+@keyframes gateway-arrival-kindle{0%{opacity:0;box-shadow:none}28%,45%{opacity:1;box-shadow:0 0 16px 7px color-mix(in srgb,var(--amber) 22%,transparent)}100%{opacity:0;box-shadow:none}}
+@media(prefers-reduced-motion:reduce){.gateway-arrival{display:none!important}}

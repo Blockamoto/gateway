@@ -51,9 +51,9 @@ func normalizeGatewayBootstrapPeer(input string) (string, error) {
 			return "", fmt.Errorf("use a valid IP or ordinary DNS hostname; onion/I2P transports are not configured")
 		}
 	}
-	address, _, _, err := canonicalDiscoveryEndpoint(advertisedPeer{Addr: net.JoinHostPort(host, port)})
-	if err != nil {
-		return "", fmt.Errorf("invalid Gateway endpoint: %w", err)
+	address := net.JoinHostPort(host, port)
+	if !validPeerEndpoint(address) {
+		return "", fmt.Errorf("invalid Gateway endpoint")
 	}
 	return address, nil
 }
@@ -96,6 +96,9 @@ func configuredGatewayBootstrapPeers(s appSettings) []string {
 }
 
 func (a *app) setGatewayBootstrapPeers(peers []string, appendPeer bool) error {
+	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
+		return err
+	}
 	a.settingsMu.Lock()
 	next := a.settings
 	if appendPeer {

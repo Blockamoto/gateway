@@ -293,6 +293,10 @@ func (a *app) writeGraphBlockHash(height int64, hash string) error {
 		return err
 	}
 	a.graphStoreMu.Lock()
+	if !indexRunOptionalWorkAllowed(a.dataDir, "tx-locator") || !indexRunOptionalWorkAllowed(a.dataDir, "txo-spender") {
+		a.graphStoreMu.Unlock()
+		return errIndexRunConsumerStopped
+	}
 	defer a.graphStoreMu.Unlock()
 	f, err := os.OpenFile(a.graphBlocksPath(), os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
@@ -421,6 +425,9 @@ func blockKnowledgeIsPublic(v blockView) bool {
 }
 
 func (a *app) graphIndexBlock(v blockView, force bool) error {
+	if !indexRunOptionalWorkAllowed(a.dataDir, "tx-locator") || !indexRunOptionalWorkAllowed(a.dataDir, "txo-spender") {
+		return fmt.Errorf("legacy graph derivation is Off in the timeline")
+	}
 	if !integrityVerified(v) {
 		return fmt.Errorf("block integrity receipt missing or outdated; recheck required")
 	}
@@ -483,6 +490,10 @@ func (a *app) graphIndexBlock(v blockView, force bool) error {
 	}
 	a.graphStoreMu.Lock()
 	for path, recs := range txGroups {
+		if !indexRunOptionalWorkAllowed(a.dataDir, "tx-locator") || !indexRunOptionalWorkAllowed(a.dataDir, "txo-spender") {
+			a.graphStoreMu.Unlock()
+			return errIndexRunConsumerStopped
+		}
 		if err := a.appendGraphRecords(path, "txloc", recs); err != nil {
 			a.graphStoreMu.Unlock()
 			return err
@@ -498,6 +509,9 @@ func (a *app) graphIndexBlock(v blockView, force bool) error {
 	// The block marker is written last and acts as the commit marker for the
 	// records above. Duplicate records after a crash are harmless because
 	// lookups are keyed and canonical-chain filtered.
+	if !indexRunOptionalWorkAllowed(a.dataDir, "tx-locator") || !indexRunOptionalWorkAllowed(a.dataDir, "txo-spender") {
+		return errIndexRunConsumerStopped
+	}
 	if err := a.writeGraphBlockHash(v.Height, v.Hash); err != nil {
 		return err
 	}
@@ -511,11 +525,52 @@ func (a *app) graphFindSpend(txid string, vout uint32) (graphSpend, bool) {
 }
 
 func (a *app) graphReadSpend(txid string, vout uint32) (graphSpend, bool, error) {
+	return a.graphReadSpendWithAnchor(context.Background(), txid, vout, a.canonicalHashAtHeight)
+}
+
+// Readiness must not enter the legacy graph's unbounded Core inspection path.
+// Its selected-chain checks and lock waits share the caller's deadline.
+func (a *app) graphReadSpendContext(ctx context.Context, txid string, vout uint32) (graphSpend, bool, error) {
+	return a.graphReadSpendWithAnchor(ctx, txid, vout, func(height int64) (string, error) {
+		return a.flowCanonicalHash(ctx, height)
+	})
+}
+
+func (a *app) lockGraphReadContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if ctx.Done() == nil {
+		a.graphStoreMu.RLock()
+		return nil
+	}
+	for !a.graphStoreMu.TryRLock() {
+		timer := time.NewTimer(5 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		a.graphStoreMu.RUnlock()
+		return err
+	}
+	return nil
+}
+
+func (a *app) graphReadSpendWithAnchor(ctx context.Context, txid string, vout uint32, hashAt func(int64) (string, error)) (graphSpend, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return graphSpend{}, false, err
+	}
 	path, err := graphShardPath(a.graphDir(), "spends", txid)
 	if err != nil {
 		return graphSpend{}, false, err
 	}
-	a.graphStoreMu.RLock()
+	if err := a.lockGraphReadContext(ctx); err != nil {
+		return graphSpend{}, false, err
+	}
 	defer a.graphStoreMu.RUnlock()
 	if err := a.checkGraphShard(path, "spends"); err != nil {
 		return graphSpend{}, false, err
@@ -537,6 +592,9 @@ func (a *app) graphReadSpend(txid string, vout uint32) (graphSpend, bool, error)
 	found := false
 	readBytes := uint64(0)
 	for {
+		if err := ctx.Err(); err != nil {
+			return graphSpend{}, false, err
+		}
 		_, err := io.ReadFull(f, buf)
 		if err == io.EOF {
 			break
@@ -552,7 +610,7 @@ func (a *app) graphReadSpend(txid string, vout uint32) (graphSpend, bool, error)
 		if !strings.EqualFold(prev, txid) || vv != vout {
 			continue
 		}
-		canon, e := a.canonicalHashAtHeight(rec.Height)
+		canon, e := hashAt(rec.Height)
 		if e != nil {
 			return graphSpend{}, false, fmt.Errorf("cannot anchor indexed spend: %w", e)
 		}
@@ -570,11 +628,26 @@ func (a *app) graphReadSpend(txid string, vout uint32) (graphSpend, bool, error)
 }
 
 func (a *app) graphFindTx(txid string) ([]graphTxLocation, error) {
+	return a.graphFindTxWithAnchor(context.Background(), txid, a.canonicalHashAtHeight)
+}
+
+func (a *app) graphFindTxContext(ctx context.Context, txid string) ([]graphTxLocation, error) {
+	return a.graphFindTxWithAnchor(ctx, txid, func(height int64) (string, error) {
+		return a.flowCanonicalHash(ctx, height)
+	})
+}
+
+func (a *app) graphFindTxWithAnchor(ctx context.Context, txid string, hashAt func(int64) (string, error)) ([]graphTxLocation, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	path, err := graphShardPath(a.graphDir(), "txloc", txid)
 	if err != nil {
 		return nil, err
 	}
-	a.graphStoreMu.RLock()
+	if err := a.lockGraphReadContext(ctx); err != nil {
+		return nil, err
+	}
 	defer a.graphStoreMu.RUnlock()
 	if err := a.checkGraphShard(path, "txloc"); err != nil {
 		return nil, err
@@ -596,6 +669,9 @@ func (a *app) graphFindTx(txid string) ([]graphTxLocation, error) {
 	seen := map[string]bool{}
 	readBytes := uint64(0)
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		_, err := io.ReadFull(f, buf)
 		if err == io.EOF {
 			break
@@ -611,7 +687,7 @@ func (a *app) graphFindTx(txid string) ([]graphTxLocation, error) {
 		if !strings.EqualFold(rec.TxID, txid) {
 			continue
 		}
-		canon, e := a.canonicalHashAtHeight(rec.Height)
+		canon, e := hashAt(rec.Height)
 		if e != nil {
 			return nil, fmt.Errorf("cannot anchor indexed transaction: %w", e)
 		}
@@ -671,7 +747,10 @@ func (a *app) graphCanProveUnspent(txid string, vout uint32) (*chainSnapshot, st
 }
 
 func (a *app) verifyGraphSpend(s graphSpend, provider string) (spenderLookupView, error) {
-	block, err := a.fetchBlockAtLocation(s.Height, s.BlockHash, provider)
+	return a.verifyGraphSpendContext(context.Background(), s, provider)
+}
+func (a *app) verifyGraphSpendContext(ctx context.Context, s graphSpend, provider string) (spenderLookupView, error) {
+	block, err := a.fetchBlockAtLocationContext(ctx, s.Height, s.BlockHash, provider)
 	if err != nil {
 		return spenderLookupView{}, err
 	}
@@ -714,6 +793,15 @@ func (a *app) verifyGraphSpend(s graphSpend, provider string) (spenderLookupView
 }
 
 func (a *app) resolveSpender(txid string, vout uint32) (spenderLookupView, error) {
+	return a.resolveSpenderContext(context.Background(), txid, vout)
+}
+func (a *app) resolveSpenderContext(ctx context.Context, txid string, vout uint32) (spenderLookupView, error) {
+	if err := ctx.Err(); err != nil {
+		return spenderLookupView{}, err
+	}
+	if err := requireReleaseFeature("txo-spender"); err != nil {
+		return spenderLookupView{}, err
+	}
 	txid = strings.ToLower(strings.TrimSpace(txid))
 	if !validHash(txid) {
 		return spenderLookupView{}, fmt.Errorf("invalid txid")
@@ -737,6 +825,13 @@ func (a *app) resolveSpender(txid string, vout uint32) (spenderLookupView, error
 	}
 
 	nativeSpend, nativeFound := a.graphFindSpend(txid, vout)
+	if !nativeFound {
+		if indexed, err := a.lookupIndexSpender(ctx, outpoint); err == nil && len(indexed.Rows) == 1 {
+			r := indexed.Rows[0]
+			nativeSpend = graphSpend{Outpoint: outpoint, SpendingTxID: r.TxID, SpendingVin: r.Vin, BlockHash: r.BlockHash, Height: r.Height}
+			nativeFound = true
+		}
+	}
 	if !nativeFound {
 		// Preserve pre-0.4.5 verified positive knowledge as a migration aid. It
 		// can prove a spend, never a negative.
@@ -764,8 +859,11 @@ func (a *app) resolveSpender(txid string, vout uint32) (spenderLookupView, error
 	}
 
 	positiveVerifyError := ""
+	if err := ctx.Err(); err != nil {
+		return spenderLookupView{}, err
+	}
 	if nativeFound {
-		v, err := a.verifyGraphSpend(nativeSpend, "bod_native_graph")
+		v, err := a.verifyGraphSpendContext(ctx, nativeSpend, "bod_native_graph")
 		if err == nil {
 			v.MempoolState, v.MempoolSpendingTxID, v.NativeCoverage, v.NativeCompleteThrough = memState, memTx, cov, complete
 			v.Note = "A native graph hit is a locator; the spending transaction and exact vin were checked against Bitcoin before returning CONFIRMED_SPENT."
@@ -775,7 +873,7 @@ func (a *app) resolveSpender(txid string, vout uint32) (spenderLookupView, error
 	}
 	if corePositive {
 		gs := graphSpend{Outpoint: outpoint, SpendingTxID: coreConfirmed.SpendingTxID, SpendingVin: coreConfirmed.InputIndex, BlockHash: coreConfirmed.BlockHash, Height: coreConfirmed.Height}
-		v, err := a.verifyGraphSpend(gs, "bitcoin_core_txospenderindex")
+		v, err := a.verifyGraphSpendContext(ctx, gs, "bitcoin_core_txospenderindex")
 		if err == nil {
 			v.MempoolState, v.MempoolSpendingTxID, v.NativeCoverage, v.NativeCompleteThrough = memState, memTx, cov, complete
 			v.Note = "Bitcoin Core located the historical spender through txospenderindex; Bitcoin on Demand verified the exact spend against the underlying Bitcoin transaction."
@@ -876,6 +974,9 @@ func (a *app) getGraphBuildState() graphBuildState {
 }
 
 func (a *app) startGraphBuild(req graphBuildRequest) error {
+	if err := requireReleaseFeature("txo-spender"); err != nil {
+		return err
+	}
 	mode := strings.ToLower(strings.TrimSpace(req.Mode))
 	if mode == "" {
 		mode = "full"
@@ -908,7 +1009,7 @@ func (a *app) startGraphBuild(req graphBuildRequest) error {
 	a.graphBuild = graphBuildState{Mode: mode, From: from, To: to, SnapshotTip: tip, Current: from - 1, Running: true, StartedAt: now, UpdatedAt: now}
 	a.graphBuildMu.Unlock()
 	_ = a.saveGraphBuildState()
-	go a.runGraphBuild(ctx)
+	a.startUpdateAwareWorker(func() { a.runGraphBuild(ctx) })
 	return nil
 }
 func (a *app) stopGraphBuild() {
@@ -932,7 +1033,7 @@ func (a *app) resumeGraphBuildIfNeeded() {
 	ctx, cancel := context.WithCancel(context.Background())
 	a.graphCancel = cancel
 	a.graphBuildMu.Unlock()
-	go func() { time.Sleep(1200 * time.Millisecond); a.runGraphBuild(ctx) }()
+	a.startUpdateAwareWorker(func() { time.Sleep(1200 * time.Millisecond); a.runGraphBuild(ctx) })
 }
 func (a *app) failGraphBuild(err error) {
 	a.graphBuildMu.Lock()
@@ -945,59 +1046,17 @@ func (a *app) failGraphBuild(err error) {
 }
 
 func (a *app) graphBlockForHeight(height int64) (blockView, error) {
-	target, err := a.resolveBlockTarget(strconv.FormatInt(height, 10))
+	return a.graphBlockForHeightContext(context.Background(), height)
+}
+
+func (a *app) graphBlockForHeightContext(ctx context.Context, height int64) (blockView, error) {
+	target, err := a.resolveBlockTargetContext(ctx, strconv.FormatInt(height, 10))
 	if err != nil {
 		return blockView{}, err
 	}
-	var payload []byte
-	source, sourceNetwork := "", ""
-	// Graph backfill is intentionally optimized for existing local history.
-	// Prefer the read-only Core block-store mount over live getblock RPC so an
-	// archival node can be indexed without serializing the whole chain through
-	// RPC, and the exact same path keeps working while Core is stopped.
-	if bd, e := a.mountedCoreBlock(target.HashDisplay); e == nil && len(bd.Raw) >= 81 {
-		payload, source, sourceNetwork = bd.Raw, "Bitcoin Core read-only block-store mount", "core_mount"
-	} else if hit, e := a.localStorageBlock(target); e == nil && len(hit.Raw) >= 81 {
-		payload, source, sourceNetwork = hit.Raw, hit.Source, hit.Network
-	}
-	if payload == nil {
-		payload, source, err = fetchBlock(target.HashRaw, target.ExpectedHeader, a.preferred)
-		if err == nil {
-			sourceNetwork = "bitcoin"
-		} else if bd, peer, e2 := a.fetchBlockFromOverlay(target.HashDisplay); e2 == nil {
-			payload, source, sourceNetwork = bd.Raw, peer.Addr, "bod"
-		} else {
-			return blockView{}, fmt.Errorf("graph block %d unavailable: Bitcoin %v; BOD %v", height, err, e2)
-		}
-	}
-	v, err := parseBlockDetailed(target.Height, target.HashDisplay, target.ExpectedHeader, payload, source, false)
+	v, err := a.fetchAndDecodeTargetContext(ctx, target)
 	if err != nil {
 		return blockView{}, err
-	}
-	v.SourceNetwork = sourceNetwork
-	v.LocatorPeer = target.LocatorPeer
-	if sourceNetwork == "cache" {
-		a.cacheMu.RLock()
-		entry, ok := a.cacheIndex.Blocks[strings.ToLower(target.HashDisplay)]
-		a.cacheMu.RUnlock()
-		if !ok || entry.Private {
-			v.CacheVisibility = "private"
-		} else {
-			v.CacheVisibility = "public"
-		}
-	} else if sourceNetwork != "core" && sourceNetwork != "core_mount" && sourceNetwork != "archive" {
-		a.settingsMu.RLock()
-		private := a.settings.PrivacyMode
-		a.settingsMu.RUnlock()
-		if private {
-			v.CacheVisibility = "private"
-		} else {
-			v.CacheVisibility = "public"
-		}
-	}
-	if target.ConsensusAuthority {
-		v.VerificationState = "consensus_validated"
-		v.Verification.ConsensusValidated = true
 	}
 	if !v.Verification.HeaderChainMatch && !v.Verification.ConsensusValidated {
 		return blockView{}, fmt.Errorf("graph block %d is not anchored to the selected Bitcoin chain", height)
@@ -1032,8 +1091,11 @@ func (a *app) runGraphBuild(ctx context.Context) {
 				_ = a.saveGraphBuildState()
 				continue
 			}
-			v, err := a.graphBlockForHeight(h)
+			v, err := a.graphBlockForHeightContext(ctx, h)
 			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
 				a.failGraphBuild(err)
 				return
 			}

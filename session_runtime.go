@@ -33,6 +33,9 @@ type sessionPendingReply struct {
 }
 
 func (s *bitcoinSession) deliverReply(m message) {
+	if s.deliverBlockReply(m) {
+		return
+	}
 	s.replyMu.Lock()
 	pending := s.pendingReply
 	s.replyMu.Unlock()
@@ -128,7 +131,7 @@ func (s *bitcoinSession) transportEligible(archive bool) bool {
 }
 
 func (s *bitcoinSession) transportEligibleLocked(archive bool) bool {
-	if s.scout || s.view.State == "disconnected" {
+	if s.view.State == "disconnected" {
 		return false
 	}
 	if archive {
@@ -160,14 +163,16 @@ func (b *sessionServiceBudget) take(now time.Time, limit int, id string) string 
 	return ""
 }
 
-// Adoption never promotes a remote source port into the discovery ledger.
+// Adoption never promotes a remote source port into the saved address book.
 // The accept loop already holds one of its bounded inbound connection slots.
 func (n *bitcoinNetwork) adoptInbound(p *peerConn) *bitcoinSession {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		p.conn.Close()
+		return nil
+	}
 	now := n.now()
 	s := &bitcoinSession{n: n, peer: p, done: make(chan struct{}), slot: make(chan struct{}, 1), serveQueue: make(chan message, 4)}
-	s.view = networkPeerView{ID: "inbound:" + p.addr, Address: p.addr, Direction: "inbound", Owner: "Gateway", Role: "gateway_inbound", Source: "incoming_connection", Transport: "Bitcoin P2P v1", State: "connected", Services: p.services, ServiceHex: hexServices054(p.services), ProtocolVersion: p.version, Gateway: true, Negotiated: append([]gatewayProtocolSupport(nil), p.gatewayProtocols...), Protocols: []string{"Bitcoin P2P", "Gateway On Demand"}, TargetHeight: p.startHeight, Connected: now, Updated: now}
-	probe := p.bod && n.enabled()
-	s.lastServiceCheck, s.healthChecking = now, probe
+	s.view = networkPeerView{ID: "inbound:" + p.addr, Address: p.addr, Direction: "inbound", Owner: "Gateway", Role: "gateway_inbound", Source: "incoming_connection", Transport: "Bitcoin P2P v1", State: "connected", Services: p.services, ServiceHex: fmt.Sprintf("0x%016x", p.services), ProtocolVersion: p.version, Gateway: true, Negotiated: append([]gatewayProtocolSupport(nil), p.gatewayProtocols...), Protocols: []string{"Bitcoin P2P", "Gateway On Demand"}, TargetHeight: p.startHeight, Connected: now, Updated: now}
 	n.mu.Lock()
 	if n.sessions[p.addr] != nil || n.ctx.Err() != nil {
 		n.mu.Unlock()
@@ -178,8 +183,5 @@ func (n *bitcoinNetwork) adoptInbound(p *peerConn) *bitcoinSession {
 	n.mu.Unlock()
 	go s.readLoop()
 	go s.serviceLoop()
-	if probe {
-		go n.checkGatewayService(s)
-	}
 	return s
 }

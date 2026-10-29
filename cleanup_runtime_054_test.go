@@ -32,7 +32,7 @@ func Test054RebuiltRuntimeCleanProfile(t *testing.T) {
 		}
 	}
 	saveSettings(settings)
-	if e := os.WriteFile(filepath.Join(root, "bitcoin-peers.json"), []byte(`[{"address":"198.51.100.10:48333","source":"synthetic offline cleanup fixture","services":33554441}]`), 0600); e != nil {
+	if e := os.WriteFile(filepath.Join(root, "bitcoin-peers.json"), []byte(`[{"address":"127.0.0.1:8333","source":"manual_bitcoin","services":9}]`), 0600); e != nil {
 		t.Fatal(e)
 	}
 	client := &http.Client{Timeout: 2 * time.Second}
@@ -79,11 +79,11 @@ func Test054RebuiltRuntimeCleanProfile(t *testing.T) {
 		if json.NewDecoder(r.Body).Decode(&s) != nil {
 			t.Fatal("invalid network JSON")
 		}
-		return s["ledger"].(map[string]any)
+		return s
 	}
 	url, done := start()
 	first := summary(url)
-	if first["records"].(float64) != 1 {
+	if first["address_count"].(float64) != 1 {
 		t.Fatalf("fixture not imported: %+v", first)
 	}
 	if l, e := cleanup.Acquire(root); e == nil {
@@ -114,7 +114,7 @@ func Test054RebuiltRuntimeCleanProfile(t *testing.T) {
 	if len(r.Errors) > 0 {
 		t.Fatal(r.Errors)
 	}
-	for _, name := range []string{"settings.json", "bitcoin-peers.json", "compatibility.json", "discovery-ledger-v1.wal"} {
+	for _, name := range []string{"settings.json", "bitcoin-peers.json", "bitcoin-peers-v2.json", "compatibility.json", "discovery-ledger-v1.wal"} {
 		if _, e := os.Stat(filepath.Join(root, name)); !os.IsNotExist(e) {
 			t.Fatal("state survived purge", name)
 		}
@@ -127,7 +127,7 @@ func Test054RebuiltRuntimeCleanProfile(t *testing.T) {
 	saveSettings(appSettings{CoreDisabled: true, CoreMountDisabled: true, NetworkDisabled: true, HeadersPaused: true})
 	url, done = start()
 	second := summary(url)
-	if second["records"].(float64) != 0 || second["imported_records"].(float64) != 0 || second["session"] == first["session"] {
+	if second["address_count"].(float64) != 0 || second["connected"].(float64) != 0 {
 		t.Fatalf("not a fresh session: %+v", second)
 	}
 	info, e := readRuntimeInfo(root)

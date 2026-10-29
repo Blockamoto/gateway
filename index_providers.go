@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -13,6 +14,8 @@ import (
 // providers of the same index definition. Coverage describes recorded work;
 // each existing resolver still checks the evidence needed for its answer.
 type indexProviderView struct {
+	OnDemand       bool             `json:"on_demand"`
+	Readiness      string           `json:"readiness"`
 	ID             string           `json:"id"`
 	Provider       string           `json:"provider"`
 	Coverage       []heightInterval `json:"coverage,omitempty"`
@@ -28,30 +31,98 @@ type indexProviderView struct {
 // These inputs keep policy projection independently testable. They contain no
 // credentials, filesystem paths, addresses queried, or remote peer identities.
 type indexProviderState struct {
-	Headers                       *chainSnapshot
-	Blocks, PublicBlocks, Mounted []heightInterval
-	TxCoverage, PublicTxCoverage  []heightInterval
-	GraphCoverage                 []heightInterval
-	TxKnown, PublicTxKnown        bool
-	SpendKnown, PublicSpendKnown  bool
-	SatlineReady                  bool
-	PublishedSatline              bool
-	CoreHeaderServing             bool
+	Headers                          *chainSnapshot
+	Blocks, PublicBlocks, Mounted    []heightInterval
+	TxCoverage, PublicTxCoverage     []heightInterval
+	GraphCoverage                    []heightInterval
+	TxKnown, PublicTxKnown           bool
+	SpendKnown, PublicSpendKnown     bool
+	SatlineReady                     bool
+	PublishedSatline                 bool
+	CoreHeaderServing                bool
+	BitcoinPeersAvailable            bool
+	CommittedBlocks                  []heightInterval
+	CommittedTx                      []heightInterval
+	BrowsedTx, BrowsedInscriptions   []heightInterval
+	BrowseTxComplete                 bool
+	BrowseInscriptionsComplete       bool
+	CommittedSpends                  []heightInterval
+	CommittedSats                    []heightInterval
+	CommittedUTXO                    []heightInterval
+	UTXOSnapshot                     *chainSnapshot
+	SatSnapshot                      *chainSnapshot
+	NumberingSnapshot                *chainSnapshot
+	AddressCurrentState              string
+	AddressCurrentDestinationVersion int
+	AddressCurrentSnapshot           *chainSnapshot
+	AddressHistoryState              string
+	AddressHistoryCoverage           []heightInterval
+	AddressHistorySnapshot           *chainSnapshot
 }
 
 // indexProviderViews performs no Bitcoin scans, materialization, peer discovery or
 // resolution. Core inspection uses the existing short-lived status cache and
 // bounded local status RPCs; a configured provider is not assumed connected.
 func (a *app) indexProviderViews() []indexProviderView {
+	return a.indexProviderViewsWithBrowse(true)
+}
+
+// A full status can defer browse coverage to its timeline inspection. Other
+// callers still receive independently authenticated provider coverage.
+func (a *app) indexProviderViewsWithBrowse(inspectBrowse bool) []indexProviderView {
 	a.settingsMu.RLock()
 	s := a.settings
 	a.settingsMu.RUnlock()
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
 	core := coreStatus{Height: -1}
 	if !s.CoreDisabled && strings.TrimSpace(s.BitcoinDataDir) != "" {
 		core = inspectCore(s)
 	}
 	local := indexProviderState{}
+	if inspectBrowse {
+		for _, id := range []string{"tx-locator", "inscriptions"} {
+			source := a.browseProviderSource(id)
+			if id == "tx-locator" {
+				local.BrowsedTx, local.BrowseTxComplete = source.Ranges, source.Complete
+			} else {
+				local.BrowsedInscriptions, local.BrowseInscriptionsComplete = source.Ranges, source.Complete
+			}
+		}
+	}
+	local.BitcoinPeersAvailable = !s.NetworkDisabled && a.network != nil && len(a.network.listSessions()) > 0
+	for _, id := range []string{"blocks", "tx-locator", "txo-spender"} {
+		store, err := indexStoreHead(a.dataDir, id)
+		if err == nil && store.checkpoint != nil && a.indexChainState(store.checkpoint) == "selected_chain" {
+			rangeDone := []heightInterval{{From: store.checkpoint.From, To: store.checkpoint.Height}}
+			if id == "blocks" {
+				local.CommittedBlocks = rangeDone
+			} else if id == "txo-spender" {
+				local.CommittedSpends = rangeDone
+			} else {
+				local.CommittedTx = rangeDone
+			}
+		}
+	}
 	local.CoreHeaderServing = a.currentBitcoinServing().Archival
+	if store, err := utxoStoreHead(a.dataDir); err == nil {
+		if cp := store.Head(); cp != nil && a.utxoSelectedChainState(context.Background(), cp, a.currentChainAuthority()) == "selected_chain" {
+			local.CommittedUTXO = []heightInterval{{From: 0, To: cp.Height}}
+			local.UTXOSnapshot = &chainSnapshot{Network: "mainnet", Height: cp.Height, Hash: cp.BlockHash, Source: "gateway_utxo_state"}
+		}
+	}
+	if sat, err := satStateStatusContext(context.Background(), a.dataDir); err == nil && sat.Checkpoint != nil && a.satCheckpointSelected077(context.Background(), sat.Checkpoint, a.currentChainAuthority()) == nil {
+		local.CommittedSats = []heightInterval{{From: 0, To: sat.Checkpoint.Height}}
+		local.SatSnapshot = &chainSnapshot{Network: "mainnet", Height: sat.Checkpoint.Height, Hash: sat.Checkpoint.BlockHash, Source: "gateway_sat_index"}
+	}
+	if store, err := indexStoreHead(a.dataDir, "inscriptions"); err == nil && store.checkpoint != nil && a.indexChainState(store.checkpoint) == "selected_chain" {
+		// A point-only ancestor cannot supply whole-prefix readiness. A first
+		// read is bounded; later heads extend process-local writer certificates.
+		if inscriptionInventoryPrefixComplete(context.Background(), store) {
+			if state, checkpoint, err := store.numberingView(); err == nil && state != nil && checkpoint != nil {
+				local.NumberingSnapshot = &chainSnapshot{Network: "mainnet", Height: checkpoint.Height, Hash: checkpoint.BlockHash, Source: "gateway_inscriptions"}
+			}
+		}
+	}
 	st := a.getStatus()
 	if st.HeaderHeight >= 0 && st.HeaderCount > st.HeaderHeight {
 		if h, err := a.readSelectedHeader(st.HeaderHeight); err == nil {
@@ -116,10 +187,42 @@ func (a *app) indexProviderViews() []indexProviderView {
 	if s.SatlineEnabled && s.SatlineServePublished {
 		local.PublishedSatline = a.hasPublishedIndexSatline()
 	}
+	addressStatus, _ := a.indexAddressStatus(nil)
+	local.AddressCurrentState = addressStatus.Current.State
+	local.AddressCurrentDestinationVersion = addressStatus.Current.DestinationVersion
+	if cp := addressStatus.Current.Snapshot; cp != nil {
+		local.AddressCurrentSnapshot = &chainSnapshot{Network: "mainnet", Height: cp.Height, Hash: cp.BlockHash, Source: "gateway_address_state"}
+	}
+	local.AddressHistoryState = addressStatus.Historical.State
+	local.AddressHistoryCoverage = addressStatus.Historical.Coverage
+	if cp := addressStatus.Historical.Snapshot; cp != nil {
+		local.AddressHistorySnapshot = &chainSnapshot{Network: "mainnet", Height: cp.Height, Hash: cp.BlockHash, Source: "gateway_address_history"}
+	}
 	return buildIndexProviderViews(s, core, local)
 }
 
+func applyStatusBrowseSources(rows []indexProviderView, sources map[string]indexTimelineSource) {
+	for i := range rows {
+		r := &rows[i]
+		if r.Provider != "gateway_browsed_index" || !releaseFeatureAvailable(r.ID) {
+			continue
+		}
+		source := sources[r.ID] // missing or failed inspection stays unknown
+		r.Coverage = mergeIntervals(source.Ranges)
+		r.Completeness = "recorded_sparse_singletons"
+		if !source.Complete {
+			r.Completeness = "bounded_or_unavailable_sparse_projection"
+		}
+		r.Queryable = len(r.Coverage) > 0
+		r.Readiness = "needs_coverage_or_provider"
+		if r.Queryable {
+			r.Readiness = "retained_sparse_browse_records"
+		}
+	}
+}
+
 func buildIndexProviderViews(s appSettings, core coreStatus, local indexProviderState) []indexProviderView {
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
 	rows := []indexProviderView{}
 	add := func(id, provider, completeness, verification string, queryable, serveable bool, coverage, public []heightInterval, snapshot *chainSnapshot, note string) {
 		rows = append(rows, indexProviderView{ID: id, Provider: provider, Coverage: mergeIntervals(coverage), PublicCoverage: mergeIntervals(public), Completeness: completeness, Verification: verification, Queryable: queryable, Serveable: serveable, Snapshot: snapshot, Note: note})
@@ -134,14 +237,32 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 		"Present raw cache files anchored to local headers; block bytes are verified on read. Private blocks remain local and sharing requires ShareCache.")
 	add("blocks", "core_mount", "recorded_ranges", "rechecked_on_read", len(local.Mounted) > 0, s.ServeData && len(local.Mounted) > 0, local.Mounted, local.Mounted, nil,
 		"Read-only mounted Bitcoin files with recorded header anchors; file availability and block integrity are rechecked when read. This is block storage, not txindex or spender coverage.")
+	add("blocks", "gateway_committed_index", "recorded_contiguous_range", "committed_locally_derived", len(local.CommittedBlocks) > 0, false, local.CommittedBlocks, nil, nil,
+		"Private committed decoded transaction evidence survives source eviction. Durable private ID pointers cover the committed range; each shard and active-commit table is bounded to 64 MiB. Auxiliary legacy scans stop at 512 batches/64 MiB and cannot establish absence. Missing or damaged acceleration requires cancellable repair; raw/witness bytes may still require a source.")
+	add("tx-locator", "gateway_committed_index", "recorded_contiguous_range", "locator_hint", len(local.CommittedTx) > 0, false, local.CommittedTx, nil, nil,
+		"Private durable ID pointers retain containing-block positions throughout committed coverage without a global transaction map. A saved location remains available after source eviction; transaction details require independently verified bytes. Each shard and active-commit table is bounded to 64 MiB; damaged/missing acceleration requires repair and a miss remains unknown.")
+	for _, id := range []string{"tx-locator", "inscriptions"} {
+		coverage, complete := local.BrowsedTx, local.BrowseTxComplete
+		if id == "inscriptions" {
+			coverage, complete = local.BrowsedInscriptions, local.BrowseInscriptionsComplete
+		}
+		completeness := "recorded_sparse_singletons"
+		if !complete {
+			completeness = "bounded_or_unavailable_sparse_projection"
+		}
+		add(id, "gateway_browsed_index", completeness, "committed_selected_chain", len(coverage) > 0, false, coverage, nil, nil,
+			"Private individually committed browsed blocks. Only inspected receipts with matching selected headers are shown; projection stops at 4096 receipts. Gaps do not imply work and no sequential checkpoint, absence, current ownership or sharing is inferred. Transaction content requires verified block bytes.")
+	}
 	add("tx-locator", "gateway_cache", "sparse", "locator_hint", local.TxKnown, s.ServeData && local.PublicTxKnown, local.TxCoverage, local.PublicTxCoverage, nil,
 		"Locally retained txid locations survive raw-block eviction. Resolve through verifyTxLocation to fetch the real block and check transaction inclusion; a miss is unknown.")
 	add("tx-locator", "gateway_native_graph", "recorded_ranges", "rechecked_on_query", len(local.GraphCoverage) > 0, false, local.GraphCoverage, nil, nil,
-		"Disk-sharded local graph retains transaction incarnations, including duplicate historical txids. Native graph tx lookup is local; BOD wire v1 does not dispatch txloc to this store.")
+		"Disk-sharded local graph retains transaction incarnations, including duplicate historical txids. Native graph tx lookup is local; Gateway Bitcoin-data wire v1 does not dispatch txloc to this store.")
+	add("txo-spender", "gateway_committed_index", "recorded_contiguous_positive_spends", "locally_derived", len(local.CommittedSpends) > 0, false, local.CommittedSpends, nil, nil,
+		"Private committed input-to-spender records with durable outpoint lookups. Positive records are anchored to the selected chain; a miss never proves unspentness and duplicate historical origins remain distinct.")
 	add("txo-spender", "gateway_cache", "sparse_positive_only", "locator_hint", local.SpendKnown, s.ServeData && local.PublicSpendKnown, nil, nil, nil,
 		"Retained positive spend sightings. A miss cannot prove an output unspent; positive answers require the actual spending transaction and exact input.")
 	add("txo-spender", "gateway_native_graph", "recorded_ranges", "rechecked_on_query", len(local.GraphCoverage) > 0, s.ServeData && len(local.GraphCoverage) > 0, local.GraphCoverage, local.GraphCoverage, nil,
-		"Local unspent answers require a unique existing origin output, continuous creation-to-snapshot coverage, matching tip anchor and intact queried shard. Remote BOD v1 serves positive locator hints only.")
+		"Local unspent answers require a unique existing origin output, continuous creation-to-snapshot coverage, matching tip anchor and intact queried shard. Remote Gateway Bitcoin-data v1 serves positive locator hints only.")
 	connected := !s.CoreDisabled && core.Connected
 	var coreSnapshot *chainSnapshot
 	if connected && core.Height >= 0 && validHash(core.BestBlockHash) {
@@ -164,26 +285,104 @@ func buildIndexProviderViews(s appSettings, core coreStatus, local indexProvider
 	add("blocks", "bitcoin_core", "provider_reported_ranges", "rechecked_on_read", connected, s.ServeData && connected, coreBlocks, coreBlocks, coreSnapshot,
 		"Core RPC supplies retained blocks. Pruned data may be unavailable; Gateway verifies returned block bytes. Core IBD and tip freshness are not inferred from connectivity.")
 	txEnabled := connected && core.TxIndexEnabled
+	txUsable := connected && coreTxIndexUsable(core)
 	txCov := indexCoreCoverage(core, core.TxIndexHeight, txEnabled)
-	add("tx-locator", "bitcoin_core_txindex", indexCoreCompleteness(core, core.TxIndexHeight, txEnabled, core.TxIndex), "locator_hint", txEnabled, s.ServeData && txEnabled && core.TxIndex, txCov, txCov, coreSnapshot,
+	add("tx-locator", "bitcoin_core_txindex", indexCoreCompleteness(core, core.TxIndexHeight, txEnabled, core.TxIndex), "locator_hint", txUsable, s.ServeData && txUsable, txCov, txCov, coreSnapshot,
 		"Core reports its own txindex progress. Enabled is distinct from synced. Returned locations still pass Bitcoin block/transaction verification; index coverage does not require retaining those blocks in Gateway.")
 	spendEnabled := connected && core.SpenderIndexEnabled
 	spendCov := indexCoreCoverage(core, core.SpenderIndexHeight, spendEnabled)
 	add("txo-spender", "bitcoin_core_txospenderindex", indexCoreCompleteness(core, core.SpenderIndexHeight, spendEnabled, core.SpenderIndex), "rechecked_on_query", spendEnabled, s.ServeData && spendEnabled && core.SpenderIndex, spendCov, spendCov, coreSnapshot,
 		"Core historical spender provider. Local positives verify the actual input; local negatives also require a synced index and an existing confirmed UTXO at the stated snapshot. Mempool observations remain separate.")
-	add("address-state", "bitcoin_core_chainstate", "on_demand_snapshot", "provider_reported", connected, false, nil, nil, coreSnapshot,
-		"Local explicit scantxoutset request for a current UTXO snapshot. Successful scan, returned height and best-block hash belong to the answer; no address index is prebuilt and remote-triggered scans are unsupported.")
-	add("address-history", "none", "unavailable", "unknown", false, false, nil, nil, nil,
-		"No historical address activity index or provider is implemented. Current UTXO scans do not supply spent outputs or historical activity; deeper indexing requires explicit opt-in implementation.")
+	add("address-state", "bitcoin_core_chainstate", "on_demand_snapshot", "provider_reported", false, false, nil, nil, coreSnapshot,
+		"Core chainstate can supply an explicit scan, but this release's address explorer uses the saved local address index. Opening an address never starts scantxoutset or a remote scan.")
+	var addressCurrentCoverage []heightInterval
+	if local.AddressCurrentSnapshot != nil {
+		addressCurrentCoverage = []heightInterval{{From: local.AddressCurrentSnapshot.Height, To: local.AddressCurrentSnapshot.Height}}
+	}
+	addressCompleteness := "complete_live_address_set_at_snapshot"
+	addressNote := "Current address membership and cached balances derived from the exact saved UTXO checkpoint. Output values and scripts remain in shared facts. A missing or stale index never reports a zero balance."
+	if local.AddressCurrentDestinationVersion == 0 {
+		addressCompleteness = "complete_live_conventional_address_set_at_snapshot"
+		addressNote += " Bare public-key destinations require a reviewed Current UTXOs rebuild."
+	}
+	add("address-state", "gateway_address_state", addressCompleteness, "header_anchored_processing; consensus_validated=false", local.AddressCurrentState == "ready", false, addressCurrentCoverage, nil, local.AddressCurrentSnapshot,
+		addressNote)
+	add("utxo-state", "gateway_utxo_state", "complete_genesis_prefix_at_snapshot", "header_anchored_processing; consensus_validated=false", local.UTXOSnapshot != nil, false, local.CommittedUTXO, nil, local.UTXOSnapshot,
+		"Locally processed live unspent outputs at this exact selected-chain checkpoint. Complete coin facts and 288 self-contained recovery transitions survive raw-body eviction. Full consensus validation and snapshot sharing are deferred.")
+	add("address-history", "gateway_address_history", "explicit_scanned_ranges", "header_anchored_output_evidence; consensus_validated=false", local.AddressHistoryState == "ready", false, local.AddressHistoryCoverage, nil, local.AddressHistorySnapshot,
+		"Historical address outputs from explicitly scanned sparse ranges, retained after spend and raw-block eviction. Range totals describe received outputs within coverage; they are not current balances and unknown spend status remains unknown.")
 	satline := s.SatlineEnabled && local.SatlineReady
+	add("sat-state", "gateway_sat_index", "continuous_genesis_snapshot", "locally_derived_selected_chain", local.SatSnapshot != nil, false, local.CommittedSats, nil, local.SatSnapshot, "Global ordinal FIFO identity, issuance and placement at the explicit snapshot. Lost, burned, genesis-unspendable and BIP30-destroyed sats remain distinct. Header anchoring is not full script consensus validation. Full movement history and raw block retention are independent.")
 	add("sat-state", "gateway_satline_resolver", "on_demand", "rechecked_on_query", satline, false, nil, nil, nil,
-		"Current placement can be derived on demand through Satline. Only CURRENTLY_UNSPENT with a usable snapshot establishes placement at that snapshot; an unresolved frontier is not current state. No global current-sat index or Ord sat-state adapter is implemented.")
+		"Current placement can also be derived on demand through Satline. Only CURRENTLY_UNSPENT with a usable snapshot establishes placement at that snapshot; an unresolved frontier is not current state. This provider is separate from the optional global Sat index.")
 	add("satline", "gateway_satline", "per_query_sparse", "rechecked_on_query", satline, satline && s.SatlineServePublished && local.PublishedSatline, nil, nil, nil,
 		"Per-query lineage and reusable checkpoints, with optional verified peer acceleration. No whole-chain coverage is inferred from saved hops. Only detached explicit publications are remotely served, as hints requiring recipient verification.")
 	add("inscriptions", "gateway_known_id", "on_demand", "reveal_checked_on_query", s.OrdEnabled, false, nil, nil, nil, "Existing known-ID inscription resolver checks reveal/content evidence on demand. It does not supply a complete inventory or global numbering; bounded index instances are reported separately.")
 	_, ordErr := validatedOrdURL(s.OrdURL)
 	add("inscriptions", "ord_http", "configured_coverage_unknown", "provider_claim_until_reveal_checked", s.OrdEnabled && strings.TrimSpace(s.OrdURL) != "" && ordErr == nil, false, nil, nil, nil, "Optional read-only Ord HTTP provider for known-ID content and metadata. Configuration does not prove availability or historical coverage; external databases are not modified.")
-	add("inscription-numbering", "none", "unavailable", "unknown", false, false, nil, nil, nil, "Gateway has no full historical numbering executor. Provider labels or bounded occurrence scans are not locally derived canonical numbers.")
+	add("inscriptions", "gateway_canonical_numbering", "continuous_historical_rules", "locally_derived_selected_chain", local.NumberingSnapshot != nil, false, nil, nil, local.NumberingSnapshot, "Automatic Inscriptions enrichment under the pinned Ord historical rules. Continuous history from no later than block 767430, verified input values, curse/reinscription state and Jubilee rules are required. Partial scans retain stable IDs without invented canonical numbers.")
+
+	for i := range rows {
+		r := &rows[i]
+		if r.ID == "blocks" {
+			r.OnDemand = r.Provider == "gateway_cache" && local.BitcoinPeersAvailable || r.Provider == "bitcoin_core" && r.Queryable
+		}
+		r.Readiness = "needs_coverage_or_provider"
+		if r.Queryable {
+			r.Readiness = "provider_available_check_coverage"
+		}
+		if r.Provider == "gateway_committed_index" && r.Queryable {
+			r.Readiness = "retained_records_durable_id_lookup"
+			if r.ID == "blocks" {
+				r.Readiness = "retained_block_metadata_body_lookup"
+				r.Note += " Raw retains block-level access; new transaction-hash lookup requires the explicit Locator index."
+			}
+		}
+		if r.Provider == "gateway_browsed_index" && r.Queryable {
+			r.Readiness = "retained_sparse_browse_records"
+		}
+		if r.ID == "blocks" && r.Provider == "gateway_cache" && !r.Queryable && local.BitcoinPeersAvailable {
+			r.Readiness = "connected_peers_fetch_on_demand"
+		}
+		if (r.ID == "sat-state" || r.ID == "satline") && r.Queryable && r.Provider != "gateway_sat_index" {
+			r.Readiness = "on_demand_derivation_requires_evidence"
+		}
+		if r.Provider == "ord_http" && r.Queryable {
+			r.Readiness = "configured_provider_unchecked"
+		}
+		if r.Provider == "bitcoin_core_txindex" || r.Provider == "bitcoin_core_txospenderindex" {
+			if r.Provider == "bitcoin_core_txindex" && txEnabled && !txUsable {
+				r.Readiness = "enabled_index_not_ready"
+			}
+			if r.Queryable {
+				r.Readiness = "provider_available_partial_coverage"
+				if r.Completeness == "provider_reported_at_snapshot" {
+					r.Readiness = "provider_reported_at_snapshot"
+				}
+			}
+		}
+		if r.Provider == "gateway_address_state" {
+			r.Readiness = local.AddressCurrentState
+			if r.Readiness == "" {
+				r.Readiness = "not_built"
+			}
+		}
+		if r.Provider == "gateway_address_history" {
+			r.Readiness = local.AddressHistoryState
+			if r.Readiness == "" {
+				r.Readiness = "not_built"
+			}
+		}
+		if r.ID == "inscription-numbering" {
+			r.Readiness = "not_implemented"
+		}
+		if !releaseFeatureAvailable(r.ID) {
+			r.OnDemand = false
+			r.Readiness, r.Note = "locked", releaseLockReason(r.ID)
+			r.Queryable, r.Serveable = false, false
+			r.PublicCoverage = nil
+		}
+	}
 	return rows
 }
 

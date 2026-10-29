@@ -34,10 +34,13 @@ func TestIndexDefinitionsSeparateKnowledge(t *testing.T) {
 		}
 		ids[d.ID] = true
 	}
-	for _, id := range []string{"address-state", "address-history", "sat-state", "satline", "inscriptions", "inscription-numbering"} {
+	for _, id := range []string{"address-state", "address-history", "sat-state", "satline", "inscriptions"} {
 		if !ids[id] {
 			t.Fatal(id)
 		}
+	}
+	if ids["inscription-numbering"] {
+		t.Fatal("numbering must be integrated into Inscriptions, not a separate top-level index")
 	}
 	d, _ := findIndexDefinition("inscription-numbering")
 	if d.Buildable || d.ArbitraryStart {

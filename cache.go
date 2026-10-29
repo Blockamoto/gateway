@@ -38,6 +38,21 @@ func newCacheIndex() cacheIndex {
 
 func (a *app) cacheIndexPath() string { return filepath.Join(a.dataDir, "cache-index.json") }
 
+// Availability permits an explicit index build. It must not turn ordinary
+// navigation into legacy transaction/spend indexing when a gate opens.
+func (a *app) legacyKnowledgeEnabled() bool {
+	if !indexRunOptionalWorkAllowed(a.dataDir, "tx-locator") || !indexRunOptionalWorkAllowed(a.dataDir, "txo-spender") {
+		return false
+	}
+	if !releaseFeatureAvailable("tx-locator") || !releaseFeatureAvailable("txo-spender") {
+		return false
+	}
+	a.settingsMu.RLock()
+	enabled := a.settings.GraphIndex
+	a.settingsMu.RUnlock()
+	return enabled
+}
+
 func (a *app) rebuildCacheIndex() {
 	idx := newCacheIndex()
 	dir := filepath.Join(a.dataDir, "blocks", "json")
@@ -55,7 +70,7 @@ func (a *app) rebuildCacheIndex() {
 			continue
 		}
 		prefix := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
-		indexBlockInto(&idx, v, prefix)
+		indexBlockIntoPolicy(&idx, v, prefix, a.legacyKnowledgeEnabled())
 	}
 	a.cacheMu.Lock()
 	a.cacheIndex = idx
@@ -166,6 +181,9 @@ func indexBlockKnowledgeInto(idx *cacheIndex, v blockView) {
 }
 
 func (a *app) indexVerifiedBlockKnowledge(v blockView) {
+	if !a.legacyKnowledgeEnabled() {
+		return
+	}
 	if (!v.Verification.HeaderChainMatch && !v.Verification.ConsensusValidated) || v.Height < 0 {
 		return
 	}
@@ -200,6 +218,7 @@ func (a *app) indexCachedBlock(v blockView, prefix string) {
 // Explicit index source caching records possession only. Retaining source
 // bytes must not silently select the independent tx/spender indexes.
 func (a *app) indexCachedBlockPolicy(v blockView, prefix string, deriveKnowledge bool) {
+	deriveKnowledge = deriveKnowledge && a.legacyKnowledgeEnabled()
 	a.cacheMu.Lock()
 	indexBlockIntoPolicy(&a.cacheIndex, v, prefix, deriveKnowledge)
 	a.cacheMu.Unlock()
@@ -227,7 +246,7 @@ func (a *app) cachedTxLocation(txid string) (txLocation, error) {
 	loc, ok := a.cacheIndex.Tx[strings.ToLower(txid)]
 	a.cacheMu.RUnlock()
 	if !ok {
-		return txLocation{}, fmt.Errorf("transaction not present in verified BOD index")
+		return txLocation{}, fmt.Errorf("transaction not present in verified Gateway index")
 	}
 	if !a.headerMatches(loc.Height, loc.BlockHash) {
 		return txLocation{}, fmt.Errorf("indexed transaction is not yet covered by this peer's validated headers")
@@ -252,7 +271,7 @@ func (a *app) cachedSpendLocation(txid string, vout uint32) (spendLocation, erro
 	loc, ok := a.cacheIndex.Spends[key]
 	a.cacheMu.RUnlock()
 	if !ok {
-		return spendLocation{}, fmt.Errorf("spender not present in verified BOD index")
+		return spendLocation{}, fmt.Errorf("spender not present in verified Gateway index")
 	}
 	if !a.headerMatches(loc.Height, loc.BlockHash) {
 		return spendLocation{}, fmt.Errorf("indexed spender is not yet covered by this peer's validated headers")

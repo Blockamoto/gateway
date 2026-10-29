@@ -20,72 +20,49 @@ func cliHelp() {
 	fmt.Print(`Gateway Client v` + appVersion + `
 
 Usage:
-  gateway-client [flags]                  Open the default/custom UI
-  gateway-client <query>                  Universal resolve shorthand
-  gateway-client resolve <query>          Resolve Bitcoin on Demand, .bitcoin or Gateway On Demand god:// addresses
-  gateway-client block <height|hash|tip>  Fetch and decode a block
-  gateway-client transaction <txid|coord> Resolve and verify a transaction
-  gateway-client address <address>        Current UTXO state via Bitcoin on Demand/Core
-  gateway-client getblockhash <height>    Resolve height -> block hash
-  gateway-client gettxlocation <txid>     Bitcoin on Demand location hint (not trusted alone)
-  gateway-client getspender <txid:vout>   Resolve confirmed/mempool spender state
-  gateway-client graph status              Native/Core graph coverage and provider state
-  gateway-client graph build [from to]     Build native graph (default genesis -> snapshot tip)
-  gateway-client graph stop                Stop native graph backfill
-  gateway-client graph spender <txid:vout> Resolve through the graph capability
-  gateway-client index rules [index-id]    Inspect index rules and dependencies
+  gateway-client [flags]                  Open the Gateway UI
+  gateway-client <query>                  Resolve a supported resource address
+  gateway-client resolve <query>          Resolve .bitcoin, positional or god:// addresses
+  gateway-client block <height|hash|tip>   Fetch and verify a Bitcoin block
+  gateway-client transaction <txid|coord>  View a transaction from a known block
+  gateway-client getblockhash <height>    Resolve a selected-chain height to its block hash
+  gateway-client headers                 Inspect local header coverage
+  gateway-client peers                   Inspect ordinary Bitcoin peer connections
+  gateway-client status                  Inspect Gateway and optional Core status
+  gateway-client compatibility           Show schema and wire format versions
+  gateway-client ui                      Open the UI explicitly
+  gateway-client system                  Inspect Windows integration
+  gateway-client browser                 Inspect browser companion setup
+  gateway-client browser-validate <name>  Validate a Gateway browser address
+
+Indexes:
+  gateway-client index rules [index-id]   Inspect index rules and dependencies
+  gateway-client index status             Inspect coverage and the current job
   gateway-client index plan <index-id> [--from N --to N --retention ephemeral|cache|retain]
   gateway-client index build <index-id> [--from N --to N --retention ephemeral|cache|retain]
-  gateway-client index pause               Request a pause after the current source request
-  gateway-client index status              Definitions, providers, instances and current job
-  gateway-client index query <index-id> [--limit 50] Inspect retained derived records
-  gateway-client index lookup bitmap <district> Look up one exact Bitmap district in retained state
-  gateway-client index peers              Inspect claims from already-negotiated peers (explicit network request)
-  gateway-client index peer <host:port> <index-id> Preview a known peer's latest block; no storage or Bitcoin replay
-  gateway-client index publish <index-id>  Freeze the current checkpoint for explicit sharing
-  gateway-client index unpublish <index-id> Withdraw publication; keep private local records
-  gateway-client satline status                    Satline module/storage status
-  gateway-client satline start <query>              Show birth or resume a checked checkpoint
-  gateway-client satline next <query>               Advance exactly one logical hop
-  gateway-client satline recheck <query>            Recompute locally from the starting point
-  gateway-client satline network                    Peer settings and runtime counters
-  gateway-client satline publish <query>            Freeze this cache record for explicit sharing
-  gateway-client satline unpublish <query>          Withdraw this client's published snapshot
-  gateway-client satline peer <query> [host:port]    Fetch and locally verify one segment (opt-in)
-  gateway-client satline resolve <sat> [--step] [--rebuild] Resolve one ordinal sat using restart-safe checkpoints
-  gateway-client satline follow <satpoint> [--step] [--rebuild] Follow a satpoint with persisted forward checkpoints
-  gateway-client satline cache remove <sat>       Remove one persisted sat record
-  gateway-client satline cache clear              Clear Satline-derived cache only
-  gateway-client bitcoin satline ...       Module-oriented alias for Satline commands
-  gateway-client headers                  Local header coverage/status
-  gateway-client peers                    Discover Bitcoin on Demand-capable peers
-  gateway-client status                   Local Gateway/Bitcoin on Demand/Core status
-  gateway-client compatibility            Schema/wire compatibility metadata
-  gateway-client modules                  Discovered module manifests
-  gateway-client ui                       Explicitly open the UI
-  gateway-client system                   Windows integration status
-  gateway-client browser                  Browser integration / companion status
-  gateway-client browser-validate <name>  Validate an exact Gateway browser address
+  gateway-client index live <index-id> <enable|pause|resume|disable> [--retention ephemeral|cache|retain]
+  gateway-client index pause              Pause after the current source request
+
+Headers, Bitcoin Blocks, Inscriptions, TX ID Locators, IO Links, UTXO set and
+Addresses are available in this development source. Current addresses builds
+from saved UTXO state; historical addresses use explicit sparse ranges.
+Satline, Bitmap analysis and Gateway peer sharing remain locked.
+A transaction ID alone may need a block hint when its block is not locally indexed.
 
 Aliases:
-  tx = transaction
-  getblock = block
-  getblockfrompeer = block (automatic peer selection; height or hash)
-  search = resolve
+  tx = transaction; getblock = block; search = resolve
+  getblockfrompeer = block (automatic ordinary Bitcoin peer selection)
 
 Useful flags:
-  -data <dir>       Bitcoin on Demand data directory
+  -data <dir>       Gateway data directory
   -peer <host:port> preferred ordinary Bitcoin peer
-  -gateway-peer <host> manual Gateway peer
-  -advertise-gateway <host:port> reachable Gateway endpoint to announce via Bitcoin addr gossip
-  -bod-peer / -advertise-bod are retained as deprecated pre-1.0 aliases
   -skin <dir>       custom skin directory containing index.html
-  -http <addr>      local HTTP/API listen address (default 127.0.0.1:0)
+  -http <addr>      local HTTP/API address (default 127.0.0.1:0)
   -no-open          run HTTP/API without opening a browser
   -background       run silently with the local resolver available
-  -handle-uri URI   route a god:// or .bitcoin target into the running resolver
+  -handle-uri URI   route a supported address into the running resolver
 
-CLI output is JSON. It calls the same resolver core as the skin API.
+CLI output is JSON and uses the same verification and feature limits as the UI.
 `)
 }
 
@@ -106,12 +83,14 @@ func (a *app) cliStatus() map[string]any {
 	settings := a.settings
 	a.settingsMu.RUnlock()
 	cacheBytes, cacheBlocks := a.cacheStats()
+	serving := a.source.bitcoinServingStatus()
 	return map[string]any{
 		"app_version":  appVersion,
 		"headers":      a.getStatus(),
 		"core":         inspectCore(settings),
-		"sharing":      settings.ServeData && a.source.running(),
-		"listen_port":  overlayTCPPort,
+		"sharing":      serving.Enabled,
+		"listen_port":  serving.ListenPort,
+		"bitcoin_p2p":  serving,
 		"cache_bytes":  cacheBytes,
 		"cache_blocks": cacheBlocks,
 		"wire":         bodWireVersion,
@@ -165,7 +144,7 @@ func runCLI(a *app, args []string) (handled bool, exitCode int) {
 		if e := need(1, "transaction <txid|coordinate>"); e != nil {
 			return fail(e)
 		}
-		q := args[1]
+		q := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(args[1])), ".bitcoin")
 		if c, ok := parseBODCoordinate(q); ok {
 			var r coordinateResolution
 			r, err = a.resolveCoordinate(c)
@@ -173,7 +152,7 @@ func runCLI(a *app, args []string) (handled bool, exitCode int) {
 		} else if validHash(q) {
 			out, err = a.resolveTransactionViaOverlay(q)
 		} else {
-			err = fmt.Errorf("transaction expects a txid or positional coordinate")
+			err = fmt.Errorf("transaction expects a txid or a positional/hash-located block coordinate")
 		}
 	case "address", "getaddress":
 		if e := need(1, "address <bitcoin-address>"); e != nil {
@@ -219,6 +198,9 @@ func runCLI(a *app, args []string) (handled bool, exitCode int) {
 			out, err = a.resolveSpender(txid, vout)
 		}
 	case "graph":
+		if err := requireReleaseFeature("txo-spender"); err != nil {
+			return fail(err)
+		}
 		if len(args) < 2 {
 			out = a.graphStatus()
 			break
@@ -257,6 +239,9 @@ func runCLI(a *app, args []string) (handled bool, exitCode int) {
 			return fail(fmt.Errorf("graph subcommand must be status, build, stop, or spender"))
 		}
 	case "satline":
+		if err := requireReleaseFeature("satline"); err != nil {
+			return fail(err)
+		}
 		if len(args) < 2 {
 			out = a.satlineStatus()
 			break

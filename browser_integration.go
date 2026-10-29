@@ -29,18 +29,19 @@ type browserCompanionState struct {
 }
 
 type browserIntegrationStatus struct {
-	NativeActive       bool               `json:"native_active"`
-	NativeLastSeen     string             `json:"native_last_seen,omitempty"`
-	Namespaces         []browserNamespace `json:"namespaces"`
-	CompanionAvailable bool               `json:"companion_available"`
-	CompanionPath      string             `json:"companion_path,omitempty"`
-	CompanionActive    bool               `json:"companion_active"`
-	CompanionVersion   string             `json:"companion_version,omitempty"`
-	CompanionBrowser   string             `json:"companion_browser,omitempty"`
-	CompanionLastSeen  string             `json:"companion_last_seen,omitempty"`
-	Recoveries         uint64             `json:"recoveries"`
-	LastRecovery       string             `json:"last_recovery,omitempty"`
-	Note               string             `json:"note,omitempty"`
+	Browsers           []browserRegistration `json:"browsers"`
+	NativeActive       bool                  `json:"native_active"`
+	NativeLastSeen     string                `json:"native_last_seen,omitempty"`
+	Namespaces         []browserNamespace    `json:"namespaces"`
+	CompanionAvailable bool                  `json:"companion_available"`
+	CompanionPath      string                `json:"companion_path,omitempty"`
+	CompanionActive    bool                  `json:"companion_active"`
+	CompanionVersion   string                `json:"companion_version,omitempty"`
+	CompanionBrowser   string                `json:"companion_browser,omitempty"`
+	CompanionLastSeen  string                `json:"companion_last_seen,omitempty"`
+	Recoveries         uint64                `json:"recoveries"`
+	LastRecovery       string                `json:"last_recovery,omitempty"`
+	Note               string                `json:"note,omitempty"`
 }
 
 type browserValidation struct {
@@ -54,10 +55,9 @@ type browserValidation struct {
 }
 
 func gatewayBrowserNamespaces() []browserNamespace {
-	// v0.4.4 has one bundled browser-resolvable module. Keep this as a registry
-	// boundary so later modules can add namespaces without teaching the browser
-	// companion anything about Bitcoin itself.
-	return []browserNamespace{{Suffix: ".bitmap", Module: "Bitmap"}, {Suffix: ".bitcoin", Module: "Bitcoin on Demand"}, {Suffix: ".gateway", Module: "Gateway Client"}}
+	// The companion and optional Windows namespace routing share this registry.
+	// Resource parsing still validates each namespace's exact address grammar.
+	return []browserNamespace{{Suffix: ".bitmap", Module: "Bitmap"}, {Suffix: ".bitcoin", Module: "Bitcoin on Demand"}, {Suffix: ".gateway", Module: "Gateway Client"}, {Suffix: ".sat", Module: "Sats"}}
 }
 
 func browserCompanionDir(exe string) string {
@@ -79,6 +79,7 @@ func browserCompanionAvailable(exe string) bool {
 func (a *app) browserStatus() browserIntegrationStatus {
 	exe, _ := os.Executable()
 	out := browserIntegrationStatus{
+		Browsers:           a.browserRegistrations(),
 		Namespaces:         gatewayBrowserNamespaces(),
 		CompanionAvailable: browserCompanionAvailable(exe),
 		CompanionPath:      browserCompanionDir(exe),
@@ -260,6 +261,8 @@ func findChromiumExecutable(kind string) string {
 		{"brave", filepath.Join(pf, "BraveSoftware", "Brave-Browser", "Application", "brave.exe")},
 		{"brave", filepath.Join(pfx, "BraveSoftware", "Brave-Browser", "Application", "brave.exe")},
 		{"brave", filepath.Join(local, "BraveSoftware", "Brave-Browser", "Application", "brave.exe")},
+		{"chromium", filepath.Join(local, "Chromium", "Application", "chrome.exe")},
+		{"chromium", filepath.Join(pf, "Chromium", "Application", "chrome.exe")},
 	}
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	for _, c := range cs {
@@ -327,10 +330,14 @@ func (a *app) handleBrowserOpenSetup(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 404, fmt.Errorf("selected browser executable was not found; open its extensions page manually, or select another detected browser; no folder was opened"))
 		return
 	}
-	page := map[string]string{"chrome": "chrome://extensions", "edge": "edge://extensions", "brave": "brave://extensions"}[q.Browser]
-	if e := exec.Command(browserExe, "--profile-directory="+q.Profile, page).Start(); e != nil {
+	command, page, e := browserSetupCommand(browserExe, q.Browser, q.Profile)
+	if e == nil {
+		e = command.Start()
+	}
+	if e != nil {
 		jsonError(w, 400, e)
 		return
 	}
-	writeJSON(w, map[string]any{"ok": true, "action": "extensions", "browser": q.Browser, "profile": q.Profile, "state": "approval_pending", "folder": dir, "instructions": "In the selected browser profile, enable Developer mode, choose Load unpacked, then select the companion folder. Opening the page does not confirm approval or connection."})
+	_ = command.Process.Release()
+	writeJSON(w, map[string]any{"ok": true, "action": "extensions", "browser": q.Browser, "profile": q.Profile, "state": "manual_navigation_required", "manual_url": page, "folder": dir, "instructions": "In the opened browser, press Ctrl+L, paste " + page + " and press Enter. Then enable Developer mode, choose Load unpacked, and select the companion folder. Browser launch does not confirm extension installation or connection."})
 }

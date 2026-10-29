@@ -1,0 +1,958 @@
+{
+  "schema": 1,
+  "version": "0.7.6",
+  "title": "v0.7.6: Addresses",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-14",
+  "status": "published-prerelease-hosted-upgrade-and-renewal-accepted",
+  "published": true,
+  "release_kind": "prerelease",
+  "verified_runtime_source": "61fef459f7577f7c599b1e2d645deb4fee477629",
+  "source_stage_head": "730865780d355190c86bfd18e911b89843dcaea3",
+  "source_identity_note": "The released v0.7.6 tag, SOURCE-REVISION.txt and artifact manifest remain at b666c11c1f248769b3984a1168e9808930a8dc00. Operational approval 4d7a432ec1c0140d744b7b4de74d52e336992044 selects Addresses for the existing signed updater and commit-triggered Render deployment; it does not amend the released tag or package bytes. Source-stage full CI is recorded at 61fef45. The final clean build adds release documentation and regenerated Windows resources; exact native/package checks cover those delivered components.",
+  "enabled_indexes": [
+    "headers",
+    "blocks",
+    "inscriptions",
+    "tx-locator",
+    "txo-spender",
+    "utxo-state",
+    "address-state",
+    "address-history"
+  ],
+  "gated_features": [
+    "sat-state",
+    "satline",
+    "bitmap",
+    "gateway-peerhood"
+  ],
+  "validation_mode": "header_anchored_processing",
+  "consensus_validated": false,
+  "storage": {
+    "current_addresses": "Complete reverse membership and cached totals at one saved UTXO checkpoint, using shared output facts and the existing 288-transition recovery policy.",
+    "historical_outputs": "Optional explicit sparse creation ranges, with independent coverage and durable fact ownership after spend or raw-body eviction.",
+    "p2pk": "Strict compressed/uncompressed SEC public-key destinations identify exact P2PK scripts; P2PKH, alternative encodings and multisignature scripts are not aggregated.",
+    "legacy_address_coverage": "Conventional-address results remain usable. P2PK requires an explicit current rebuild or historical backfill, and missing coverage never establishes a known zero.",
+    "newer_sat_evidence": "Presence of Sat state or rebuild archives conservatively defers shared-fact sweeping without blocking healthy UTXO/address commits. This can retain otherwise reclaimable facts and does not migrate experimental Sat formats.",
+    "legacy_copies": "Retained without automatic removal; upgrading starts no optional address or UTXO build."
+  },
+  "validation": {
+    "final_linux_development_workflow": {
+      "result": "passed",
+      "source_revision": "61fef459f7577f7c599b1e2d645deb4fee477629",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38595767731",
+      "checks": [
+        "Linux runtime build and full Go tests",
+        "Vet and release regression race checks",
+        "Browser companion and UI helpers",
+        "Packaging regressions",
+        "Actual browser and native client regressions"
+      ],
+      "scope": "Source-built Linux runtime and controlled fixtures; final published Windows/Linux packages and hosted delivery require separate verification."
+    },
+    "focused_windows_addresses_and_compatibility": {
+      "result": "passed",
+      "address_run_elapsed_seconds": 126.738,
+      "checks": [
+        "Current and historical address state, exact balance totals, sparse coverage, pagination and recovery",
+        "Strict P2PK points, distinct script balances, legacy coverage upgrade and retained evidence",
+        "Preserved newer Sat state/archive facts with healthy UTXO/address writes and ordinary no-Sat collection",
+        "Authentic mainnet block-170 P2PK parser regression"
+      ],
+      "scope": "Focused checks on the final runtime source, not a new full Windows-suite run."
+    },
+    "compiled_windows_preview_navigation": {
+      "result": "passed",
+      "client_sha256": "a97f0226d0dc9eeae437f6e5423a82cd6e179a6bdfd61214417913ac0a9b396a",
+      "checks": [
+        "Actual compiled routes and CSS with genuine genesis map and transaction flow",
+        "P2PK destination navigation without implicit indexing",
+        "Reserved toolbar, narrow and constrained panels, keyboard controls and fullscreen"
+      ],
+      "scope": "Controlled Chromium against a development preview with no address/UTXO build; the correct balance was unavailable. Not final packaged executable or native WebView sharpness acceptance."
+    },
+    "earlier_windows_full_suite": {
+      "result": "passed-before-p2pk-refinement",
+      "elapsed_seconds": 786.677,
+      "scope": "Earlier Addresses implementation with subsequent focused recovery and P2PK checks; no claim of a final-source full Windows rerun."
+    },
+    "exact_release_packages_and_installer": {
+      "result": "passed",
+      "source_revision": "b666c11c1f248769b3984a1168e9808930a8dc00",
+      "original_public_assets": 8,
+      "github_digests_match": true,
+      "archive_checks": "Strict members, CRC, all file hashes, executable identities, source provenance and header baseline.",
+      "installer_payloads": "Exact executable, public compatibility/companion, notice and header payload equality; five Windows PE resource/version audits passed.",
+      "scope": "Static installer and archive audit; wizard execution, OS registration and antivirus acceptance are separate."
+    },
+    "exact_release_runtime_acceptance": {
+      "result": "passed",
+      "scope": "See separate Windows and published Linux execution records."
+    },
+    "github_prerelease_and_signed_hosted_delivery": {
+      "result": "passed",
+      "release_url": "https://github.com/Blockamoto/gateway/releases/tag/v0.7.6",
+      "source_revision": "b666c11c1f248769b3984a1168e9808930a8dc00",
+      "application_sequence": 11,
+      "header_sequence": 10,
+      "objects_downloaded": 99,
+      "bytes_downloaded": 88086481,
+      "verified_at": "2026-10-14T17:34:56Z",
+      "public_key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
+      "scope": "Both exact application ZIPs and all 97 header chunks were actually downloaded and verified using the preserved client trust authority. Offline signed bundle passed too."
+    },
+    "published_previous_version_automatic_upgrade": {
+      "result": "passed",
+      "source_version": "0.7.5",
+      "source_is_synthetic": false,
+      "installed_version": "0.7.6",
+      "download_button_pressed": false,
+      "restart_button_pressed": false,
+      "installed_binary_sha256": {
+        "GatewayClient.exe": "b04d48ee754ecbb327db43b52b074080c6e21356765f1d1c7c74b60f4f9a5c43",
+        "GatewayUpdateHelper.exe": "34533db85ee1b32da07e74eab6ad9fb40f7c9174f3ff7df062facc2d414a3f5c",
+        "GatewayOnDemand.exe": "2e3345ec5c94d6d5c743d7c33707f1f04e7280de6ff5b4c91ac27e7687e3dc8a",
+        "GatewayNativeHost.exe": "42c7404ada5b1ee1749443133ff1af0a9a2709307eaee73a9cf2aa84d78fe5ed"
+      },
+      "management_origin_preserved": true,
+      "preserved": "Saved settings, theme, index policy, data sentinel, full saved headers and bootstrap sidecars.",
+      "fresh_default_startup": {
+        "id": "stable",
+        "label": "Gateway updates",
+        "visible": true,
+        "configured_before_ui": true,
+        "automatic_check": true,
+        "automatic_install": false,
+        "manual_configuration_actions": 0,
+        "live_check": true,
+        "up_to_date": true,
+        "last_checked": "2026-10-14T17:35:26Z"
+      },
+      "fresh_header_feed": {
+        "sequence": 10,
+        "digest": "0e1ae2cb9b6d810de69f0ff231260cabbfa30ae7745b89744fc5efcb5162ef83",
+        "signed_count": 969480,
+        "validated_snapshot_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "complete_file_sha256": "56ef4938df13b98f6f1617ce35657f61d13a2ab3330428d79ac3ac192d5167c8",
+        "complete_file_count": 971443,
+        "ordinary_peer_extension_headers": 1963,
+        "synchronization": {
+          "ready": true,
+          "state": "current",
+          "count": 971443,
+          "height": 971442
+        },
+        "existing_snapshot_prefix_preserved": true
+      },
+      "production_profile_touched": false,
+      "scope": "Genuine published previous client in a disposable header/policy fixture with Automatic enabled. Separate fresh client checks use the default notification mode. Publisher warmed; system installation and cold-start latency unmeasured."
+    },
+    "exact_windows_runtime_acceptance": {
+      "result": "passed",
+      "client_sha256": "b04d48ee754ecbb327db43b52b074080c6e21356765f1d1c7c74b60f4f9a5c43",
+      "candidate_and_final_bytes_identical": true,
+      "header_baseline_count": 969480,
+      "checks": [
+        "Full packaged header import and offline restart",
+        "Actual compiled fresh Addresses cards and gates in light/dark narrow and desktop views",
+        "Actual genesis map/flow, reserved toolbar and P2PK destination navigation",
+        "Current and historical P2PK address builds from a copy of genuine published 0.7.5 genesis..170 UTXO state",
+        "Exact 10 BTC recipient balance, distinct P2PKH/SEC scripts, copied raw-body eviction and offline restart"
+      ],
+      "original_fixture_preserved": true,
+      "scope": "Actual final Windows client; bounded early-chain and controlled Chromium fixtures, not full-mainnet replay or native WebView sharpness."
+    },
+    "published_linux_initial_attempt": {
+      "result": "not-passed",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38607471330",
+      "passed": [
+        "Published fresh-package bootstrap, helper, index cards and viewport"
+      ],
+      "failure": "Update-package cards fixture waited for a hidden child track after iframe navigation; narrow test synchronization correction and a complete new run are required.",
+      "scope": "Retained initial failure; no final Linux success is inferred from the fresh-package subset."
+    },
+    "published_linux_execution": {
+      "result": "passed",
+      "status": "PASS",
+      "version": "0.7.6",
+      "source_revision": "b666c11c1f248769b3984a1168e9808930a8dc00",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38609838846",
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38609838846",
+      "run_id": 38609838846,
+      "verification_revision": "bfd4b55e872487d4c00a8aa1767625580545de41",
+      "verification_tool_blobs": {
+        ".github/workflows/published-linux-acceptance.yml": "ee5e75c957a7a6484c5aac0b5102831a022f3d05",
+        "scripts/test-index-cards-browser.js": "421cefab3dfd2ad6fa2863724a295105335b6757",
+        ".github/scripts/verify-published-linux.py": "bdd8635561ab8e358ab016a295a02f59e08db045"
+      },
+      "verification_contract": "Workflow runs the frozen-source package auditor and all frozen-source acceptance scripts except the explicitly checked-out operational cards fixture; that fixture reads expected version/channel from --source release-source at b666c11. Auditor blob unchanged. Operational source is bfd4b55, not the package source.",
+      "verified_at": "2026-10-14T17:52:35.902568+00:00",
+      "artifact_id": 11916874034,
+      "artifact_sha256": "81894e1ac0abfa848eaea58f729b3b046642873896090bdf84241f25b471aae6",
+      "published_hashes": {
+        "fresh_sha256": "424b660244717eaa764025dd399401865ad54491b8bd3d2e239844267e37b83a",
+        "update_sha256": "cba7e39998aaf5184bf3ddf5598bcc65d4c3b89078e9da8ac68751903e62b7b5",
+        "client_sha256": "ac828c5a516f676ce94509726b15fa53dcf6c8b591ae30d9ddbc9cbf42400753",
+        "helper_sha256": "952286eac84df1c6d8f9ae7a49fe27eab7fbfbab8fd6b866dbea1a270ee51335"
+      },
+      "checks": [
+        "Both exact published archive/source/payload contracts",
+        "Fresh and update compiled release-bootstrap execution",
+        "Both exact helpers refuse absent update plans without writes",
+        "969480-header fresh import and offline restart",
+        "Fresh and update actual compiled cards in Chromium",
+        "Fresh and update actual genesis map/flow/P2PK viewport navigation",
+        "No browser page errors or external-origin requests",
+        "Strict docking and outer scroll checks after stable parent/child viewport baseline"
+      ],
+      "header_baseline_count": 969480,
+      "geometry_samples": [
+        {
+          "package": "fresh",
+          "requested_viewport": {
+            "width": 1280,
+            "height": 900
+          },
+          "immediate_to_stable_absolute_y": [
+            444.8125,
+            444.8125,
+            444.8125,
+            444.8125
+          ],
+          "immediate_to_stable_panel_height": [
+            "445.20000000000005px",
+            "445.20000000000005px",
+            "445.20000000000005px",
+            "445.20000000000005px"
+          ],
+          "post_toggle_absolute_y": [
+            444.8125,
+            444.8125,
+            444.8125,
+            444.8125
+          ],
+          "maximum_post_toggle_displacement_px": 0.0
+        },
+        {
+          "package": "fresh",
+          "requested_viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "immediate_to_stable_absolute_y": [
+            470.09375,
+            470.09375,
+            470.09375,
+            470.09375
+          ],
+          "immediate_to_stable_panel_height": [
+            "367.92px",
+            "367.92px",
+            "367.92px",
+            "367.92px"
+          ],
+          "post_toggle_absolute_y": [
+            470.09375,
+            470.09375,
+            470.09375,
+            470.09375
+          ],
+          "maximum_post_toggle_displacement_px": 0.0
+        },
+        {
+          "package": "update",
+          "requested_viewport": {
+            "width": 1280,
+            "height": 900
+          },
+          "immediate_to_stable_absolute_y": [
+            444.8125,
+            444.8125,
+            444.8125,
+            444.8125
+          ],
+          "immediate_to_stable_panel_height": [
+            "445.20000000000005px",
+            "445.20000000000005px",
+            "445.20000000000005px",
+            "445.20000000000005px"
+          ],
+          "post_toggle_absolute_y": [
+            444.8125,
+            444.8125,
+            444.8125,
+            444.8125
+          ],
+          "maximum_post_toggle_displacement_px": 0.0
+        },
+        {
+          "package": "update",
+          "requested_viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "immediate_to_stable_absolute_y": [
+            470.09375,
+            470.09375,
+            470.09375,
+            470.09375
+          ],
+          "immediate_to_stable_panel_height": [
+            "367.92px",
+            "367.92px",
+            "367.92px",
+            "367.92px"
+          ],
+          "post_toggle_absolute_y": [
+            470.09375,
+            470.09375,
+            470.09375,
+            470.09375
+          ],
+          "maximum_post_toggle_displacement_px": 0.0
+        }
+      ],
+      "prior_failed_runs_preserved": [
+        38607471330,
+        38608523626
+      ],
+      "verification_only_correction": "Iframe readiness and settled atomic geometry measurements; unchanged one-pixel docking limit sampled immediately and over three more frames. No runtime, tag or published package changed.",
+      "prior_failure_causality": "Earlier failing geometry was not captured. This successful run has no initial-to-stable displacement; it does not prove the cause of the earlier narrow-layout failure.",
+      "limits": [
+        "Controlled Ubuntu Chromium execution in disposable profiles; not system installation or desktop-native WebView rendering.",
+        "Genesis/P2PK navigation and fresh empty Addresses UI; actual bounded address builds are recorded separately on Windows.",
+        "No whole-mainnet replay, full consensus validation, real network peer interoperability or full-mainnet scale claim."
+      ],
+      "environment": [
+        "v22.23.3",
+        "Python 3.12.3",
+        "Linux runnervmmprz5 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux"
+      ],
+      "evidence_sha256": {
+        "environment.txt": "cdf21ab6736f0d63ecfc7009f6ac4f572779c8be7d0e74dfbaa37acba992b661",
+        "fresh-bootstrap.txt": "5e7cddf7ac94a1e6513138f312ab3629e46f71be22a79924f9c3d6d58b9e9542",
+        "fresh-cards/home-desktop.png": "53f58de09206d2330fdf05343defb641092fcc5fc563d48bce195a7f34d2b45d",
+        "fresh-cards/indexes-dark.png": "6ecb1bd0a92cacf650179da3f1b2e8bb47e91237deda08df557b5e0d75249fda",
+        "fresh-cards/layout-geometry.json": "2224c96c3d66ca71624ea2e55943e60c3e0de043fc90e4887364f1a224654190",
+        "fresh-cards/locked-features.png": "c94b34950aa24afd29a6ccc1d007aa4d76e5eee8072693f9a8b8b9941f8e0bb4",
+        "fresh-cards/peers-dark.png": "40d7e1a3e1bb7b02017e53a381bed6c4408cd241be6fd6d5578025f7b8bbb9c9",
+        "fresh-cards/result.json": "96dc1967c26f6d0ae5233a34dddb6aa0f7aa3521773a4f82e02ecef82ec81d6a",
+        "fresh-cards/runtime.txt": "f088484c503e5edfef0f5adf269df55b5a47ae18085bc08523fa7dbd70835591",
+        "fresh-cards/satline-dark-1280.png": "2f02d071e71e8fa5f4a4c5599935da60d718e21cce4d538b1f04db527fc835b4",
+        "fresh-cards/satline-dark-390.png": "286c0619c09b11781312e5cb400e9ba0a672a6c75d2b4f6f3ba22bb516d5c8d7",
+        "fresh-cards/satline-light-1280.png": "2f02d071e71e8fa5f4a4c5599935da60d718e21cce4d538b1f04db527fc835b4",
+        "fresh-cards/satline-light-390.png": "286c0619c09b11781312e5cb400e9ba0a672a6c75d2b4f6f3ba22bb516d5c8d7",
+        "fresh-cards/settings-dark.png": "4c8094e7da22aecfc6c6fa7383c87f8fb24cc3514b791e39d2e71e41b86af9e3",
+        "fresh-cards/settings-light.png": "3e54a4186e08b7756e78871c47cd5c0733fd3f8d13b222a1a00d9d2087099452",
+        "fresh-cards/setup-1-dark-1280.png": "457d7d9708453338dc2e9091855cf310db22e97af165dada0f0d80fd407141b8",
+        "fresh-cards/setup-1-dark-390.png": "1c97d0e042bd29b141ae31bc6d756e374ab69a550c3279b7e2feaad10947b086",
+        "fresh-cards/setup-1-light-1280.png": "734af3e4c281df84f0f6ab023cecab113fec1374529e972b67d67018a56818fa",
+        "fresh-cards/setup-1-light-390.png": "7829edf9f7e1af22a620c605465f9375c3bc68f886484b8a61235568d907c2f8",
+        "fresh-cards/setup-2-dark-1280.png": "8b78a0245c2cd05939e2220622581b1eef1951dfbc97f17db6e01571e6921165",
+        "fresh-cards/setup-2-dark-390.png": "11615daaea60ce453a78544bb0a4f6f76069a5de37a46a686efb3e6b99bea060",
+        "fresh-cards/setup-2-light-1280.png": "501e151cc553e9093969daa9ed0d0ff92b8bdacbad4f4d5be0a04f4ba417196c",
+        "fresh-cards/setup-2-light-390.png": "663886d1dec14f6893f9bdd822529e9dcfbd4f09f203ab9163e135918070fa18",
+        "fresh-cards/setup-3-dark-1280.png": "acb495f202bd1a94ca6fc98410188d4c741f29f425f7b181c74a6d77c7d5de16",
+        "fresh-cards/setup-3-dark-390.png": "b47151484e48b521119647c5cfa39fb57154d3a323716217d6d59db47d79f090",
+        "fresh-cards/setup-3-light-1280.png": "e230619c5c9a127fdf5e36ad02930eda6311b91a5cc7cdfaef3912feeb9341fa",
+        "fresh-cards/setup-3-light-390.png": "13d46789876f9c8f26d60d63df5f2c29bbb3d9c968e69a45448bde46e760683b",
+        "fresh-cards/shell-indexes-desktop.png": "89740337302ad8645d2ae5d9b81858d1b62d80c43a61029cdc5607df2b618364",
+        "fresh-cards/shell-indexes-narrow.png": "7a6c14f4f2d580a0f6d516dc1f3ffbe5bf5716e6c094a0eb5a6adfb6535d066a",
+        "fresh-cards/timeline-desktop.png": "5a204652eddf172c62af5dec3c24889a984b0dd9ea49d600ffbe34100f80d187",
+        "fresh-cards/timeline-narrow.png": "0982862cd95ea9ad2ff0f5f20d7e4a77719ae2fcf80abb994e2cc082f0176b22",
+        "fresh-cards/updates-settings-dark.png": "6bccf81b95630b24f0c3bf0a9c5ccf2cec0af5276ea3407d3632d8d4292d3d60",
+        "fresh-cards/updates-settings.png": "62205b64fc45fe45c22b9d42666d40633b197027fb34479160061811151cc82d",
+        "fresh-cards.txt": "d150fa21c9c01d252d91bf39a2c1246de915db1b080982aa80c77ec467bb37e2",
+        "fresh-helper.json": "7adb984e3084f52a660223cfb210c779e703334969941266dfe848b1c38f3a49",
+        "fresh-viewport/native-genesis-flow.png": "73db6fa21370268e27fea6f463adef665bfac6daf71a51e42c7488eaf8b49c2f",
+        "fresh-viewport/native-genesis-map-390.png": "06104b64cb644887cb170e0155bc9f4ced5e706667f866a307ff118eef067d4d",
+        "fresh-viewport/native-genesis-map-650.png": "cc71b77b7d0d854b7c312f338e4ebd1d1d9b94782215825c9d29ef2c1f4a5dcb",
+        "fresh-viewport/native-genesis-map-desktop.png": "c50b5cb574c4166ad2884d8cfd62a9a8377496d9af1396c6e8b76c1375ffefa1",
+        "fresh-viewport/native-genesis-map-panel-120.png": "85eb36e9bace08619100e3071bb60cb2f300b84c60e2d2724a808135e25bfae9",
+        "fresh-viewport/native-genesis-map-panel-180.png": "ff7067cdfd3b627f5daeeed2a51fd747c23f15ff285766f4a582592cb12abdb8",
+        "fresh-viewport/native-p2pk-destination.png": "dfcaef27b504740b9d7ac208e2a033c540ab9c052a8a3091a1e1877209fc3de2",
+        "fresh-viewport/runtime.txt": "cfae4589c4780b902f52a3381797f029b23e820912cad3d35b2bb4d5f14e6794",
+        "fresh-viewport/summary.json": "b78f442157a3ff431e5a27c16f4e7fcceb9708d4a2f975eaa1befc5026654c9e",
+        "fresh-viewport.txt": "3284ed454fc260b9a5139da43c54046e7b778bb096332ae46e75d197e54ebac1",
+        "header-bootstrap/import.log": "c6cdfef6714c97736d5ca24fd224ddccdb4759c914ce017582dae93e7a7267cf",
+        "header-bootstrap/restart.log": "63af0e22903df69d3052f993d4199dd39aeb3aa735a4c66a0da139d980b7f96c",
+        "header-bootstrap/result.json": "9f5bb75e4a97e0de1cf1acc4c95424a9b5e217b57bfc52110c8322b7f672cced",
+        "header-bootstrap.txt": "1be7169c3bab61d3d7e81ea0177c9889f6eac889517db43592f8ff6642f961dd",
+        "inputs.json": "980a86da57ca6c186673469a1b6929bea9c85b11531c641f4f72e7734039acd3",
+        "package-audit.json": "2ac78341e384c1792bd815ae7796f61715942c7666f6cbd47dbe7fbd0731efa7",
+        "release.json": "1221c8d189bab2c04b540b2bb3b1200073ae19bff971f515a3e1536c18ff347b",
+        "SOURCE-REVISION.txt": "c933310aaf834dedbe94600734d7e43af81807e9051f3fd7141a6b897e5b432d",
+        "update-bootstrap.txt": "20d0a15ae6acf996ea3985d98518d9239e56dac6d195563a746e157f83d0b78f",
+        "update-cards/home-desktop.png": "53f58de09206d2330fdf05343defb641092fcc5fc563d48bce195a7f34d2b45d",
+        "update-cards/indexes-dark.png": "1f80cc3b82071d583d222f48f8a03d294d18a1815ebe903ceba3413c1ac25e1b",
+        "update-cards/layout-geometry.json": "2224c96c3d66ca71624ea2e55943e60c3e0de043fc90e4887364f1a224654190",
+        "update-cards/locked-features.png": "c94b34950aa24afd29a6ccc1d007aa4d76e5eee8072693f9a8b8b9941f8e0bb4",
+        "update-cards/peers-dark.png": "40d7e1a3e1bb7b02017e53a381bed6c4408cd241be6fd6d5578025f7b8bbb9c9",
+        "update-cards/result.json": "37462e89f97fcb632bec5df3295b0dd357649107d2ed1ae4564268aa5b1c2c7c",
+        "update-cards/runtime.txt": "5f084908d4d383e0386a26a6e3f4a8059e0c416e20e14711788e2dd1fa5afc48",
+        "update-cards/satline-dark-1280.png": "2f02d071e71e8fa5f4a4c5599935da60d718e21cce4d538b1f04db527fc835b4",
+        "update-cards/satline-dark-390.png": "286c0619c09b11781312e5cb400e9ba0a672a6c75d2b4f6f3ba22bb516d5c8d7",
+        "update-cards/satline-light-1280.png": "2f02d071e71e8fa5f4a4c5599935da60d718e21cce4d538b1f04db527fc835b4",
+        "update-cards/satline-light-390.png": "286c0619c09b11781312e5cb400e9ba0a672a6c75d2b4f6f3ba22bb516d5c8d7",
+        "update-cards/settings-dark.png": "4c8094e7da22aecfc6c6fa7383c87f8fb24cc3514b791e39d2e71e41b86af9e3",
+        "update-cards/settings-light.png": "3e54a4186e08b7756e78871c47cd5c0733fd3f8d13b222a1a00d9d2087099452",
+        "update-cards/setup-1-dark-1280.png": "457d7d9708453338dc2e9091855cf310db22e97af165dada0f0d80fd407141b8",
+        "update-cards/setup-1-dark-390.png": "1c97d0e042bd29b141ae31bc6d756e374ab69a550c3279b7e2feaad10947b086",
+        "update-cards/setup-1-light-1280.png": "75a089e4f77dc8d3e0b50e733374a18e852836bf9162b9d7723b0718e996f277",
+        "update-cards/setup-1-light-390.png": "980551a28db03c9a4eece9db666bc78d355de318994a0a3ed153ccd8ac2e410f",
+        "update-cards/setup-2-dark-1280.png": "8b78a0245c2cd05939e2220622581b1eef1951dfbc97f17db6e01571e6921165",
+        "update-cards/setup-2-dark-390.png": "11615daaea60ce453a78544bb0a4f6f76069a5de37a46a686efb3e6b99bea060",
+        "update-cards/setup-2-light-1280.png": "501e151cc553e9093969daa9ed0d0ff92b8bdacbad4f4d5be0a04f4ba417196c",
+        "update-cards/setup-2-light-390.png": "663886d1dec14f6893f9bdd822529e9dcfbd4f09f203ab9163e135918070fa18",
+        "update-cards/setup-3-dark-1280.png": "61a8f30a051fbe947fb084e389c9fab45e93a0ff670f450d6aa4f682cd4bda2d",
+        "update-cards/setup-3-dark-390.png": "9bbff8d4cdba5dbe8a5631a44db8b8d3397029f9e85caecb5a2771fa7d62a3c5",
+        "update-cards/setup-3-light-1280.png": "6db47594b5e0034ea100115923a70e31cc90c0cfcccbb64abb3714ea3a64550c",
+        "update-cards/setup-3-light-390.png": "13d46789876f9c8f26d60d63df5f2c29bbb3d9c968e69a45448bde46e760683b",
+        "update-cards/shell-indexes-desktop.png": "89740337302ad8645d2ae5d9b81858d1b62d80c43a61029cdc5607df2b618364",
+        "update-cards/shell-indexes-narrow.png": "7a6c14f4f2d580a0f6d516dc1f3ffbe5bf5716e6c094a0eb5a6adfb6535d066a",
+        "update-cards/timeline-desktop.png": "5a204652eddf172c62af5dec3c24889a984b0dd9ea49d600ffbe34100f80d187",
+        "update-cards/timeline-narrow.png": "0982862cd95ea9ad2ff0f5f20d7e4a77719ae2fcf80abb994e2cc082f0176b22",
+        "update-cards/updates-settings-dark.png": "ad0ff11aac49f96987e58b9aaeca79a3501283a46337db5addae7e4a62a6ca2d",
+        "update-cards/updates-settings.png": "502622711e6130a68598fe264235324149d899732999c835cc1275fbc1dc8230",
+        "update-cards.txt": "d150fa21c9c01d252d91bf39a2c1246de915db1b080982aa80c77ec467bb37e2",
+        "update-helper.json": "7adb984e3084f52a660223cfb210c779e703334969941266dfe848b1c38f3a49",
+        "update-viewport/native-genesis-flow.png": "73db6fa21370268e27fea6f463adef665bfac6daf71a51e42c7488eaf8b49c2f",
+        "update-viewport/native-genesis-map-390.png": "06104b64cb644887cb170e0155bc9f4ced5e706667f866a307ff118eef067d4d",
+        "update-viewport/native-genesis-map-650.png": "cc71b77b7d0d854b7c312f338e4ebd1d1d9b94782215825c9d29ef2c1f4a5dcb",
+        "update-viewport/native-genesis-map-desktop.png": "fef2eb4d2b84400c954025f2f286b65daf5c66c961fc6e13a0a874d63a446819",
+        "update-viewport/native-genesis-map-panel-120.png": "a06faa52be956b84bfde879bbe3105330027ab0d2d50431f164177d4836ff984",
+        "update-viewport/native-genesis-map-panel-180.png": "ff7067cdfd3b627f5daeeed2a51fd747c23f15ff285766f4a582592cb12abdb8",
+        "update-viewport/native-p2pk-destination.png": "dfcaef27b504740b9d7ac208e2a033c540ab9c052a8a3091a1e1877209fc3de2",
+        "update-viewport/runtime.txt": "6f5f09f602448370e983c5c89471d74d14a8e062bd01ffbf42631d361478ad2c",
+        "update-viewport/summary.json": "6a0b1afc50a14ab3210a0bf9ce98fcada430ce182cf7a99f5c6a42de7f558b54",
+        "update-viewport.txt": "3284ed454fc260b9a5139da43c54046e7b778bb096332ae46e75d197e54ebac1",
+        "verification-revision.txt": "d3843f423b453e420b2ef956231446e56409ad57a11f2963d77ebf2273b687e9"
+      }
+    },
+    "renewed_feed_acceptance": {
+      "result": "passed",
+      "workflow_receipt": {
+        "schema": 1,
+        "repository": "Blockamoto/gateway",
+        "version": "0.7.6",
+        "source_revision": "b666c11c1f248769b3984a1168e9808930a8dc00",
+        "status": "verified",
+        "bundle_sha256": "99f7e9a5d2f3818827455c27af78b8d4fa6d99263c656c9032c67c477319ab0f",
+        "bundle_asset_id": 641134662,
+        "publisher_url": "https://gateway-updates.onrender.com",
+        "application_sequence": 12,
+        "header_sequence": 11,
+        "application_expires_at": "2026-11-13T17:36:30Z",
+        "headers_expires_at": "2026-11-13T17:36:30Z",
+        "application_manifest_sha256": "2529f505da202a0f3871aaead78795da0aa65a2e55c3b30ebed3496f55634e85",
+        "headers_manifest_sha256": "a98692b75a35a2d6318386170d71eeb259ad15bbfb048537ef807adeb52ab975",
+        "verified_at": "2026-10-14T17:37:45+00:00"
+      },
+      "objects_downloaded": 99,
+      "verified_at": "2026-10-14T17:39:58Z",
+      "scope": "Actual commission and authenticated renewed downloads; future scheduled operation depends on hosting and permissions."
+    },
+    "renewed_client_startup": {
+      "result": "passed",
+      "details": {
+        "state": "ACTUAL_076_STARTUP_ACCEPTED_BOTH_RENEWED_FEEDS",
+        "client_version": "0.7.6",
+        "source_revision": "b666c11c1f248769b3984a1168e9808930a8dc00",
+        "binary_sha256": "b04d48ee754ecbb327db43b52b074080c6e21356765f1d1c7c74b60f4f9a5c43",
+        "archive_sha256": "5020422fce3d9cb2652d4c72c8abd06c7f64d4179aca43e95717f8e6b05efba1",
+        "archive_bytes": 13898696,
+        "public_origin_receipt_sha256": "ec774d9dffbfd18568b4f9e39d533705922105dfc56430f4e8f7a45ec3d81083",
+        "publisher": "https://gateway-updates.onrender.com",
+        "public_key": {
+          "key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
+          "public_key": "KDki4gPkMMcXH7epA7cuyvta0iPue+Vxqzl+YC1U3Rw="
+        },
+        "expected_app_sequence": 12,
+        "expected_header_sequence": 11,
+        "header_baseline": {
+          "count": 969480,
+          "sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+          "tip_hash": "00000000000000000000dcddaef250e1665ecc5dadbcbdb08769509c0a433253"
+        },
+        "mode": "Normal genuine 0.7.6 startup; embedded stable Notify; no manual check/download/apply/restart",
+        "expected_preservation": [
+          "settings.json",
+          "appearance.json",
+          "indexes/live.json",
+          "keep-user-data.txt",
+          "complete validated header prefix"
+        ],
+        "headers_paused": false,
+        "reason_headers_unpaused": "Normal header-feed check requires unpaused headers; complete baseline avoids chunk downloads.",
+        "runtime_started": true,
+        "publisher_preflight_requests": 0,
+        "production_profile_touched": false,
+        "result": "PASS",
+        "started_utc": "2026-10-14T17:40:01.508Z",
+        "initial_pid": 11484,
+        "final_pid": 11484,
+        "unnecessary_restart": false,
+        "application_feed": {
+          "sequence": 12,
+          "digest": "2529f505da202a0f3871aaead78795da0aa65a2e55c3b30ebed3496f55634e85",
+          "issued_at": "2026-10-14T17:36:30Z",
+          "expires_at": "2026-11-13T17:36:30Z"
+        },
+        "header_feed": {
+          "sequence": 11,
+          "digest": "a98692b75a35a2d6318386170d71eeb259ad15bbfb048537ef807adeb52ab975",
+          "issued_at": "2026-10-14T17:36:30Z",
+          "expires_at": "2026-11-13T17:36:30Z"
+        },
+        "status": {
+          "state": "current",
+          "current_version": "0.7.6",
+          "publisher_version": "0.7.6",
+          "configured": true,
+          "channel": "stable",
+          "publisher_url": "https://gateway-updates.onrender.com",
+          "key_fingerprint": "c5f20c46d5daf2aa7f21c1602efd3a0b",
+          "auto_check": true,
+          "auto_install": false,
+          "last_checked": "2026-10-14T17:40:05Z",
+          "downloaded_bytes": 0,
+          "can_apply": false,
+          "automatic_committed": false
+        },
+        "sampled_statuses": [
+          {
+            "state": "checking"
+          },
+          {
+            "state": "current",
+            "last_checked": "2026-10-14T17:40:05Z"
+          }
+        ],
+        "synchronization": {
+          "ready": true,
+          "state": "connecting",
+          "count": 969480,
+          "height": 969479
+        },
+        "credential_environment_stripped": true,
+        "host_user_profile_environment_replaced": true,
+        "manual_check_download_apply_restart_actions": 0,
+        "index_builds_requested": 0,
+        "stage_present": false,
+        "installation_helper_requested": false,
+        "public_envelopes_independently_verified": true,
+        "header_preservation": {
+          "validated_prefix_count": 969480,
+          "validated_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+          "full_validated_prefix_preserved": true,
+          "complete_file_count": 969480,
+          "complete_file_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+          "ordinary_peer_extension_headers": 0
+        },
+        "preserved_profile_sha256s": {
+          "settings.json": "1582edaa1d94b88d32269649bd5af5c7c700869d8b5d969dc941053c010c1ede",
+          "appearance.json": "99529e33f9fdb8c0e22634c7ad88478979f2c6cb778a1a118c4c1aee5680ae49",
+          "indexes/live.json": "fe86d5b26b0ef18cb98f18f63e98e558ede0fcc1431b560da6b2588a315eb4ae",
+          "keep-user-data.txt": "1cb5ae24f5de5516681d4ae3335d30cca8a9d1dc13d20fcabea0fabf60d0b377"
+        },
+        "settings_theme_policy_preserved": true,
+        "owned_process_stopped": true,
+        "owned_profile_removed": true,
+        "local_api_requests": [
+          {
+            "route": "/api/v1/runtime/ping",
+            "method": "GET"
+          },
+          {
+            "route": "/api/v1/updates/status",
+            "method": "GET"
+          },
+          {
+            "route": "/api/v1/runtime/ping",
+            "method": "GET"
+          },
+          {
+            "route": "/api/v1/updates/status",
+            "method": "GET"
+          },
+          {
+            "route": "/api/v1/status",
+            "method": "GET"
+          },
+          {
+            "route": "/api/v1/runtime/ping",
+            "method": "GET"
+          },
+          {
+            "route": "/api/v1/runtime/quit",
+            "method": "POST"
+          }
+        ],
+        "completed_utc": "2026-10-14T17:40:08.286Z"
+      }
+    },
+    "renewal_payload_invariance": {
+      "result": "passed",
+      "details": {
+        "schema": 1,
+        "status": "PASS",
+        "source_revision": "b666c11c1f248769b3984a1168e9808930a8dc00",
+        "initial_bundle_sha256": "1f9b663f25faf18b7a0132ba647b2bf2591c9ed5188a3ab344a621a51eebcd7d",
+        "renewed_bundle_sha256": "99f7e9a5d2f3818827455c27af78b8d4fa6d99263c656c9032c67c477319ab0f",
+        "github_asset": {
+          "url": "https://api.github.com/repos/Blockamoto/gateway/releases/assets/641134662",
+          "id": 641134662,
+          "node_id": "RA_kwDOU-XZhs4mNvBG",
+          "name": "gateway-update-feed-v0.7.6.zip",
+          "label": "",
+          "uploader": {
+            "login": "github-actions[bot]",
+            "id": 41898282,
+            "node_id": "MDM6Qm90NDE4OTgyODI=",
+            "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+            "html_url": "https://github.com/apps/github-actions",
+            "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+            "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+            "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+            "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+            "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+            "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+            "type": "Bot",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "content_type": "application/zip",
+          "state": "uploaded",
+          "size": 88133565,
+          "digest": "sha256:99f7e9a5d2f3818827455c27af78b8d4fa6d99263c656c9032c67c477319ab0f",
+          "download_count": 0,
+          "created_at": "2026-10-14T17:36:35Z",
+          "updated_at": "2026-10-14T17:36:41Z",
+          "browser_download_url": "https://github.com/Blockamoto/gateway/releases/download/v0.7.6/gateway-update-feed-v0.7.6.zip"
+        },
+        "manifest_changes": {
+          "headers-manifest.json": {
+            "initial_sequence": 10,
+            "renewed_sequence": 11,
+            "initial_issued_at": "2026-10-14T17:31:36Z",
+            "renewed_issued_at": "2026-10-14T17:36:30Z",
+            "initial_expires_at": "2026-11-13T17:31:36Z",
+            "renewed_expires_at": "2026-11-13T17:36:30Z",
+            "validity_hours": 720,
+            "signatures_changed": true
+          },
+          "manifest.json": {
+            "initial_sequence": 11,
+            "renewed_sequence": 12,
+            "initial_issued_at": "2026-10-14T17:31:22Z",
+            "renewed_issued_at": "2026-10-14T17:36:30Z",
+            "initial_expires_at": "2026-11-13T17:31:22Z",
+            "renewed_expires_at": "2026-11-13T17:36:30Z",
+            "validity_hours": 720,
+            "signatures_changed": true
+          }
+        },
+        "unchanged_payload_objects": 99,
+        "unchanged_payload_bytes": 88086481,
+        "complete_header_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "initial_receipt_sha256": "e08754df6992024139b96d8a45c196d231a71c78be2edf6b4e341b371e31c810",
+        "renewed_receipt_sha256": "9386179834b50026d2b62b2b15416cd65a837f869d54b1aa338080afc40093ae"
+      }
+    },
+    "render_health": {
+      "result": "passed",
+      "details": {
+        "schema": 1,
+        "scope": "Read-only Render health; no environment-variable reads or raw logs saved",
+        "service": {
+          "id": "srv-db3rt9gm7kps73fr6up0",
+          "name": "gateway-updates",
+          "branch": "main",
+          "auto_deploy": "yes",
+          "auto_deploy_trigger": "commit",
+          "suspended": "not_suspended"
+        },
+        "deployments": [
+          {
+            "id": "dep-db7rscd44i6c73f62o10",
+            "status": "live",
+            "commit": "342d9002ab73674630b255926ecf07a7fece8525",
+            "created_at": "2026-10-14T17:39:03.17982Z",
+            "finished_at": "2026-10-14T17:40:02.989459Z",
+            "trigger": "new_commit"
+          },
+          {
+            "id": "dep-db7rrr3m8hqs73f2dbog",
+            "status": "deactivated",
+            "commit": "112eeb549803d41fda446897fcd2e0d557491a6d",
+            "created_at": "2026-10-14T17:37:48.10143Z",
+            "finished_at": "2026-10-14T17:39:01.624034Z",
+            "trigger": "new_commit"
+          },
+          {
+            "id": "dep-db7rravf3r2c7395itr0",
+            "status": "deactivated",
+            "commit": "4d7a432ec1c0140d744b7b4de74d52e336992044",
+            "created_at": "2026-10-14T17:36:43.279535Z",
+            "finished_at": "2026-10-14T17:37:25.8533Z",
+            "trigger": "deploy_hook"
+          },
+          {
+            "id": "dep-db7rpqgm17is73ak0vcg",
+            "status": "deactivated",
+            "commit": "4d7a432ec1c0140d744b7b4de74d52e336992044",
+            "created_at": "2026-10-14T17:33:30.495921Z",
+            "finished_at": "2026-10-14T17:34:31.765491Z",
+            "trigger": "new_commit"
+          }
+        ],
+        "logs": {
+          "from": "2026-10-14T17:33:00Z",
+          "to": "2026-10-14T17:40:48.945Z",
+          "queries": [
+            {
+              "query": "error_level",
+              "count": 0,
+              "has_more": false,
+              "parse_failed": false,
+              "signatures": {}
+            },
+            {
+              "query": "http_5xx",
+              "count": 0,
+              "has_more": false,
+              "parse_failed": false,
+              "signatures": {}
+            },
+            {
+              "query": "app_error_text",
+              "count": 0,
+              "has_more": false,
+              "parse_failed": false,
+              "signatures": {}
+            }
+          ]
+        },
+        "status": "PASS",
+        "post_deploy_manifest_check": {
+          "checked_at": "2026-10-14T17:41:09+00:00",
+          "feeds": [
+            {
+              "route": "/manifest.json",
+              "matches_authenticated_renewed_bundle": true,
+              "sha256": "2529f505da202a0f3871aaead78795da0aa65a2e55c3b30ebed3496f55634e85"
+            },
+            {
+              "route": "/headers/manifest.json",
+              "matches_authenticated_renewed_bundle": true,
+              "sha256": "a98692b75a35a2d6318386170d71eeb259ad15bbfb048537ef807adeb52ab975"
+            }
+          ]
+        }
+      }
+    },
+    "final_immutable_release_check": {
+      "status": "PASS",
+      "source_revision": "b666c11c1f248769b3984a1168e9808930a8dc00",
+      "original_assets_unchanged": 8,
+      "canonical_bundle_sha256": "99f7e9a5d2f3818827455c27af78b8d4fa6d99263c656c9032c67c477319ab0f",
+      "application_sequence": 12,
+      "header_sequence": 11,
+      "public_prerelease": true
+    },
+    "published_linux_second_attempt": {
+      "result": "NOT_PASSED",
+      "run_id": 38608523626,
+      "url": "https://github.com/Blockamoto/gateway/actions/runs/38608523626",
+      "verification_revision": "342d9002ab73674630b255926ecf07a7fece8525",
+      "source_revision": "b666c11c1f248769b3984a1168e9808930a8dc00",
+      "artifact_id": 11916137859,
+      "artifact_sha256": "91e10e775b151b2b6049ddd9aced49034afa2b74700e78790eeef90c128c89b9",
+      "failure": "update-package cards test narrow assertDocked details comparison after viewport resize; no sampled geometry in failed harness",
+      "page_errors": [],
+      "external_requests": [],
+      "prior_passes": [
+        "Published archive/source/binary audit",
+        "Fresh and update release bootstrap",
+        "Both helpers reject no-plan without writes",
+        "Fresh header import and offline restart",
+        "Fresh cards browser",
+        "Fresh viewport browser"
+      ],
+      "first_failure_preserved": 38607471330
+    },
+    "published_linux_verifier_correction": {
+      "scope": "Test-only frame readiness and atomic, settled-viewport measurement. The <=1px inspector docking invariant and viewport/scroll assertions are retained and sampled over multiple frames. Both original failed attempts are preserved; the earlier narrow-layout cause was not proven from its uncaptured geometry. No runtime, published package or tag changed."
+    },
+    "renewed_client_test_correction": {
+      "initial_result": "not_passed_test_cleanup",
+      "reason": "The adapted verification helper checked an optional build-sidecar path during cleanup. The client accepted both renewed feeds. The corrected helper repeated the full acceptance in a new disposable profile and passed, including graceful shutdown and preservation checks.",
+      "client_or_package_changed": false,
+      "original_attempt_retained": true
+    }
+  },
+  "limitations": [
+    "Full Bitcoin consensus/script validation remains deferred.",
+    "No whole-mainnet replay, full-chain address build, storage benchmark or production-scale speed claim is established.",
+    "No final-source full Windows Go-suite rerun is claimed. Earlier Windows full-suite evidence and final focused/native checks remain separately scoped.",
+    "Historical received totals cover explicit creation ranges and do not establish current balance or complete transaction history.",
+    "Balances exclude mempool activity and do not imply wallet ownership or spendability.",
+    "Sats, inscription holdings, snapshot/state exchange and Gateway peerhood remain gated in Addresses.",
+    "Windows client and installer binaries are not Authenticode signed. Installer wizard, OS/browser registration and antivirus/SmartScreen acceptance are not established by payload audits.",
+    "The hosted automatic-upgrade fixture contains full headers and saved policy, not a complete historical TXIO/UTXO profile; separate genuine early-chain address checks cover saved UTXO reuse.",
+    "Hosted checks used disposable profiles and a warmed publisher; idle cold-start latency was not measured.",
+    "The newer-Sat compatibility guard preserves evidence by retaining additional facts; it does not convert incompatible experimental Sat state.",
+    "Successful renewal commissioning does not guarantee future scheduled execution."
+  ],
+  "delivery": {
+    "status": "verified-initial-upgrade-renewal-and-renewed-client",
+    "publisher_url": "https://gateway-updates.onrender.com",
+    "workspace": "My Workspace",
+    "render_service": "gateway-updates",
+    "auto_deploy_on_commit": true,
+    "initial_approval_commit": "4d7a432ec1c0140d744b7b4de74d52e336992044",
+    "application_sequence": 12,
+    "header_sequence": 11,
+    "application_expires_at": "2026-11-13T17:36:30Z",
+    "headers_expires_at": "2026-11-13T17:36:30Z",
+    "saved_profile_modes_preserved": true,
+    "weekly_renewal": "Explicitly approved release only; commission result recorded separately.",
+    "renewal_run": "https://github.com/Blockamoto/gateway/actions/runs/38608004268",
+    "canonical_bundle_sha256": "99f7e9a5d2f3818827455c27af78b8d4fa6d99263c656c9032c67c477319ab0f"
+  },
+  "source_revision": "b666c11c1f248769b3984a1168e9808930a8dc00",
+  "release_url": "https://github.com/Blockamoto/gateway/releases/tag/v0.7.6",
+  "published_at": "2026-10-14T17:30:44Z",
+  "exact_windows_client_sha256": "b04d48ee754ecbb327db43b52b074080c6e21356765f1d1c7c74b60f4f9a5c43",
+  "public_release_assets": [
+    {
+      "name": "gateway-client-v0.7.6-windows-amd64.zip",
+      "bytes": 13898696,
+      "sha256": "5020422fce3d9cb2652d4c72c8abd06c7f64d4179aca43e95717f8e6b05efba1",
+      "asset_id": 641118524,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.6-windows-amd64-fresh.zip",
+      "bytes": 79805501,
+      "sha256": "dc07c2286465d842bae6cde6db090db09aa91bcedd2204781ebfa8ca3b5c3d16",
+      "asset_id": 641118520,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.6-linux-amd64.zip",
+      "bytes": 8163296,
+      "sha256": "cba7e39998aaf5184bf3ddf5598bcc65d4c3b89078e9da8ac68751903e62b7b5",
+      "asset_id": 641118521,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.6-linux-amd64-fresh.zip",
+      "bytes": 74070097,
+      "sha256": "424b660244717eaa764025dd399401865ad54491b8bd3d2e239844267e37b83a",
+      "asset_id": 641118539,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.6-installer.exe",
+      "bytes": 118259200,
+      "sha256": "0dc835d78a8c70ce6065404038655113256eeedfbbe7dc8eb93f6dc521453de2",
+      "asset_id": 641118526,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-headers-v0.7.6.zip",
+      "bytes": 65906545,
+      "sha256": "227e1ef91fc5e904a77754d6b15201bd8b8568dd17ad12c1cba7256b63a5ee54",
+      "asset_id": 641118682,
+      "github_digest_matches": true
+    },
+    {
+      "name": "artifact-manifest.json",
+      "bytes": 1261,
+      "sha256": "97f2c848ade6bb8d8ad8321be56f8390686c0d15723052d2d9c55ca14ec5ef2a",
+      "asset_id": 641118733,
+      "github_digest_matches": true
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 633,
+      "sha256": "19aa90719efaf72e5e65ab2d64886feaad0a3b9100f3b7e4ca0c18a3ec8b8f8b",
+      "asset_id": 641118768,
+      "github_digest_matches": true
+    }
+  ],
+  "pending_acceptance": [],
+  "evidence_sha256": {
+    "published_origin": "ec774d9dffbfd18568b4f9e39d533705922105dfc56430f4e8f7a45ec3d81083",
+    "exact_packages": "74c48731847e6d81b5947d2b441d754479f2c7374a2535eb143a0efed1775d83",
+    "binary_audit": "571d455e0fdd06a4ec6efb8d0a441163d0185f3026af3b54b2436900784e7690",
+    "native_candidate_equality": "8ebcb9c8026ce6706be710be95f8e60782320494beb3003b1dbfaf28f3c434c2",
+    "genuine_075_address_prefix": "cc945812de420bceb0c46c659671c368f2d1c4178a8211e17d4bc6dd5cdd0ba5",
+    "windows_header_bootstrap": "b0d8feaa548a4ca322ee04e36fd8688947d78bd1a173b16fd2f0684dedf0cd00",
+    "windows_index_cards": "e80c1f4d8bf7964171e4730175bbec6d857ef533b2dcbdab0e088a14a3e63577",
+    "windows_viewport": "8a3c220c12dafac889f65d75d1aa9abe9966997f56661f032fccc2675558503c",
+    "signed_bundle_offline": "a692a2539525f019e481987af80860690fcb7760e3cae5cefe68c05cb8032d40",
+    "signed_live_downloads": "e08754df6992024139b96d8a45c196d231a71c78be2edf6b4e341b371e31c810",
+    "genuine_hosted_upgrade": "95c8bbc4349ff74425b14740cac73d6bca775c614c28b1f3d3d970916e8b9a87",
+    "public_distribution_bundle": "fa7653f7e6fddd1a84a8c8cb7b69915bded30ce3b2dd0581f9f21566e49298a5",
+    "published_linux_inspection": "03a81a81d4740c03943ed6591db1f4f6e9a3f6bba9bf806156794322c92ace8e",
+    "renewal_commission": "e3a46f5823b3108378280e2bbb446b90ca13f8838cd40fa893d0516b09fa10bc",
+    "renewed_live_downloads": "9386179834b50026d2b62b2b15416cd65a837f869d54b1aa338080afc40093ae",
+    "renewed_client": "d3f35ab3f3902782751b0cf01a5f8cf2854c8c7e92ba7c0eb84e3f97542e0d44",
+    "final_immutable_release_check": "24e9961b6b03dae0f688ace362d25c1410f2fef711bf3c422d4faca4af6a0873",
+    "published_linux_second_attempt": "b15d068d1daf6f3173e3947c1f5acca2c260a0114760c489e52cade08c3f651f",
+    "render_health": "601981c772222bb7ff6992e74a2847810642e4b7c9b27bd27baef19eb87c30a1",
+    "renewal_payload_invariance": "7d7c1fe37752d8910185c8be7ac051442f356c1912b77e97373f6248895e51bf"
+  },
+  "initial_public_distribution_bundle": {
+    "result": "PASS",
+    "bundle_asset_id": 641124746,
+    "bytes": 88145039,
+    "sha256": "1f9b663f25faf18b7a0132ba647b2bf2591c9ed5188a3ab344a621a51eebcd7d",
+    "release_id": 412997095,
+    "public": true,
+    "prerelease": true
+  },
+  "public_distribution_bundle": {
+    "url": "https://api.github.com/repos/Blockamoto/gateway/releases/assets/641134662",
+    "id": 641134662,
+    "node_id": "RA_kwDOU-XZhs4mNvBG",
+    "name": "gateway-update-feed-v0.7.6.zip",
+    "label": "",
+    "uploader": {
+      "login": "github-actions[bot]",
+      "id": 41898282,
+      "node_id": "MDM6Qm90NDE4OTgyODI=",
+      "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+      "html_url": "https://github.com/apps/github-actions",
+      "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+      "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+      "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+      "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+      "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+      "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+      "type": "Bot",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "content_type": "application/zip",
+    "state": "uploaded",
+    "size": 88133565,
+    "digest": "sha256:99f7e9a5d2f3818827455c27af78b8d4fa6d99263c656c9032c67c477319ab0f",
+    "download_count": 0,
+    "created_at": "2026-10-14T17:36:35Z",
+    "updated_at": "2026-10-14T17:36:41Z",
+    "browser_download_url": "https://github.com/Blockamoto/gateway/releases/download/v0.7.6/gateway-update-feed-v0.7.6.zip"
+  }
+}

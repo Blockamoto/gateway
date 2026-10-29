@@ -1,0 +1,146 @@
+name: Gateway published Linux acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published version (for example 0.7.5)
+        required: true
+        type: string
+      source_revision:
+        description: Exact 40-character packaged source revision
+        required: true
+        type: string
+      fresh_sha256:
+        description: Published Linux fresh ZIP SHA256
+        required: true
+        type: string
+      update_sha256:
+        description: Published Linux application-only ZIP SHA256
+        required: true
+        type: string
+      client_sha256:
+        description: Independently recorded gateway-client SHA256
+        required: true
+        type: string
+      helper_sha256:
+        description: Independently recorded gateway-update-helper SHA256
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  published-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXPECTED_VERSION: ${{ inputs.version }}
+      EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+      EXPECTED_FRESH_SHA256: ${{ inputs.fresh_sha256 }}
+      EXPECTED_UPDATE_SHA256: ${{ inputs.update_sha256 }}
+      EXPECTED_CLIENT_SHA256: ${{ inputs.client_sha256 }}
+      EXPECTED_HELPER_SHA256: ${{ inputs.helper_sha256 }}
+    steps:
+      - name: Check out verification tools only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: verification-source
+          sparse-checkout: |
+            /.github/scripts/*
+            /scripts/test-index-cards-browser.js
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Prepare disposable evidence paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/published-linux/evidence"
+          printf 'EVIDENCE=%s\nVERIFY_SCRIPT=%s\n' "$RUNNER_TEMP/published-linux/evidence" "$GITHUB_WORKSPACE/verification-source/.github/scripts/verify-published-linux.py" >> "$GITHUB_ENV"
+      - name: Validate explicit inputs before fetching source or assets
+        run: python3 "$VERIFY_SCRIPT" validate --evidence "$EVIDENCE"
+      - name: Check out exact packaged source for expected contracts
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.source_revision }}
+          path: release-source
+          persist-credentials: false
+      - name: Record source and runner identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C verification-source rev-parse HEAD > "$EVIDENCE/verification-revision.txt"
+          git -C release-source rev-parse HEAD > "$EVIDENCE/SOURCE-REVISION.txt"
+          { node --version; python3 --version; uname -a; } > "$EVIDENCE/environment.txt"
+      - name: Fetch and audit exact published Linux archives
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 "$VERIFY_SCRIPT" audit --evidence "$EVIDENCE" --source "$GITHUB_WORKSPACE/release-source" --work "$RUNNER_TEMP/published-linux/packages"
+      - name: Execute exact published clients and validate release bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset GH_TOKEN GITHUB_TOKEN
+          "$PUBLISHED_FRESH_DIR/gateway-client" -verify-release-bootstrap | tee "$EVIDENCE/fresh-bootstrap.txt"
+          "$PUBLISHED_UPDATE_DIR/gateway-client" -verify-release-bootstrap | tee "$EVIDENCE/update-bootstrap.txt"
+      - name: Execute published helpers without an update plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset GH_TOKEN GITHUB_TOKEN
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          evidence = pathlib.Path(os.environ['EVIDENCE'])
+          def snapshot(root):
+              result = {}
+              for path in sorted(root.rglob('*')):
+                  if path.is_file():
+                      result[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+                  else:
+                      result[path.relative_to(root).as_posix()] = 'directory'
+              return result
+          for kind in ['fresh', 'update']:
+              package = pathlib.Path(os.environ['PUBLISHED_' + kind.upper() + '_DIR'])
+              sandbox = pathlib.Path(os.environ['RUNNER_TEMP']) / ('published-helper-' + kind)
+              sandbox.mkdir()
+              before = snapshot(package)
+              environment = dict(os.environ, HOME=str(sandbox), XDG_CONFIG_HOME=str(sandbox / 'config'), XDG_DATA_HOME=str(sandbox / 'data'))
+              execution = subprocess.run([str(package / 'gateway-update-helper')], cwd=sandbox, env=environment, text=True, capture_output=True, timeout=15)
+              result = {'exit_code': execution.returncode, 'stdout': execution.stdout, 'stderr': execution.stderr, 'package_unchanged': before == snapshot(package), 'sandbox_empty': not list(sandbox.iterdir())}
+              (evidence / (kind + '-helper.json')).write_text(json.dumps(result, indent=2) + '\n')
+              assert execution.returncode == 2 and execution.stdout == '' and execution.stderr.strip() == 'A verified local update plan and digest are required.', result
+              assert result['package_unchanged'] and result['sandbox_empty'], result
+          print('Both exact published helpers executed and rejected missing plans without package/profile writes.')
+          PY
+      - name: Verify fresh header import and restart offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset GH_TOKEN GITHUB_TOKEN
+          node release-source/scripts/test-header-bootstrap.js --binary "$PUBLISHED_FRESH_DIR/gateway-client" --out "$EVIDENCE/header-bootstrap" --timeout-ms 600000 | tee "$EVIDENCE/header-bootstrap.txt"
+      - name: Install pinned browser test runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/published-linux/browser" --no-audit --no-fund playwright@1.62.1
+          "$RUNNER_TEMP/published-linux/browser/node_modules/.bin/playwright" install chromium
+      - name: Native offline cards and viewport for both published packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset GH_TOKEN GITHUB_TOKEN
+          export NODE_PATH="$RUNNER_TEMP/published-linux/browser/node_modules"
+          for kind in fresh update; do
+            case "$kind" in fresh) package="$PUBLISHED_FRESH_DIR";; update) package="$PUBLISHED_UPDATE_DIR";; esac
+            node verification-source/scripts/test-index-cards-browser.js --source "$GITHUB_WORKSPACE/release-source" --binary "$package/gateway-client" --out "$EVIDENCE/$kind-cards" | tee "$EVIDENCE/$kind-cards.txt"
+            node release-source/scripts/test-viewport-native-browser.js --binary "$package/gateway-client" --out "$EVIDENCE/$kind-viewport" | tee "$EVIDENCE/$kind-viewport.txt"
+          done
+      - name: Preserve exact package acceptance evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: published-linux-${{ github.run_id }}
+          path: ${{ runner.temp }}/published-linux/evidence/
+          retention-days: 14
+          if-no-files-found: error

@@ -1,0 +1,846 @@
+{
+  "schema": 1,
+  "version": "0.7.4",
+  "title": "TXIO and serialized block bodies",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-12",
+  "status": "published-prerelease-hosted-upgrade-and-renewal-accepted",
+  "published": true,
+  "release_kind": "prerelease",
+  "source_identity": "App source and v0.7.4 tag remain 87770d70c8162139f19fdf37e55a474e6370be40. Exact native checks used the original 6f3a114f09667a596cf592c9b322f556d45c6e87 build; the reviewed two-file test-only correction at 877 left all 449 non-test tracked files unchanged, and Windows/Linux client rebuilds were byte-identical. Packaging-policy correction 65c00fc922fe146427a883739fcc496420f4e70c removed supplemental documents and pinned their links in the two automatic-update ZIPs without rebuilding or changing compiled payloads. Fresh ZIPs, installer and headers ZIP retain their original bytes. SOURCE-REVISION.txt and artifact-manifest.json still identify app source 877.",
+  "enabled_indexes": [
+    "headers",
+    "blocks",
+    "inscriptions",
+    "tx-locator",
+    "txo-spender"
+  ],
+  "product_names": {
+    "txo-spender": "TXIO (Transaction Input/Output)"
+  },
+  "gated_features": [
+    "gateway-peerhood",
+    "sat-state",
+    "satline",
+    "bitmap",
+    "bitmap-compatibility",
+    "address-history",
+    "address-state"
+  ],
+  "storage": {
+    "blocks_body_schema": 2,
+    "txio_schema": 2,
+    "legacy_copies": "retained without automatic removal",
+    "new_raw_body_allocation": "NTFS hard links share verified allocation across independent cache, retained and durable names; unsupported filesystems preserve durability with measured independent-copy fallback.",
+    "native_measured_blocks_0_and_1": {
+      "legacy_commit_json_bytes": 4196,
+      "compact_commit_json_bytes": 2534,
+      "durable_serialized_body_bytes": 500,
+      "scope": "Canonical commit and body payload only; excludes receipts, private accelerators, heads, filesystem allocation and retained legacy copies."
+    },
+    "native_txio_block_170_commit_json_bytes": 1496,
+    "genesis_285_byte_allocation": {
+      "cache_and_durable_logical_bytes": 570,
+      "cache_retained_durable_logical_bytes": 855,
+      "ntfs_unique_bytes": 285,
+      "unsupported_two_name_unique_bytes": 570,
+      "unsupported_three_name_unique_bytes": 855
+    },
+    "allocation_limits": {
+      "ntfs": "Hard-link names share allocation only where verified same-profile regular objects are eligible; candidates from external Core mounts/symlinks are excluded",
+      "unsupported_filesystem": "exFAT rejected hard links; flushed independent-copy fallback passed",
+      "measurements": {
+        "exclusions": [
+          "directory entries",
+          "receipts",
+          "allocation rounding",
+          "all preserved existing independent raw and decoded/hex legacy copies"
+        ],
+        "cache_plus_durable": {
+          "logical_bytes": 570,
+          "unique_serialized_bytes": 285,
+          "object_count": 1
+        },
+        "unsupported_links_cache_plus_retained_plus_durable": {
+          "logical_bytes": 855,
+          "unique_serialized_bytes": 855,
+          "object_count": 3
+        },
+        "serialized_genesis_bytes": 285,
+        "cache_plus_retained_plus_durable": {
+          "logical_bytes": 855,
+          "unique_serialized_bytes": 285,
+          "object_count": 1
+        },
+        "unsupported_links_cache_plus_durable": {
+          "logical_bytes": 570,
+          "unique_serialized_bytes": 570,
+          "object_count": 2
+        }
+      },
+      "legacy_existing_copies": "Preserved, never relinked or removed merely to reclaim duplication",
+      "privacy_and_retention": "Sharing remains gated; private bytes do not become published merely because retention names share an allocation",
+      "scope": "Measured serialized genesis 285-byte object; directory entries, receipts, filesystem allocation rounding and retained old copies are excluded",
+      "final_native_profiles": "Validation profiles on D exFAT exercised independent-copy fallback; final native checks do not claim their physical allocation was deduplicated"
+    }
+  },
+  "validation": {
+    "windows_go_suite": {
+      "result": "original_full_run_retained_plus_passed_reviewed_focused_corrections",
+      "source_commit": "6f3a114f09667a596cf592c9b322f556d45c6e87",
+      "exact_native_client_sha256": "5df02149845bc5ab6adc6c914ffd9211595b2d9ef3f346607972644c1e1e22b9",
+      "pass_including_subtests": 991,
+      "skip_including_subtests": 44,
+      "failed_tests": [
+        "TestIndexProvidersCoreProgressAndPolicy",
+        "TestIndexProvidersSpenderMissRemainsUnknown",
+        "Test066LocatorShortcutsCannotReadLockedProviders"
+      ],
+      "root_elapsed_seconds": 682.36,
+      "runtime_temp_filesystem": "C NTFS",
+      "test_only_corrections": {
+        "result": "PASS",
+        "source_commit": "87770d70c8162139f19fdf37e55a474e6370be40",
+        "independent_review": "PASS",
+        "test_count": 16,
+        "elapsed_seconds": 8.097,
+        "files": [
+          "index_providers_test.go",
+          "release_availability_test.go"
+        ],
+        "scope": "Provider and release-gate expectations updated for locally available TXIO; partial qualification, sparse misses, serving privacy, unrelated feature gates and Gateway peer lock remain asserted",
+        "evidence_basis": "Independent reviewer summary of actual observed exec session 88328; source-only diff and production-equivalence proof inspected. The summary is not a raw log or a rerun.",
+        "local_run_log_hash": "569ac018ad22adf7ca6c0e92d844e78cd753f7617024a486cec3a3e96207c976",
+        "evidence_type": "summary-of-original-observed-run",
+        "observed_head_and_worktree": "Original observed run was at 6f3a114 with the two stated test corrections uncommitted; those exact corrections were subsequently committed as 87770d70."
+      },
+      "full_suite_rerun": "not_performed",
+      "note": "The original full Windows result remains 991 passing and 44 skipped test events, with three obsolete locked-TXIO expectations. Their reviewed test-only corrections passed the 16-test focused run. A corrected full Windows-suite rerun is not claimed."
+    },
+    "fresh_backend_review": {
+      "result": "PASS",
+      "new_txio_raw_migration_tests": 18,
+      "existing_lean_full_privacy_eviction_legacy_checks": 12,
+      "late_graph_opt_in_and_update_drain": "PASS"
+    },
+    "source_browser_suites": {
+      "result": "PASS",
+      "count": 18,
+      "scope": "Controlled source fixtures including TXIO navigation, potential-range clipping, gesture boundaries, stale responses and unobscured reserved controls."
+    },
+    "javascript_helpers": {
+      "result": "PASS",
+      "count": 10,
+      "bitfeed_ordered_tiles": 704,
+      "mempool_geometry_vectors": 27
+    },
+    "packaging_regressions": {
+      "result": "PASS",
+      "count": 9
+    },
+    "feed_renewal_regressions": {
+      "result": "PASS",
+      "count": 19,
+      "approved_prerelease_accepted_and_draft_rejected": true
+    },
+    "update_apply_suite": {
+      "result": "PASS",
+      "passed": 75,
+      "expected_skips": 1,
+      "initial_failure": "A parallel run exceeded the existing healthy-startup acknowledgement timeout. The isolated case and subsequent complete serial suite passed; the original timeout remains recorded."
+    },
+    "development_native": {
+      "result": "PASS",
+      "executable_sha256": "1e2fbf27c96740c4c551ed090c871519561542385e4827c2e0e320e913b9e933",
+      "published_0_7_3_profiles": "Automatic versioned migration preserved original commitments, settings and the validated header snapshot.",
+      "real_bitcoin_relationship": "Original output 0.0.9 and spending input i0.1.170 resolved in both directions through saved TXIO API and compiled UI without fallback.",
+      "cold_restart_and_eviction": "Both saved links remained known after restart and disposable source-byte eviction. Unavailable block bytes returned an explicit error.",
+      "renderer": "Genuine genesis map/flow, desktop and narrow compiled layouts, 120/180px constrained toolbars, keyboard zoom/Fit, fullscreen, content isolation, media and recursion passed.",
+      "limitations": "Development executable predates the final enqueue guard and storage-allocation correction. Chromium DOM and screenshots do not establish native WebView sharpness."
+    },
+    "exact_package_builds_audits_and_native_checks": {
+      "result": "PASS within recorded local scope",
+      "source_commit": "87770d70c8162139f19fdf37e55a474e6370be40",
+      "client_sha256": "5df02149845bc5ab6adc6c914ffd9211595b2d9ef3f346607972644c1e1e22b9",
+      "binary_structure_and_installer_payload_audit": "PASS; exact app, helper, compatibility and bundled header payloads",
+      "portable_archive_verification": "zip_crc_and_all_file_hashes_pass",
+      "archive_and_installer_artifact_count": 6,
+      "windows_native_backend": "PASS",
+      "compiled_renderer": "PASS",
+      "linux_build_and_ELF_audit": "PASS; complete Linux CI also PASS at final 877 source",
+      "authenticode_signed": false,
+      "system_installation": "not_established",
+      "original_runtime_build_and_validation_source": "6f3a114f09667a596cf592c9b322f556d45c6e87",
+      "source_equivalence": "All non-test production files unchanged; Windows/Linux client rebuilds byte-identical; installer/helper inputs and original bytes unchanged",
+      "final_artifacts": [
+        {
+          "file": "gateway-client-v0.7.4-windows-amd64.zip",
+          "bytes": 13740051,
+          "sha256": "01c840ffe18ed361e091806a9d3c100608b024f25e55d65f42e1ec6ef4fe235e"
+        },
+        {
+          "file": "gateway-client-v0.7.4-windows-amd64-fresh.zip",
+          "bytes": 79582042,
+          "sha256": "d451c131eaa9a7b2b73fbff7622e6040a93477c79413a04267e36f54c35e5dc2"
+        },
+        {
+          "file": "gateway-client-v0.7.4-linux-amd64.zip",
+          "bytes": 7976705,
+          "sha256": "28a7e2ffd8e3ddaad3f8fbb9b49799a9cf3522ea0b8e77696491f0367ab146e3"
+        },
+        {
+          "file": "gateway-client-v0.7.4-linux-amd64-fresh.zip",
+          "bytes": 73845776,
+          "sha256": "feaf6c3cac5810470dbd4987b849b69163d77c5e7ada5dbc54af08c18997a071"
+        },
+        {
+          "file": "gateway-client-v0.7.4-installer.exe",
+          "bytes": 117641216,
+          "sha256": "dfcd80d3efa60fcc4409a5b8983e71fe4ee75cc1e25230cc5133fe55eb8f8fb8"
+        },
+        {
+          "file": "gateway-headers-v0.7.4.zip",
+          "bytes": 65906545,
+          "sha256": "620ea917289cf7b4e8e42fdf52cc69b9e96bc420b591e59472d54bbfa277949b"
+        }
+      ],
+      "original_final_artifacts": [
+        {
+          "file": "gateway-client-v0.7.4-windows-amd64.zip",
+          "bytes": 13675238,
+          "sha256": "31f9e384cfabd7288fae30901ce616c52250885819e85b79cd975e2754c1ed0f"
+        },
+        {
+          "file": "gateway-client-v0.7.4-windows-amd64-fresh.zip",
+          "bytes": 79582042,
+          "sha256": "d451c131eaa9a7b2b73fbff7622e6040a93477c79413a04267e36f54c35e5dc2"
+        },
+        {
+          "file": "gateway-client-v0.7.4-linux-amd64.zip",
+          "bytes": 7938975,
+          "sha256": "05f3770fa90dfc8851977d6da8ff9f3c1e9abd61b8c3d8a3f191e83fcc591279"
+        },
+        {
+          "file": "gateway-client-v0.7.4-linux-amd64-fresh.zip",
+          "bytes": 73845776,
+          "sha256": "feaf6c3cac5810470dbd4987b849b69163d77c5e7ada5dbc54af08c18997a071"
+        },
+        {
+          "file": "gateway-client-v0.7.4-installer.exe",
+          "bytes": 117641216,
+          "sha256": "dfcd80d3efa60fcc4409a5b8983e71fe4ee75cc1e25230cc5133fe55eb8f8fb8"
+        },
+        {
+          "file": "gateway-headers-v0.7.4.zip",
+          "bytes": 65906545,
+          "sha256": "620ea917289cf7b4e8e42fdf52cc69b9e96bc420b591e59472d54bbfa277949b"
+        }
+      ],
+      "artifact_test_scope": "Original package/native/Defender tests remain scoped to the original artifact set. The two replacement automatic-update ZIPs received separate CRC, internal and outer checksum, compiled-payload identity, source-link and strict legacy-client/publisher allowlist checks; no full application/runtime suite rerun is claimed for the packaging-only correction.",
+      "original_manifest_sha256": "d0e18458bfccf222f20254a4afe5a15d1a033578688ea2e2d1508e7182c4dd12",
+      "original_sums_sha256": "d36e8bfbe646ab58333f77f113d3c75face4af4f9dddd150f7c2b59d2f2f5cee"
+    },
+    "linux_ci": {
+      "result": "PASS",
+      "source_commit": "87770d70c8162139f19fdf37e55a474e6370be40",
+      "run_id": 38305738277,
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38305738277",
+      "job_url": "https://github.com/Blockamoto/gateway/actions/runs/38305738277/job/114999220177",
+      "job": "linux",
+      "duration_seconds": 598,
+      "stages": [
+        "full Go tests",
+        "go vet",
+        "race checks",
+        "JavaScript helpers",
+        "packaging checks",
+        "browser and compiled runtime checks"
+      ],
+      "public_status_independently_verified": true,
+      "full_stage_completion_reported_by_release_coordinator": true,
+      "scope": "GitHub CI at the final test-corrected source; separate from Windows native, system installation and hosted update delivery"
+    },
+    "system_installation": "not_established",
+    "raw_storage_completion": {
+      "result": "PASS",
+      "ntfs_sharing_eviction_atomic_repair_privacy": "PASS",
+      "exfat_independent_copy_fallback": "PASS",
+      "preserved_legacy_copies": "PASS",
+      "independent_final_review": "PASS"
+    },
+    "windows_cleanup_identity": {
+      "result": "PASS",
+      "complete_cleanup_suite": "PASS",
+      "rebuilt_runtime_authenticated_cleanup": "PASS",
+      "same_size_same_timestamp_replacement_rejected": "PASS",
+      "external_wallet_preserved": true,
+      "missing_windows_symlink_privilege": "Only three link-specific subtests skip; other safety assertions execute."
+    },
+    "native_final": {
+      "result": "PASS",
+      "source_commit": "6f3a114f09667a596cf592c9b322f556d45c6e87",
+      "executable_sha256": "5df02149845bc5ab6adc6c914ffd9211595b2d9ef3f346607972644c1e1e22b9",
+      "published_0_7_3_executable_sha256": "0f085679ab33f7a3d497709d1bdc01a2b75387a84e7094deb22ad9a72f740e8a",
+      "scope": "Fresh disposable offline profiles seeded from immutable records genuinely produced by the published 0.7.3 native app",
+      "migration": "Blocks 0..1 and Blocks 9 migrated to versioned serialized body roots; original settings, heads, commitments and validated headers remained unchanged",
+      "cold_read": "Positional transaction 0.1.bitcoin resolved from durable index_retained bytes after disposable source-byte eviction and restart",
+      "relationship": "Native bounded TXIO 170 build resolved saved output 0.0.9 and input i0.1.170 in both directions with both selected-chain anchors, without fallback or historical scanning",
+      "restart_and_eviction": "Both saved links survived cold restart and complete disposable source-byte eviction; unavailable block 170 body returned HTTP 400 explicit verified-bytes unavailable",
+      "sparse_absence": "unknown; does not prove unspent",
+      "browse_opt_out": "No implicit locator/inscription/TXIO heads; actual cache-index.json has empty tx and spends maps",
+      "harness_correction": "Initial run requested nonexistent /api/v1/bps/block/map and received 404. The harness was corrected to /api/v1/index/block-map?block=170, then the full native sequence passed against a new pristine fixture clone without app changes.",
+      "owned_processes_stopped": true,
+      "limitations": [
+        "This checks native backend and migration, not hosted automatic upgrade delivery.",
+        "Legacy data is retained after migration; immediate disk reduction is not claimed.",
+        "Peer-sourced block9 and170 bytes were verified in earlier native fixture preparation, then reused offline."
+      ],
+      "final_packaging_source_equivalent_to": "87770d70c8162139f19fdf37e55a474e6370be40",
+      "equivalence_scope": "Original runtime/source identity retained; final production files and client bytes are proven unchanged after test-only corrections"
+    },
+    "renderer_final": {
+      "result": "PASS",
+      "source_commit": "6f3a114f09667a596cf592c9b322f556d45c6e87",
+      "client_sha256": "5df02149845bc5ab6adc6c914ffd9211595b2d9ef3f346607972644c1e1e22b9",
+      "suites": [
+        "test-inscription-native-browser.js",
+        "test-index-cards-browser.js",
+        "test-viewport-native-browser.js"
+      ],
+      "execution": "Serial; fresh disposable offline profiles; no user profile",
+      "media_and_recursion": "PASS in controlled provider-reported content fixtures",
+      "actual_genesis_map_and_flow": "PASS",
+      "reserved_toolbar": "PASS at desktop/narrow windows and constrained 180/120px panels",
+      "keyboard_zoom_fit_fullscreen": "PASS",
+      "content_isolation_and_hostile_fixtures": "PASS",
+      "later_feature_gates_and_browse_preferences": "PASS",
+      "limitations": [
+        "Controlled Chromium checks compiled runtime routes, browser isolation and geometry. It does not prove native WebView feathering.",
+        "Genuine genesis map contains one coinbase transaction; larger placement fixtures remain separate."
+      ],
+      "final_packaging_source_equivalent_to": "87770d70c8162139f19fdf37e55a474e6370be40",
+      "equivalence_scope": "Original runtime/source identity retained; final production files and client bytes are proven unchanged after test-only corrections"
+    },
+    "defender_final": {
+      "result": "PASS",
+      "files": [
+        {
+          "file": "GatewayClient.exe",
+          "sha256": "5df02149845bc5ab6adc6c914ffd9211595b2d9ef3f346607972644c1e1e22b9",
+          "exit_code": 0
+        },
+        {
+          "file": "GatewayOnDemand.exe",
+          "sha256": "8e01f5b69033c0d5dfeb2a453103d3bf72a41bcfa9978e27dde8b2796bcbd221",
+          "exit_code": 0
+        },
+        {
+          "file": "GatewayNativeHost.exe",
+          "sha256": "cc0e293de07ac9b43273c061c01c48f1c4ffcfa49001ff9f71ec7d2e90156b84",
+          "exit_code": 0
+        },
+        {
+          "file": "GatewayUpdateHelper.exe",
+          "sha256": "ee0d7ec926b0421c57233764c26b5318b78b78c2752d980bfa9359a3fb471548",
+          "exit_code": 0
+        },
+        {
+          "file": "gateway-client-v0.7.4-installer.exe",
+          "sha256": "dfcd80d3efa60fcc4409a5b8983e71fe4ee75cc1e25230cc5133fe55eb8f8fb8",
+          "exit_code": 0
+        }
+      ],
+      "antivirus_enabled": true,
+      "realtime_enabled": true,
+      "signature_before": "1.459.684.0",
+      "signature_after": "1.459.684.0",
+      "definitions_unchanged": true,
+      "scope": "Local diagnostic custom scans of the exact Windows client components and installer, no remediation or protection changes. Not universal antivirus clearance."
+    },
+    "ntfs_fixture_validation": {
+      "result": "PASS",
+      "fixture_count_per_index": 514,
+      "durable_older_ids_seconds": 187.66,
+      "blocks_seconds": 79.87,
+      "tx_locator_seconds": 64.47,
+      "inscriptions_seconds": 43.32,
+      "legacy_backfill_seconds": 27.23,
+      "process_wall_seconds": 216.4458053,
+      "assertions_and_timeout_unchanged": true,
+      "runtime_filesystem": "C NTFS, including GOTMPDIR which Go testing.TempDir honors",
+      "compiler_temp_and_cache": "D exFAT",
+      "initial_filesystem_issue": "Earlier full run exceeded 900 seconds while creating the first Blocks fixture on exFAT; explicit NTFS placement completed these tests. A mistaken TEMP-only attempt still used GOTMPDIR on D and was stopped after 87 seconds.",
+      "scope": "Separately compiled focused test binary; this result is not a corrected full-suite rerun"
+    },
+    "source_equivalence": {
+      "result": "PASS",
+      "original_runtime_build_and_native_validation_source": "6f3a114f09667a596cf592c9b322f556d45c6e87",
+      "final_packaging_source": "87770d70c8162139f19fdf37e55a474e6370be40",
+      "test_only_files": [
+        "index_providers_test.go",
+        "release_availability_test.go"
+      ],
+      "unchanged_non_test_tracked_files": 449,
+      "unchanged_non_test_tree_sha256": "f8df26e029f89f38f29c9a9e929804024addc6f7eb6dda54bdae1d04780950e9",
+      "test_only_diff_sha256": "e8733a45b99629edbddc1ac846c5d406395473e6c63fbff13afb88d6ba2becaa",
+      "runtime_rebuilds": [
+        {
+          "platform": "windows",
+          "file": "GatewayClient.exe",
+          "sha256": "5df02149845bc5ab6adc6c914ffd9211595b2d9ef3f346607972644c1e1e22b9",
+          "bytes": 12228608,
+          "byte_identical": true
+        },
+        {
+          "platform": "linux",
+          "file": "gateway-client",
+          "sha256": "df1ec00fab1be082978b51994e790af3462decedd6168fbc63c20f70b0a58fa2",
+          "bytes": 11841696,
+          "byte_identical": true
+        }
+      ],
+      "installer_and_helper_inputs_unchanged": true,
+      "installer_and_helpers_rebuilt": false
+    },
+    "updater_compatible_packaging_correction": {
+      "result": "PASS within local package and remote-digest verification scope",
+      "packaging_policy_commit": "65c00fc922fe146427a883739fcc496420f4e70c",
+      "app_source_and_tag_commit": "87770d70c8162139f19fdf37e55a474e6370be40",
+      "files_changed": [
+        "scripts/package-release.py",
+        "scripts/test-update-packaging.py"
+      ],
+      "changed_downloads": [
+        {
+          "file": "gateway-client-v0.7.4-windows-amd64.zip",
+          "original_bytes": 13675238,
+          "original_sha256": "31f9e384cfabd7288fae30901ce616c52250885819e85b79cd975e2754c1ed0f",
+          "replacement_bytes": 13740051,
+          "replacement_sha256": "01c840ffe18ed361e091806a9d3c100608b024f25e55d65f42e1ec6ef4fe235e"
+        },
+        {
+          "file": "gateway-client-v0.7.4-linux-amd64.zip",
+          "original_bytes": 7938975,
+          "original_sha256": "05f3770fa90dfc8851977d6da8ff9f3c1e9abd61b8c3d8a3f191e83fcc591279",
+          "replacement_bytes": 7976705,
+          "replacement_sha256": "28a7e2ffd8e3ddaad3f8fbb9b49799a9cf3522ea0b8e77696491f0367ab146e3"
+        }
+      ],
+      "unchanged_downloads": [
+        {
+          "file": "gateway-client-v0.7.4-windows-amd64-fresh.zip",
+          "bytes": 79582042,
+          "sha256": "d451c131eaa9a7b2b73fbff7622e6040a93477c79413a04267e36f54c35e5dc2"
+        },
+        {
+          "file": "gateway-client-v0.7.4-linux-amd64-fresh.zip",
+          "bytes": 73845776,
+          "sha256": "feaf6c3cac5810470dbd4987b849b69163d77c5e7ada5dbc54af08c18997a071"
+        },
+        {
+          "file": "gateway-client-v0.7.4-installer.exe",
+          "bytes": 117641216,
+          "sha256": "dfcd80d3efa60fcc4409a5b8983e71fe4ee75cc1e25230cc5133fe55eb8f8fb8"
+        },
+        {
+          "file": "gateway-headers-v0.7.4.zip",
+          "bytes": 65906545,
+          "sha256": "620ea917289cf7b4e8e42fdf52cc69b9e96bc420b591e59472d54bbfa277949b"
+        }
+      ],
+      "changed_descriptors": {
+        "manifest": {
+          "original_sha256": "d0e18458bfccf222f20254a4afe5a15d1a033578688ea2e2d1508e7182c4dd12",
+          "replacement_sha256": "a91042d1eafd8d3dc08422db69621e9a59489c9039c0eb27ffc3aa11e46cebf1"
+        },
+        "sha256sums": {
+          "original_sha256": "d36e8bfbe646ab58333f77f113d3c75face4af4f9dddd150f7c2b59d2f2f5cee",
+          "replacement_sha256": "900c6fcee350f211f266bd9ccc4a6bea76ed6eb06ba4d52c52b58c8debc007cc"
+        }
+      },
+      "removed_from_replacement_application_archives": [
+        "BLOCK-BODIES-0.7.4.md",
+        "TXIO-INDEX.md",
+        "IMPLEMENTATION-BRIEF-0.7.4.md"
+      ],
+      "changed_existing_payloads": [
+        "INDEXING.md",
+        "RELEASE-NOTES-v0.7.4.md",
+        "STATUS.md",
+        "SHA256SUMS.txt"
+      ],
+      "supplemental_links": "Pinned to app source revision 87770d70c8162139f19fdf37e55a474e6370be40; documents remain accessible through source/release links",
+      "compiled_payloads_unchanged": [
+        {
+          "file": "gateway-client-v0.7.4-windows-amd64.zip",
+          "executables": {
+            "GatewayClient.exe": "5df02149845bc5ab6adc6c914ffd9211595b2d9ef3f346607972644c1e1e22b9",
+            "GatewayNativeHost.exe": "cc0e293de07ac9b43273c061c01c48f1c4ffcfa49001ff9f71ec7d2e90156b84",
+            "GatewayOnDemand.exe": "8e01f5b69033c0d5dfeb2a453103d3bf72a41bcfa9978e27dde8b2796bcbd221",
+            "GatewayUpdateHelper.exe": "ee0d7ec926b0421c57233764c26b5318b78b78c2752d980bfa9359a3fb471548"
+          },
+          "all_other_payloads_unchanged": true
+        },
+        {
+          "file": "gateway-client-v0.7.4-linux-amd64.zip",
+          "executables": {
+            "gateway-client": "df1ec00fab1be082978b51994e790af3462decedd6168fbc63c20f70b0a58fa2",
+            "gateway-update-helper": "6613d776dd6c2e725a3d302283584e1cff80d592a6692b84a33d7857a0ce9a39"
+          },
+          "all_other_payloads_unchanged": true
+        }
+      ],
+      "package_crc_internal_outer_checksums_and_source_revision": "PASS",
+      "independent_legacy_client_extractor": {
+        "result": "PASS",
+        "platforms": [
+          "windows-amd64",
+          "linux-amd64"
+        ],
+        "legacy_exact_allowlist_unchanged": true,
+        "elapsed_seconds": 9.575
+      },
+      "independent_publisher_strict_origin": {
+        "result": "PASS",
+        "platforms": [
+          "windows-amd64",
+          "linux-amd64"
+        ],
+        "strict_allowlist_unchanged": true,
+        "elapsed_seconds": 1.318
+      },
+      "packaging_regression": {
+        "result": "PASS",
+        "tests": 9,
+        "elapsed_seconds": 17.37,
+        "negative_control": "The previous packager fails the new supplemental-document exclusion assertion as expected; retained negative-control log is not a production-suite failure"
+      },
+      "public_asset_verification": {
+        "result": "PASS",
+        "primary_assets": 8,
+        "remote_digest_and_size_match_local": true,
+        "scope": "GitHub-provided asset digests and sizes; remote asset bytes were not downloaded",
+        "recorded_at_utc": "2026-10-12T21:23:38.597642Z"
+      },
+      "original_assets_and_receipts_preserved": true,
+      "limitations": [
+        "Fresh ZIPs were not rebuilt and retain their original document membership. The corrected packager excludes supplemental documents from future app/fresh bundles.",
+        "No full Windows suite rerun; original 991 pass, 44 skip and three obsolete-TXIO expectation failures plus reviewed 16-test correction are retained.",
+        "No native WebView sharpness claim.",
+        "Local package/signing results and public GitHub asset state do not establish hosted signed-feed delivery."
+      ]
+    },
+    "approval_commit_ci": {
+      "status": "completed",
+      "result": "PASS",
+      "source_commit": "c8fd6c750bc777a6d20a56eeb3dba0d9ba2d4d47",
+      "run_id": 38311238112,
+      "run_url": "https://github.com/Blockamoto/gateway/actions/runs/38311238112",
+      "completed_at_utc": "2026-10-12T21:42:18Z",
+      "stages": [
+        "Linux build",
+        "full Go tests",
+        "go vet",
+        "release race checks",
+        "JavaScript helpers",
+        "packaging regressions",
+        "actual browser UI regressions"
+      ],
+      "basis": "GitHub run and every Linux job step independently read through the authenticated API",
+      "scope": "Packaging-policy and approval followups; released app source and tag remain 87770d70"
+    }
+  },
+  "hosted_delivery": {
+    "status": "PASS_hosted_delivery_automatic_upgrade_and_renewal",
+    "publisher": "https://gateway-updates.onrender.com",
+    "public_key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
+    "render_auto_deploy": "enabled, on commit to main; independently verified",
+    "initial_live_application_version": "0.7.1",
+    "initial_live_application_sequence": 6,
+    "initial_live_header_sequence": 5,
+    "published_0_7_3_automatic_upgrade": "PASS",
+    "initial_signing_rejections": [
+      {
+        "order": 1,
+        "result": "rejected before promotion",
+        "reason": "The private-key separation guard could not establish separation across different filesystem volumes",
+        "resolution": "Public distribution staging moved to the existing signing-key volume; the existing key, identity and separation checks were unchanged"
+      },
+      {
+        "order": 2,
+        "result": "rejected before promotion",
+        "reason": "Strict origin archive allowlist rejected supplemental BLOCK-BODIES-0.7.4.md",
+        "resolution": "Supplemental documents omitted from the two automatic-update ZIPs, related links pinned to source revision; strict updater and publisher allowlists unchanged"
+      }
+    ],
+    "local_signing_and_delivery_boundary": "Local signing outputs were not treated as delivery proof. Separate actual hosted downloads, a genuine published 0.7.3 automatic upgrade and restart, and renewed-feed client checks passed. Both app-source and approval-followup Linux CI runs passed.",
+    "security_checks_relaxed": false,
+    "approval_source_commit": "c8fd6c750bc777a6d20a56eeb3dba0d9ba2d4d47",
+    "app_source_and_tag_commit": "87770d70c8162139f19fdf37e55a474e6370be40",
+    "render_deployment": {
+      "id": "dep-db6l3mj0kn5s73aeu03g",
+      "source_commit": "c8fd6c750bc777a6d20a56eeb3dba0d9ba2d4d47",
+      "status": "live",
+      "live_at_utc": "2026-10-12T21:33:34Z",
+      "basis": "Release coordinator deployment observation followed by independently verified live feed and artifact bytes"
+    },
+    "initial_live_verification": {
+      "result": "PASS",
+      "receipt_sha256": "6435886fc610278db0111e4b6f989c571a88bee39e03bfc4e15ec8c095c46358",
+      "verified_at_utc": "2026-10-12T21:34:18Z",
+      "publisher": "https://gateway-updates.onrender.com",
+      "source_revision": "87770d70c8162139f19fdf37e55a474e6370be40",
+      "unchanged_public_key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
+      "bundle_sha256": "2fe473b459eabfd0e40224b89f638ff027c5e5ad03b36059621c4286a59da24d",
+      "application": {
+        "version": "0.7.4",
+        "sequence": 7,
+        "manifest_sha256": "ef0225509187df6d0aac1fbfc187623cb06024139ae6342121de9a74ba4e1549",
+        "issued_at": "2026-10-12T21:23:16Z",
+        "expires_at": "2026-11-11T21:23:16Z",
+        "archive_count": 2,
+        "downloaded_archives": [
+          {
+            "platform": "linux-amd64",
+            "file": "gateway-client-v0.7.4-linux-amd64.zip",
+            "bytes": 7976705,
+            "sha256": "28a7e2ffd8e3ddaad3f8fbb9b49799a9cf3522ea0b8e77696491f0367ab146e3",
+            "format": "zip"
+          },
+          {
+            "platform": "windows-amd64",
+            "file": "gateway-client-v0.7.4-windows-amd64.zip",
+            "bytes": 13740051,
+            "sha256": "01c840ffe18ed361e091806a9d3c100608b024f25e55d65f42e1ec6ef4fe235e",
+            "format": "zip"
+          }
+        ]
+      },
+      "headers": {
+        "network": "mainnet",
+        "sequence": 6,
+        "manifest_sha256": "344134fc321899bc806bce9a35d429be9397105958bba95de5a74b1e70658dcb",
+        "issued_at": "2026-10-12T21:23:34Z",
+        "expires_at": "2026-11-11T21:23:34Z",
+        "header_count": 969480,
+        "tip_hash": "00000000000000000000dcddaef250e1665ecc5dadbcbdb08769509c0a433253",
+        "chunk_count": 97,
+        "complete_header_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467"
+      },
+      "actual_downloaded_object_count": 99,
+      "actual_downloaded_bytes": 87741245.0,
+      "all_live_sizes_and_hashes_verified": true,
+      "signature_validity_sequence_and_content_checks": "PASS; existing strict verifier checks retained",
+      "verifier_sha256": "691121ac1e27a3eb0258b17d284827aeb614455089f251a5c0e238e420030467",
+      "transport": "Native curl 8.21.0/Schannel HTTPS, default config disabled, no redirects or credentials; existing strict signature, size and content checks unchanged.",
+      "transport_wrapper_sha256": "20aaa0b8d6e2889fba70efb3110b2c0ac41cf82423015fe649bb0b4b7b5b19eb",
+      "scope": "Two application ZIPs and all 97 signed header chunks actually downloaded and verified from the hosted publisher; independent of GitHub asset metadata-only checks"
+    },
+    "genuine_client_acceptance": {
+      "result": "PASS",
+      "receipt_sha256": "462b05061ed34b39c48a1d3f6eda64267aa8a7a4fb1c4c3deed895986a6794c8",
+      "scope": "Public-release hosted acceptance: genuine published 0.7.3 client automatically installs exact public 0.7.4 and restarts with settings and full headers preserved. Separate fresh 0.7.4 automatically checks both app and header feeds without Settings setup; its validated snapshot prefix remains unchanged while ordinary peers may extend the chain.",
+      "old_client": {
+        "version": "0.7.3",
+        "published": true,
+        "synthetic": false,
+        "source_revision": "e3b2b53d0553dc7103eedfaa0a88c465cc1d1e5b",
+        "archive_sha256": "24237321165ac3a24c9e44e8b6722ee4fdb961feb652f8b4adf6ece16aa6c304",
+        "client_sha256": "0f085679ab33f7a3d497709d1bdc01a2b75387a84e7094deb22ad9a72f740e8a"
+      },
+      "installed_version": "0.7.4",
+      "source_revision": "87770d70c8162139f19fdf37e55a474e6370be40",
+      "update_mode": "automatic",
+      "download_button_pressed": false,
+      "restart_button_pressed": false,
+      "manifest_sequence": 7,
+      "manifest_sha256": "ef0225509187df6d0aac1fbfc187623cb06024139ae6342121de9a74ba4e1549",
+      "archive_sha256": "01c840ffe18ed361e091806a9d3c100608b024f25e55d65f42e1ec6ef4fe235e",
+      "archive_bytes": 13740051,
+      "installed_binary_sha256": {
+        "GatewayClient.exe": "5df02149845bc5ab6adc6c914ffd9211595b2d9ef3f346607972644c1e1e22b9",
+        "GatewayUpdateHelper.exe": "ee0d7ec926b0421c57233764c26b5318b78b78c2752d980bfa9359a3fb471548",
+        "GatewayOnDemand.exe": "8e01f5b69033c0d5dfeb2a453103d3bf72a41bcfa9978e27dde8b2796bcbd221",
+        "GatewayNativeHost.exe": "cc0e293de07ac9b43273c061c01c48f1c4ffcfa49001ff9f71ec7d2e90156b84"
+      },
+      "all_four_installed_binary_hashes_match_tested_release": true,
+      "settings_theme_live_index_policy_user_marker_and_full_headers_preserved": true,
+      "preserved_profile_files": {
+        "settings.json": "037e26ed24be7a4d61183b62bac0dda26ad64589fa4e650aeb08e9a557952e42",
+        "appearance.json": "99529e33f9fdb8c0e22634c7ad88478979f2c6cb778a1a118c4c1aee5680ae49",
+        "keep-user-data.txt": "bf702fd77e4e32611ea28bf263e383eac7e20b85d9851e4abb28d245e9067ab8",
+        "indexes/live.json": "fe86d5b26b0ef18cb98f18f63e98e558ede0fcc1431b560da6b2588a315eb4ae",
+        "headers/headers.bin": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467"
+      },
+      "preserved_bootstrap_files": {
+        "headers-mainnet.bin": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "headers-mainnet.json": "5c25bf29f157b3ba49aa29552fecef7ed353be1f0d84126f1914bc3d5e59b28e"
+      },
+      "full_profile_header_bytes": 77558400,
+      "management_origin_preserved": true,
+      "helper_state": "installed",
+      "fresh_app_and_header_checks": {
+        "automatic_check": true,
+        "automatic_install": false,
+        "manual_configuration_actions": 0,
+        "live_app_check": true,
+        "up_to_date": true,
+        "last_checked": "2026-10-12T21:34:26Z",
+        "header_sequence": 6,
+        "header_manifest_sha256": "344134fc321899bc806bce9a35d429be9397105958bba95de5a74b1e70658dcb",
+        "signed_header_count": 969480,
+        "complete_file_count": 971142,
+        "ordinary_peer_extension_headers": 1662,
+        "validated_snapshot_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "existing_snapshot_prefix_preserved": true,
+        "complete_file_sha256": "0706f369deaacc52f98c085e12c9d7d153f9d77b4e3cfb44022d5a50f7666eb8"
+      },
+      "github_credentials_in_client": false,
+      "private_signing_key_read": false,
+      "fixture_release_created": false,
+      "system_install_performed": false,
+      "production_profile_touched": false,
+      "disposable_profiles_removed": true,
+      "owned_cleanup": "PASS, reported by release coordinator",
+      "page_errors": [],
+      "external_browser_requests": [],
+      "limits": [
+        "Separate disposable native runtime profiles; no user profile or system installation.",
+        "Publisher preflight warmed the service; cold hosted startup was not measured.",
+        "Fresh-client check-only behavior is automatic checking, not automatic installation; explicit automatic-install opt-in was exercised by the genuine 0.7.3 upgrade profile.",
+        "The snapshot prefix stayed identical while ordinary Bitcoin peers appended 1662 validated headers to the fresh profile."
+      ]
+    },
+    "renewal": {
+      "status": "completed",
+      "result": "PASS",
+      "workflow_run_id": 38311565343,
+      "url": "https://github.com/Blockamoto/gateway/actions/runs/38311565343",
+      "completed_at_utc": "2026-10-12T21:37:23Z",
+      "weekly_schedule_utc": "Monday 06:17",
+      "scope": "Existing workflow renews only the exact approved release; it does not select the latest release",
+      "weekly_automation_completion": "PASS end to end for this approved release",
+      "refreshed_live_feed_and_client_acceptance": "PASS",
+      "approval_commit": "c8fd6c750bc777a6d20a56eeb3dba0d9ba2d4d47",
+      "public_receipt_commit": "794d0f3c4d7d78c7d5a350c78173ca5a0d47cfb5",
+      "public_receipt": "docs/UPDATE-FEED-STATUS.json",
+      "public_receipt_sha256": "135ff673e0fbee87d6a6c6a599c1ee73f2583ad8a85b6f97dc9dac3b45c23c10",
+      "application_sequence": 8,
+      "header_sequence": 7,
+      "issued_at_utc": "2026-10-12T21:36:03Z",
+      "application_expires_at_utc": "2026-11-11T21:36:03Z",
+      "headers_expires_at_utc": "2026-11-11T21:36:03Z",
+      "application_manifest_sha256": "59081b25c5a9458c4340a1ff96a461ee42b87616c9b4a1f14123cccbb043d23c",
+      "headers_manifest_sha256": "e9afc6308c40871351b8a4db211e9ba3a34de9d386c8bc5e1acaf509800700a8",
+      "bundle_asset_id": 635060756,
+      "bundle_bytes": 87784622,
+      "bundle_sha256": "9442a2ece838c048cf8def9916c5435b34477ba670790f9c6ce374b83abf76e7",
+      "render_deployment": {
+        "id": "dep-db6l63rncjis73c849gg",
+        "source_commit": "794d0f3c4d7d78c7d5a350c78173ca5a0d47cfb5",
+        "status": "live",
+        "live_at_utc": "2026-10-12T21:38:01.996257Z",
+        "basis": "Render deployment independently read, followed by the full live byte verification"
+      },
+      "independent_signed_bundle_comparison": {
+        "result": "PASS",
+        "receipt_sha256": "06f325a169789194fa32ff2b38ad2a684bfe39ef2b8c651dc8907fc5135ae36d",
+        "independent_domain_separated_ed25519": "PASS",
+        "cross_domain_signatures": "rejected",
+        "unchanged_public_key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
+        "unchanged_app_source_revision": "87770d70c8162139f19fdf37e55a474e6370be40",
+        "public_entry_count": 101,
+        "unchanged_application_and_header_payload_count": 99,
+        "only_changed_manifest_fields": [
+          "sequence",
+          "issued_at",
+          "expires_at"
+        ],
+        "original_bundle_sha256": "2fe473b459eabfd0e40224b89f638ff027c5e5ad03b36059621c4286a59da24d",
+        "renewed_bundle_sha256": "9442a2ece838c048cf8def9916c5435b34477ba670790f9c6ce374b83abf76e7",
+        "release_notes_app_packages_and_header_chunks_unchanged": true
+      },
+      "independent_live_downloads": {
+        "result": "PASS",
+        "receipt_sha256": "58a7d5a1d1a9bcdc9707071ea1878e6134e73a91c05b2b778df3e5068ec6920b",
+        "verified_at_utc": "2026-10-12T21:43:31Z",
+        "application_archive_count": 2,
+        "header_chunk_count": 97,
+        "actual_downloaded_object_count": 99,
+        "actual_downloaded_bytes": 87741245,
+        "complete_header_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "signed_sizes_hashes_decoded_headers_and_before_after_manifest_stability": "PASS",
+        "transport": "Native curl 8.21.0/Schannel HTTPS, default config disabled, no redirects or credentials; existing strict signature, size and content checks unchanged.",
+        "scope": "Full renewed live rerun; the original complete live-download receipt is retained separately"
+      },
+      "normal_client_acceptance": {
+        "result": "PASS",
+        "receipt_sha256": "feb4d4ca080d8b42d68bd304e6ef02e9534a67653fa9adfad298aa35965e8662",
+        "completed_at_utc": "2026-10-12T21:40:10.283136+00:00",
+        "client_version": "0.7.4",
+        "client_sha256": "5df02149845bc5ab6adc6c914ffd9211595b2d9ef3f346607972644c1e1e22b9",
+        "normal_go_startup_checks": true,
+        "embedded_channel_and_trust_unchanged": true,
+        "update_mode": "Notify",
+        "automatic_check": true,
+        "automatic_install": false,
+        "application_sequence": 8,
+        "header_sequence": 7,
+        "application_manifest_sha256": "59081b25c5a9458c4340a1ff96a461ee42b87616c9b4a1f14123cccbb043d23c",
+        "header_manifest_sha256": "e9afc6308c40871351b8a4db211e9ba3a34de9d386c8bc5e1acaf509800700a8",
+        "up_to_date": true,
+        "downloaded_bytes": 0,
+        "staging_or_installation_helper_started": false,
+        "manual_check_download_apply_restart_actions": 0,
+        "publisher_preflight_requests": 0,
+        "settings_and_index_policy_preserved": true,
+        "validated_header_prefix_count": 969480,
+        "validated_header_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "ordinary_peer_extension_headers": 1662,
+        "disposable_profile_removed_and_owned_process_stopped": true,
+        "user_profile_touched": false,
+        "system_installation": "not_performed",
+        "scope": "Focused normal-client acceptance of renewed metadata; the genuine 0.7.3 automatic-upgrade evidence remains separate"
+      }
+    }
+  },
+  "notes": [
+    "Unknown or unresolved TXIO results do not prove that an output is unspent.",
+    "Blocks provide ordered transaction knowledge independently of the Transaction Index.",
+    "Canonical facts, retained raw bytes and rebuildable private accelerators have separate lifetimes.",
+    "Fresh profiles check automatically but do not install automatically without opt-in; existing explicit preferences are preserved.",
+    "GitHub publication and Render code deployment alone do not prove signed client delivery.",
+    "Windows executables remain unsigned. Local antivirus diagnostics do not establish clearance on other machines.",
+    "No local profile, credential, private signing key or personal audit artifact is included in release inputs.",
+    "Packaged acceptance documents describe the preparation snapshot. This main-branch acceptance record adds final hosted and renewal results without changing the fixed app tag, released binaries or signed release notes."
+  ],
+  "packaging_source_commit": "87770d70c8162139f19fdf37e55a474e6370be40",
+  "draft_preparation": {
+    "release_id": 410982690,
+    "version": "0.7.4",
+    "status": "Historical unpublished draft completed; subsequently published as a prerelease",
+    "primary_assets_expected": 8,
+    "asset_upload_snapshot": "All eight original primary assets were verified uploaded at the draft stage. The two normal ZIPs and manifest/sums were subsequently replaced with updater-compatible assets; a separate receipt verifies all eight current primary assets.",
+    "published": true,
+    "historical_state_published": false,
+    "current_state": "published prerelease"
+  },
+  "public_release": {
+    "id": 410982690,
+    "tag": "v0.7.4",
+    "url": "https://github.com/Blockamoto/gateway/releases/tag/v0.7.4",
+    "published_at_utc": "2026-10-12T21:08:04Z",
+    "publication_timestamp_basis": "Release coordinator reported exact timestamp; public release page independently confirms 12 Oct 21:08",
+    "draft": false,
+    "prerelease": true,
+    "app_source_and_tag_commit": "87770d70c8162139f19fdf37e55a474e6370be40",
+    "current_primary_assets": 9,
+    "current_asset_digests_verified": true,
+    "asset_manifest_sha256": "a91042d1eafd8d3dc08422db69621e9a59489c9039c0eb27ffc3aa11e46cebf1",
+    "asset_sums_sha256": "900c6fcee350f211f266bd9ccc4a6bea76ed6eb06ba4d52c52b58c8debc007cc",
+    "primary_asset_scope": "Eight downloads/descriptors plus the canonical signed delivery bundle",
+    "retained_recovery_bundle_count": 1,
+    "total_assets_observed": 10,
+    "asset_inventory_basis": "Authenticated GitHub release-assets endpoint after renewal"
+  }
+}

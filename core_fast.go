@@ -58,19 +58,29 @@ func (b contextSatlineBackend) Transaction(id string, before int64) (satlineTxEv
 	if e := b.ctx.Err(); e != nil {
 		return satlineTxEvidence{}, e
 	}
+	if r, e := b.a.retainedSatTransaction(b.ctx, strings.ToLower(strings.TrimSpace(id)), before); e == nil && transactionFitsHeightContext(r.Height, r.Tx.Coinbase, before) {
+		return r, nil
+	} else if b.ctx.Err() != nil {
+		return satlineTxEvidence{}, b.ctx.Err()
+	}
 	b.a.settingsMu.RLock()
 	s := b.a.settings
 	b.a.settingsMu.RUnlock()
-	if x, e := coreTransactionEvidence(b.ctx, s, id, before); e == nil {
+	if x, e := coreTransactionEvidence(b.ctx, s, id, before); e == nil && transactionFitsHeightContext(x.Height, x.Tx.Coinbase, before) {
 		return x, nil
 	} else if b.ctx.Err() != nil {
 		return satlineTxEvidence{}, b.ctx.Err()
 	}
-	return b.appSatlineBackend.Transaction(id, before)
+	return b.appSatlineBackend.transactionContext(b.ctx, id, before)
 }
 func (b contextSatlineBackend) BlockByHeight(height int64) (blockView, error) {
 	if e := b.ctx.Err(); e != nil {
 		return blockView{}, e
+	}
+	if block, e := b.a.retainedSatBlock(b.ctx, height); e == nil {
+		return block, nil
+	} else if b.ctx.Err() != nil {
+		return blockView{}, b.ctx.Err()
 	}
 	// Preserve the shared mounted-store/cache retrieval pipeline. All local Core
 	// calls are individually bounded; explicit cancellation is checked before IO.
@@ -90,6 +100,11 @@ func (b contextSatlineBackend) BlockByHeight(height int64) (blockView, error) {
 func (b contextSatlineBackend) Spender(id string, vout uint32) (spenderLookupView, error) {
 	if e := b.ctx.Err(); e != nil {
 		return spenderLookupView{}, e
+	}
+	if spend, e := b.a.retainedSatSpender(b.ctx, id, vout); e == nil {
+		return spend, nil
+	} else if b.ctx.Err() != nil {
+		return spenderLookupView{}, b.ctx.Err()
 	}
 	b.a.settingsMu.RLock()
 	s := b.a.settings
@@ -160,7 +175,11 @@ func (a *app) coreSpenderFast(ctx context.Context, s appSettings, id string, vou
 		v.BlockHash = row.BlockHash
 		v.Transaction = &tx
 		v.SpendingInput = &tx.Inputs[vin]
-		if native, ok := a.graphFindSpend(id, vout); ok && native.SpendingTxID != v.SpendingTxID {
+		native, ok, graphErr := a.graphReadSpendContext(ctx, id, vout)
+		if ctx.Err() != nil {
+			return v, ctx.Err()
+		}
+		if graphErr == nil && ok && native.SpendingTxID != v.SpendingTxID {
 			v.ConfirmedState = "provider_disagreement"
 			v.Found = false
 			v.Note = "Core and the canonical native graph disagree; no lineage advance is permitted."

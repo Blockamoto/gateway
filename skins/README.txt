@@ -1,19 +1,23 @@
-GATEWAY CLIENT SKINS — v0.4.8
+GATEWAY SKINS
 
-The UI is a client of the local BOD API rather than a privileged part of the
-resolver. The bundled UI is "default". A skin is simply a directory whose root
-contains index.html plus any CSS/JS/assets it wants.
+The UI is a client of Gateway's local API. The bundled workspace is the normal
+interface. A custom skin is a directory containing index.html and its assets.
+It does not unlock additional indexes or bypass API permissions.
 
 Run a custom skin:
 
-  blocks-on-demand-windows-x64.exe -skin "C:\\path\\to\\my-skin"
+  GatewayClient.exe -skin .\skins\minimal
 
 or on Linux:
 
-  ./blocks-on-demand-linux-x64 -skin ./skins/minimal
+  ./gateway-client -skin ./skins/minimal
 
-Custom skins should target /api/v1/*. See SKIN-API-v1.txt.
+The minimal skin demonstrates /api/v1/search. Prefer known-block coordinates
+such as 1.170.bitcoin when testing. Additional index-dependent queries remain
+locked. See extension.go and web.go for the implemented local API and
+DEVELOPMENT.md for feature and storage boundaries.
 
-The skin runs same-origin on BOD's localhost HTTP server. It never needs direct
-access to BOD's block cache, headers, Bitcoin Core credentials, or P2P sockets.
-That separation is intentional: skins render; the BOD core resolves/verifies.
+Custom skin JavaScript runs on Gateway's local origin: install only a skin you
+trust. It can make the local requests allowed to that UI session. Skins do not
+need direct filesystem access, Core credentials or peer sockets; Gateway owns
+resolution and validation. Keep the local server on loopback for ordinary use.

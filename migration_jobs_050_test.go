@@ -48,6 +48,9 @@ func Test050ArchivePathCannotEnterCoreThroughSymlink(t *testing.T) {
 	}
 }
 func Test050MigrationCopiesWithoutModifyingCore(t *testing.T) {
+	if !releaseFeatureAvailable("txo-spender") {
+		t.Skip("0.6.6 release lock: migration requires the replacement graph index")
+	}
 	a, v := initGraphTestApp(t)
 	a.status.TipHash = v.Hash
 	a.status.HeaderHeight = 0
@@ -105,6 +108,9 @@ func Test050MigrationRequiresExplicitMoveAndGraph(t *testing.T) {
 }
 
 func TestMigrationRetainsCachePublicationPolicy(t *testing.T) {
+	if !releaseFeatureAvailable("txo-spender") {
+		t.Skip("0.6.6 release lock: migration requires the replacement graph index")
+	}
 	for _, private := range []bool{false, true} {
 		name := "public"
 		if private {
@@ -165,8 +171,11 @@ func Test050InterruptedJobsRestartPaused(t *testing.T) {
 	if got == nil || got.Status != "paused" || !got.Done {
 		t.Fatalf("job not recoverable %+v", got)
 	}
-	if !strings.Contains(got.Stage, "Resume") {
+	if releaseFeatureAvailable("satline") && !strings.Contains(got.Stage, "Resume") {
 		t.Fatal("missing resume action explanation")
+	}
+	if !releaseFeatureAvailable("satline") && !strings.Contains(got.Stage, "deferred") {
+		t.Fatal("deferred job advertised a usable resume action")
 	}
 }
 func Test050JobsRejectMismatchedIdentity(t *testing.T) {

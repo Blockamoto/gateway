@@ -23,6 +23,9 @@ func resourceWebURL(address string) string {
 	if address == ".gateway" {
 		return "http://home.gateway/"
 	}
+	if !gatewayDNSAddress(address) {
+		return "http://home.gateway/?resolve=" + url.QueryEscape(address)
+	}
 	return "http://" + address + "/"
 }
 func validGatewayHost(host string) bool {
@@ -30,7 +33,7 @@ func validGatewayHost(host string) bool {
 		return true
 	} // historical local bridge compatibility
 	t, e := parseResourceAddress(host)
-	return e == nil && (t.Namespace == "gateway" || t.Namespace == "bitmap" || strings.HasSuffix(t.Friendly, ".bitcoin"))
+	return e == nil && (t.Namespace == "gateway" || t.Namespace == "bitmap" || t.Namespace == "sat" || strings.HasSuffix(t.Friendly, ".bitcoin"))
 }
 func safeLocalRequest(r *http.Request) bool {
 	h, _, e := net.SplitHostPort(r.RemoteAddr)
@@ -77,6 +80,25 @@ func (a *app) guardGateway(next http.Handler) http.Handler {
 			if !safeLocalRequest(r) {
 				jsonError(w, 403, fmt.Errorf("Gateway controls are restricted to the local management interface"))
 				return
+			}
+			// GET resolvers may populate durable caches. Drain all admitted API
+			// handlers before replacement and allow only health/update reads once
+			// the explicit restart has begun.
+			if a.updater != nil && r.URL.Path != "/api/v1/updates/status" && r.URL.Path != "/api/v1/runtime/ping" && r.URL.Path != "/api/v1/runtime/quit" {
+				a.updater.mu.Lock()
+				// Automatic mode may be withdrawn while the helper prepares the
+				// package. Keep that request inside the API drain barrier; commit
+				// and configure still decide atomically under the updater lock.
+				allowAutomaticPreference := r.URL.Path == "/api/v1/updates/config" &&
+					a.updater.automaticApplying && !a.updater.automaticCommitted && !a.updater.recovering
+				if a.updater.view.State == "applying" && !allowAutomaticPreference {
+					a.updater.mu.Unlock()
+					jsonError(w, 503, fmt.Errorf("Gateway is restarting to install an update"))
+					return
+				}
+				a.updateAPIWork.Add(1)
+				a.updater.mu.Unlock()
+				defer a.updateAPIWork.Done()
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 			if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" && !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
@@ -213,7 +235,7 @@ func (a *app) handleNativeControl(w http.ResponseWriter, r *http.Request) {
 		if a.domainBridge != nil {
 			st := a.domainBridge.status()
 			if st.DNSRunning && st.HTTPRunning && nrptRulePresent() {
-				if t, e := parseLocalResolverTarget(x.Address); e == nil && (strings.HasSuffix(t.Friendly, ".bitcoin") || t.Namespace == "gateway") {
+				if t, e := parseLocalResolverTarget(x.Address); e == nil && gatewayDNSAddress(t.Friendly) && (strings.HasSuffix(t.Friendly, ".bitcoin") || t.Namespace == "gateway" || t.Namespace == "sat") {
 					destination = resourceWebURL(t.Friendly) + "?activation=" + url.QueryEscape(x.ID)
 				}
 			}

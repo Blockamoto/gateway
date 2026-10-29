@@ -5,10 +5,7 @@ import (
 	"testing"
 )
 
-func TestV039GatewayIdentityAndBit25(t *testing.T) {
-	if gatewayExperimentalServiceBit != uint64(1)<<25 {
-		t.Fatalf("gateway service mask = %x", gatewayExperimentalServiceBit)
-	}
+func TestV039GatewayFeatureIdentity(t *testing.T) {
 	raw := makeFeaturePayload(gatewayFeatureID, gatewayFeatureData())
 	id, data, err := parseFeaturePayload(raw)
 	if err != nil {

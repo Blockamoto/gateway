@@ -12,63 +12,118 @@ import (
 )
 
 type bitmapRecord struct {
-	Lean          bool     `json:"-"`
-	Inscription   string   `json:"inscription"`
-	Height        int64    `json:"height"`
-	Order         int      `json:"order"`
-	District      *uint64  `json:"district,omitempty"`
-	Content       string   `json:"content"`
-	ContentHash   string   `json:"content_hash"`
-	Accepted      bool     `json:"accepted"`
-	Reason        string   `json:"reason"`
-	EarlierWinner string   `json:"earlier_winner,omitempty"`
-	Ownership     string   `json:"ownership"`
-	Compatibility string   `json:"compatibility"`
-	ContentType   string   `json:"content_type,omitempty"`
-	ParserFlags   []string `json:"parser_flags,omitempty"`
+	SatNumber       *uint64  `json:"sat_number,omitempty"`
+	CanonicalNumber *int64   `json:"canonical_number,omitempty"`
+	Lean            bool     `json:"-"`
+	Inscription     string   `json:"inscription"`
+	Height          int64    `json:"height"`
+	Order           int      `json:"order"`
+	District        *uint64  `json:"district,omitempty"`
+	Content         string   `json:"content"`
+	ContentHash     string   `json:"content_hash"`
+	Accepted        bool     `json:"accepted"`
+	Reason          string   `json:"reason"`
+	EarlierWinner   string   `json:"earlier_winner,omitempty"`
+	Ownership       string   `json:"ownership"`
+	Compatibility   string   `json:"compatibility"`
+	ContentType     string   `json:"content_type,omitempty"`
+	ParserFlags     []string `json:"parser_flags,omitempty"`
 }
 type indexBatch struct {
-	Checkpoint        indexCheckpoint                   `json:"checkpoint"`
-	PreviousBlockHash string                            `json:"previous_block_hash"`
-	Inscriptions      []inscriptionOccurrence           `json:"inscriptions,omitempty"`
-	Bitmap            []bitmapRecord                    `json:"bitmap,omitempty"`
-	Diagnostics       []inscriptionExtractionDiagnostic `json:"diagnostics,omitempty"`
+	InscriptionCoordinates []string                          `json:"inscriptions,omitempty"`
+	InscriptionBlock       *inscriptionBlockMetadata         `json:"inscription_block,omitempty"`
+	TransactionLocator     *transactionLocatorPayload        `json:"transactions,omitempty"`
+	Spenders               *indexSpenderBlock                `json:"spenders,omitempty"`
+	Sats                   *satIndexSnapshot                 `json:"sats,omitempty"`
+	Numbering              *inscriptionNumberingSnapshot     `json:"numbering,omitempty"`
+	Bitcoin                *bitcoinIndexBlock                `json:"bitcoin,omitempty"`
+	Checkpoint             indexCheckpoint                   `json:"checkpoint"`
+	PreviousBlockHash      string                            `json:"previous_block_hash"`
+	Inscriptions           []inscriptionOccurrence           `json:"full_inscriptions,omitempty"`
+	Bitmap                 []bitmapRecord                    `json:"bitmap,omitempty"`
+	Diagnostics            []inscriptionExtractionDiagnostic `json:"diagnostics,omitempty"`
 }
 type indexHead struct {
-	Mode       string `json:"mode,omitempty"`
-	Commitment string `json:"commitment"`
-	Retention  string `json:"retention"`
-	Published  bool   `json:"published"`
+	LocatorLayout      string                      `json:"locator_layout,omitempty"`
+	SatSavepoints      []satSavepoint077           `json:"sat_savepoints,omitempty"`
+	SatSavepointsHash  string                      `json:"sat_savepoints_hash,omitempty"`
+	TXIOLayersSchema   int                         `json:"txio_layers_schema,omitempty"`
+	TXIOLayers         map[string][]heightInterval `json:"txio_layers,omitempty"`
+	TXIOLayersComplete bool                        `json:"txio_layers_complete,omitempty"`
+	TXIOLayersHash     string                      `json:"txio_layers_hash,omitempty"`
+	Mode               string                      `json:"mode,omitempty"`
+	Commitment         string                      `json:"commitment"`
+	Retention          string                      `json:"retention"`
+	Published          bool                        `json:"published"`
 }
 type indexStore struct {
-	dir        string
-	definition indexDefinition
-	head       indexHead
-	checkpoint *indexCheckpoint
-	winners    map[uint64]string
+	satCommitHook            func(string) error
+	retainOutputValues       bool
+	retainOutputScripts      bool
+	profileRoot              string
+	stagedMigration          bool
+	spenderOrigin            func(context.Context, inputView, int64, int) (txioCreation, error)
+	retainSatHistory         bool
+	numberingValues          func(transactionView, int64) ([]uint64, error)
+	dir                      string
+	definition               indexDefinition
+	head                     indexHead
+	checkpoint               *indexCheckpoint
+	winners                  map[uint64]string
+	locatorContext           context.Context
+	locatorSyncDirectory     func(string) error
+	locatorDirectoriesSynced map[string]bool
+	locatorReplay            bool
+	locatorBatch             *indexLocatorBatchSession
+	locatorWrites            *indexLocatorWriteStats
 }
 
 func openIndexStore(root, id string) (*indexStore, error) {
 	return openIndexStoreContext(context.Background(), root, id)
 }
 func openIndexStoreContext(ctx context.Context, root, id string) (*indexStore, error) {
+	// Existing Raw generations remain in place. Opening or resuming never
+	// converts their body format or creates transaction reverse locators.
 
 	s, e := indexStoreHead(root, id)
 	if e != nil {
 		return nil, e
 	}
+	s.locatorContext = ctx
+	if id == "sat-state" {
+		return s, nil
+	}
+	if id == "txo-spender" {
+		s.head.TXIOLayersSchema, s.head.TXIOLayersComplete = 1, true
+		s.head.TXIOLayers = map[string][]heightInterval{}
+	}
 	e = s.walk(func(batch indexBatch) error {
 		if e := ctx.Err(); e != nil {
 			return e
+		}
+		if id == "inscriptions" && !inscriptionBatchInventoryComplete(batch) {
+			return fmt.Errorf("saved inscription receipts lack a complete block-inventory recipe; cannot resume whole-block indexing")
 		}
 		for _, r := range batch.Bitmap {
 			if r.Accepted && r.District != nil {
 				s.winners[*r.District] = r.Inscription
 			}
 		}
+		if id == "txo-spender" {
+			updateTXIOLayerCoverage(&s.head, batch)
+			if e := s.addTXIOEnrichmentCoverage(ctx, &s.head, batch.Checkpoint.Height, batch.Checkpoint.BlockHash); e != nil {
+				return e
+			}
+		}
 		return nil
 	})
 	if e != nil {
+		return nil, e
+	}
+	if id == "inscriptions" {
+		rememberValidatedInscriptionInventoryPrefix(s)
+	}
+	if e = s.ensureIndexLocators(ctx); e != nil {
 		return nil, e
 	}
 	return s, nil
@@ -83,7 +138,28 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 	if !d.Buildable {
 		return nil, fmt.Errorf("%s has no derivation executor", id)
 	}
-	s := &indexStore{dir: filepath.Join(root, "indexes", id), definition: d, winners: map[uint64]string{}}
+	dir := filepath.Join(root, "indexes", id)
+	if id == "blocks" {
+		var redirect blocksStorageRoot
+		if raw, readErr := os.ReadFile(filepath.Join(dir, "storage-v2.json")); readErr == nil {
+			if json.Unmarshal(raw, &redirect) != nil || redirect.Schema != 2 || redirect.Root != "v2" {
+				return nil, fmt.Errorf("invalid Blocks storage root")
+			}
+			dir = filepath.Join(dir, "v2")
+		} else if !os.IsNotExist(readErr) {
+			return nil, readErr
+		}
+	}
+	s := &indexStore{profileRoot: root, dir: dir, definition: d, winners: map[uint64]string{}}
+	if id == "utxo-state" {
+		return utxoIndexStoreHead(root, s)
+	}
+	if id == "address-state" || id == "address-history" {
+		return addressIndexStoreHead(root, s)
+	}
+	if id == "sat-state" {
+		return s, s.readSatHeadContext077(context.Background())
+	}
 	b, e := os.ReadFile(filepath.Join(s.dir, "head.json"))
 	if os.IsNotExist(e) {
 		return s, nil
@@ -94,6 +170,9 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 	if e = json.Unmarshal(b, &s.head); e != nil {
 		return nil, e
 	}
+	if s.head.LocatorLayout != "" && (id != "tx-locator" || s.head.LocatorLayout != indexLocatorPackedLayout) {
+		return nil, fmt.Errorf("unsupported index locator physical layout")
+	}
 	if s.head.Commitment != "" {
 		b, e := s.readBatch(s.head.Commitment)
 		if e != nil {
@@ -101,6 +180,11 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 		}
 		c := b.Checkpoint
 		s.checkpoint = &c
+	}
+	if id == "txo-spender" && s.head.TXIOLayersSchema != 0 {
+		if e := validateTXIOLayerCoverage(s.head, s.checkpoint); e != nil {
+			return nil, e
+		}
 	}
 	return s, nil
 }
@@ -131,6 +215,38 @@ func (s *indexStore) walk(visit func(indexBatch) error) error {
 }
 
 func batchRecordsHash(b indexBatch) string {
+	if b.TransactionLocator != nil {
+		return indexDigest(struct {
+			Previous     string
+			Transactions *transactionLocatorPayload
+		}{b.PreviousBlockHash, b.TransactionLocator})
+	}
+	if b.Spenders != nil {
+		return indexDigest(struct {
+			Previous string
+			Spenders *indexSpenderBlock
+		}{b.PreviousBlockHash, b.Spenders})
+	}
+	if b.Sats != nil {
+		return indexDigest(struct {
+			Previous string
+			Sats     *satIndexSnapshot
+		}{b.PreviousBlockHash, b.Sats})
+	}
+	if b.Numbering != nil {
+		numbering := b.Numbering
+		b.Numbering = nil
+		return indexDigest(struct {
+			Records   string
+			Numbering *inscriptionNumberingSnapshot
+		}{batchRecordsHash(b), numbering})
+	}
+	if b.Bitcoin != nil {
+		return indexDigest(struct {
+			Previous string
+			Bitcoin  *bitcoinIndexBlock
+		}{b.PreviousBlockHash, b.Bitcoin})
+	}
 	// Evidence receipts and provider labels are local provenance, not semantics.
 	// Empty optional arrays disappear on disk through omitempty. Canonicalize
 	// them before hashing so blocks without candidates survive a JSON round trip.
@@ -145,6 +261,19 @@ func batchRecordsHash(b indexBatch) string {
 		normalized[i].Verification = verificationView{}
 		normalized[i].VerificationState = ""
 	}
+	if b.InscriptionBlock != nil {
+		coordinates := b.InscriptionCoordinates
+		if coordinates == nil {
+			coordinates = []string{}
+		}
+		return indexDigest(struct {
+			Previous     string
+			Metadata     *inscriptionBlockMetadata
+			Inscriptions []string
+			Full         []inscriptionOccurrence
+			Diagnostics  []inscriptionExtractionDiagnostic
+		}{b.PreviousBlockHash, b.InscriptionBlock, coordinates, normalized, b.Diagnostics})
+	}
 	return indexDigest(struct {
 		Previous     string
 		Inscriptions []inscriptionOccurrence
@@ -153,28 +282,118 @@ func batchRecordsHash(b indexBatch) string {
 	}{b.PreviousBlockHash, normalized, b.Bitmap, b.Diagnostics})
 }
 func checkpointHash(c indexCheckpoint) string { c.Commitment = ""; return indexDigest(c) }
-func (s *indexStore) readBatch(commit string) (indexBatch, error) {
-	var b indexBatch
+func (s *indexStore) readBatchBytes(commit string) ([]byte, error) {
 	if !validHash(commit) {
-		return b, fmt.Errorf("invalid checkpoint identity")
+		return nil, fmt.Errorf("invalid checkpoint identity")
 	}
-	f, e := os.Open(filepath.Join(s.dir, "commits", commit+".json"))
-	if e != nil {
-		return b, e
+	f, err := os.Open(filepath.Join(s.dir, "commits", commit+".json"))
+	if err != nil {
+		return nil, err
 	}
 	defer f.Close()
-	data, e := io.ReadAll(io.LimitReader(f, (64<<20)+1))
-	if e != nil {
-		return b, e
+	data, err := io.ReadAll(io.LimitReader(f, (64<<20)+1))
+	if err != nil {
+		return nil, err
 	}
 	if len(data) > 64<<20 {
-		return b, fmt.Errorf("index batch exceeds budget")
+		return nil, fmt.Errorf("index batch exceeds budget")
 	}
+	return data, nil
+}
+
+func (s *indexStore) readBatch(commit string) (indexBatch, error) {
+	data, err := s.readBatchBytes(commit)
+	if err != nil {
+		return indexBatch{}, err
+	}
+	return s.validateBatchBytes(commit, data)
+}
+
+func (s *indexStore) validateBatchBytes(commit string, data []byte) (indexBatch, error) {
+	var b indexBatch
+	var e error
 	if e = json.Unmarshal(data, &b); e != nil {
 		return b, e
 	}
+	bitcoin := s.definition.ID == "blocks" || s.definition.ID == "tx-locator" && b.TransactionLocator == nil
+	transactionLocator := s.definition.ID == inscriptionLocatorIndex || s.definition.ID == "tx-locator" && b.TransactionLocator != nil
+	if transactionLocator {
+		if b.Bitcoin != nil || b.Spenders != nil || b.Sats != nil || b.Numbering != nil || b.InscriptionBlock != nil || len(b.Inscriptions) != 0 || len(b.InscriptionCoordinates) != 0 || len(b.Bitmap) != 0 || len(b.Diagnostics) != 0 {
+			return b, fmt.Errorf("mixed transaction locator payload")
+		}
+		if e = validateTransactionPayload(b, s.definition.ID); e != nil {
+			return b, e
+		}
+	} else if b.TransactionLocator != nil {
+		return b, fmt.Errorf("unexpected transaction locator payload")
+	}
+	if s.definition.ID == "inscriptions" {
+		if e = validateInscriptionPayload(b); e != nil {
+			return b, e
+		}
+	} else if b.InscriptionBlock != nil || len(b.InscriptionCoordinates) != 0 {
+		return b, fmt.Errorf("unexpected inscription positions")
+	}
+	if (s.definition.ID == "txo-spender") != (b.Spenders != nil) {
+		return b, fmt.Errorf("spender index record type mismatch")
+	}
+	if b.Spenders != nil {
+		if b.Bitcoin != nil || b.Sats != nil || b.Numbering != nil || len(b.Inscriptions) > 0 || len(b.Bitmap) > 0 {
+			return b, fmt.Errorf("invalid spender payload")
+		}
+		for i := range b.Spenders.Rows {
+			r := txioSpendRow(b.Spenders, i)
+			if b.Spenders.Version < 3 && (!validHash(r.PrevTxID) || !validHash(r.TxID)) || r.Vin < 0 || r.TxIndex < 1 {
+				return b, fmt.Errorf("invalid spender record")
+			}
+		}
+		if e = validateTXIOBatch(b); e != nil {
+			return b, e
+		}
+	}
+	if (s.definition.ID == "sat-state") != (b.Sats != nil) {
+		return b, fmt.Errorf("Sat index record type mismatch")
+	}
+	if b.Sats != nil && b.Sats.Profile != satIndexProfile {
+		return b, ErrSatProfileIncompatible
+	}
+	if b.Sats != nil && (b.Bitcoin != nil || b.Numbering != nil || len(b.Bitmap) != 0 || len(b.Inscriptions) != 0) {
+		return b, fmt.Errorf("invalid Sat index snapshot payload")
+	}
+	if bitcoin != (b.Bitcoin != nil) {
+		return b, fmt.Errorf("index record type mismatch")
+	}
+	if bitcoin {
+		if len(b.Bitmap) > 0 || len(b.Inscriptions) > 0 || len(b.Diagnostics) > 0 {
+			return b, fmt.Errorf("unexpected Bitcoin index records")
+		}
+		if s.definition.ID == "blocks" {
+			if e = validateBitcoinBodyRecord(b.Bitcoin); e != nil {
+				return b, e
+			}
+		} else if b.Bitcoin.BodySchema != 0 || b.Bitcoin.RawBody != nil {
+			return b, fmt.Errorf("raw body metadata in legacy transaction locator")
+		}
+		if b.Bitcoin.BodySchema != 3 && len(b.Bitcoin.TxIDs) == 0 || (s.definition.ID == "tx-locator" && len(b.Bitcoin.Transactions) != 0) {
+			return b, fmt.Errorf("invalid Bitcoin index payload")
+		}
+		for i, id := range b.Bitcoin.TxIDs {
+			if !validHash(id) {
+				return b, fmt.Errorf("invalid transaction identifier")
+			}
+			if len(b.Bitcoin.Transactions) > 0 && (i >= len(b.Bitcoin.Transactions) || b.Bitcoin.Transactions[i].TxID != id || b.Bitcoin.Transactions[i].Index != i) {
+				return b, fmt.Errorf("transaction order mismatch")
+			}
+		}
+	}
 	c := b.Checkpoint
+	if e = validateBitcoinBodyAnchor(b); e != nil {
+		return b, e
+	}
 	d := s.definition
+	if c.Version == 1 && d.Version == 2 && (d.ID == "inscriptions" || d.ID == "tx-locator") {
+		d = legacyIndexDefinition(d)
+	}
 	if c.Commitment != commit || checkpointHash(c) != commit || c.RecordsHash != batchRecordsHash(b) || c.RuleHash != d.RuleHash || c.Definition != d.ID || c.Version != d.Version || c.Schema != d.CheckpointSchema || c.Network != d.Network || !validHash(c.BlockHash) || c.Height < c.From || c.From < d.StartHeight {
 		return b, fmt.Errorf("invalid or incompatible index checkpoint")
 	}
@@ -271,8 +490,28 @@ func bitmapCandidatesLookup(occurrences []inscriptionOccurrence, lookup func(uin
 }
 
 func (s *indexStore) appendBlock(block blockView, from int64, retention string) error {
+	return s.appendPreparedBlock(block, from, retention, nil)
+}
+
+func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention string, prepared *inscriptionBlockResult) error {
+	if s.definition.ID == "sat-state" {
+		return s.appendSat077Block(block, from, retention, prepared)
+	}
 	if !block.Verification.HeaderChainMatch && !block.Verification.ConsensusValidated {
 		return fmt.Errorf("index requires a selected-chain anchor")
+	}
+	if s.definition.ID == "blocks" || s.definition.ID == "tx-locator" || s.definition.ID == "txo-spender" {
+		if !integrityVerified(block) || len(block.Transactions) == 0 {
+			return fmt.Errorf("Bitcoin index requires locally verified block and transaction evidence")
+		}
+		for i, tx := range block.Transactions {
+			if s.definition.ID == "blocks" {
+				break
+			} // Exact parser-owned bytes are validated by prepareRawBitcoinRecord.
+			if !validHash(tx.TxID) || tx.Index != i {
+				return fmt.Errorf("Bitcoin index requires ordered transaction identifiers")
+			}
+		}
 	}
 	if s.checkpoint != nil {
 		if block.Height != s.checkpoint.Height+1 || block.PreviousBlockHash != s.checkpoint.BlockHash {
@@ -282,15 +521,74 @@ func (s *indexStore) appendBlock(block blockView, from int64, retention string) 
 	} else if block.Height != from || (!s.definition.ArbitraryStart && from != s.definition.StartHeight) {
 		return fmt.Errorf("invalid initial index height")
 	}
-	extracted, e := extractInscriptionOccurrences(block)
-	if e != nil {
-		return e
+	var extracted inscriptionBlockResult
+	var e error
+	if s.definition.ID == "inscriptions" || s.definition.ID == "bitmap" {
+		if prepared != nil {
+			if prepared.BlockHash != block.Hash || prepared.BlockHeight != block.Height || prepared.ParserProfile != inscriptionParserProfile {
+				return fmt.Errorf("shared inscription extraction does not match block/profile")
+			}
+			extracted = *prepared
+		} else {
+			extracted, e = extractInscriptionOccurrences(block)
+			if e != nil {
+				return e
+			}
+		}
+		if s.definition.ID == "inscriptions" {
+			if err := validateCompleteInscriptionInventory(block, &extracted); err != nil {
+				return err
+			}
+		}
 	}
 	b := indexBatch{PreviousBlockHash: block.PreviousBlockHash, Diagnostics: extracted.Diagnostics}
-	if s.definition.ID == "bitmap" {
+	if s.definition.ID == "txo-spender" {
+		b.Spenders, e = s.deriveTXIOBlock(block)
+		if e != nil {
+			return e
+		}
+	} else if s.definition.ID == "sat-state" {
+		b.Sats, e = s.deriveSatPreparedBlock(block, prepared)
+		if e != nil {
+			return e
+		}
+	} else if s.definition.ID == "tx-locator" && s.head.Mode != "" {
+		b.TransactionLocator = transactionLocatorFromBlock(block)
+	} else if s.definition.ID == "blocks" {
+		b.Bitcoin, e = s.prepareRawBitcoinRecord(block)
+		if e != nil {
+			return e
+		}
+	} else if s.definition.ID == "tx-locator" {
+		b.Bitcoin = &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: []string{}}
+		for _, tx := range block.Transactions {
+			b.Bitcoin.TxIDs = append(b.Bitcoin.TxIDs, tx.TxID)
+		}
+	} else if s.definition.ID == "bitmap" {
 		b.Bitmap = bitmapCandidatesLookup(extracted.Occurrences, func(n uint64) (string, bool) { v, ok := s.winners[n]; return v, ok })
 	} else {
-		b.Inscriptions = extracted.Occurrences
+		mode := s.head.Mode
+		if mode == "" {
+			mode = "full"
+		} // Explicit legacy/test stores retain their richer format.
+		b.InscriptionBlock = &inscriptionBlockMetadata{Mode: mode, TransactionCount: uint32(len(block.Transactions))}
+		b.InscriptionCoordinates = make([]string, 0, len(extracted.Occurrences))
+		for _, occurrence := range extracted.Occurrences {
+			b.InscriptionCoordinates = append(b.InscriptionCoordinates, inscriptionCoordinate(uint32(occurrence.TxIndex), occurrence.Index, block.Height))
+		}
+		if mode == "full" {
+			b.Inscriptions = append([]inscriptionOccurrence(nil), extracted.Occurrences...)
+		} else {
+			b.Diagnostics = nil
+		}
+		// New Lean and Full jobs never perform hidden history/UTXO work. The
+		// legacy explicit numbering executor remains available for its fixtures.
+		if s.head.Mode == "" {
+			b.Numbering, e = s.deriveInscriptionNumbering(block, from, b.Inscriptions)
+			if e != nil {
+				return e
+			}
+		}
 	}
 	if s.definition.ID == "bitmap" && s.head.Mode == "lean" {
 		lean := []bitmapRecord{}
@@ -303,33 +601,102 @@ func (s *indexStore) appendBlock(block blockView, from int64, retention string) 
 		b.Bitmap = lean
 		b.Diagnostics = nil
 	}
-	c := indexCheckpoint{Schema: s.definition.CheckpointSchema, Definition: s.definition.ID, Version: s.definition.Version, RuleHash: s.definition.RuleHash, Network: s.definition.Network, From: from, Height: block.Height, BlockHash: block.Hash, DependencyFingerprint: indexDigest(struct{ Block, Parser, Reference string }{block.Hash, inscriptionParserProfile, inscriptionReferenceCommit}), RecordsHash: batchRecordsHash(b)}
+	return s.commitPreparedIndexBatch(b, block.Height, block.Hash, from, retention)
+}
+
+func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash string, from int64, retention string) error {
+	if s.definition.ID == "blocks" && !s.stagedMigration {
+		blocksBodyMigrationMu.Lock()
+		defer blocksBodyMigrationMu.Unlock()
+		if err := s.requireActiveBlocksRoot(); err != nil {
+			return err
+		}
+	}
+	if s.checkpoint != nil {
+		if height != s.checkpoint.Height+1 || b.PreviousBlockHash != s.checkpoint.BlockHash {
+			return fmt.Errorf("nonsequential index block")
+		}
+		from = s.checkpoint.From
+	} else if height != from || (!s.definition.ArbitraryStart && from != s.definition.StartHeight) {
+		return fmt.Errorf("invalid initial index height")
+	}
+	c := indexCheckpoint{Schema: s.definition.CheckpointSchema, Definition: s.definition.ID, Version: s.definition.Version, RuleHash: s.definition.RuleHash, Network: s.definition.Network, From: from, Height: height, BlockHash: hash, DependencyFingerprint: indexDigest(struct{ Block, Parser, Reference string }{hash, inscriptionParserProfile, inscriptionReferenceCommit}), RecordsHash: batchRecordsHash(b)}
+	if b.TransactionLocator != nil {
+		c.DependencyFingerprint = indexDigest(struct{ Block, Selection, Source string }{hash, b.TransactionLocator.Selection, b.TransactionLocator.SourceCommitment})
+	}
 	if s.checkpoint != nil {
 		c.PreviousCommitment = s.checkpoint.Commitment
 	}
 	c.Commitment = checkpointHash(c)
 	b.Checkpoint = c
+	if s.definition.ID == "inscriptions" {
+		if e := validateInscriptionPayload(b); e != nil {
+			return e
+		}
+	}
+	if b.TransactionLocator != nil {
+		if e := validateTransactionPayload(b, s.definition.ID); e != nil {
+			return e
+		}
+	}
+	if s.locatorBatch != nil {
+		return s.stageLocatorBatch(b, retention)
+	}
+	var e error
+	_, existingCommit := os.Stat(filepath.Join(s.dir, "commits", c.Commitment+".json"))
+	s.locatorReplay = existingCommit == nil
 	if e = atomicWriteJSON(filepath.Join(s.dir, "commits", c.Commitment+".json"), b); e != nil {
 		return e
 	}
+	s.locatorWriteCounters().CommitWrites++
 	if e = syncDirectory(filepath.Join(s.dir, "commits")); e != nil {
+		return e
+	}
+	// The private locator pointers are durable before the head visibility
+	// boundary. Interrupted pointers remain out-of-range/canonical-filtered
+	// orphans, never a reason to advertise incomplete committed coverage.
+	indexLocatorMu.Lock()
+	locatorLocked := true
+	defer func() {
+		if locatorLocked {
+			indexLocatorMu.Unlock()
+		}
+	}()
+	if e = s.writeIndexLocatorsLocked(b); e != nil {
 		return e
 	}
 	// The atomic head is the only visibility boundary. An interrupted orphan
 	// commit is harmless and cannot advance advertised coverage.
-	head := indexHead{Mode: s.head.Mode, Commitment: c.Commitment, Retention: retention, Published: s.head.Published}
+	if err := checkIndexConsumerPublication(s.locatorContext, s.profileRoot, s.definition.ID); err != nil {
+		return err
+	}
+	head := cloneTXIOLayerCoverage(s.head)
+	head.Mode, head.Commitment, head.Retention = s.head.Mode, c.Commitment, retention
+	if b.Spenders != nil {
+		updateTXIOLayerCoverage(&head, b)
+		head.TXIOLayersHash = txioLayerCoverageHash(head)
+	}
 	if e = atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); e != nil {
 		return e
 	}
+	s.locatorWriteCounters().HeadWrites++
 	if e = syncDirectory(s.dir); e != nil {
 		return e
 	}
 	s.head = head
 	s.checkpoint = &c
+	rememberInscriptionInventoryAppend(s, b)
 	for _, r := range b.Bitmap {
 		if r.Accepted && r.District != nil {
 			s.winners[*r.District] = r.Inscription
 		}
+	}
+	// Cleanup is best-effort after durable publication. A maintenance error
+	// must not misreport the already committed block as failed/uncommitted.
+	indexLocatorMu.Unlock()
+	locatorLocked = false
+	if b.Sats != nil || b.Numbering != nil {
+		_ = s.collectOrdinalState()
 	}
 	return nil
 }
@@ -337,6 +704,24 @@ func (s *indexStore) appendBlock(block blockView, from int64, retention string) 
 // Unavailable chain evidence is an error, never evidence of a reorg. Rewind
 // only after actual hash disagreement, retaining old immutable audit batches.
 func (s *indexStore) reconcile(hashAt func(int64) (string, error)) error {
+	if s.locatorBatch != nil {
+		if pending, _, _ := s.LocatorBatchStats(); pending > 0 {
+			return fmt.Errorf("discard the unflushed locator stage before selected-chain reconciliation")
+		}
+		// Reconciliation can replace the durable prefix. A new batch must
+		// capture that replacement rather than reuse its previous base head.
+		s.AbortLocatorBatch()
+	}
+	if s.definition.ID == "sat-state" {
+		return s.reconcileSatStateSelected(s.ordinalContext(), -1, hashAt)
+	}
+	if s.definition.ID == "blocks" && !s.stagedMigration {
+		blocksBodyMigrationMu.Lock()
+		defer blocksBodyMigrationMu.Unlock()
+		if err := s.requireActiveBlocksRoot(); err != nil {
+			return err
+		}
+	}
 	if s.checkpoint == nil {
 		return nil
 	}
@@ -347,7 +732,7 @@ func (s *indexStore) reconcile(hashAt func(int64) (string, error)) error {
 	if hash == s.checkpoint.BlockHash {
 		return nil
 	}
-	head := s.head
+	head := cloneTXIOLayerCoverage(s.head)
 	head.Commitment = ""
 	next := s.checkpoint.PreviousCommitment
 	for next != "" {
@@ -360,14 +745,57 @@ func (s *indexStore) reconcile(hashAt func(int64) (string, error)) error {
 			return err
 		}
 		if hash == b.Checkpoint.BlockHash {
+			if e := s.checkOrdinalRecovery(b); e != nil {
+				return e
+			}
 			head.Commitment = next
 			break
 		}
 		next = b.Checkpoint.PreviousCommitment
 	}
+	indexLocatorMu.Lock()
+	defer indexLocatorMu.Unlock()
+	if e = s.requireVisibleLocatorHead(); e != nil {
+		return e
+	}
+	var active *indexCheckpoint
+	if head.Commitment != "" {
+		b, err := s.readBatch(head.Commitment)
+		if err != nil {
+			return err
+		}
+		active = &b.Checkpoint
+	}
+	if s.definition.ID == "txo-spender" {
+		end := int64(-1)
+		if active != nil {
+			end = active.Height
+		}
+		for id, ranges := range head.TXIOLayers {
+			var kept []heightInterval
+			for _, interval := range ranges {
+				if interval.From > end {
+					continue
+				}
+				if interval.To > end {
+					interval.To = end
+				}
+				kept = append(kept, interval)
+			}
+			head.TXIOLayers[id] = kept
+		}
+		head.TXIOLayersHash = txioLayerCoverageHash(head)
+	}
+	if e = checkIndexConsumerPublication(s.locatorContext, s.profileRoot, s.definition.ID); e != nil {
+		return e
+	}
+	if e = s.writeActiveLocatorHead(active); e != nil {
+		return e
+	}
 	if e = atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); e != nil {
 		return e
 	}
+	s.locatorWriteCounters().HeadWrites++
 	if e = syncDirectory(s.dir); e != nil {
 		return e
 	}

@@ -125,9 +125,9 @@ func newCoreRPC(s appSettings) (*coreRPC, error) {
 		}
 		if user == "" || pass == "" {
 			if conf.HasRPCAuth && user != "" {
-				return fmt.Errorf("bitcoin.conf uses rpcauth for user %q; enter that user's RPC password in BOD", user)
+				return fmt.Errorf("bitcoin.conf uses rpcauth for user %q; enter that user's RPC password in Gateway", user)
 			}
-			return fmt.Errorf("RPC username/password not found; enter them in BOD or configure cookie authentication")
+			return fmt.Errorf("RPC username/password not found; enter them in Gateway or configure cookie authentication")
 		}
 		c.user, c.pass = user, pass
 		if manualUser != "" || manualPass != "" {
@@ -276,7 +276,17 @@ type txLocation struct {
 	TxIndex   int    `json:"tx_index"` // -1 when the provider did not compute it
 }
 
+func coreTxIndexUsable(status coreStatus) bool {
+	return status.Connected && status.TxIndexEnabled && status.TxIndex && !status.InitialBlockDownload && status.Height >= 0 && status.TxIndexHeight >= status.Height && validHash(status.BestBlockHash)
+}
+
 func coreTxLocation(s appSettings, txid string) (txLocation, error) {
+	// A bare historical transaction ID needs Core's complete txindex. Known
+	// Gateway block locations use block RPC directly and do not need this index.
+	status := inspectCore(s)
+	if !coreTxIndexUsable(status) {
+		return txLocation{}, fmt.Errorf("PROVIDER_UNAVAILABLE: historical transaction lookup requires Bitcoin Core with a synced txindex at its current tip")
+	}
 	c, err := newCoreRPC(s)
 	if err != nil {
 		return txLocation{}, err
@@ -483,6 +493,10 @@ func coreBlockLocationByHeight(s appSettings, height int64) (blockLocation, erro
 }
 
 func coreBlockLocationByHash(s appSettings, hash string) (blockLocation, error) {
+	return coreBlockLocationByHashContext(context.Background(), s, hash)
+}
+
+func coreBlockLocationByHashContext(ctx context.Context, s appSettings, hash string) (blockLocation, error) {
 	if !validHash(hash) {
 		return blockLocation{}, fmt.Errorf("invalid block hash")
 	}
@@ -494,7 +508,7 @@ func coreBlockLocationByHash(s appSettings, hash string) (blockLocation, error) 
 		Height        int64 `json:"height"`
 		Confirmations int64 `json:"confirmations"`
 	}
-	if err := c.call("getblockheader", []any{strings.ToLower(hash), true}, &hdr); err != nil {
+	if err := c.callContext(ctx, "getblockheader", []any{strings.ToLower(hash), true}, &hdr); err != nil {
 		return blockLocation{}, err
 	}
 	if hdr.Confirmations < 0 {

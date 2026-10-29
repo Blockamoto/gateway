@@ -12,61 +12,59 @@ import (
 )
 
 type appSettings struct {
-	BitcoinGatewayDiscovery bool     `json:"bitcoin_gateway_discovery"` // Explicit Probe consent; absent legacy settings stay off.
-	DiscoveryPaused         bool     `json:"discovery_paused"`
-	LANDiscovery            bool     `json:"lan_discovery"`
-	CoreDisabled            bool     `json:"core_disabled"`
-	CoreMountDisabled       bool     `json:"core_mount_disabled"`
-	PrepareMountedFiles     bool     `json:"prepare_mounted_files"`
-	NetworkDisabled         bool     `json:"network_disabled"`
-	HeadersPaused           bool     `json:"headers_paused"`
-	BitcoinPeers            []string `json:"bitcoin_peers,omitempty"`
-	GatewayBootstrapPeers   []string `json:"gateway_bootstrap_peers,omitempty"`
+	LANDiscovery          bool     `json:"lan_discovery"`
+	CoreDisabled          bool     `json:"core_disabled"`
+	CoreMountDisabled     bool     `json:"core_mount_disabled"`
+	PrepareMountedFiles   bool     `json:"prepare_mounted_files"`
+	NetworkDisabled       bool     `json:"network_disabled"`
+	HeadersPaused         bool     `json:"headers_paused"`
+	BitcoinPeers          []string `json:"bitcoin_peers,omitempty"`
+	GatewayBootstrapPeers []string `json:"gateway_bootstrap_peers,omitempty"`
 
 	OrdEnabled            bool   `json:"ord_enabled"`
 	OrdURL                string `json:"ord_url,omitempty"`
 	ArchiveDir            string `json:"archive_dir,omitempty"`
 	CacheBlocks           bool   `json:"cache_blocks"`
-	ShareCache            bool   `json:"share_cache"`  // advertise/serve public BOD cache objects
-	PrivacyMode           bool   `json:"privacy_mode"` // newly fetched cache objects remain private
-	ServeData             bool   `json:"serve_data"`
+	ShareCache            bool   `json:"share_cache"`          // advertise/serve public BOD cache objects
+	PrivacyMode           bool   `json:"privacy_mode"`         // newly fetched cache objects remain private
+	ServeData             bool   `json:"serve_data"`           // ordinary Bitcoin serving
+	ServeGatewayData      bool   `json:"serve_gateway_data"`   // separate Gateway protocol serving
 	ShareCore             bool   `json:"share_core,omitempty"` // legacy alias; migrated to ServeData
 	Onboarded             bool   `json:"onboarded"`
 	StorageCapMB          int64  `json:"storage_cap_mb"` // 0 = unlimited
 	BitcoinDataDir        string `json:"bitcoin_data_dir"`
 	BitcoinBlocksDir      string `json:"bitcoin_blocks_dir,omitempty"` // optional directory containing blk*.dat
 	ManualPeer            string `json:"manual_peer,omitempty"`
-	AdvertiseAddr         string `json:"advertise_addr,omitempty"` // optional reachable BOD endpoint advertised into Bitcoin addr gossip
+	AdvertiseAddr         string `json:"advertise_addr,omitempty"` // retained future Gateway endpoint setting
 	RPCAuthMode           string `json:"rpc_auth_mode,omitempty"`  // auto|cookie|userpass
 	RPCUser               string `json:"rpc_user,omitempty"`
 	RPCPassword           string `json:"rpc_password,omitempty"`
 	RPCPort               int    `json:"rpc_port,omitempty"`
 	MaintainHeaderMirror  bool   `json:"maintain_header_mirror,omitempty"` // keep BOD headers syncing even while live Core supplies chain authority
 	GraphIndex            bool   `json:"graph_index"`                      // index spends/tx locations for every newly processed canonical block
-	SatlineEnabled        bool   `json:"satline_enabled"`
+	SatlineEnabled        bool   `json:"satline_enabled"`                  // deprecated compatibility field; follows release availability
 	SatlineUsePeers       bool   `json:"satline_use_peers"`
-	SatlineServePublished bool   `json:"satline_serve_published"` // bundled Satline module can be disabled independently
+	SatlineServePublished bool   `json:"satline_serve_published"` // explicit publication sharing preference; independently release-gated
 }
 
 type publicSettings struct {
-	BitcoinGatewayDiscovery bool     `json:"bitcoin_gateway_discovery"` // Explicit Probe consent; absent legacy settings stay off.
-	DiscoveryPaused         bool     `json:"discovery_paused"`
-	LANDiscovery            bool     `json:"lan_discovery"`
-	CoreDisabled            bool     `json:"core_disabled"`
-	CoreMountDisabled       bool     `json:"core_mount_disabled"`
-	PrepareMountedFiles     bool     `json:"prepare_mounted_files"`
-	NetworkDisabled         bool     `json:"network_disabled"`
-	HeadersPaused           bool     `json:"headers_paused"`
-	BitcoinPeers            []string `json:"bitcoin_peers,omitempty"`
-	GatewayBootstrapPeers   []string `json:"gateway_bootstrap_peers,omitempty"`
+	LANDiscovery          bool     `json:"lan_discovery"`
+	CoreDisabled          bool     `json:"core_disabled"`
+	CoreMountDisabled     bool     `json:"core_mount_disabled"`
+	PrepareMountedFiles   bool     `json:"prepare_mounted_files"`
+	NetworkDisabled       bool     `json:"network_disabled"`
+	HeadersPaused         bool     `json:"headers_paused"`
+	BitcoinPeers          []string `json:"bitcoin_peers,omitempty"`
+	GatewayBootstrapPeers []string `json:"gateway_bootstrap_peers,omitempty"`
 
 	OrdEnabled            bool   `json:"ord_enabled"`
 	OrdURL                string `json:"ord_url,omitempty"`
 	ArchiveDir            string `json:"archive_dir,omitempty"`
 	CacheBlocks           bool   `json:"cache_blocks"`
-	ShareCache            bool   `json:"share_cache"`  // advertise/serve public BOD cache objects
-	PrivacyMode           bool   `json:"privacy_mode"` // newly fetched cache objects remain private
-	ServeData             bool   `json:"serve_data"`
+	ShareCache            bool   `json:"share_cache"`        // advertise/serve public BOD cache objects
+	PrivacyMode           bool   `json:"privacy_mode"`       // newly fetched cache objects remain private
+	ServeData             bool   `json:"serve_data"`         // ordinary Bitcoin serving
+	ServeGatewayData      bool   `json:"serve_gateway_data"` // separate Gateway protocol serving
 	Onboarded             bool   `json:"onboarded"`
 	StorageCapMB          int64  `json:"storage_cap_mb"`
 	BitcoinDataDir        string `json:"bitcoin_data_dir"`
@@ -81,12 +79,16 @@ type publicSettings struct {
 	GraphIndex            bool   `json:"graph_index"`                      // index spends/tx locations for every newly processed canonical block
 	SatlineEnabled        bool   `json:"satline_enabled"`
 	SatlineUsePeers       bool   `json:"satline_use_peers"`
-	SatlineServePublished bool   `json:"satline_serve_published"` // bundled Satline module can be disabled independently
+	SatlineServePublished bool   `json:"satline_serve_published"` // explicit publication sharing preference; independently release-gated
 }
 
 func (s appSettings) public() publicSettings {
-	return publicSettings{BitcoinGatewayDiscovery: s.BitcoinGatewayDiscovery, DiscoveryPaused: s.DiscoveryPaused, LANDiscovery: s.LANDiscovery, CoreDisabled: s.CoreDisabled, CoreMountDisabled: s.CoreMountDisabled, PrepareMountedFiles: s.PrepareMountedFiles, NetworkDisabled: s.NetworkDisabled, HeadersPaused: s.HeadersPaused, BitcoinPeers: append([]string(nil), s.BitcoinPeers...), OrdEnabled: s.OrdEnabled, OrdURL: s.OrdURL, ArchiveDir: s.ArchiveDir,
-		CacheBlocks: s.CacheBlocks, ShareCache: s.ShareCache, PrivacyMode: s.PrivacyMode, ServeData: s.ServeData, Onboarded: s.Onboarded,
+	s.GraphIndex = s.GraphIndex && releaseFeatureAvailable("txo-spender")
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
+	s.OrdEnabled = s.OrdEnabled && releaseFeatureAvailable("inscriptions")
+	s.ServeGatewayData = s.ServeGatewayData && releaseFeatureAvailable("gateway-peerhood")
+	return publicSettings{LANDiscovery: s.LANDiscovery, CoreDisabled: s.CoreDisabled, CoreMountDisabled: s.CoreMountDisabled, PrepareMountedFiles: s.PrepareMountedFiles, NetworkDisabled: s.NetworkDisabled, HeadersPaused: s.HeadersPaused, BitcoinPeers: append([]string(nil), s.BitcoinPeers...), OrdEnabled: s.OrdEnabled, OrdURL: s.OrdURL, ArchiveDir: s.ArchiveDir,
+		CacheBlocks: s.CacheBlocks, ShareCache: s.ShareCache, PrivacyMode: s.PrivacyMode, ServeData: s.ServeData, ServeGatewayData: s.ServeGatewayData, Onboarded: s.Onboarded,
 		StorageCapMB: s.StorageCapMB, BitcoinDataDir: s.BitcoinDataDir, BitcoinBlocksDir: s.BitcoinBlocksDir,
 		ManualPeer: s.ManualPeer, GatewayBootstrapPeers: append([]string(nil), s.GatewayBootstrapPeers...), AdvertiseAddr: s.AdvertiseAddr, RPCAuthMode: s.RPCAuthMode, RPCUser: s.RPCUser,
 		RPCPasswordSet: strings.TrimSpace(s.RPCPassword) != "", RPCPort: s.RPCPort, MaintainHeaderMirror: s.MaintainHeaderMirror, GraphIndex: s.GraphIndex, SatlineEnabled: s.SatlineEnabled, SatlineUsePeers: s.SatlineUsePeers, SatlineServePublished: s.SatlineServePublished,
@@ -94,7 +96,7 @@ func (s appSettings) public() publicSettings {
 }
 
 func defaultSettings() appSettings {
-	return appSettings{OrdEnabled: true, CacheBlocks: true, ShareCache: true, StorageCapMB: 1024, BitcoinDataDir: detectBitcoinDataDir(), RPCAuthMode: "auto", GraphIndex: true, SatlineEnabled: true}
+	return appSettings{CacheBlocks: true, ShareCache: true, ServeData: true, OrdEnabled: true, SatlineEnabled: releaseFeatureAvailable("satline"), StorageCapMB: 1024, BitcoinDataDir: detectBitcoinDataDir(), RPCAuthMode: "auto"}
 }
 
 func (a *app) settingsPath() string { return filepath.Join(a.dataDir, "settings.json") }
@@ -103,11 +105,15 @@ func (a *app) loadSettings() appSettings {
 	s := defaultSettings()
 	b, err := os.ReadFile(a.settingsPath())
 	hadSettings := err == nil
+	var savedFields map[string]json.RawMessage
 	if hadSettings {
 		_ = json.Unmarshal(b, &s)
+		_ = json.Unmarshal(b, &savedFields)
 	}
 	// Upgrade v0.3.x settings: sharing the Core index meant participating as a server.
-	if s.ShareCore && !s.ServeData {
+	// An explicit modern false always wins over a stale legacy alias.
+	_, servingChosen := savedFields["serve_data"]
+	if s.ShareCore && !s.ServeData && !servingChosen {
 		s.ServeData = true
 	}
 	// Onboarding is for genuinely new installs; upgrades retain their existing behaviour.
@@ -126,12 +132,16 @@ func (a *app) loadSettings() appSettings {
 	if s.StorageCapMB < 0 {
 		s.StorageCapMB = 1024
 	}
+	// Local Satline is part of an available release, including upgrades with an
+	// old explicit false. Peer receiving and publication sharing stay separate.
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
 	return s
 }
 
 func (a *app) saveSettings(s appSettings) error {
 	// Keep the legacy field in lockstep so downgrading doesn't silently switch sharing off.
 	s.ShareCore = s.ServeData
+	s.SatlineEnabled = releaseFeatureAvailable("satline")
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err

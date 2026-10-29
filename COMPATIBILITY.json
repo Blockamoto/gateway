@@ -1,5 +1,5 @@
 {
-  "app_version": "0.6.2",
+  "app_version": "0.7.8",
   "minimum_compatible_app": "0.3.9",
   "wire_protocol": 1,
   "minimum_wire_protocol": 1,
@@ -11,6 +11,9 @@
   "raw_block_redownload_required": false,
   "index_schema": 3,
   "index_rebuild_required": false,
+  "block_body_schema": 3,
+  "txio_schema": 3,
+  "utxo_schema": 2,
   "cache_metadata_schema": 2,
   "cache_metadata_rebuild_required": false,
   "core_mount_schema": 1,
@@ -29,9 +32,14 @@
   "derived_recheck_required": true,
   "ord_storage_schema": 1,
   "archive_storage_schema": 1,
-  "note": "Audit repair candidate for discovery, sessions, header rollback and public-data boundaries. Public graph schema 2 requires rebuilding from public blocks; legacy graph files are preserved. Wire formats, header records and raw blocks are unchanged. See docs/discovery-repair-candidate.md for validation and remaining acceptance work.",
+  "sat_state_profile": "gateway-sat-fifo-mainnet-bps-v2",
+  "sat_savepoint_intervals": [
+    12,
+    144
+  ],
+  "sat_savepoints_per_interval": 2,
+  "note": "Local portable development preview. Canonical Bitmap indexes use distinct identities; older experimental state remains inspectable and requires explicit rebuilding. Optional chains identify a replaceable development codec. No release or update promotion.",
   "satline_wire": 1,
   "satline_publication_schema": 1,
-  "release_status": "test_candidate",
-  "discovery_ledger_schema": 1
+  "release_status": "prerelease"
 }

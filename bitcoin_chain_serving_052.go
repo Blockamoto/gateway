@@ -136,7 +136,7 @@ func (s *overlayServer) handleChainRequest(c net.Conn, command string, payload [
 	}
 	_ = writeMessage(c, response, out.Bytes())
 }
-func (a *app) headersForBitcoinPeer(ctx context.Context, locators []string, stop string, limit int, allowSingle bool) ([][]byte, error) {
+func (a *app) headersForBitcoinPeer(ctx context.Context, locators []string, stop string, limit int, headersRequest bool) ([][]byte, error) {
 	a.settingsMu.RLock()
 	settings := a.settings
 	a.settingsMu.RUnlock()
@@ -144,12 +144,12 @@ func (a *app) headersForBitcoinPeer(ctx context.Context, locators []string, stop
 		return nil, fmt.Errorf("Bitcoin serving disabled")
 	}
 	ready := a.currentBitcoinServing()
-	if ready.Archival {
+	if ready.Archival || ready.Limited {
 		c, e := newCoreRPC(settings)
 		if e != nil {
 			return nil, e
 		}
-		if len(locators) == 0 && allowSingle {
+		if len(locators) == 0 && headersRequest {
 			if stop == strings.Repeat("0", 64) {
 				return nil, nil
 			}
@@ -180,6 +180,9 @@ func (a *app) headersForBitcoinPeer(ctx context.Context, locators []string, stop
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
+		}
+		if ready.Limited && !headersRequest && start < ready.Height-287 {
+			start = ready.Height - 287
 		}
 		end := start + int64(limit) - 1
 		if end > ready.Height {
@@ -247,7 +250,7 @@ func (a *app) headersForBitcoinPeer(ctx context.Context, locators []string, stop
 	}
 	// Native selected headers remain useful even for sparse nodes; no full-chain
 	// service flag is inferred from possession of this header sequence.
-	if len(locators) == 0 && allowSingle {
+	if len(locators) == 0 && headersRequest {
 		_, h, e := a.findSelectedHeader(stop)
 		if e != nil {
 			return nil, nil

@@ -52,6 +52,8 @@ type satlineStoreMeta struct {
 type satlineStoreStatus struct {
 	Enabled               bool   `json:"enabled"`
 	Ready                 bool   `json:"ready"`
+	State                 string `json:"state,omitempty"`
+	Note                  string `json:"note,omitempty"`
 	Error                 string `json:"error,omitempty"`
 	ModuleID              string `json:"module_id"`
 	ReservedProtocolID    string `json:"reserved_protocol_id"`
@@ -70,9 +72,7 @@ func (a *app) satlineSatDir() string    { return filepath.Join(a.satlineRoot(), 
 func (a *app) satlineFollowDir() string { return filepath.Join(a.satlineRoot(), "satpoints") }
 
 func (a *app) satlineEnabled() bool {
-	a.settingsMu.RLock()
-	defer a.settingsMu.RUnlock()
-	return a.settings.SatlineEnabled
+	return releaseFeatureAvailable("satline")
 }
 
 func (a *app) initSatlineStore() {
@@ -238,6 +238,9 @@ func (a *app) satlineStatus() satlineStoreStatus {
 	initErr := a.satlineInitErr
 	a.satlineMu.Unlock()
 	st := satlineStoreStatus{Enabled: a.satlineEnabled(), Ready: initErr == "", Error: initErr, ModuleID: satlineModuleID, ReservedProtocolID: satlineProtocolID, NetworkAdvertised: a.satlineNetworkingEnabled(), StorageSchema: satlineStorageSchema, Path: a.satlineRoot()}
+	if !st.Enabled {
+		st.Ready, st.State, st.Note = false, "deferred", releaseLockReason("satline")
+	}
 	scan := func(root string, sat bool) {
 		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d == nil || d.IsDir() || !strings.HasSuffix(strings.ToLower(d.Name()), ".json") {
@@ -283,7 +286,7 @@ func validateSatlineRecord(rec satlineRecord, canonical func(int64) (string, err
 
 func satlineStaticState(s string) bool {
 	switch s {
-	case "INVALID", "LOST_AT_BIRTH", "LOST_UNCLAIMED_COINBASE", "LOST_DUPLICATE_TXID":
+	case "INVALID", "LOST_AT_BIRTH", "LOST_UNCLAIMED_COINBASE", "LOST_DUPLICATE_TXID", "LOST_BURNED_OUTPUT", "GENESIS_UNSPENDABLE":
 		return true
 	default:
 		return false
@@ -312,6 +315,9 @@ func combineSatlineResult(base satlineResult, prefix []satlineHop, tail satlineR
 }
 
 func (a *app) cachedSatlineResult(rec satlineRecord, maxHops int) (satlineResult, bool) {
+	if !a.satlineEnabled() {
+		return satlineResult{}, false
+	}
 	if rec.VerifierVersion != blockVerifierVersion {
 		return satlineResult{}, false
 	}

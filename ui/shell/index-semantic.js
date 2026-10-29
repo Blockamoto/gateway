@@ -1,0 +1,56 @@
+'use strict';
+// Local frames retain their parent coordinate. Sparse children never supply a denominator.
+window.GatewaySemanticTimeline=(()=>{
+  const integer=n=>Number.isSafeInteger(n)&&n>=0;
+  function cells(count,view,width){
+    if(!integer(count)||count===0||!integer(view?.from)||!integer(view?.to)||view.to<view.from)return [];
+    const from=Math.min(count-1,view.from),to=Math.min(count-1,view.to),span=to-from+1,bins=Math.max(1,Math.min(Math.floor(width),512,span)),out=[];
+    for(let i=0;i<bins;i++){const first=from+Math.floor(i*span/bins),last=from+Math.floor((i+1)*span/bins)-1;out.push({from:first,to:last,x:i/bins*width,width:width/bins});}return out;
+  }
+  function fraction(index,count){return integer(index)&&integer(count)&&count>0&&index<count?index/count:null;}
+  function mount({document:doc,root,onEntity,onInscription,notify}){
+    const win=doc.defaultView,el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
+    const frame=el('section',undefined,'timeline-semantic');frame.id='timeline-semantic';frame.hidden=true;frame.setAttribute('aria-label','Local Bitcoin detail timeline');
+    const top=el('div',undefined,'timeline-semantic-top'),crumbs=el('nav');crumbs.setAttribute('aria-label','Local timeline hierarchy');const close=el('button','Return to chain');close.type='button';top.append(crumbs,close);
+    const note=el('p','','small muted'),canvas=el('canvas');canvas.className='timeline-semantic-canvas';canvas.tabIndex=0;canvas.setAttribute('role','slider');canvas.setAttribute('aria-label','Local timeline position');
+    const controls=el('div',undefined,'timeline-semantic-controls'),number=el('input'),select=el('button','Inspect position'),deeper=el('button','Zoom into selection');number.type='number';number.min='0';number.step='1';number.setAttribute('aria-label','Exact local position');select.type=deeper.type='button';controls.append(number,select,deeper);const markerList=el('div',undefined,'timeline-semantic-controls');markerList.setAttribute('aria-label','Known inscription reveal positions');frame.append(top,note,canvas,controls,markerList);root.insertBefore(frame,root.querySelector('.timeline-track-area'));
+    let path=[],view={from:0,to:0},focused=null,serial=0,requests=new Set(),markers=[];
+    function cancel(){serial++;for(const request of requests)request.abort();requests.clear();}
+    function node(){return path.at(-1);}
+    function entity(index){const p=node();if(!p||!integer(index)||!integer(p.count)||index>=p.count)return null;
+      if(p.kind==='block')return {kind:'transaction',height:p.height,txIndex:index,address:index+'.'+p.height+'.bitcoin'};
+      if(p.kind==='transaction')return {kind:'output',height:p.height,txIndex:p.txIndex,outputIndex:index,address:index+'.'+p.txIndex+'.'+p.height+'.bitcoin'};
+      return {kind:'satpoint',height:p.height,txIndex:p.txIndex,outputIndex:p.outputIndex,satOffset:index,address:index+'.'+p.outputIndex+'.'+p.txIndex+'.'+p.height+'.bitcoin'};
+    }
+    async function api(address,ticket){const c=new win.AbortController();requests.add(c);const timer=win.setTimeout(()=>c.abort(),90000);try{const response=await win.fetch('/api/v1/navigate',{method:'POST',credentials:'same-origin',signal:c.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({address})}),result=await response.json();if(ticket!==serial)throw new DOMException('Changed focus','AbortError');if(!response.ok)throw Error(result.error||'Local detail unavailable.');return result.resource;}finally{win.clearTimeout(timer);requests.delete(c);}}
+    function paint(){
+      const p=node();if(!p)return;frame.hidden=false;crumbs.replaceChildren();path.forEach((entry,i)=>{const button=el('button',entry.kind==='block'?'Block '+entry.height:entry.kind==='transaction'?'Transaction '+entry.txIndex:'Output '+entry.outputIndex);button.type='button';button.onclick=()=>{cancel();path=path.slice(0,i+1);focused=null;view={from:0,to:Math.max(0,(node().count??1)-1)};paint();};crumbs.append(button);});
+      const known=integer(p.count),width=Math.max(1,canvas.clientWidth),dpr=Math.min(2,win.devicePixelRatio||1);canvas.width=Math.round(width*dpr);canvas.height=60*dpr;canvas.dataset.kind=p.kind;canvas.dataset.count=known?String(p.count):'unknown';canvas.dataset.from=String(view.from);canvas.dataset.to=String(view.to);canvas.setAttribute('aria-valuemin','0');canvas.setAttribute('aria-valuemax',String(Math.max(0,(p.count??1)-1)));canvas.setAttribute('aria-valuenow',String(focused??view.from));
+      number.disabled=select.disabled=!known||p.count===0;number.max=String(Math.max(0,(p.count??1)-1));number.value=focused===null?'':String(focused);deeper.disabled=!known||focused===null||p.kind==='output';
+      note.textContent=!known?'Child count unknown. Sparse records retain exact coordinates without inventing timeline positions.'+(p.error?' '+p.error:''):p.count===0?'This verified parent has no children.':p.kind==='output'?'Output-local sat offsets '+view.from.toLocaleString()+'–'+view.to.toLocaleString()+' of '+p.count.toLocaleString()+'. These are positions within this output, not global sat numbers.':(p.kind==='block'?'Transactions':'Outputs')+' '+view.from.toLocaleString()+'–'+view.to.toLocaleString()+' of '+p.count.toLocaleString()+'. Double-click a position to zoom into its children.';
+      const ctx=canvas.getContext('2d');if(!ctx)return;ctx.scale(dpr,dpr);const dark=doc.documentElement.dataset.theme==='dark';ctx.fillStyle=dark?'#26332f':'#e9ebe3';ctx.fillRect(0,0,width,60);
+      for(const cell of cells(p.count,view,width)){const exists=p.entries?.has(cell.from),selected=focused!==null&&focused>=cell.from&&focused<=cell.to;ctx.fillStyle=selected?(dark?'#80baff':'#235fa1'):exists?(dark?'#91bdcf':'#548496'):(dark?'#375044':'#ccd5c8');ctx.fillRect(cell.x+1,8,Math.max(1,cell.width-2),44);if(cell.width>42){ctx.fillStyle=dark?'#e8f0e8':'#233e30';ctx.font='11px ui-monospace,monospace';ctx.textAlign='center';ctx.fillText(String(cell.from)+(cell.to>cell.from?'…':''),cell.x+cell.width/2,35,Math.max(1,cell.width-5));}}
+      if(p.kind==='block'&&known&&p.count>0)for(const marker of markers.filter(m=>m.height===p.height&&integer(m.txIndex)&&m.txIndex>=view.from&&m.txIndex<=view.to)){const x=(marker.txIndex-view.from+.5)/(view.to-view.from+1)*width;ctx.fillStyle=dark?'#d9edb8':'#335c41';ctx.beginPath();ctx.moveTo(x,2);ctx.lineTo(x-5,9);ctx.lineTo(x+5,9);ctx.fill();}
+      markerList.replaceChildren();const visible=markers.filter(m=>m.height===p.height&&(p.kind==='block'?m.txIndex>=view.from&&m.txIndex<=view.to:p.kind==='transaction'&&m.txIndex===p.txIndex));for(const marker of visible.slice(0,128)){const button=el('button',marker.address);button.type='button';button.onclick=()=>onInscription?.(marker);markerList.append(button);}if(visible.length>128)markerList.append(el('span','Showing the first 128 known markers; zoom closer to narrow the list.','small muted'));
+    }
+    function selectPosition(index){const e=entity(index);if(!e)return;focused=index;paint();onEntity?.(e);}
+    async function descend(){const p=node();if(!p||focused===null||p.kind==='output')return;const e=entity(focused),ticket=serial;deeper.disabled=true;
+      try{const resource=await api(e.address,ticket);if(ticket!==serial)return;const record=resource.transaction,tx=record?.transaction;if(!tx||record.height!==e.height||tx.index!==e.txIndex)throw Error('Returned transaction does not match this local frame.');
+        if(p.kind==='block'){path.push({kind:'transaction',height:e.height,txIndex:e.txIndex,count:Array.isArray(tx.outputs)?tx.outputs.length:null,entries:new Map((tx.outputs||[]).map(o=>[o.n,o]))});}
+        else {const output=tx.outputs?.find(o=>o.n===e.outputIndex);if(!output||!integer(output.value_sats))throw Error('Output value is unavailable; sat scale stays unknown.');path.push({kind:'output',height:e.height,txIndex:e.txIndex,outputIndex:e.outputIndex,count:output.value_sats,entries:null});}
+        focused=null;view={from:0,to:Math.max(0,(node().count??1)-1)};paint();
+      }catch(error){if(ticket===serial&&error.name!=='AbortError'){note.textContent=error.message;notify?.(error.message,true);deeper.disabled=false;}}
+    }
+    function positionAt(x){const rect=canvas.getBoundingClientRect();return Math.min(view.to,view.from+Math.floor(Math.max(0,Math.min(.999999,(x-rect.left)/Math.max(1,rect.width)))*(view.to-view.from+1)));}
+    canvas.onclick=e=>selectPosition(positionAt(e.clientX));canvas.ondblclick=()=>descend();deeper.onclick=descend;select.onclick=()=>{const n=Number(number.value);if(number.value.trim()&&integer(n)&&n<(node()?.count??0))selectPosition(n);};
+    canvas.addEventListener('wheel',event=>{event.preventDefault();const p=node();if(!integer(p?.count)||p.count<1)return;const span=view.to-view.from+1,rect=canvas.getBoundingClientRect(),anchor=Math.max(0,Math.min(1,(event.clientX-rect.left)/Math.max(1,rect.width)));if(event.ctrlKey||event.metaKey){const next=Math.max(1,Math.min(p.count,Math.round(span*Math.exp(Math.max(-300,Math.min(300,event.deltaY))*.006))));if(next===1&&span===1&&event.deltaY<0&&p.kind!=='output'){focused=view.from;descend();return;}const start=Math.max(0,Math.min(p.count-next,Math.round(view.from+span*anchor-next*anchor)));view={from:start,to:start+next-1};}else{const start=Math.max(0,Math.min(p.count-span,view.from+Math.round((event.deltaX||event.deltaY)/Math.max(1,rect.width)*span)));view={from:start,to:start+span-1};}paint();},{passive:false});
+    canvas.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End','Enter'].includes(event.key)){event.preventDefault();if(event.key==='Enter')descend();else selectPosition(event.key==='Home'?0:event.key==='End'?(node()?.count??1)-1:Math.max(0,Math.min((node()?.count??1)-1,(focused??view.from)+(event.key==='ArrowLeft'?-1:1))));}};
+    async function open(height,{txIndex,count,entries}={}){if(!integer(height))return;cancel();const ticket=serial;path=[{kind:'block',height,count:integer(count)?count:null,entries:new Map((entries||[]).map(tx=>[tx.index,tx]))}];focused=integer(txIndex)&&(!integer(count)||txIndex<count)?txIndex:null;view={from:0,to:Math.max(0,(count??1)-1)};paint();
+      if(integer(count))return;note.textContent='Loading the selected block to establish its transaction count…';try{const r=await api(height+'.bitcoin',ticket),b=r.block;if(ticket!==serial)return;if(!b||b.height!==height||!integer(b.transaction_count)||b.transaction_count<1)throw Error('The selected block transaction count is unavailable.');path[0].count=b.transaction_count;path[0].entries=new Map((b.transactions||[]).map(tx=>[tx.index,tx]));if(focused!==null&&focused>=b.transaction_count)focused=null;view={from:0,to:b.transaction_count-1};paint();}catch(error){if(ticket===serial&&error.name!=='AbortError'){path[0].error=error.message;paint();}}
+    }
+    function clear(){cancel();path=[];focused=null;frame.hidden=true;}
+    close.onclick=clear;if(win.ResizeObserver)new win.ResizeObserver(paint).observe(canvas);
+    return {open,clear,setMarkers:rows=>{markers=rows;paint();},selectPosition,descend,state:()=>({parent:node(),focused,view:{...view}})};
+  }
+  return {mount,cells,fraction};
+})();

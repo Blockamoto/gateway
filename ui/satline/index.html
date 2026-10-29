@@ -1,6 +1,6 @@
 <!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Satline · Gateway Client</title><link rel="stylesheet" href="/satline/style.css"><script defer src="/satline/app.js"></script></head>
+<html lang="en" data-gateway-module="satline">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Satline · Gateway Client</title><link rel="stylesheet" href="/satline/style.css"><link rel="stylesheet" href="/shell/theme.css"><script src="/shell/theme.js"></script><script defer src="/satline/app.js"></script></head>
 <body>
 <div class="shell">
 <aside class="sidebar">
@@ -41,7 +41,7 @@
 <section class="panel compact"><div class="eyebrow">NETWORK ACTIVITY</div><dl id="networkStats"><dt>Wire protocol</dt><dd>Satline v1</dd></dl><p class="muted small" id="listenStatus">Not serving Satline.</p></section>
 </aside>
 </div>
-<footer>Gateway routes. Bitcoin on Demand supplies the evidence. Satline follows the sat.<span>Gateway Client 0.5.0</span></footer>
+<footer>Gateway routes. Bitcoin on Demand supplies the evidence. Satline follows the sat.<span id="footer-version">Gateway Client</span></footer>
 </main>
 </div>
 <div id="toast" class="toast" role="status" hidden></div>

@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,7 +26,7 @@ func TestSatlineStorePersistsRecordsAndStatus(t *testing.T) {
 		t.Fatalf("record not restored: %+v ok=%v", rec, ok)
 	}
 	st := a.satlineStatus()
-	if !st.Enabled || !st.Ready || st.StoredSats != 1 || st.PersistedHops != 1 || st.StorageSchema != 1 {
+	if st.Enabled != releaseFeatureAvailable("satline") || st.Ready != releaseFeatureAvailable("satline") || st.StoredSats != 1 || st.PersistedHops != 1 || st.StorageSchema != 1 {
 		t.Fatalf("bad status: %+v", st)
 	}
 	if _, err := os.Stat(filepath.Join(a.satlineRoot(), "metadata.json")); err != nil {
@@ -45,17 +49,24 @@ func TestSatlineCheckpointValidationStopsAtReorg(t *testing.T) {
 	}
 }
 
-func TestSatlineModuleCanBeDisabledIndependently(t *testing.T) {
-	s := defaultSettings()
-	s.SatlineEnabled = false
-	a := &app{dataDir: t.TempDir(), settings: s}
+func TestSatlineLegacyFalseKeepsReleasedLocalTracingAvailable(t *testing.T) {
+	a, _ := initGraphTestApp(t)
+	a.settings.SatlineEnabled = false
 	a.initSatlineStore()
 	r := a.resolveSatlineSat(0, 0)
-	if r.State != "MODULE_DISABLED" {
-		t.Fatalf("expected disabled Satline, got %+v", r)
+	if releaseFeatureAvailable("satline") {
+		if r.State != "GENESIS_UNSPENDABLE" {
+			t.Fatalf("legacy false blocked local genesis tracing: %+v", r)
+		}
+	} else if r.State != "MODULE_DISABLED" {
+		t.Fatalf("legacy preference bypassed release lock: %+v", r)
 	}
 	mods := a.bundledModuleManifests()
-	if len(mods) < 2 || mods[0].Name != "Bitcoin on Demand" || mods[0].Status != "bundled_active" || mods[1].Name != "Satline" || mods[1].Status != "disabled" {
+	wantStatus := "locked"
+	if releaseFeatureAvailable("satline") {
+		wantStatus = "bundled_active"
+	}
+	if len(mods) < 2 || mods[0].Name != "Bitcoin on Demand" || mods[0].Status != "bundled_active" || mods[1].Name != "Satline" || mods[1].Status != wantStatus {
 		t.Fatalf("module isolation failed: %+v", mods)
 	}
 }
@@ -79,9 +90,63 @@ func TestSatlineProgressEmitsCompletedHop(t *testing.T) {
 	}
 }
 
-func TestDefaultSettingsEnableSatline(t *testing.T) {
-	if !defaultSettings().SatlineEnabled {
-		t.Fatal("Satline should be enabled by default")
+func TestSatlineCompatibilitySettingsFollowReleaseAvailability(t *testing.T) {
+	want := releaseFeatureAvailable("satline")
+	a := &app{dataDir: t.TempDir()}
+	if defaultSettings().SatlineEnabled != want {
+		t.Fatal("default local Satline does not follow release availability")
+	}
+	if err := os.WriteFile(a.settingsPath(), []byte(`{"satline_enabled":false,"satline_use_peers":false,"satline_serve_published":false}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s := a.loadSettings()
+	if s.SatlineEnabled != want || s.SatlineUsePeers || s.SatlineServePublished {
+		t.Fatalf("legacy false was not normalized independently of peer flags: %+v", s)
+	}
+	s.SatlineEnabled = false
+	if s.public().SatlineEnabled != want {
+		t.Fatal("public compatibility setting retained an obsolete local opt-out")
+	}
+	if err := a.saveSettings(s); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(a.settingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved appSettings
+	if err := json.Unmarshal(b, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.SatlineEnabled != want || saved.SatlineUsePeers || saved.SatlineServePublished {
+		t.Fatalf("saved settings did not normalize only local availability: %+v", saved)
+	}
+}
+
+func TestSatlineSettingsAPIFalseCannotDisableReleasedLocalTracing(t *testing.T) {
+	a, _ := testAppWithGenesis(t)
+	a.initSatlineStore()
+	s := a.settings
+	s.ServeData = false // No listener or outbound action is needed for this local request.
+	s.SatlineEnabled, s.SatlineUsePeers, s.SatlineServePublished = false, true, true
+	b, _ := json.Marshal(s)
+	w := httptest.NewRecorder()
+	a.handleSettings(w, httptest.NewRequest(http.MethodPost, "/api/v1/settings", bytes.NewReader(b)))
+	if w.Code != http.StatusOK {
+		t.Fatalf("settings request failed: %d %s", w.Code, w.Body.String())
+	}
+	want := releaseFeatureAvailable("satline")
+	if a.settings.SatlineEnabled != want || a.settings.public().SatlineEnabled != want || a.satlineEnabled() != want {
+		t.Fatal("settings API restored an obsolete local opt-out")
+	}
+	if a.settings.SatlineUsePeers || a.settings.SatlineServePublished || a.satlineNetworkingEnabled() || a.source.running() {
+		t.Fatal("local availability enabled peer exchange or its listener")
+	}
+	if want {
+		r := a.resolveSatlineSat(0, 0)
+		if r.State != "GENESIS_UNSPENDABLE" {
+			t.Fatalf("API false blocked local tracing: %+v", r)
+		}
 	}
 }
 
@@ -94,6 +159,9 @@ func TestSatlineProtocolIdentityReservedButNotAdvertised(t *testing.T) {
 }
 
 func TestSatlinePersistentSatReusesBirthCheckpoint(t *testing.T) {
+	if !releaseFeatureAvailable("satline") {
+		t.Skip("0.6.6 release lock: persistent Satline traversal is unavailable")
+	}
 	a, genesis := initGraphTestApp(t)
 	a.settings.SatlineEnabled = true
 	a.initSatlineStore()
@@ -101,11 +169,11 @@ func TestSatlinePersistentSatReusesBirthCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := a.resolveSatlineSatPersistent(0, 0, false)
-	if first.State != "CURRENTLY_UNSPENT" || first.Persistence == nil || !first.Persistence.Stored {
+	if first.State != "GENESIS_UNSPENDABLE" || first.Persistence == nil || !first.Persistence.Stored {
 		t.Fatalf("first persistent resolve failed: %+v", first)
 	}
 	second := a.resolveSatlineSatPersistent(0, 0, false)
-	if second.State != "CURRENTLY_UNSPENT" || second.Persistence == nil || second.Persistence.ReusedCheckpoints < 1 {
+	if second.State != "GENESIS_UNSPENDABLE" || second.Persistence == nil || second.Persistence.ReusedCheckpoints < 1 {
 		t.Fatalf("second resolve did not reuse birth checkpoint: %+v", second)
 	}
 	st := a.satlineStatus()
@@ -124,13 +192,17 @@ func TestSatlineMetadataFailureIsIsolatedAndClearRepairs(t *testing.T) {
 	}
 	a.initSatlineStore()
 	mods := a.bundledModuleManifests()
-	if len(mods) < 2 || mods[0].Status != "bundled_active" || mods[1].Status != "error" {
+	wantStatus := "locked"
+	if releaseFeatureAvailable("satline") {
+		wantStatus = "error"
+	}
+	if len(mods) < 2 || mods[0].Status != "bundled_active" || mods[1].Status != wantStatus || a.satlineStatus().Error == "" {
 		t.Fatalf("Satline failure leaked into BOD/module host: %+v", mods)
 	}
 	if err := a.clearSatlineStore(); err != nil {
 		t.Fatal(err)
 	}
-	if st := a.satlineStatus(); !st.Ready || st.Error != "" {
+	if st := a.satlineStatus(); st.Ready != releaseFeatureAvailable("satline") || st.Error != "" {
 		t.Fatalf("clear should repair Satline metadata: %+v", st)
 	}
 }

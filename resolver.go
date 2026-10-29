@@ -200,13 +200,29 @@ func parseLocalResolverTarget(input string) (resolverTarget, error) {
 func parseResourceAddress(raw string) (resolverTarget, error) {
 	raw = strings.TrimSpace(raw)
 	low := strings.ToLower(raw)
+	if number, ok := parseSatAddress077(low); ok {
+		return resolverTarget{Namespace: "sat", Kind: "sat", Input: raw, SearchQuery: strconv.FormatUint(number, 10) + ".sat", Friendly: low, CanonicalURI: godURI(low)}, nil
+	}
 	if strings.HasSuffix(low, ".bitmap") {
-		district := strings.TrimSuffix(low, ".bitmap")
-		n, err := strconv.ParseUint(district, 10, 64)
-		if err != nil || strconv.FormatUint(n, 10) != district {
-			return resolverTarget{}, fmt.Errorf("expected district.bitmap; parcel resolution is not implemented")
+		stem := strings.TrimSuffix(low, ".bitmap")
+		parts := strings.Split(stem, ".")
+		if len(parts) != 1 && len(parts) != 2 {
+			return resolverTarget{}, fmt.Errorf("expected district.bitmap or parcel.district.bitmap")
 		}
-		return resolverTarget{Namespace: "bitmap", Kind: "district", Input: raw, SearchQuery: district, Friendly: low, CanonicalURI: godURI(low)}, nil
+		for _, part := range parts {
+			n, err := strconv.ParseUint(part, 10, 64)
+			if err != nil || strconv.FormatUint(n, 10) != part {
+				return resolverTarget{}, fmt.Errorf("expected canonical district.bitmap or parcel.district.bitmap")
+			}
+			if n > 1<<53-1 {
+				return resolverTarget{}, fmt.Errorf("Bitmap address exceeds the workspace's supported exact coordinate range")
+			}
+		}
+		kind := "district"
+		if len(parts) == 2 {
+			kind = "parcel"
+		}
+		return resolverTarget{Namespace: "bitmap", Kind: kind, Input: raw, SearchQuery: stem, Friendly: low, CanonicalURI: godURI(low)}, nil
 	}
 	if low == ".gateway" || low == "home.gateway" || low == "gateway.gateway" {
 		return resolverTarget{Namespace: "gateway", Kind: "home", Input: raw, Friendly: ".gateway", CanonicalURI: "god://.gateway"}, nil
@@ -217,9 +233,21 @@ func parseResourceAddress(raw string) (resolverTarget, error) {
 		}
 	}
 	stem := strings.TrimSuffix(strings.ToLower(raw), ".bitcoin")
+	if hasHashCoordinateIdentity(stem) {
+		c, ok := parseHashCoordinate(stem)
+		if !ok {
+			return resolverTarget{}, fmt.Errorf("invalid hash-located Bitcoin address")
+		}
+		f := c.Raw + ".bitcoin"
+		kind := "transaction_coordinate"
+		if c.Kind == coordInscription {
+			kind = "inscription_coordinate"
+		}
+		return resolverTarget{Namespace: "bitcoin", Kind: kind, Input: raw, SearchQuery: c.Raw, Friendly: f, CanonicalURI: godURI(f), TxID: c.TxID}, nil
+	}
 	if c, ok := parseBODCoordinate(stem); ok && c.Kind == coordInscription {
-		f := fmt.Sprintf("%d.i%d.%d.bitcoin", c.TxIndex, c.InscriptionIndex, c.Height)
-		return resolverTarget{Namespace: "bitcoin", Kind: "inscription_coordinate", Input: raw, SearchQuery: fmt.Sprintf("%d.i%d.%d", c.TxIndex, c.InscriptionIndex, c.Height), Friendly: f, CanonicalURI: godURI(f)}, nil
+		f := c.Raw + ".bitcoin"
+		return resolverTarget{Namespace: "bitcoin", Kind: "inscription_coordinate", Input: raw, SearchQuery: c.Raw, Friendly: f, CanonicalURI: godURI(f)}, nil
 	}
 	if t, m, e := parseBitcoinFriendly(raw); m {
 		return t, e
@@ -250,16 +278,52 @@ func parseResourceAddress(raw string) (resolverTarget, error) {
 	}
 	return resolverTarget{}, fmt.Errorf("unregistered Gateway address")
 }
+
+// Bare ordinal names are local Gateway shorthand. Established block keywords
+// retain precedence; explicit namespaces and typed destinations are not names.
+func bareSatNameInput077(input string) bool {
+	q := strings.TrimSpace(input)
+	if q == "bitcoin" || q == "tip" || q == "latest" {
+		return false
+	}
+	_, ok := satNumberForName077(q)
+	return ok
+}
+
 func (a *app) resolveLocalTarget(input string) (localResolveResponse, error) {
+	return a.resolveLocalTargetContext(context.Background(), input)
+}
+func (a *app) resolveLocalTargetContext(ctx context.Context, input string) (localResolveResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return localResolveResponse{}, err
+	}
+	original := input
+	bare := bareNumberInput077(input)
+	name := bareSatNameInput077(input)
+	if bare {
+		navigation, err := a.classifyNumberNavigation077(ctx, input)
+		if err != nil {
+			return localResolveResponse{}, err
+		}
+		input = navigation.Address
+	} else if name {
+		input = strings.TrimSpace(input) + ".sat"
+	}
 	t, e := parseLocalResolverTarget(input)
 	if e != nil {
 		return localResolveResponse{}, e
+	}
+	if bare || name {
+		t.Input = original
 	}
 	var result searchResponse
 	switch {
 	case t.Namespace == "gateway":
 		result = searchResponse{Kind: "module", Module: t.Kind, Query: t.Friendly}
 	case t.Namespace == "bitmap":
+		if t.Kind == "parcel" {
+			return localResolveResponse{}, fmt.Errorf("open %s in the Bitmap Standard workspace to inspect its parcel mapping", t.Friendly)
+		}
 		value, err := a.indexLookup("bitmap", t.SearchQuery)
 		if err != nil {
 			return localResolveResponse{}, err
@@ -271,21 +335,32 @@ func (a *app) resolveLocalTarget(input string) (localResolveResponse, error) {
 		if lookup.ChainState != "selected_chain" {
 			return localResolveResponse{}, fmt.Errorf("Bitmap index chain anchor is %s; sync headers or resume the index", lookup.ChainState)
 		}
-		rec, err := a.resolveInscription(context.Background(), lookup.Record.Inscription, lookup.RevealBlockHash)
+		rec, err := a.resolveInscription(ctx, lookup.Record.Inscription, lookup.RevealBlockHash)
 		if err != nil {
 			return localResolveResponse{}, err
 		}
 		result = searchResponse{Kind: "inscription", Ord: &rec}
 	case t.Namespace == "ord":
-		rec, e := a.resolveInscription(context.Background(), t.SearchQuery, "")
+		rec, e := a.resolveInscription(ctx, t.SearchQuery, "")
 		if e != nil {
 			return localResolveResponse{}, e
 		}
 		result = searchResponse{Kind: "inscription", Ord: &rec}
+	case t.Namespace == "bitcoin" && t.Kind == "block":
+		// An explicit .bitcoin address forces a block lookup even when its
+		// numeric height is beyond the selected tip. Do not reclassify it.
+		view, err := a.fetchAndDecodeContext(ctx, t.SearchQuery)
+		if err != nil {
+			return localResolveResponse{}, err
+		}
+		result = searchResponse{Kind: "block", Block: &view}
 	case t.Kind == "outpoint" || t.Kind == "raw_satpoint":
 		tx, e := a.resolveTransactionViaOverlay(t.TxID)
 		if e != nil {
 			return localResolveResponse{}, e
+		}
+		if !tx.TransactionVerified {
+			return localResolveResponse{}, fmt.Errorf("transaction location is known; verified bytes from a block source are required for output or satpoint lookup")
 		}
 		if t.Index < 0 || t.Index >= len(tx.Transaction.Outputs) {
 			return localResolveResponse{}, fmt.Errorf("output %d does not exist", t.Index)
@@ -299,7 +374,7 @@ func (a *app) resolveLocalTarget(input string) (localResolveResponse, error) {
 			result.FocusOffset = t.SatOffset
 		}
 	default:
-		result, e = a.searchQuery(t.SearchQuery)
+		result, e = a.searchQueryContext(ctx, t.SearchQuery)
 		if e != nil {
 			return localResolveResponse{}, e
 		}
@@ -308,11 +383,18 @@ func (a *app) resolveLocalTarget(input string) (localResolveResponse, error) {
 	return localResolveResponse{Target: t, Result: result}, nil
 }
 func (a *app) resolveSearchInput(input string) (searchResponse, error) {
+	return a.resolveSearchInputContext(context.Background(), input)
+}
+func (a *app) resolveSearchInputContext(ctx context.Context, input string) (searchResponse, error) {
+	if bareNumberInput077(input) || bareSatNameInput077(input) {
+		x, err := a.resolveLocalTargetContext(ctx, input)
+		return x.Result, err
+	}
 	if _, e := parseLocalResolverTarget(input); e == nil {
-		x, e := a.resolveLocalTarget(input)
+		x, e := a.resolveLocalTargetContext(ctx, input)
 		return x.Result, e
 	}
-	return a.searchQuery(strings.TrimSpace(input))
+	return a.searchQueryContext(ctx, strings.TrimSpace(input))
 }
 func (a *app) handleLocalResolve(w http.ResponseWriter, r *http.Request) {
 	var target string
@@ -343,10 +425,15 @@ func (a *app) handleLocalResolve(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 400, fmt.Errorf("target is required"))
 		return
 	}
-	out, err := a.resolveLocalTarget(target)
+	out, err := a.resolveLocalTargetContext(r.Context(), target)
 	if err != nil {
 		jsonError(w, 400, err)
 		return
+	}
+	if out.Result.Ord != nil {
+		if !a.attachOrdViewerForRequest(r, out.Result.Ord) {
+			return
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)

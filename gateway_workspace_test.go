@@ -42,8 +42,13 @@ func TestGatewayReleaseVersionSourcesAgree(t *testing.T) {
 		t.Fatal("compatibility version differs")
 	}
 	b, err = os.ReadFile("packaging/windows-installer/main.go.txt")
-	if err != nil || strings.Count(string(b), "__GATEWAY_VERSION__") != 3 {
-		t.Fatal("installer must use build version for registration and visible labels")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, versioned := range []string{`{"DisplayVersion", "REG_SZ", "__GATEWAY_VERSION__"}`, `"Gateway Client __GATEWAY_VERSION__"`, `"Gateway Client __GATEWAY_VERSION__ Setup"`} {
+		if !strings.Contains(string(b), versioned) {
+			t.Fatal("installer must use build version for registration and visible labels", versioned)
+		}
 	}
 	for _, name := range []string{"ui/shell/index.html", "ui/shell/network.js", "ui/shell/app.js"} {
 		b, err = os.ReadFile(name)

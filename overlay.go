@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
@@ -9,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -28,7 +31,7 @@ const (
 	bodRequestTimeout = 18 * time.Second
 )
 
-var errBODUnknown = errors.New("BOD peer does not know")
+var errBODUnknown = errors.New("Gateway peer does not know")
 
 type overlayPeer struct {
 	DiscoverySource string `json:"discovery_source,omitempty"`
@@ -45,7 +48,6 @@ type overlayPeer struct {
 	Gateway      bool                     `json:"gateway"`
 	GatewayWire  int                      `json:"gateway_wire,omitempty"`
 	Protocols    []gatewayProtocolSupport `json:"protocols,omitempty"`
-	ServiceHint  bool                     `json:"service_bit_25_hint,omitempty"`
 	Snapshot     *chainSnapshot           `json:"snapshot,omitempty"`
 	Profiles     []string                 `json:"profiles,omitempty"`
 	BlockRanges  []heightInterval         `json:"block_ranges,omitempty"`
@@ -113,6 +115,12 @@ type overlayServer struct {
 	stop chan struct{}
 	id   string
 	app  *app
+	// The default Bitcoin listener can coexist with another Gateway profile.
+	// Explicit bind addresses and Gateway LAN discovery retain their fixed-port
+	// contract. listenTCP is injectable so tests never occupy the user's port.
+	listenTCP     func(string, string) (net.Listener, error)
+	automaticPort bool
+	listenError   string
 
 	connections             chan struct{}
 	standardGetDataRequests uint64
@@ -123,11 +131,27 @@ type overlayServer struct {
 func newOverlayServer(a *app) *overlayServer {
 	var b [6]byte
 	_, _ = rand.Read(b[:])
-	return &overlayServer{id: hex.EncodeToString(b[:]), app: a, connections: make(chan struct{}, 64)}
+	return &overlayServer{id: hex.EncodeToString(b[:]), app: a, connections: make(chan struct{}, 64), listenTCP: net.Listen}
 }
 
 func (s *overlayServer) running() bool  { s.mu.Lock(); defer s.mu.Unlock(); return s.tcp != nil }
 func (s *overlayServer) peerID() string { return s.id }
+
+func listenerAddressInUse(err error) bool {
+	// Winsock returns WSAEADDRINUSE (10048). Go's Windows EADDRINUSE is an
+	// invented application errno, and errors.Is does not map these values.
+	if runtime.GOOS == "windows" {
+		return errors.Is(err, syscall.Errno(10048))
+	}
+	return errors.Is(err, syscall.EADDRINUSE)
+}
+
+func listenerStartError(addr string, err error) error {
+	if listenerAddressInUse(err) {
+		return fmt.Errorf("Bitcoin peer serving cannot use %s because another application is using it; stop that application or choose another --gateway-listen address: %w", addr, err)
+	}
+	return fmt.Errorf("Bitcoin peer serving could not listen on %s; outbound connections and local data remain available: %w", addr, err)
+}
 
 func (s *overlayServer) start() error {
 	s.mu.Lock()
@@ -135,26 +159,42 @@ func (s *overlayServer) start() error {
 	if s.tcp != nil {
 		return nil
 	}
+	s.listenError, s.automaticPort = "", false
 	addr := s.app.gatewayListen
 	if addr == "" {
 		addr = fmt.Sprintf(":%d", overlayTCPPort)
 	}
-	ln, err := net.Listen("tcp", addr)
+	s.app.settingsMu.RLock()
+	lanEnabled := s.app.settings.LANDiscovery && releaseFeatureAvailable("gateway-peerhood")
+	s.app.settingsMu.RUnlock()
+	ln, err := s.listenTCP("tcp", addr)
+	automaticPort := false
+	if err != nil && s.app.gatewayListen == "" && !lanEnabled && listenerAddressInUse(err) {
+		// Let the OS allocate a free port instead of guessing or closing another
+		// profile's listener. Port forwarding for 48333 does not follow this port.
+		ln, err = s.listenTCP("tcp", ":0")
+		automaticPort = err == nil
+		if err != nil {
+			addr = ":0"
+		}
+	}
 	if err != nil {
+		err = listenerStartError(addr, err)
+		s.listenError = err.Error()
 		return err
 	}
 	var udp *net.UDPConn
-	s.app.settingsMu.RLock()
-	lanEnabled := s.app.settings.LANDiscovery
-	s.app.settingsMu.RUnlock()
 	if s.app.gatewayListen == "" && lanEnabled {
 		udp, err = net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: overlayUDPPort})
 	}
 	if err != nil {
 		ln.Close()
+		err = fmt.Errorf("Gateway LAN discovery could not listen on UDP port %d: %w", overlayUDPPort, err)
+		s.listenError = err.Error()
 		return err
 	}
 	s.tcp, s.udp, s.stop = ln, udp, make(chan struct{})
+	s.automaticPort = automaticPort
 	go s.acceptLoop(ln, s.stop)
 	if udp != nil {
 		go s.discoveryLoop(udp, s.stop)
@@ -165,6 +205,7 @@ func (s *overlayServer) start() error {
 func (s *overlayServer) stopServer() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.listenError, s.automaticPort = "", false
 	if s.tcp == nil {
 		return
 	}
@@ -230,7 +271,7 @@ func (a *app) peerCapabilitiesLegacy() ([]string, int64, string, int) {
 			}
 		}
 		a.cacheMu.RUnlock()
-		if has {
+		if has || a.publishedInscriptionLocatorAvailable() {
 			caps = append(caps, "txloc")
 		}
 	}
@@ -303,7 +344,7 @@ func (s *overlayServer) handshakeInbound(c net.Conn) (*peerConn, error) {
 					return nil, err
 				}
 			}
-			if p.version >= 70017 && !sentFeature {
+			if releaseFeatureAvailable("gateway-peerhood") && p.version >= 70017 && !sentFeature {
 				if err := writeMessage(c, "feature", makeFeaturePayload(gatewayFeatureID, gatewayFeatureData())); err != nil {
 					return nil, err
 				}
@@ -417,9 +458,6 @@ func (s *overlayServer) handleConn(c net.Conn) {
 		case "addr", "addrv2":
 			rows, e := parseAddressMessage(m)
 			addressBudget -= len(rows)
-			if s.app.network != nil {
-				s.app.network.receiveInboundAddresses(rows, c.RemoteAddr().String(), e, addressBudget < 0)
-			}
 			if e != nil || addressBudget < 0 {
 				return
 			}
@@ -443,6 +481,9 @@ func (s *overlayServer) handleConn(c net.Conn) {
 			s.observeConn(c, "active", "Bitcoin P2P")
 			s.handleGetData(c, m.payload)
 		case "gwmsg":
+			if !releaseFeatureAvailable("gateway-peerhood") {
+				continue
+			}
 			handleGatewayMessage(c, m.payload, p)
 			if p.gateway && len(p.gatewayProtocols) > 0 {
 				s.observeConn(c, "connected", "Gateway On Demand")
@@ -493,7 +534,7 @@ func (s *overlayServer) handleConn(c net.Conn) {
 				}
 			}
 			s.app.settingsMu.RLock()
-			serveBOD := s.app.settings.ServeData
+			serveBOD := s.app.settings.ServeGatewayData
 			s.app.settingsMu.RUnlock()
 			if !serveBOD {
 				s.writeBODResponse(c, bodEnvelope{Wire: bodWireVersion, Kind: "response", Type: meta.Type, ID: meta.ID, Status: "unsupported", Error: "Bitcoin on Demand serving is disabled"})
@@ -514,14 +555,29 @@ func (s *overlayServer) handleConn(c net.Conn) {
 }
 
 func (s *overlayServer) handleGetData(c net.Conn, payload []byte) {
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	s.handleGetDataContext(ctx, c, payload)
+}
+
+func (s *overlayServer) handleGetDataContext(ctx context.Context, c net.Conn, payload []byte) {
 	count, used, err := decodeCompactSizeMinimal(payload)
-	if err != nil || count > 128 {
+	if err != nil || count > 128 || len(payload) != used+int(count)*36 {
 		return
 	}
 	pos := used
 	notFound := make([][]byte, 0)
 	served := uint64(0)
 	for i := uint64(0); i < count; i++ {
+		if ctx.Err() != nil {
+			return
+		}
+		s.app.settingsMu.RLock()
+		allowed := s.app.settings.ServeData
+		s.app.settingsMu.RUnlock()
+		if !allowed {
+			return
+		}
 		if pos+36 > len(payload) {
 			return
 		}
@@ -536,7 +592,7 @@ func (s *overlayServer) handleGetData(c net.Conn, payload []byte) {
 			continue
 		}
 		hash := reverseHex(rawHash[:])
-		bd, err := s.app.storageBlockForServing(hash)
+		bd, err := s.app.storageBlockForServing(ctx, hash)
 		if err != nil || len(bd.Raw) < 81 {
 			notFound = append(notFound, item)
 			continue
@@ -549,12 +605,21 @@ func (s *overlayServer) handleGetData(c net.Conn, payload []byte) {
 				continue
 			}
 		}
+		s.app.settingsMu.RLock()
+		allowed = s.app.settings.ServeData
+		s.app.settingsMu.RUnlock()
+		if !allowed || ctx.Err() != nil {
+			return
+		}
 		if err := writeMessage(c, "block", response); err != nil {
 			return
 		}
 		served++
 	}
 
+	if ctx.Err() != nil {
+		return
+	}
 	if len(notFound) > 0 {
 		var b bytes.Buffer
 		b.Write(encodeVarInt(uint64(len(notFound))))
@@ -615,6 +680,9 @@ func (s *overlayServer) writeBODResponse(c net.Conn, env bodEnvelope) {
 }
 
 func (a *app) answerBODRequest(req overlayRequest) (overlayResponse, string) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		return overlayResponse{}, "unsupported"
+	}
 	if req.Type == "index_manifest" || req.Type == "index_range" {
 		return a.answerIndexPeerRequest(req)
 	}
@@ -677,6 +745,16 @@ func (a *app) answerBODRequest(req overlayRequest) (overlayResponse, string) {
 		}
 		var loc txLocation
 		var err error
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		committed, found, lookupErr := a.publishedInscriptionTransactionContext(ctx, req.TxID, "")
+		cancel()
+		if lookupErr != nil {
+			return unknown(lookupErr)
+		}
+		if found {
+			resp.OK, resp.TxLocation = true, &committed
+			return resp, "ok"
+		}
 		st := inspectCore(settings)
 		if st.Connected && st.TxIndex {
 			loc, err = coreTxLocation(settings, req.TxID)
@@ -762,6 +840,9 @@ func (s *overlayServer) discoveryLoop(udp *net.UDPConn, stop <-chan struct{}) {
 }
 
 func discoverOverlayPeers(manual string) []overlayPeer {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		return nil
+	}
 	found := map[string]overlayPeer{}
 	if strings.TrimSpace(manual) != "" {
 		a := strings.TrimSpace(manual)
@@ -857,10 +938,19 @@ func bodInternalType(wire string) string {
 }
 
 func queryOverlayPeer(peer overlayPeer, req overlayRequest) (overlayResponse, error) {
-	c, err := net.DialTimeout("tcp", peer.Addr, 4*time.Second)
+	return queryOverlayPeerContext(context.Background(), peer, req)
+}
+func queryOverlayPeerContext(ctx context.Context, peer overlayPeer, req overlayRequest) (overlayResponse, error) {
+	if err := requireReleaseFeature("gateway-peerhood"); err != nil {
+		return overlayResponse{}, err
+	}
+	c, err := (&net.Dialer{Timeout: 4 * time.Second}).DialContext(ctx, "tcp", peer.Addr)
 	if err != nil {
 		return overlayResponse{}, err
 	}
+	defer c.Close()
+	stop := context.AfterFunc(ctx, func() { _ = c.Close() })
+	defer stop()
 	p, err := handshakeOutbound(c, peer.Addr)
 	if err != nil {
 		return overlayResponse{}, err
@@ -918,6 +1008,9 @@ func queryOverlayPeer(peer overlayPeer, req overlayRequest) (overlayResponse, er
 }
 
 func (a *app) cachedOverlayPeers() []overlayPeer {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		return nil
+	}
 	if a.network != nil {
 		return a.network.gatewayPeers()
 	}
@@ -930,6 +1023,9 @@ func (a *app) cachedOverlayPeers() []overlayPeer {
 // discovery can take seconds; it must never sit on the onboarding or settings
 // request path.
 func (a *app) refreshPeersAsync() {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		return
+	}
 	if a.network != nil {
 		return
 	}
@@ -949,6 +1045,9 @@ func (a *app) refreshPeersAsync() {
 }
 
 func (a *app) getOverlayPeers() []overlayPeer {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		return nil
+	}
 	if a.network != nil {
 		return a.network.gatewayPeers()
 	}
@@ -972,26 +1071,6 @@ func (a *app) getOverlayPeers() []overlayPeer {
 	if settings.LANDiscovery {
 		seeds = append(seeds, discoverOverlayPeers("")...)
 	}
-	seen := map[string]bool{}
-	for _, p := range seeds {
-		seen[p.Addr] = true
-	}
-	// Use Bitcoin's existing address topology to discover
-	// endpoints advertising experimental service bit 25. The hint is never
-	// trusted by itself; every candidate must still negotiate Gateway via BIP 434,
-	// then advertise Bitcoin on Demand through the Gateway protocol list.
-	var experimentalHints []advertisedPeer
-	if settings.BitcoinGatewayDiscovery && !settings.DiscoveryPaused && !settings.NetworkDisabled {
-		experimentalHints = discoverGatewayServicePeers(a.preferred)
-	}
-	for _, ap := range experimentalHints {
-		if seen[ap.Addr] {
-			continue
-		}
-		seen[ap.Addr] = true
-		seeds = append(seeds, overlayPeer{Protocol: bodWireVersion, Addr: ap.Addr, ID: "bitcoin-addr", HeaderHeight: -1, LastSeen: time.Now(), ServiceHint: true})
-	}
-
 	selfID := a.source.peerID()
 	peers := make([]overlayPeer, 0, len(seeds))
 	for _, p := range seeds {
@@ -1039,6 +1118,16 @@ func peerHasCap(p overlayPeer, cap string) bool {
 }
 
 func (a *app) queryPeers(req overlayRequest, capability string) (overlayResponse, overlayPeer, error) {
+	// Capability locks also cover the Core/cache shortcuts used by CLI location
+	// commands; those are distinct from known-block positional navigation.
+	for _, requested := range []string{capability, req.Type} {
+		feature := map[string]string{"txloc": "tx-locator", "spendloc": "txo-spender", "utxos": "gateway-peerhood"}[requested]
+		if feature != "" {
+			if err := requireReleaseFeature(feature); err != nil {
+				return overlayResponse{}, overlayPeer{}, err
+			}
+		}
+	}
 	// Local Core/cache are legitimate local knowledge sources. The result still
 	// gets verified by the normal resolution path before it becomes trusted.
 	a.settingsMu.RLock()
@@ -1089,7 +1178,7 @@ func (a *app) queryPeers(req overlayRequest, capability string) (overlayResponse
 	}
 	if capability == "txloc" {
 		if loc, err := a.cachedTxLocation(req.TxID); err == nil {
-			localPeer.Addr, localPeer.Capabilities = "local verified BOD index", []string{"txloc"}
+			localPeer.Addr, localPeer.Capabilities = "local verified Gateway index", []string{"txloc"}
 			return overlayResponse{Version: bodWireVersion, OK: true, Type: req.Type, PeerID: a.source.peerID(), TxLocation: &loc}, localPeer, nil
 		}
 	}
@@ -1100,7 +1189,7 @@ func (a *app) queryPeers(req overlayRequest, capability string) (overlayResponse
 			return overlayResponse{Version: bodWireVersion, OK: true, Type: req.Type, PeerID: a.source.peerID(), SpendLocation: &loc}, localPeer, nil
 		}
 		if loc, err := a.cachedSpendLocation(req.TxID, req.Vout); err == nil {
-			localPeer.Addr, localPeer.Capabilities = "local verified BOD index", []string{"spendloc"}
+			localPeer.Addr, localPeer.Capabilities = "local verified Gateway index", []string{"spendloc"}
 			return overlayResponse{Version: bodWireVersion, OK: true, Type: req.Type, PeerID: a.source.peerID(), SpendLocation: &loc}, localPeer, nil
 		}
 	}
@@ -1118,9 +1207,9 @@ func (a *app) queryPeers(req overlayRequest, capability string) (overlayResponse
 		errs = append(errs, p.Addr+": "+err.Error())
 	}
 	if len(peers) == 0 {
-		return overlayResponse{}, overlayPeer{}, fmt.Errorf("no Gateway peer advertising Bitcoin on Demand was found; leave header sync running, enable serving on another BOD node, or set a manual Gateway peer")
+		return overlayResponse{}, overlayPeer{}, fmt.Errorf("no Gateway peer advertising Bitcoin on Demand was found; leave header sync running, enable serving on another Gateway node, or set a manual Gateway peer")
 	}
-	return overlayResponse{}, overlayPeer{}, fmt.Errorf("BOD peers could not answer: %s", strings.Join(errs, "; "))
+	return overlayResponse{}, overlayPeer{}, fmt.Errorf("Gateway peers could not answer: %s", strings.Join(errs, "; "))
 }
 
 // fetchBlockFromOverlay deliberately uses normal Bitcoin getdata/block. The
@@ -1172,7 +1261,7 @@ func (a *app) fetchBlockFromOverlay(hash string) (blockData, overlayPeer, error)
 		}
 	}
 	if len(errs) == 0 {
-		return blockData{}, overlayPeer{}, fmt.Errorf("no BOD peer advertised a local block store")
+		return blockData{}, overlayPeer{}, fmt.Errorf("no Gateway peer advertised a local block store")
 	}
 	return blockData{}, overlayPeer{}, fmt.Errorf("%s", strings.Join(errs, "; "))
 }

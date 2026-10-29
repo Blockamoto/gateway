@@ -72,11 +72,17 @@ type satlineRateBucket struct {
 }
 
 func (a *app) satlineNetworkingEnabled() bool {
+	if !releaseFeatureAvailable("satline") || !releaseFeatureAvailable("gateway-peerhood") {
+		return false
+	}
 	a.settingsMu.RLock()
 	defer a.settingsMu.RUnlock()
-	return a.settings.SatlineEnabled && (a.settings.SatlineUsePeers || a.settings.SatlineServePublished)
+	return a.settings.SatlineUsePeers || a.settings.SatlineServePublished
 }
 func (a *app) localGatewayProtocols() []gatewayProtocolSupport {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		return nil
+	}
 	protocols := localGatewayProtocols()
 	if a.satlineNetworkingEnabled() {
 		protocols = append(protocols, gatewayProtocolSupport{ID: satlineProtocolID, Versions: []int{satlineWireVersion}, Name: "Satline"})
@@ -122,6 +128,15 @@ func sanitizedSatlineHop(h satlineHop) satlineHop {
 	return h
 }
 func (a *app) publishSatlineRecord(q satlineQuery, publish bool) error {
+	if err := requireReleaseFeature("satline"); err != nil {
+		return err
+	}
+	return a.storeSatlinePublication(q, publish)
+}
+
+// storeSatlinePublication preserves the local snapshot format and validation.
+// Public actions must use publishSatlineRecord, which enforces release policy.
+func (a *app) storeSatlinePublication(q satlineQuery, publish bool) error {
 	if !q.valid() {
 		return fmt.Errorf("invalid query")
 	}
@@ -173,8 +188,17 @@ func (a *app) publishSatlineRecord(q satlineQuery, publish bool) error {
 	return atomicWriteJSON(a.satlinePublicationPath(q), p)
 }
 func (a *app) buildSatlineSegment(req satlineSegmentRequest) (satlineSegment, error) {
+	if err := requireReleaseFeature("satline"); err != nil {
+		return satlineSegment{}, err
+	}
+	return a.readSatlineSegment(req)
+}
+
+// readSatlineSegment reads an existing immutable local publication. Network
+// and public callers must use the release-gated buildSatlineSegment wrapper.
+func (a *app) readSatlineSegment(req satlineSegmentRequest) (satlineSegment, error) {
 	a.settingsMu.RLock()
-	allowed := a.settings.SatlineEnabled && a.settings.SatlineServePublished
+	allowed := releaseFeatureAvailable("satline") && a.settings.SatlineServePublished
 	a.settingsMu.RUnlock()
 	if !allowed {
 		return satlineSegment{}, fmt.Errorf("disabled")
@@ -270,6 +294,9 @@ func strictSatlineJSON(b []byte, v any) error {
 	return nil
 }
 func (a *app) handleSatlineWire(c net.Conn, payload []byte, seen map[string]bool) {
+	if !releaseFeatureAvailable("satline") || !releaseFeatureAvailable("gateway-peerhood") {
+		return
+	}
 	if len(payload) > maxSatlineRequestBytes {
 		return
 	}
@@ -278,7 +305,7 @@ func (a *app) handleSatlineWire(c net.Conn, payload []byte, seen map[string]bool
 		return
 	}
 	a.settingsMu.RLock()
-	serving := a.settings.SatlineEnabled && a.settings.SatlineServePublished
+	serving := a.settings.SatlineServePublished
 	a.settingsMu.RUnlock()
 	if !serving {
 		writeSatlineUnavailable(c, env.ID, "unsupported")
@@ -332,6 +359,9 @@ func (a *app) handleSatlineWire(c net.Conn, payload []byte, seen map[string]bool
 	}
 }
 func querySatlinePeer(ctx context.Context, addr string, req satlineSegmentRequest, protocols []gatewayProtocolSupport) (satlineSegment, error) {
+	if err := requireReleaseFeature("satline"); err != nil {
+		return satlineSegment{}, err
+	}
 	if _, p, e := net.SplitHostPort(addr); e != nil || p == "" {
 		return satlineSegment{}, fmt.Errorf("peer must be host:port")
 	}
@@ -573,6 +603,9 @@ func verifySatlineSegment(ctx context.Context, backend satlineBackend, canonical
 	return out, guard.reads, nil
 }
 func (a *app) importSatlinePeer(ctx context.Context, q satlineQuery, peer string, stage func(string)) (result satlineResult, err error) {
+	if err := requireReleaseFeature("satline"); err != nil {
+		return result, err
+	}
 	a.satlineWorkMu.Lock()
 	defer a.satlineWorkMu.Unlock()
 	defer func() {
@@ -586,7 +619,7 @@ func (a *app) importSatlinePeer(ctx context.Context, q satlineQuery, peer string
 		}
 	}()
 	a.settingsMu.RLock()
-	enabled := a.settings.SatlineEnabled && a.settings.SatlineUsePeers
+	enabled := a.settings.SatlineUsePeers
 	a.settingsMu.RUnlock()
 	if !enabled {
 		return result, fmt.Errorf("peer hints are disabled; enable them explicitly before querying")
@@ -636,7 +669,7 @@ func (a *app) importSatlinePeer(ctx context.Context, q satlineQuery, peer string
 		return base, fmt.Errorf("local prefix changed before commit; no peer hops were saved")
 	}
 	a.settingsMu.RLock()
-	stillAllowed := a.settings.SatlineEnabled && a.settings.SatlineUsePeers
+	stillAllowed := a.settings.SatlineUsePeers
 	a.settingsMu.RUnlock()
 	if !stillAllowed {
 		return base, fmt.Errorf("peer hints were disabled during verification; no received hops were saved")
@@ -655,6 +688,9 @@ func (a *app) importSatlinePeer(ctx context.Context, q satlineQuery, peer string
 }
 
 func (a *app) setSatlineNetworkSettings(use, serve bool) error {
+	if err := requireReleaseFeature("satline"); err != nil {
+		return err
+	}
 	a.settingsMu.Lock()
 	old := a.settings
 	s := old
@@ -665,7 +701,7 @@ func (a *app) setSatlineNetworkSettings(use, serve bool) error {
 	if a.source == nil {
 		a.source = newOverlayServer(a)
 	}
-	if s.ServeData || (s.SatlineEnabled && serve) {
+	if bitcoinListenerEnabled(s) {
 		if e := a.source.start(); e != nil {
 			a.settingsMu.Lock()
 			a.settings = old

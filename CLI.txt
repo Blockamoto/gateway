@@ -1,65 +1,50 @@
-Gateway Client v0.5.0
+Gateway 0.7.0 — supported command-line use
 
-Usage:
-  gateway-client [flags]                  Open the default/custom UI
-  gateway-client <query>                  Universal resolve shorthand
-  gateway-client resolve <query>          Resolve Bitcoin on Demand, .bitcoin or Gateway On Demand god:// addresses
-  gateway-client block <height|hash|tip>  Fetch and decode a block
-  gateway-client transaction <txid|coord> Resolve and verify a transaction
-  gateway-client address <address>        Current UTXO state via Bitcoin on Demand/Core
-  gateway-client getblockhash <height>    Resolve height -> block hash
-  gateway-client gettxlocation <txid>     Bitcoin on Demand location hint (not trusted alone)
-  gateway-client getspender <txid:vout>   Resolve confirmed/mempool spender state
-  gateway-client graph status              Native/Core graph coverage and provider state
-  gateway-client graph build [from to]     Build native graph (default genesis -> snapshot tip)
-  gateway-client graph stop                Stop native graph backfill
-  gateway-client graph spender <txid:vout> Resolve through the graph capability
-  gateway-client satline status                    Satline module/storage status
-  gateway-client satline start <query>              Show birth or resume a checked checkpoint
-  gateway-client satline next <query>               Advance exactly one logical hop
-  gateway-client satline recheck <query>            Recompute locally from the starting point
-  gateway-client satline network                    Peer settings and runtime counters
-  gateway-client satline publish <query>            Freeze this cache record for explicit sharing
-  gateway-client satline unpublish <query>          Withdraw this client's published snapshot
-  gateway-client satline peer <query> [host:port]    Fetch and locally verify one segment (opt-in)
-  gateway-client satline resolve <sat> [--step] [--rebuild] Resolve one ordinal sat using restart-safe checkpoints
-  gateway-client satline follow <satpoint> [--step] [--rebuild] Follow a satpoint with persisted forward checkpoints
-  gateway-client satline cache remove <sat>       Remove one persisted sat record
-  gateway-client satline cache clear              Clear Satline-derived cache only
-  gateway-client bitcoin satline ...       Module-oriented alias for Satline commands
-  gateway-client headers                  Local header coverage/status
-  gateway-client peers                    Discover Bitcoin on Demand-capable peers
-  gateway-client status                   Local Gateway/Bitcoin on Demand/Core status
-  gateway-client compatibility            Schema/wire compatibility metadata
-  gateway-client modules                  Discovered module manifests
-  gateway-client ui                       Explicitly open the UI
-  gateway-client system                   Windows integration status
-  gateway-client browser                  Browser integration / companion status
-  gateway-client browser-validate <name>  Validate an exact Gateway browser address
+Run GatewayClient.exe on Windows or gateway-client on Linux. Flags precede
+the command. With no command, Gateway opens its UI. Use a disposable -data
+directory for experiments; do not run conflicting processes on one profile.
 
-Aliases:
-  tx = transaction
-  getblock = block
-  getblockfrompeer = block (automatic peer selection; height or hash)
-  search = resolve
+Read-only status and resolution:
+  gateway-client status
+  gateway-client headers
+  gateway-client block 170
+  gateway-client block <block-hash>
+  gateway-client getblockhash 170
+  gateway-client resolve 1.170.bitcoin
+  gateway-client transaction 1.170.bitcoin
+  gateway-client browser
+  gateway-client browser-validate 0.bitcoin
+  gateway-client system
+  gateway-client compatibility
+
+A single address is shorthand for resolve. Commands return JSON or a useful
+error. Fetching a block can use the network and cache even though it does not
+change Bitcoin. Coordinates are zero-based. Suffix addresses put block height
+on the right; i0.1.170.bitcoin selects input zero of transaction one in block 170.
+A transaction ID without known containing-block context may be unavailable.
+
+Index inspection:
+  gateway-client index status
+  gateway-client index rules
+
+Headers and Bitcoin Blocks are the only available indexes. Use the UI's
+Build a range controls for a small bounded test before authorizing Live work.
+Additional indexes and Gateway sharing are locked; retained source code for
+them does not authorize their command-line use in this release.
 
 Useful flags:
-  -data <dir>       Bitcoin on Demand data directory
-  -peer <host:port> preferred ordinary Bitcoin peer
-  -gateway-peer <host> manual Gateway peer
-  -advertise-gateway <host:port> reachable Gateway endpoint to announce via Bitcoin addr gossip
-  -bod-peer / -advertise-bod are retained as deprecated pre-1.0 aliases
-  -skin <dir>       custom skin directory containing index.html
-  -http <addr>      local HTTP/API listen address (default 127.0.0.1:0)
-  -no-open          run HTTP/API without opening a browser
-  -background       run silently with the local resolver available
-  -handle-uri URI   route a god:// or .bitcoin target into the running resolver
+  -data <directory>   Explicit Gateway profile directory
+  -peer <host:port>   Preferred ordinary Bitcoin peer
+  -setup             Open resumable guided setup
+  -no-open           Start the local HTTP/API without opening a browser
+  -background        Run without opening the main window
+  -http <address>    Local HTTP/API address (default 127.0.0.1:0)
+  -skin <directory>  Custom skin containing index.html
+  -handle-uri <URI>  Handle an approved Gateway activation/resource URI
 
-CLI output is JSON. It calls the same resolver core as the skin API.
+Keep the local API on loopback for ordinary use. Windows registration and
+browser routing are best configured through Settings, where approval and
+connection state are visible. CLI status alone does not prove a native browser
+handshake or successful .bitcoin address entry.
 
-
-0.5.0 additions
-Universal resolve also accepts .gateway, raw txid:vout, raw txid:vout:offset,
-and known inscription IDs. The same resolver is used by the new shell.
-Durable job controls, Ord backend setup, and archive migration are available
-through the shell and local JSON API; no separate migration CLI is introduced.
+See docs/GETTING-STARTED.md, docs/INDEXING.md and docs/TESTING-0.7.0.md.

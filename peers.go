@@ -73,6 +73,9 @@ func (a *app) handlePeers(w http.ResponseWriter, r *http.Request) {
 			}
 			a.refreshPeersAsync()
 		case "add":
+			if !releaseHTTPFeature(w, "gateway-peerhood") {
+				return
+			}
 			if e := a.setGatewayBootstrapPeers([]string{q.Address}, true); e != nil {
 				jsonError(w, 400, e)
 				return
@@ -158,5 +161,5 @@ func (a *app) handlePeers(w http.ResponseWriter, r *http.Request) {
 	if a.source != nil {
 		listener = a.source.bitcoinServingStatus()
 	}
-	writeJSON(w, map[string]any{"connections": rows, "network": network, "discovered": discovered, "core_peers": corePeers, "core_error": coreErr, "header_connection": a.getStatus().HeaderSource, "listener": listener, "protocols": a.localGatewayProtocols(), "ord_network": "not implemented; local Ord interpretation is separate", "note": "Each owned socket appears once. Core peers are shown separately. A service advertisement is not completed negotiation or verified data."})
+	writeJSON(w, map[string]any{"connections": rows, "network": network, "discovered": discovered, "core_peers": corePeers, "core_error": coreErr, "header_connection": a.getStatus().HeaderSource, "listener": listener, "protocols": []gatewayProtocolSupport{}, "gateway_locked": true, "gateway_lock_reason": releaseLockReason("gateway-peerhood"), "note": "Bitcoin peers supply headers and requested blocks. Core peers are shown separately. Gateway peerhood is locked in this testing build."})
 }

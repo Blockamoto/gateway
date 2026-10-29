@@ -13,7 +13,11 @@ import (
 // that Gateway Client is a full validating Bitcoin node.
 type bitcoinP2PServingView struct {
 	Enabled              bool     `json:"enabled"`
+	Requested            bool     `json:"requested"`
 	ListenPort           int      `json:"listen_port"`
+	ListenAddress        string   `json:"listen_address"`
+	AutomaticPort        bool     `json:"automatic_port"`
+	Error                string   `json:"error,omitempty"`
 	NODE_NETWORK         bool     `json:"node_network"`
 	NODE_NETWORK_LIMITED bool     `json:"node_network_limited"`
 	NODE_WITNESS         bool     `json:"node_witness"`
@@ -22,6 +26,22 @@ type bitcoinP2PServingView struct {
 	BlocksServed         uint64   `json:"blocks_served"`
 	NotFound             uint64   `json:"not_found"`
 	Note                 string   `json:"note"`
+}
+
+func bitcoinListenerEnabled(s appSettings) bool {
+	return s.ServeData || (releaseFeatureAvailable("gateway-peerhood") && (s.ServeGatewayData || (releaseFeatureAvailable("satline") && s.SatlineServePublished)))
+}
+
+func (a *app) startBitcoinListener() error {
+	a.settingsMu.RLock()
+	enabled := bitcoinListenerEnabled(a.settings)
+	a.settingsMu.RUnlock()
+	if !enabled {
+		return nil
+	}
+	// Listener availability is runtime state, not a change to the user's
+	// serving preference. In particular it must not persist a transient clash.
+	return a.source.start()
 }
 
 // standardServingServiceFlags advertises only standard service semantics that
@@ -40,8 +60,9 @@ func (s *overlayServer) bitcoinServingStatus() bitcoinP2PServingView {
 	flags, _ := s.app.localBitcoinAdvertisement()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	port := overlayTCPPort
+	port, address := 0, ""
 	if s.tcp != nil {
+		address = s.tcp.Addr().String()
 		_, p, _ := net.SplitHostPort(s.tcp.Addr().String())
 		if n, e := strconv.Atoi(p); e == nil {
 			port = n
@@ -51,12 +72,19 @@ func (s *overlayServer) bitcoinServingStatus() bitcoinP2PServingView {
 	if flags&nodeNetworkService != 0 {
 		services = append(services, "NODE_NETWORK (Core-backed)")
 	}
+	if flags&nodeNetworkLimitedService != 0 {
+		services = append(services, "NODE_NETWORK_LIMITED (pruned Core-backed)")
+	}
 	if flags&nodeWitnessService != 0 {
 		services = append(services, "NODE_WITNESS")
 	}
 	return bitcoinP2PServingView{
 		Enabled:              allowed && s.tcp != nil,
+		Requested:            allowed,
 		ListenPort:           port,
+		ListenAddress:        address,
+		AutomaticPort:        s.automaticPort,
+		Error:                s.listenError,
 		NODE_NETWORK:         flags&nodeNetworkService != 0,
 		NODE_NETWORK_LIMITED: flags&nodeNetworkLimitedService != 0,
 		NODE_WITNESS:         flags&nodeWitnessService != 0,
@@ -64,7 +92,7 @@ func (s *overlayServer) bitcoinServingStatus() bitcoinP2PServingView {
 		GetDataRequests:      s.standardGetDataRequests,
 		BlocksServed:         s.standardBlocksServed,
 		NotFound:             s.standardBlockMisses,
-		Note:                 "Bitcoin block/header service uses explicit local providers. NODE_NETWORK is advertised only with a checked, ready, unpruned Core backing provider; sparse storage never implies full-chain coverage.",
+		Note:                 "Bitcoin block/header service uses explicit local providers. NODE_NETWORK is advertised only with a checked, ready, unpruned Core backing provider; a checked, ready pruned Core can advertise NODE_NETWORK_LIMITED for its latest 288 blocks. Sparse storage advertises neither coverage promise.",
 	}
 }
 

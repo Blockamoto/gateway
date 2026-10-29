@@ -14,6 +14,7 @@ import (
 type setupProgress struct {
 	Schema              int       `json:"schema"`
 	Stage               int       `json:"stage"`
+	FlowStage           int       `json:"flow_stage"`
 	Completed           bool      `json:"completed"`
 	IntegrationReviewed bool      `json:"integration_reviewed"`
 	Browser             string    `json:"browser"`
@@ -26,12 +27,19 @@ type setupProgress struct {
 func (a *app) setupPath() string { return filepath.Join(a.dataDir, "setup.json") }
 func (a *app) readSetup() setupProgress {
 	// Caller holds setupMu when coordinating a read-modify-write.
-	s := setupProgress{Schema: 1, Browser: "chrome", Profile: "Default"}
+	s := setupProgress{Schema: 2, Browser: "chrome", Profile: "Default"}
 	if b, e := os.ReadFile(a.setupPath()); e == nil {
 		_ = json.Unmarshal(b, &s)
 	}
 	if s.Stage < 0 || s.Stage > 6 {
 		s.Stage = 0
+	}
+	if s.Schema < 2 {
+		s.FlowStage = setupFlowStage(s.Stage)
+		s.Schema = 2
+	}
+	if s.FlowStage < 0 || s.FlowStage > 2 {
+		s.FlowStage = 0
 	}
 	if s.Browser == "" {
 		s.Browser = "chrome"
@@ -41,8 +49,17 @@ func (a *app) readSetup() setupProgress {
 	}
 	return s
 }
+func setupFlowStage(legacy int) int {
+	if legacy >= 5 {
+		return 2
+	}
+	if legacy >= 3 {
+		return 1
+	}
+	return 0
+}
 func validBrowserProfile(browser, profile string) bool {
-	if browser != "chrome" && browser != "edge" && browser != "brave" {
+	if browser != "chrome" && browser != "edge" && browser != "brave" && browser != "chromium" {
 		return false
 	}
 	return len(profile) > 0 && len(profile) <= 80 && profile != "." && profile != ".." && !strings.ContainsAny(profile, "/\\\x00\r\n\t")
@@ -67,7 +84,7 @@ func (a *app) nativeHostReady(browser string) bool {
 	if _, e = os.Stat(host.Path); e != nil {
 		return false
 	}
-	vendor := map[string]string{"chrome": `Google\Chrome`, "edge": `Microsoft\Edge`, "brave": `BraveSoftware\Brave-Browser`}[browser]
+	vendor := map[string]string{"chrome": `Google\Chrome`, "edge": `Microsoft\Edge`, "brave": `BraveSoftware\Brave-Browser`, "chromium": `Chromium`}[browser]
 	if vendor == "" {
 		return false
 	}
@@ -106,7 +123,11 @@ func (a *app) setupSnapshot() map[string]any {
 	if progress.NavigationAt.IsZero() {
 		pending = append(pending, "Companion navigation test")
 	}
-	return map[string]any{"progress": progress, "mode": mode, "version": appVersion, "data_directory": a.dataDir, "show_automatically": !settings.Onboarded && !progress.Completed, "settings": settings.public(), "core": inspectCore(settings), "core_store": a.coreStoreStatusView(), "mounted_preparation": mountedPreparationInfo(settings), "browser": browser, "native_host_registered": a.nativeHostReady(progress.Browser), "system": a.systemStatus(), "headers": a.getStatus(), "network": network, "pending": pending, "note": "Completing setup records your choices. Connectivity, browser approval and data readiness remain separate live states."}
+	previewRoutingNote := ""
+	if portablePreviewBuild != "" {
+		previewRoutingNote = portablePreviewRoutingReason
+	}
+	return map[string]any{"portable_preview": portablePreviewBuild != "", "browser_routing_note": previewRoutingNote, "progress": progress, "mode": mode, "version": appVersion, "data_directory": a.dataDir, "show_automatically": !settings.Onboarded && !progress.Completed, "settings": settings.public(), "core": inspectCore(settings), "core_store": a.coreStoreStatusView(), "mounted_preparation": mountedPreparationInfo(settings), "browser": browser, "native_host_registered": a.nativeHostReady(progress.Browser), "system": a.systemStatus(), "headers": a.getStatus(), "network": network, "pending": pending, "note": "Completing setup records your choices. Connectivity, browser approval and data readiness remain separate live states."}
 }
 func (a *app) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
@@ -116,6 +137,8 @@ func (a *app) handleSetup(w http.ResponseWriter, r *http.Request) {
 	var q struct {
 		Action              string `json:"action"`
 		Stage               *int   `json:"stage"`
+		FlowStage           *int   `json:"flow_stage"`
+		Enabled             *bool  `json:"enabled"`
 		Browser             string `json:"browser"`
 		Profile             string `json:"profile"`
 		Consent             bool   `json:"consent"`
@@ -124,7 +147,21 @@ func (a *app) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if !satlineBody(w, r, &q) {
 		return
 	}
+	if portablePreviewBuild != "" && (q.Action == "browser-routing" || q.Action == "register-native") {
+		jsonError(w, http.StatusForbidden, fmt.Errorf("%s", portablePreviewRoutingReason))
+		return
+	}
 	switch q.Action {
+	case "browser-routing":
+		if !q.Consent || q.Enabled == nil {
+			jsonError(w, 400, fmt.Errorf("explicit browser routing consent and enabled choice required"))
+			return
+		}
+		result := a.configureBrowserRouting(*q.Enabled)
+		out := a.setupSnapshot()
+		out["integration_result"] = result
+		writeJSON(w, out)
+		return
 	case "register-native":
 		if !q.Consent {
 			jsonError(w, 400, fmt.Errorf("explicit integration consent required"))
@@ -157,6 +194,16 @@ func (a *app) handleSetup(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.Stage = *q.Stage
+			s.FlowStage = setupFlowStage(*q.Stage)
+		}
+		if q.FlowStage != nil {
+			if *q.FlowStage < 0 || *q.FlowStage > 2 {
+				a.setupMu.Unlock()
+				jsonError(w, 400, fmt.Errorf("setup flow stage out of range"))
+				return
+			}
+			s.FlowStage = *q.FlowStage
+			s.Stage = []int{1, 4, 5}[s.FlowStage]
 		}
 		if q.Browser != "" || q.Profile != "" {
 			if !validBrowserProfile(q.Browser, q.Profile) {
@@ -170,6 +217,7 @@ func (a *app) handleSetup(w http.ResponseWriter, r *http.Request) {
 		if q.Action == "complete" {
 			s.Completed = true
 			s.Stage = 6
+			s.FlowStage = 2
 		}
 		if q.Action == "reopen" {
 			s.Completed = false

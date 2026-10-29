@@ -1,10 +1,13 @@
 package main
 
 type appStatus struct {
-	HeaderState        string  `json:"header_state"`
-	HeaderTargetSource string  `json:"header_target_source,omitempty"`
-	HeaderLastProgress string  `json:"header_last_progress,omitempty"`
-	HeaderSpeed        float64 `json:"header_speed,omitempty"`
+	HeaderBootstrapState  string  `json:"header_bootstrap_state,omitempty"`
+	HeaderBootstrapHeight int64   `json:"header_bootstrap_height,omitempty"`
+	HeaderBootstrapError  string  `json:"header_bootstrap_error,omitempty"`
+	HeaderState           string  `json:"header_state"`
+	HeaderTargetSource    string  `json:"header_target_source,omitempty"`
+	HeaderLastProgress    string  `json:"header_last_progress,omitempty"`
+	HeaderSpeed           float64 `json:"header_speed,omitempty"`
 
 	Ready                bool   `json:"ready"`
 	Syncing              bool   `json:"syncing"`
@@ -41,6 +44,13 @@ type savedFilesView struct {
 }
 
 type blockView struct {
+	sourceTiming          blockSourceTiming
+	inscriptionExtraction *inscriptionBlockResult
+	CoinbaseMessage       *coinbaseMessageView `json:"coinbase_message,omitempty"`
+	// Owned immutable serialized evidence; never exposed through JSON. Each
+	// successful parser call copies its input so providers cannot mutate it.
+	verifiedRaw        []byte
+	verifiedRawProof   *verifiedBlockBytes
 	Evidence           *resourceEvidence `json:"evidence,omitempty"`
 	Coordinate         string            `json:"coordinate,omitempty"`
 	Height             int64             `json:"height"`
@@ -99,7 +109,7 @@ type inputView struct {
 	Coordinate string   `json:"coordinate,omitempty"`
 	N          int      `json:"n"`
 	PrevTxID   string   `json:"prev_txid,omitempty"`
-	PrevVout   uint32   `json:"prev_vout,omitempty"`
+	PrevVout   uint32   `json:"prev_vout"`
 	ScriptSig  string   `json:"script_sig"`
 	Sequence   uint32   `json:"sequence"`
 	Witness    []string `json:"witness,omitempty"`
@@ -113,6 +123,7 @@ type outputView struct {
 	ScriptPubKey string `json:"script_pub_key"`
 	Type         string `json:"type"`
 	Address      string `json:"address,omitempty"`
+	Destination  string `json:"destination,omitempty"`
 }
 
 type p2pStatusView struct {

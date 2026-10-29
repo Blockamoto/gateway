@@ -70,9 +70,9 @@ func TestPublicGraphDamagedSpendCannotBecomeUnspent(t *testing.T) {
 					a.loadCoverage()
 					a.initGraphStore()
 				}
-				got, err := a.resolveSpender(prev, 0)
-				if err != nil || got.ConfirmedState != "unknown" {
-					t.Fatalf("damage=%s restart=%v produced %+v, %v", damage, restart, got, err)
+				got, why := a.graphCanProveUnspent(prev, 0)
+				if got != nil {
+					t.Fatalf("damage=%s restart=%v produced %+v, %s", damage, restart, got, why)
 				}
 				if _, found := a.graphFindSpend(prev, 0); found {
 					t.Fatal("damaged shard produced a public locator")
@@ -83,6 +83,9 @@ func TestPublicGraphDamagedSpendCannotBecomeUnspent(t *testing.T) {
 }
 
 func TestPublicGraphPrivateKnowledgeStaysLocal(t *testing.T) {
+	if !releaseFeatureAvailable("txo-spender") || !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("0.6.6 release lock: graph acquisition and public peer serving are unavailable")
+	}
 	a, v, prev := publicGraphSpendFixture(t)
 	a.settings.PrivacyMode = true
 	v.CacheVisibility = "private"

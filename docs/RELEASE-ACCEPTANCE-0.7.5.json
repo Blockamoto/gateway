@@ -1,0 +1,343 @@
+{
+  "schema": 1,
+  "version": "0.7.5",
+  "title": "v0.7.5: UTXO set",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-13",
+  "status": "published-prerelease-hosted-upgrade-and-renewal-accepted",
+  "published": true,
+  "release_kind": "prerelease",
+  "enabled_indexes": [
+    "headers",
+    "blocks",
+    "inscriptions",
+    "tx-locator",
+    "txo-spender",
+    "utxo-state"
+  ],
+  "storage": {
+    "blocks_body_schema": 2,
+    "txio_schema": 3,
+    "utxo_schema": 2,
+    "recovery_transitions": 288,
+    "legacy_copies": "retained without automatic removal",
+    "optional_history": "Values and ScriptPubKeys have independent coverage and retention",
+    "raw_retention": "Pruned raw bodies are independent of mandatory live and recovery facts"
+  },
+  "validation_mode": "header_anchored_processing",
+  "consensus_validated": false,
+  "validation": {
+    "focused_engine_runtime_txio_ui": "passed; source verification and independent recovery/storage review",
+    "windows_full_suite": {
+      "result": "passed",
+      "pass": 1051,
+      "skip": 45,
+      "fail": 0,
+      "vet": "passed"
+    },
+    "linux_ci_and_race": {
+      "result": "passed",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38441735822",
+      "source_archive_sha256": "e57109ab488c93e71a2940bbdcffa3f7164bcf74f470a05bd534d171281cbf27",
+      "full": {
+        "pass": 1029,
+        "skip": 50,
+        "fail": 0
+      },
+      "race": {
+        "pass": 511,
+        "skip": 17,
+        "fail": 0
+      },
+      "updater_race": {
+        "pass": 159,
+        "skip": 1,
+        "fail": 0
+      },
+      "static_helpers_packaging_browser": "passed",
+      "scope": "Linux source-built client; final published cross-built ELF verification is separate"
+    },
+    "exact_windows_browser_native_and_local_updater": {
+      "result": "passed",
+      "checks": 36,
+      "skip": 0,
+      "scope": "Exact candidate client, native offline views, grouped UTXO controls, bootstrap and isolated local updater fixtures"
+    },
+    "real_mainnet_prefix_and_legacy_profiles": {
+      "result": "passed",
+      "mainnet_prefix": "genesis..170",
+      "blocks": 171,
+      "pause_resume_same_job": true,
+      "offline_after_raw_eviction_and_restart": true,
+      "simulated_rollback_ancestor": 169,
+      "real_block_replayed": 170,
+      "genuine_0_7_3_profile_migration": "complete_legacy_retained",
+      "filesystem": "exFAT",
+      "scope": "Genuine verified bytes reused locally with networking disabled; selected rollback is simulated"
+    },
+    "exact_packages_and_installer": {
+      "result": "passed",
+      "original_public_assets": 8,
+      "github_digests_match": true,
+      "archive_checks": "CRC, strict members, provenance, executable identities, header snapshot and installer payload equality",
+      "old_client_compatibility": "Genuine 0.7.4 extractor and publisher-origin checks passed",
+      "scope": "Archive and payload audits; system installer wizard/registration and antivirus acceptance are separate"
+    },
+    "published_linux_execution": {
+      "result": "passed",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38449695150",
+      "source_revision": "cd9d6088653601f3a104e9ed3ba8405420f81428",
+      "actual_archives": {
+        "fresh": {
+          "asset": "gateway-client-v0.7.5-linux-amd64-fresh.zip",
+          "bytes": 73965290,
+          "sha256": "d540e9cb048e2b091056fb586e125ec8b69fd18b8d4e1bd199315a704cb45a54"
+        },
+        "update": {
+          "asset": "gateway-client-v0.7.5-linux-amd64.zip",
+          "bytes": 8058487,
+          "sha256": "167aa0a7ead33e8e6f9a76b6849d6d16c2fd7c9041fab628e6e2b7e91642656a"
+        }
+      },
+      "checks": [
+        "Exact downloaded fresh/application-only archive identities and ELF payloads",
+        "Both genuine clients bootstrap; complete fresh header import and offline restart",
+        "Both helpers reject a missing plan without writes",
+        "Native offline Chromium cards and genuine-genesis viewport for both actual clients"
+      ],
+      "header_count": 969480,
+      "scope": "Published executables, controlled Chromium and loopback; no native WebView sharpness or full-chain benchmark claim"
+    },
+    "hosted_signed_downloads": {
+      "result": "passed",
+      "initial_sequences": {
+        "application": 9,
+        "headers": 8
+      },
+      "objects": 99,
+      "bytes": 87879424,
+      "verified_at": "2026-10-13T19:04:59Z",
+      "public_key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
+      "scope": "Both app ZIPs and all 97 chunks actually downloaded; pinned preserved 0.7.4 verifier, validity, signatures, hashes and full snapshot verified",
+      "transport": "Initial Python check failed one Linux payload; failure retained. Native curl diagnostic and unchanged full verification passed. Underlying initial cause is unproven."
+    },
+    "published_0_7_4_automatic_upgrade": {
+      "result": "passed",
+      "source_is_synthetic": false,
+      "source_version": "0.7.4",
+      "installed_version": "0.7.5",
+      "download_button_pressed": false,
+      "restart_button_pressed": false,
+      "installed_binary_sha256": {
+        "GatewayClient.exe": "1c52175c8b7966555a70364fd4e0edadb0e6ce634ccce6be001c9601331f7be3",
+        "GatewayUpdateHelper.exe": "797ae105cfc14b7f5bdad441d747ba922019e7a0b2d45778fbce88ee99f6f94b",
+        "GatewayOnDemand.exe": "6aa27b5e4e2ac03ea672a41dfc9323f4ce17c82456a5f44be7550a63298d6f56",
+        "GatewayNativeHost.exe": "1d4630aff99a043af89f12853d34a134385277e5bd3ee604ba3527f939419799"
+      },
+      "management_origin_preserved": true,
+      "preserved": "Settings, theme, saved index policy, user data sentinel, full saved headers and bootstrap sidecars",
+      "fresh_default_startup": {
+        "id": "stable",
+        "label": "Gateway updates",
+        "visible": true,
+        "configured_before_ui": true,
+        "automatic_check": true,
+        "automatic_install": false,
+        "manual_configuration_actions": 0,
+        "live_check": true,
+        "up_to_date": true,
+        "last_checked": "2026-10-13T19:04:18Z"
+      },
+      "fresh_header_feed": {
+        "sequence": 8,
+        "digest": "d7d2598d61b50f002a2c39b43cdf754ffc76909a4afea1e6564765b8056dfbee",
+        "signed_count": 969480,
+        "validated_snapshot_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+        "complete_file_sha256": "8746108b35487d8008d92344a43319147bbac1b6b65168b34e8708fcbc79034f",
+        "complete_file_count": 971287,
+        "ordinary_peer_extension_headers": 1807,
+        "synchronization": {
+          "ready": true,
+          "state": "current",
+          "count": 971287,
+          "height": 971286
+        },
+        "existing_snapshot_prefix_preserved": true
+      },
+      "production_profile_touched": false,
+      "scope": "Disposable genuine published-client fixture with header/policy data; not a complete historical TXIO/UTXO profile. Publisher warmed; no system installation or cold-start measurement."
+    },
+    "renewed_feed_acceptance": {
+      "result": "passed",
+      "run": "https://github.com/Blockamoto/gateway/actions/runs/38452032129",
+      "workflow_receipt": {
+        "schema": 1,
+        "repository": "Blockamoto/gateway",
+        "version": "0.7.5",
+        "source_revision": "cd9d6088653601f3a104e9ed3ba8405420f81428",
+        "status": "verified",
+        "bundle_sha256": "285babcf77cdb78cc42dc43b1f59e92161bdcd575027fac97f39e87fe2e09228",
+        "bundle_asset_id": 637976966,
+        "publisher_url": "https://gateway-updates.onrender.com",
+        "application_sequence": 10,
+        "header_sequence": 9,
+        "application_expires_at": "2026-11-12T19:06:00Z",
+        "headers_expires_at": "2026-11-12T19:06:00Z",
+        "application_manifest_sha256": "3748a2a8c12be6257d3225a404f57e32ff033268a3f7ccc34778a3fedd163eed",
+        "headers_manifest_sha256": "456ef5701c8ff71ff121a4bfbe58d7be77717dc15c8347652a5d0740d6510630",
+        "verified_at": "2026-10-13T19:07:14+00:00"
+      },
+      "objects": 99,
+      "bytes": 87879424,
+      "verified_at": "2026-10-13T19:09:59Z",
+      "metadata_only_advancement": true,
+      "unchanged_application_and_header_payloads": true,
+      "normal_client_startup": {
+        "result": "passed",
+        "client_version": "0.7.5",
+        "application_sequence": 10,
+        "header_sequence": 9,
+        "no_manual_check_download_install_restart": true,
+        "downloaded_bytes": 0,
+        "download_scope": "Application update packages; ordinary Bitcoin header synchronization continued",
+        "unnecessary_restart": false,
+        "settings_theme_policy_preserved": true,
+        "header_preservation": {
+          "validated_prefix_count": 969480,
+          "validated_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+          "full_validated_prefix_preserved": true,
+          "complete_file_count": 971288,
+          "complete_file_sha256": "07ff8367ed623b0889041b9b41eea2726809a8ab8324e7a8f89fc30c2e515dd6",
+          "ordinary_peer_extension_headers": 1808
+        },
+        "owned_process_stopped": true,
+        "owned_profile_removed": true,
+        "completed_utc": "2026-10-13T19:08:41.668Z"
+      },
+      "scope": "Actual workflow commission, unchanged 99 payloads and exact client acceptance; future scheduled execution depends on permissions and hosting"
+    },
+    "real_txio_history_and_shared_facts": {
+      "result": "passed",
+      "authentic_positional_range": "9..170",
+      "optional_history_heights": [
+        9,
+        170
+      ],
+      "bidirectional_lookup_after_raw_eviction_and_offline_restart": true,
+      "independent_values_scripts_coverage": true,
+      "verified_output_facts": 4,
+      "complete_fact_pages_reuse_utxo_live_or_undo_pins": true,
+      "resolved_txio_rows_have_no_transaction_ids": true,
+      "scope": "Exact candidate with authentic local early-chain bodies and read-only frozen-source fact authentication"
+    }
+  },
+  "limitations": [
+    "Full Bitcoin consensus validation is deferred to v0.8.",
+    "No complete mainnet UTXO replay or mainnet-scale performance result is established by these focused checks.",
+    "No address index, Sats/Satline, fee history, snapshot sharing or Gateway peerhood is enabled.",
+    "Installer wizard, system registration, antivirus and SmartScreen acceptance are not established by archive checks.",
+    "Hosted checks used disposable profiles and a warmed publisher; idle cold-start latency was not measured.",
+    "The genuine hosted upgrade fixture contains full headers and saved policy, not complete TXIO/UTXO history; separate native migration and early-chain checks cover those scenarios.",
+    "A successful renewal commission does not guarantee future scheduled execution."
+  ],
+  "verified_runtime_source": "56bdc48864958b2c60dd41beb3b28a1897062cc0",
+  "exact_windows_client_sha256": "1c52175c8b7966555a70364fd4e0edadb0e6ce634ccce6be001c9601331f7be3",
+  "evidence_sha256": {
+    "windows_suite_receipt": "5ef10d0dd044c000626bae86f92b1a6aa02a714ec897898c6eb12f4ab6c4b36f",
+    "linux_ci_receipt": "3ac77092bfb0dec6aab562acc092ed6e9f7987c15d46868af04e4b277f7452af",
+    "exact_browser_receipt": "b288126691ec7bebb688ba0e3d40126864d96ea40ee9e92f2b2953928f1fa866",
+    "real_prefix_receipt": "c25d15adc5ecab4d7687a9012428321854b6e75dfa8d31e1cd775cbb565db215",
+    "real_txio_receipt": "7bdf42d40d5452010daf63577ba72670d9d5cd52148bb56a63d45867d237f037",
+    "final_runtime_equality": "16c543d79b5e51202c7208dbc22e9d7f7cb502241c5cf90672e3eb59867475f6",
+    "public_origin": "329d7bbd086832ce9ba82887e674c7b4f4d9c5cc1a5e40f798de9db44967df99",
+    "final_packages": "99297113689412ec18b96296120477e0d59c1d7203825773d841909ddb84b036",
+    "legacy_extractor_origin": "f2a67ec74b15a354c76702c932f8125a012f2b51fb9325ae41ef904ddb32b4ec",
+    "published_linux_inspection": "c0cd68df97b109cdb290e7ddd2ffaab2b5a2420e7fff62428d5d1e685e5113ff",
+    "initial_live_failed_python": "9a9fae95a72111497ed51a482425fb74a8d98b68ff23ddf95042f36d02dba388",
+    "initial_live_passed_curl": "3cb8466929a1641f594ca3abfc8126c2abf6701b9e0126ecdfbc9c7355b42d3b",
+    "genuine_hosted_upgrade": "bc6969cf21f553a1d0ed5802b0cd9f8ff80801e610b4c6cd8eed3f4a69b15174",
+    "renewal_workflow": "a77558915887c1194d99f6dac533aa44f3676a748d0309aef591c1bcb7831969",
+    "renewed_live_downloads": "40397669bac7df6b7db710753e4e9781441ecea9747db6dd02a1e50420702db8",
+    "renewal_invariance": "1438f799d02ad17a7cb00a8e36d1a90e962968d7436edfd515e6d00e7e8fac6e",
+    "renewed_client": "a461bda35fcedf27135a701651c1db9f0a713181b24de84201f510ab7a884be1"
+  },
+  "source_revision": "cd9d6088653601f3a104e9ed3ba8405420f81428",
+  "release_url": "https://github.com/Blockamoto/gateway/releases/tag/v0.7.5",
+  "published_at": "2026-10-13T18:47:37Z",
+  "source_identity": "The v0.7.5 tag and original packages remain at cd9d608. Six final runtime binaries are byte-identical to the accepted 56bdc48 candidate. Operational approval dee8512, workflow receipt b6ef3ec and later acceptance documentation do not amend the released tag or runtime bytes.",
+  "public_release_assets": [
+    {
+      "name": "gateway-client-v0.7.5-windows-amd64.zip",
+      "bytes": 13796448,
+      "sha256": "2892556169d62b478218b86bd7a38d6f40153e238535866a83e74d462a451f35",
+      "asset_id": 637865928,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.5-windows-amd64-fresh.zip",
+      "bytes": 79703253,
+      "sha256": "a2e095708089ac8512277f72f8e4fe959ab32f622985e508419e2866b6616f61",
+      "asset_id": 637865930,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.5-linux-amd64.zip",
+      "bytes": 8058487,
+      "sha256": "167aa0a7ead33e8e6f9a76b6849d6d16c2fd7c9041fab628e6e2b7e91642656a",
+      "asset_id": 637865923,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.5-linux-amd64-fresh.zip",
+      "bytes": 73965290,
+      "sha256": "d540e9cb048e2b091056fb586e125ec8b69fd18b8d4e1bd199315a704cb45a54",
+      "asset_id": 637865922,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-client-v0.7.5-installer.exe",
+      "bytes": 117987840,
+      "sha256": "d0747639dbb64dc75165f5c2afe918fa668754d04c9ca0dd8352d9e696189ae9",
+      "asset_id": 637865933,
+      "github_digest_matches": true
+    },
+    {
+      "name": "gateway-headers-v0.7.5.zip",
+      "bytes": 65906545,
+      "sha256": "b1c7d257b9653f5d0d86d7e968414aa47c22eddc43eff76608babb0fb1e04831",
+      "asset_id": 637878790,
+      "github_digest_matches": true
+    },
+    {
+      "name": "artifact-manifest.json",
+      "bytes": 1261,
+      "sha256": "ee96743a70233c34a777df2184b8a0356f55a0cb324c17322fd33ab1d169c028",
+      "asset_id": 637892059,
+      "github_digest_matches": true
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 633,
+      "sha256": "b3679d2b38a9adad373c015d1a16032943258b89e286c17e4ce4b008cc59cc08",
+      "asset_id": 637892268,
+      "github_digest_matches": true
+    }
+  ],
+  "delivery": {
+    "publisher_url": "https://gateway-updates.onrender.com",
+    "render_service": "gateway-updates",
+    "workspace": "My Workspace",
+    "auto_deploy_on_commit": true,
+    "initial_approval_commit": "dee851234fabadef131fda01ad1bfd63a1b69338",
+    "initial_deploy_id": "dep-db77vvv82drs73csgt6g",
+    "initial_deploy_live_at": "2026-10-13T19:03:08.520085Z",
+    "renewal_deploy_id": "dep-db7829ad0e5s73fjdvm0",
+    "renewal_deploy_live_at": "2026-10-13T19:07:09.803179Z",
+    "application_sequence": 10,
+    "header_sequence": 9,
+    "application_expires_at": "2026-11-12T19:06:00Z",
+    "headers_expires_at": "2026-11-12T19:06:00Z",
+    "saved_profile_modes_preserved": true,
+    "weekly_renewal": "Mondays at 06:17 UTC; explicitly approved release only"
+  }
+}

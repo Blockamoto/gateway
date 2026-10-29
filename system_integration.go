@@ -27,6 +27,14 @@ type systemIntegrationStatus struct {
 	Note               string `json:"note,omitempty"`
 }
 
+// Registry status is polled by the desktop UI. Background helpers must not
+// open a console when Gateway itself is built as a Windows GUI application.
+func registryCommand(args ...string) *exec.Cmd {
+	cmd := exec.Command("reg.exe", args...)
+	hideUpdateHelper(cmd)
+	return cmd
+}
+
 func regQueryValue(key, value string) (string, bool) {
 	if runtime.GOOS != "windows" {
 		return "", false
@@ -37,7 +45,7 @@ func regQueryValue(key, value string) (string, bool) {
 	} else {
 		args = append(args, "/v", value)
 	}
-	out, err := exec.Command("reg.exe", args...).CombinedOutput()
+	out, err := registryCommand(args...).CombinedOutput()
 	if err != nil {
 		return "", false
 	}
@@ -54,7 +62,7 @@ func regAddValue(key, value, typ, data string) error {
 		args = append(args, "/v", value)
 	}
 	args = append(args, "/t", typ, "/d", data, "/f")
-	return exec.Command("reg.exe", args...).Run()
+	return registryCommand(args...).Run()
 }
 func regDeleteValue(key, value string) error {
 	if runtime.GOOS != "windows" {
@@ -67,14 +75,14 @@ func regDeleteValue(key, value string) error {
 		args = append(args, "/v", value)
 	}
 	args = append(args, "/f")
-	_ = exec.Command("reg.exe", args...).Run()
+	_ = registryCommand(args...).Run()
 	return nil
 }
 func regDeleteKey(key string) error {
 	if runtime.GOOS != "windows" {
 		return nil
 	}
-	_ = exec.Command("reg.exe", "delete", key, "/f").Run()
+	_ = registryCommand("delete", key, "/f").Run()
 	return nil
 }
 
@@ -143,51 +151,29 @@ func cleanupLegacyIntegration(exe string) {
 
 const bitcoinNRPTComment = "Gateway On Demand .bitcoin resolver"
 
-func nrptRulePresent() bool {
-	if runtime.GOOS != "windows" {
-		return false
+func gatewayNamespacePowerShellArray() string {
+	values := []string{}
+	for _, ns := range gatewayBrowserNamespaces() {
+		values = append(values, "'"+strings.ReplaceAll(ns.Suffix, "'", "''")+"'")
 	}
-	ps := `Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { ($_.Namespace -contains '.bitcoin') -and ($_.NameServers -contains '127.0.0.1') -and (($_.Comment -eq 'Gateway On Demand .bitcoin resolver') -or ($_.Comment -eq 'Blocks on Demand .bitcoin resolver')) } | Select-Object -First 1 | ForEach-Object { 'yes' }`
-	out, _ := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps).CombinedOutput()
-	return strings.Contains(strings.ToLower(string(out)), "yes")
+	return "@(" + strings.Join(values, ",") + ")"
 }
-func setBitcoinDomainRuleElevated(enabled bool) error {
-	if runtime.GOOS != "windows" {
-		return fmt.Errorf(".bitcoin system resolution is only available on Windows")
-	}
-	inner := ""
+
+// The only elevated input is this fixed, readable DNS operation. No user path,
+// downloaded script, encoded command or execution-policy override is accepted.
+func bitcoinDomainRuleCommand(enabled bool) string {
+	owned := `Get-DnsClientNrptRule -ErrorAction Stop | Where-Object { ($_.Comment -eq 'Gateway On Demand .bitcoin resolver') -or ($_.Comment -eq 'Blocks on Demand .bitcoin resolver') }`
+	command := `$ErrorActionPreference = 'Stop'; try { $old = @(` + owned + `); `
 	if enabled {
-		inner = `$old = Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { ($_.Comment -eq 'Gateway On Demand .bitcoin resolver') -or ($_.Comment -eq 'Blocks on Demand .bitcoin resolver') }
-$old | ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force -ErrorAction SilentlyContinue }
-Add-DnsClientNrptRule -Namespace @('.bitcoin','.gateway','.bitmap') -NameServers '127.0.0.1' -Comment 'Gateway On Demand .bitcoin resolver' | Out-Null
-Clear-DnsClientCache -ErrorAction SilentlyContinue
-`
-	} else {
-		inner = `$old = Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { ($_.Comment -eq 'Gateway On Demand .bitcoin resolver') -or ($_.Comment -eq 'Blocks on Demand .bitcoin resolver') }
-$old | ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force -ErrorAction SilentlyContinue }
-Clear-DnsClientCache -ErrorAction SilentlyContinue
-`
+		// Update an owned rule in place, or add if absent. Do not delete a working
+		// old rule before Windows has accepted the requested replacement.
+		fields := ` -Namespace ` + gatewayNamespacePowerShellArray() + ` -NameServers '127.0.0.1' -Comment 'Gateway On Demand .bitcoin resolver' -ErrorAction Stop`
+		command += `if ($old.Count -gt 0) { Set-DnsClientNrptRule -Name $old[0].Name` + fields + `; $old = @($old | Select-Object -Skip 1) } else { Add-DnsClientNrptRule` + fields + ` | Out-Null }; `
 	}
-	f, err := os.CreateTemp("", "god-bitcoin-domain-*.ps1")
-	if err != nil {
-		return err
-	}
-	path := f.Name()
-	if _, err := f.WriteString(inner); err != nil {
-		_ = f.Close()
-		_ = os.Remove(path)
-		return err
-	}
-	_ = f.Close()
-	defer os.Remove(path)
-	escaped := strings.ReplaceAll(path, "'", "''")
-	outer := fmt.Sprintf(`$p=Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','%s'); exit $p.ExitCode`, escaped)
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", outer)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("administrator approval was not completed: %v (%s)", err, strings.TrimSpace(string(out)))
-	}
-	return nil
+	command += `$old | ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force -ErrorAction Stop }; Clear-DnsClientCache -ErrorAction Stop; exit 0 } catch { Write-Error $_; exit 1 }`
+	return command
 }
+
 func (a *app) systemStatus() systemIntegrationStatus {
 	exe, _ := os.Executable()
 	st := systemIntegrationStatus{Supported: runtime.GOOS == "windows", Executable: exe, GatewayLauncher: gatewayLauncherPath(exe)}
@@ -298,47 +284,6 @@ func (a *app) handleSystemBitcoinDomain(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(a.systemStatus())
 }
 
-func writeTrayScript(dataDir string) (string, error) {
-	path := filepath.Join(dataDir, "windows-tray-v1.ps1")
-	script := `param([string]$BaseUrl,[string]$ExePath)
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-$notify = New-Object System.Windows.Forms.NotifyIcon
-try { $notify.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon($ExePath) } catch {}
-$notify.Text = 'Gateway Client'
-$notify.Visible = $true
-$menu = New-Object System.Windows.Forms.ContextMenuStrip
-$open = $menu.Items.Add('Open Gateway Client')
-$status = $menu.Items.Add('Status / Settings')
-$serve = $menu.Items.Add('Toggle serving')
-$menu.Items.Add('-') | Out-Null
-$quit = $menu.Items.Add('Quit')
-$open.Add_Click({ Start-Process ($BaseUrl + '/') })
-$status.Add_Click({ Start-Process ($BaseUrl + '/?settings=1') })
-$serve.Add_Click({ try { Invoke-RestMethod -Method Post -Uri ($BaseUrl + '/api/v1/runtime/toggle-serving') -ContentType 'application/json' -Body '{}' | Out-Null } catch {} })
-$quit.Add_Click({ try { Invoke-RestMethod -Method Post -Uri ($BaseUrl + '/api/v1/runtime/quit') -ContentType 'application/json' -Body '{}' | Out-Null } catch {}; $notify.Visible=$false; [System.Windows.Forms.Application]::Exit() })
-$notify.Add_DoubleClick({ Start-Process ($BaseUrl + '/') })
-$notify.ContextMenuStrip = $menu
-[System.Windows.Forms.Application]::Run()
-$notify.Visible = $false
-`
-	if err := os.WriteFile(path, []byte(script), 0600); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-func (a *app) startWindowsTray(baseURL string) {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	path, err := writeTrayScript(a.dataDir)
-	if err != nil {
-		return
-	}
-	exe, _ := os.Executable()
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", path, "-BaseUrl", baseURL, "-ExePath", exe)
-	_ = cmd.Start()
-}
 func userInstall(exe string, startup bool, god bool) error {
 	if runtime.GOOS != "windows" {
 		return fmt.Errorf("Windows integration is only available on Windows")

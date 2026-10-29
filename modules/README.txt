@@ -1,9 +1,13 @@
-GATEWAY CLIENT BUNDLED MODULES — v0.4.9
+GATEWAY MODULES
 
-Gateway Client now hosts two trusted bundled modules:
-- Bitcoin on Demand
-- Satline
+Gateway's public testing scope is Headers and Bitcoin Blocks. The module
+catalog also describes retained future capabilities, including Satline.
+Presence in that catalog does not make a capability available: release locks
+apply to its UI, API, command-line and background entry points.
 
-Satline depends on Bitcoin on Demand capabilities but can be disabled independently. Its stable future network protocol identity is reserved but is NOT advertised in v0.4.9.
+Additional indexes and Gateway sharing cannot be enabled by installing a
+manifest or changing a setting in this release. See docs/INDEXING.md in the
+repository for available behavior and docs/GATEWAY-ROADMAP.md for future scope.
 
-External module manifests can still be discovered for inspection through /api/modules, but arbitrary remote/downloaded module code execution remains out of scope.
+External module manifests can be discovered for inspection through
+/api/modules. That does not load or execute arbitrary downloaded module code.

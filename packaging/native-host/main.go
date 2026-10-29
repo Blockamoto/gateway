@@ -1,9 +1,12 @@
 package main
 
 import (
+	"../../internal/datadir"
+	"../../internal/updateapply"
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,10 +39,40 @@ func readRuntime(path string) (runtimeInfo, error) {
 	}
 	return x, nil
 }
+func nativeDataDir(root string) (string, error) {
+	data, err := datadir.Resolve(root, os.Getenv("LOCALAPPDATA"), runtime.GOOS)
+	var recovery *updateapply.RecoveryRequest
+	if err != nil {
+		var required *datadir.RecoveryRequired
+		if !errors.As(err, &required) {
+			return "", err
+		}
+		recovery = required.Request
+	} else {
+		recovery, err = updateapply.PendingRecovery(root, data)
+		if err != nil {
+			return "", err
+		}
+	}
+	if recovery != nil {
+		if !recovery.Busy {
+			cmd := exec.Command(recovery.HelperPath, "-recover", "-plan", recovery.PlanPath, "-plan-sha256", recovery.PlanSHA256)
+			cmd.Dir = filepath.Dir(recovery.HelperPath)
+			hideProcess(cmd)
+			if err = cmd.Start(); err != nil {
+				return "", err
+			}
+			_ = cmd.Process.Release()
+		}
+		return "", fmt.Errorf("Gateway is recovering or completing an update; reopen Gateway and retry after it finishes")
+	}
+	return data, nil
+}
+
 func running(root string) (runtimeInfo, error) {
-	data := filepath.Join(root, "blocks-on-demand-data")
-	if _, e := os.Stat(filepath.Join(root, "installed.marker")); e == nil && runtime.GOOS == "windows" {
-		data = filepath.Join(os.Getenv("LOCALAPPDATA"), "BlocksOnDemand", "data")
+	data, err := nativeDataDir(root)
+	if err != nil {
+		return runtimeInfo{}, err
 	}
 	path := filepath.Join(data, "runtime.json")
 	client := &http.Client{Timeout: time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {

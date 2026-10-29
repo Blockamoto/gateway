@@ -119,6 +119,7 @@ func (a *app) handleRuntimeQuit(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = a.saveCacheIndex()
 		_ = os.Remove(runtimePath(a.dataDir))
+		stopWindowsTray()
 		os.Exit(0)
 	}()
 }
@@ -132,7 +133,7 @@ func (a *app) handleRuntimeToggleServing(w http.ResponseWriter, r *http.Request)
 	s := a.settings
 	a.settingsMu.RUnlock()
 	s.ServeData = !s.ServeData
-	if s.ServeData || (s.SatlineEnabled && s.SatlineServePublished) {
+	if bitcoinListenerEnabled(s) {
 		if err := a.source.start(); err != nil {
 			jsonError(w, 500, err)
 			return

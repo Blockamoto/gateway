@@ -154,6 +154,7 @@ func TestSatlineWireRejectsInjectedStateAndOversize(t *testing.T) {
 func TestSatlinePrivacyFlagsAndImmutablePublication(t *testing.T) {
 	b, q, r := satlinePeerFixture(t)
 	a := &app{dataDir: t.TempDir(), settings: defaultSettings()}
+	a.settings.SatlineEnabled = true
 	a.initSatlineStore()
 	if a.satlineNetworkingEnabled() {
 		t.Fatal("networking is on by default")
@@ -163,7 +164,16 @@ func TestSatlinePrivacyFlagsAndImmutablePublication(t *testing.T) {
 	}
 	req := satlineSegmentRequest{Query: q, Start: *r.BirthSatpoint, Limit: 32}
 	a.settings.SatlineServePublished = true
-	if _, e := a.buildSatlineSegment(req); e == nil || e.Error() != "not_cached" {
+	if !releaseFeatureAvailable("satline") {
+		if _, err := a.readSatlineSegment(req); err == nil || err.Error() != "disabled" {
+			t.Fatal("saved sharing preference bypassed deferred release", err)
+		}
+		if saved, ok := a.loadSatlineRecord(q.Kind, q.key()); !ok || len(saved.Result.Hops) != len(r.Hops) {
+			t.Fatal("deferral lost private saved evidence")
+		}
+		return
+	}
+	if _, e := a.readSatlineSegment(req); e == nil || e.Error() != "not_cached" {
 		t.Fatalf("private cache was served: %v", e)
 	}
 	// Publication API ancestry is separately tested with actual genesis headers.
@@ -174,7 +184,7 @@ func TestSatlinePrivacyFlagsAndImmutablePublication(t *testing.T) {
 	if e := a.saveSatlineRecord(q.Kind, q.key(), q.Input, r); e != nil {
 		t.Fatal(e)
 	}
-	seg, e := a.buildSatlineSegment(req)
+	seg, e := a.readSatlineSegment(req)
 	if e != nil || len(seg.Hops) != 1 || seg.More {
 		t.Fatalf("private extension leaked: %+v %v", seg, e)
 	}
@@ -182,18 +192,25 @@ func TestSatlinePrivacyFlagsAndImmutablePublication(t *testing.T) {
 		t.Fatal(e)
 	}
 	a.settings.SatlineEnabled = false
-	if _, e = a.buildSatlineSegment(req); e == nil {
-		t.Fatal("disabled module served")
+	if _, e = a.readSatlineSegment(req); e != nil {
+		t.Fatalf("obsolete local opt-out hid an explicitly retained publication: %v", e)
 	}
-	a.settings.SatlineEnabled = true
-	if e = a.publishSatlineRecord(q, false); e != nil {
+	a.settings.SatlineServePublished = false
+	if _, e = a.readSatlineSegment(req); e == nil {
+		t.Fatal("explicit publication sharing preference was ignored")
+	}
+	a.settings.SatlineServePublished = true
+	if e = a.storeSatlinePublication(q, false); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = a.buildSatlineSegment(req); e == nil {
+	if _, e = a.readSatlineSegment(req); e == nil {
 		t.Fatal("withdrawn publication served")
 	}
 }
 func TestSatlineExplicitPublicationAndStepStart(t *testing.T) {
+	if !releaseFeatureAvailable("satline") {
+		t.Skip("0.6.6 release lock: interactive Satline traversal and publication are unavailable")
+	}
 	a, g := initGraphTestApp(t)
 	a.settings.SatlineEnabled = true
 	a.initSatlineStore()
@@ -212,7 +229,7 @@ func TestSatlineExplicitPublicationAndStepStart(t *testing.T) {
 		t.Fatal(e)
 	}
 	r = a.runSatlineLocal(context.Background(), q, "next", 1, nil)
-	if r.State != "CURRENTLY_UNSPENT" {
+	if r.State != "GENESIS_UNSPENDABLE" {
 		t.Fatalf("next failed: %+v", r)
 	}
 	if e := a.removeSatlineRecord(q.Kind, q.key()); e != nil {
@@ -222,7 +239,7 @@ func TestSatlineExplicitPublicationAndStepStart(t *testing.T) {
 		t.Fatalf("removed record publication survives %v", e)
 	}
 }
-func TestSatlineGatewayAdvertisementIsOptIn(t *testing.T) {
+func TestSatlineGatewayAdvertisementStaysLocked(t *testing.T) {
 	a := &app{settings: defaultSettings()}
 	has := func() bool {
 		_, ok := protocolVersionSupported(a.localGatewayProtocols(), satlineProtocolID, 1, 1)
@@ -232,17 +249,17 @@ func TestSatlineGatewayAdvertisementIsOptIn(t *testing.T) {
 		t.Fatal("default advertises")
 	}
 	a.settings.SatlineUsePeers = true
-	if !has() {
-		t.Fatal("explicit receiving capability not advertised")
+	if has() {
+		t.Fatal("saved receiving setting bypassed release lock")
 	}
 	a.settings.SatlineUsePeers = false
 	a.settings.SatlineServePublished = true
-	if !has() {
-		t.Fatal("explicit serving capability not advertised")
+	if has() {
+		t.Fatal("saved serving setting bypassed release lock")
 	}
 	a.settings.SatlineEnabled = false
 	if has() {
-		t.Fatal("disabled module advertises")
+		t.Fatal("legacy local setting bypassed Gateway networking release lock")
 	}
 }
 func TestSatlineRateBudget(t *testing.T) {
@@ -290,8 +307,14 @@ func TestSatlineEmbeddedUIAssets(t *testing.T) {
 		r.RemoteAddr = "127.0.0.1:3333"
 		w := httptest.NewRecorder()
 		a.handleSatlinePage(w, r)
-		if w.Code != 200 || w.Body.Len() < 500 {
-			t.Fatalf("missing embedded UI %s %d", path, w.Code)
+		if w.Code != http.StatusOK || w.Body.Len() == 0 {
+			t.Fatalf("Satline asset missing %s %d", path, w.Code)
+		}
+		if !releaseFeatureAvailable("satline") && (!strings.Contains(w.Body.String(), "Satline deferred") || strings.Contains(w.Body.String(), "<script")) {
+			t.Fatalf("locked UI was exposed %s %d", path, w.Code)
+		}
+		if releaseFeatureAvailable("satline") && strings.Contains(w.Body.String(), "Satline deferred") {
+			t.Fatalf("enabled Satline still served lock page %s", path)
 		}
 	}
 }
@@ -301,6 +324,9 @@ func TestSatlineEmbeddedUIAssets(t *testing.T) {
 // the receiver uses the production request parser, verifier and store. Only
 // Bitcoin evidence comes from the deterministic decoded-block fixture.
 func TestSatlineTwoProcessExchange(t *testing.T) {
+	if !releaseFeatureAvailable("satline") || !releaseFeatureAvailable("gateway-peerhood") {
+		t.Skip("0.6.6 release lock: Satline network exchange is unavailable")
+	}
 	if os.Getenv("GATEWAY_SATLINE_HELPER") != "" {
 		t.Skip("parent only")
 	}

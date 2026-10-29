@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -24,13 +25,6 @@ const (
 	maxMessageSize = 4 * 1000 * 1000
 	headersPerMsg  = 2000
 
-	// Bitcoin Core reserves service bits 24-31 for temporary experiments. v0.3.9
-	// uses bit 25 only as an unauthenticated Gateway discovery hint. BIP 434
-	// confirms Gateway; Gateway then lists services such as Bitcoin on Demand.
-	gatewayExperimentalServiceBit = uint64(1) << 25
-	// Pre-1.0 source compatibility aliases. On the wire this bit/feature now
-	// identify Gateway, not Bitcoin on Demand directly.
-	bodExperimentalServiceBit = gatewayExperimentalServiceBit
 	nodeNetworkService        = uint64(1) << 0
 	nodeWitnessService        = uint64(1) << 3
 	nodeNetworkLimitedService = uint64(1) << 10
@@ -50,7 +44,6 @@ var (
 )
 
 type peerConn struct {
-	observedIP       net.IP
 	wantsAddrV2      bool
 	localProtocols   []gatewayProtocolSupport
 	conn             net.Conn
@@ -72,12 +65,18 @@ type message struct {
 }
 
 func fetchBlock(hash [32]byte, expectedHeader []byte, preferred []string) ([]byte, string, error) {
+	return fetchBlockContext(context.Background(), hash, expectedHeader, preferred)
+}
+func fetchBlockContext(ctx context.Context, hash [32]byte, expectedHeader []byte, preferred []string) ([]byte, string, error) {
 	candidates := append([]string{}, preferred...)
-	discovered, _ := discoverPeers()
+	discovered, _ := discoverPeersContext(ctx)
 	candidates = append(candidates, discovered...)
 	seen := map[string]bool{}
 	attempts := 0
 	for _, addr := range candidates {
+		if err := ctx.Err(); err != nil {
+			return nil, "", err
+		}
 		if seen[addr] {
 			continue
 		}
@@ -86,14 +85,22 @@ func fetchBlock(hash [32]byte, expectedHeader []byte, preferred []string) ([]byt
 		if attempts > 64 {
 			break
 		}
-		p, err := connectPeer(addr)
+		c, err := (&net.Dialer{Timeout: 6 * time.Second}).DialContext(ctx, "tcp", addr)
 		if err != nil {
+			continue
+		}
+		stop := context.AfterFunc(ctx, func() { _ = c.Close() })
+		p, err := handshakeOutbound(c, addr)
+		if err != nil {
+			stop()
+			_ = c.Close()
 			continue
 		}
 		// Standard archival Bitcoin peers advertise NODE_NETWORK. BOD sparse
 		// peers are tried separately by fetchBlockFromOverlay and need not lie
 		// about NODE_NETWORK just to serve a cached block.
 		if p.services&nodeNetworkService == 0 {
+			stop()
 			_ = p.conn.Close()
 			continue
 		}
@@ -106,10 +113,12 @@ func fetchBlock(hash [32]byte, expectedHeader []byte, preferred []string) ([]byt
 		_ = binary.Write(&req, binary.LittleEndian, invType)
 		req.Write(hash[:])
 		if err = writeMessage(p.conn, "getdata", req.Bytes()); err != nil {
+			stop()
 			_ = p.conn.Close()
 			continue
 		}
 		msg, err := waitForBlockOrNotFound(p, 22*time.Second)
+		stop()
 		_ = p.conn.Close()
 		if err != nil {
 			continue
@@ -181,9 +190,15 @@ func connectAnyPeer(preferred []string, requireArchive bool) (*peerConn, error) 
 }
 
 func discoverPeers() ([]string, error) {
+	return discoverPeersContext(context.Background())
+}
+func discoverPeersContext(ctx context.Context) ([]string, error) {
 	var all []string
 	for _, seed := range dnsSeeds {
-		ips, err := net.LookupIP(seed)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", seed)
 		if err != nil {
 			continue
 		}
@@ -215,73 +230,8 @@ type advertisedPeer struct {
 	Invalid    string
 }
 
-// discoverGatewayServicePeers asks ordinary Bitcoin peers for their address tables
-// and filters for the experimental Gateway service-bit hint. The bit is not proof:
-// callers MUST still confirm Gateway via BIP 434 and BOD via Gateway before sending bodmsg.
-func discoverGatewayServicePeers(preferred []string) []advertisedPeer {
-	candidates := append([]string{}, preferred...)
-	seeded, _ := discoverPeers()
-	candidates = append(candidates, seeded...)
-	seenDial := map[string]bool{}
-	seenOut := map[string]bool{}
-	out := []advertisedPeer{}
-	attempts := 0
-	for _, addr := range candidates {
-		if attempts >= 6 || len(out) >= 128 {
-			break
-		}
-		if seenDial[addr] {
-			continue
-		}
-		seenDial[addr] = true
-		attempts++
-		p, err := connectPeer(addr)
-		if err != nil {
-			continue
-		}
-		// The directly connected peer may itself be advertising the BOD hint.
-		if p.services&gatewayExperimentalServiceBit != 0 && !seenOut[p.addr] {
-			seenOut[p.addr] = true
-			out = append(out, advertisedPeer{Addr: p.addr, Services: p.services})
-		}
-		_ = writeMessage(p.conn, "getaddr", nil)
-		addrs, _ := waitForAddr(p, 2500*time.Millisecond)
-		_ = p.conn.Close()
-		for _, ap := range addrs {
-			if ap.Services&gatewayExperimentalServiceBit == 0 || seenOut[ap.Addr] {
-				continue
-			}
-			seenOut[ap.Addr] = true
-			out = append(out, ap)
-			if len(out) >= 128 {
-				break
-			}
-		}
-	}
-	return out
-}
-
-func waitForAddr(p *peerConn, timeout time.Duration) ([]advertisedPeer, error) {
-	_ = p.conn.SetReadDeadline(time.Now().Add(timeout))
-	defer p.conn.SetReadDeadline(time.Time{})
-	for {
-		m, err := readMessage(p.conn)
-		if err != nil {
-			return nil, err
-		}
-		switch m.command {
-		case "addr":
-			return parseAddrPayload(m.payload)
-		case "ping":
-			_ = writeMessage(p.conn, "pong", m.payload)
-		}
-	}
-}
-
-// parseAddrPayload parses legacy addr records. BOD intentionally does not send
-// sendaddrv2 in v0.3.8, so conforming peers answer getaddr with addr rather than
-// addrv2. Unknown/unroutable records are harmless and are ignored later if a
-// TCP connection cannot be established.
+// parseAddrPayload parses bounded legacy Bitcoin address records. Admission
+// applies independent routability and standard Bitcoin service checks.
 func parseAddrPayload(payload []byte) ([]advertisedPeer, error) {
 	count, used, err := decodeCompactSizeMinimal(payload)
 	if err != nil {
@@ -342,6 +292,10 @@ func handshakeOutboundProtocols(c net.Conn, addr string, protocols []gatewayProt
 	return handshakeOutboundState(c, addr, protocols, 0, 0)
 }
 func handshakeOutboundState(c net.Conn, addr string, protocols []gatewayProtocolSupport, services uint64, height int64) (*peerConn, error) {
+	if !releaseFeatureAvailable("gateway-peerhood") {
+		protocols = nil
+		services &= nodeNetworkService | nodeNetworkLimitedService | nodeWitnessService
+	}
 	p := &peerConn{conn: c, addr: addr, localProtocols: protocols}
 	c.SetDeadline(time.Now().Add(12 * time.Second))
 	if err := writeMessage(c, "version", makeVersionPayloadAtHeight(addr, services, height)); err != nil {
@@ -367,9 +321,6 @@ func handshakeOutboundState(c net.Conn, addr string, protocols []gatewayProtocol
 			p.version = int32(binary.LittleEndian.Uint32(m.payload[0:4]))
 			p.services = binary.LittleEndian.Uint64(m.payload[4:12])
 			p.startHeight = parseVersionStartHeight(m.payload)
-			if len(m.payload) >= 46 {
-				p.observedIP = append(net.IP(nil), m.payload[28:44]...)
-			}
 			if p.version >= 70016 {
 				_ = writeMessage(c, "sendaddrv2", nil)
 			}
@@ -556,6 +507,8 @@ func readMessageBounded(r io.Reader, limit uint32) (message, error) {
 	n := binary.LittleEndian.Uint32(h[16:20])
 	commandLimit := uint32(maxMessageSize)
 	switch cmd {
+	case "block":
+		commandLimit = coreBlockMessageBytes
 	case "version":
 		commandLimit = 1024
 	case "verack", "sendaddrv2", "getaddr", "sendheaders":
@@ -683,72 +636,4 @@ func parseFeaturePayload(p []byte) (string, []byte, error) {
 		return "", nil, fmt.Errorf("invalid featuredata length")
 	}
 	return id, append([]byte(nil), p[pos:]...), nil
-}
-
-// makeAddrAnnouncement builds a canonical legacy addr message containing one
-// reachable Gateway endpoint. The service bit is merely a discovery hint; peers
-// still have to connect, confirm Gateway with BIP 434, then inspect its protocol list.
-func makeAddrAnnouncement(addr string, services uint64) ([]byte, error) {
-	host, portS, err := net.SplitHostPort(normalizePeer(addr))
-	if err != nil {
-		return nil, err
-	}
-	port, err := strconv.Atoi(portS)
-	if err != nil || port <= 0 || port > 65535 {
-		return nil, fmt.Errorf("invalid advertise port")
-	}
-	ips, err := net.LookupIP(host)
-	if err != nil || len(ips) == 0 {
-		return nil, fmt.Errorf("advertise address could not be resolved")
-	}
-	var ip net.IP
-	for _, candidate := range ips {
-		if candidate.To16() != nil {
-			ip = candidate
-			break
-		}
-	}
-	if ip == nil {
-		return nil, fmt.Errorf("advertise address has no usable IP")
-	}
-	var b bytes.Buffer
-	b.Write(encodeVarInt(1))
-	_ = binary.Write(&b, binary.LittleEndian, uint32(time.Now().Unix()))
-	_ = binary.Write(&b, binary.LittleEndian, services)
-	ip16 := ip.To16()
-	if ip16 == nil {
-		return nil, fmt.Errorf("advertise IP is invalid")
-	}
-	b.Write(ip16)
-	_ = binary.Write(&b, binary.BigEndian, uint16(port))
-	return b.Bytes(), nil
-}
-
-func announceGatewayAddress(preferred []string, advertiseAddr string) {
-	payload, err := makeAddrAnnouncement(advertiseAddr, gatewayExperimentalServiceBit)
-	if err != nil {
-		return
-	}
-	candidates := append([]string{}, preferred...)
-	seeded, _ := discoverPeers()
-	candidates = append(candidates, seeded...)
-	seen := map[string]bool{}
-	sent := 0
-	for _, addr := range candidates {
-		if sent >= 8 {
-			return
-		}
-		if seen[addr] {
-			continue
-		}
-		seen[addr] = true
-		p, err := connectPeer(addr)
-		if err != nil {
-			continue
-		}
-		if writeMessage(p.conn, "addr", payload) == nil {
-			sent++
-		}
-		_ = p.conn.Close()
-	}
 }

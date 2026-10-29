@@ -1,2 +1,0 @@
-Superseded in v0.4.8 by MODULE-API-v1.txt.
-Gateway Client now exposes Bitcoin on Demand and Satline as separate bundled module manifests. External remote-code module execution remains deferred.

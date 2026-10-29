@@ -40,10 +40,20 @@ func (a *app) loadDurableJobs() {
 			j.Status = "paused"
 			j.Stage = "Gateway restarted. Resume from the last complete checkpoint."
 		}
+		if !releaseFeatureAvailable("satline") {
+			j.Done = true
+			if j.Status == "running" || j.Status == "" {
+				j.Status = "paused"
+			}
+			j.Stage = releaseLockReason("satline")
+		}
 		a.satlineJobs[j.ID] = &j
 	}
 }
 func (a *app) handleJobs(w http.ResponseWriter, r *http.Request) {
+	if !releaseHTTPFeature(w, "satline") {
+		return
+	}
 	if r.Method == http.MethodGet {
 		a.satlineJobsMu.Lock()
 		defer a.satlineJobsMu.Unlock()

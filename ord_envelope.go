@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -85,16 +84,21 @@ func scriptInstructions(script []byte) ([]scriptInstruction, error) {
 	}
 	return out, nil
 }
+
+// Compatibility helper delegates to the same pinned script cursor as committed
+// extraction. Native resolution uses extractInscriptionOccurrences on a checked
+// complete block, including its budgets, witness receipt and transaction order.
 func parseOrdEnvelopes(tx transactionView) []ordEnvelope {
 	out := []ordEnvelope{}
+	payloadItems := 0
 	for vin, in := range tx.Inputs {
 		w := in.Witness
 		if len(w) < 2 {
 			continue
 		}
-		last, e := hex.DecodeString(w[len(w)-1])
-		if e != nil {
-			continue
+		last, err := hex.DecodeString(w[len(w)-1])
+		if err != nil {
+			return nil
 		}
 		if len(last) > 0 && last[0] == 0x50 {
 			w = w[:len(w)-1]
@@ -102,76 +106,19 @@ func parseOrdEnvelopes(tx transactionView) []ordEnvelope {
 		if len(w) < 2 {
 			continue
 		}
-		control, ce := hex.DecodeString(w[len(w)-1])
-		if ce != nil || len(control) < 33 || len(control) > 33+32*128 || (len(control)-33)%32 != 0 || control[0]&0xfe != 0xc0 {
-			continue
+		script, err := hex.DecodeString(w[len(w)-2])
+		if err != nil {
+			return nil
 		}
-		script, e := hex.DecodeString(w[len(w)-2])
-		if e != nil {
-			continue
+		envelopes, _, err := inscriptionEnvelopesFromScript(script, vin, &payloadItems)
+		if err != nil {
+			return nil
 		}
-		ins, e := scriptInstructions(script)
-		if e != nil {
-			continue
+		if len(envelopes) > inscriptionMaxOccurrences-len(out) {
+			return nil
 		}
-		offset := 0
-		stuttered := false
-		for i := 0; i < len(ins); i++ {
-			if !ins[i].push || len(ins[i].data) != 0 {
-				continue
-			}
-			if i+1 >= len(ins) {
-				break
-			}
-			if ins[i+1].op != 0x63 || ins[i+1].push {
-				stuttered = ins[i+1].push && len(ins[i+1].data) == 0
-				continue
-			}
-			i++
-			if i+1 >= len(ins) {
-				break
-			}
-			if !ins[i+1].push || !bytes.Equal(ins[i+1].data, []byte("ord")) {
-				stuttered = ins[i+1].push && len(ins[i+1].data) == 0
-				continue
-			}
-			i++
-			payload := [][]byte{}
-			pushnum := false
-			closed := false
-			for i++; i < len(ins); i++ {
-				t := ins[i]
-				if !t.push && t.op == 0x68 {
-					closed = true
-					break
-				}
-				if t.push {
-					payload = append(payload, t.data)
-					continue
-				}
-				if t.op == 0x4f {
-					pushnum = true
-					payload = append(payload, []byte{0x81})
-					continue
-				}
-				if t.op >= 0x51 && t.op <= 0x60 {
-					pushnum = true
-					payload = append(payload, []byte{t.op - 0x50})
-					continue
-				}
-				break
-			}
-			if closed {
-				en := parseOrdFields(payload)
-				en.Input = vin
-				en.Offset = offset
-				en.Stutter = stuttered
-				en.Pushnum = pushnum
-				out = append(out, en)
-				offset++
-			} else {
-				stuttered = false
-			}
+		for _, parsed := range envelopes {
+			out = append(out, parsed.envelope)
 		}
 	}
 	return out

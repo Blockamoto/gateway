@@ -1,0 +1,56 @@
+name: Renew approved Gateway update feeds
+
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize manual and scheduled runs; never cancel a partially promoted bundle.
+concurrency:
+  group: gateway-approved-update-renewal
+  cancel-in-progress: false
+
+jobs:
+  renew:
+    if: github.repository == 'Blockamoto/gateway' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: gateway-update-renewal
+    permissions:
+      contents: write
+    env:
+      GO111MODULE: 'off'
+      CGO_ENABLED: '0'
+    steps:
+      - name: Check out trusted default branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Build and test operator tool before loading secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          go version
+          go test ./internal/updatepublisher ./packaging/update-publisher
+          python3 scripts/test-renew-update-feed.py
+          go build -trimpath -o "$RUNNER_TEMP/gateway-update-publisher" ./packaging/update-publisher
+      - name: Renew only the committed approved release and verify hosted delivery
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATEWAY_UPDATE_SIGNING_KEY_JSON: ${{ secrets.GATEWAY_UPDATE_SIGNING_KEY_JSON }}
+          GATEWAY_RENDER_DEPLOY_HOOK: ${{ secrets.GATEWAY_RENDER_DEPLOY_HOOK }}
+        run: |
+          set -euo pipefail
+          python3 scripts/renew-update-feed.py --publisher "$RUNNER_TEMP/gateway-update-publisher" --receipt "$RUNNER_TEMP/gateway-renewal/receipt.json"
+      - name: Preserve public renewal receipt
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gateway-update-renewal-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gateway-renewal/receipt.json
+          if-no-files-found: ignore
+          retention-days: 30

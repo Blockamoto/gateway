@@ -5,7 +5,7 @@ Bitmap address badges backed by selected saved evidence, and a fresh Parcel
 track. Child lists reflect locally observed declarations, not complete global
 coverage; saved links may need revalidation. See [the 0.7.9 brief](IMPLEMENTATION-BRIEF-0.7.9.md).
 
-The 0.7.8 development source enables **Headers**, **Bitcoin Blocks**, **Inscriptions**, **TX ID Locators**, **Transaction Input/Output (TXIO)**, **UTXO set**, **Addresses**, **Sats** and fixed canonical **Bitmap Districts Standard V1**. Addresses offers Current UTXOs and independently retained Historical outputs; see [the Addresses guide](ADDRESSES-INDEX.md). The TXIO store supports IO Links and optional Values and exact ScriptPubKeys history with independent coverage. Sat Ranges and Inscriptions appear together under Ordinals while retaining separate consumers and stores. Gateway peerhood and later index stages remain gated. Published releases and updater delivery remain tracked separately in [status](STATUS.md).
+The 0.7.8 development source enables **Headers**, **Bitcoin Blocks**, **Inscriptions**, **TX ID Locators**, **Transaction Input/Output (TXIO)**, **UTXO set**, **Addresses**, **Sats** and fixed canonical **Bitmap Districts**. Addresses offers Current UTXOs and independently retained Historical outputs; see [the Addresses guide](ADDRESSES-INDEX.md). The TXIO store supports IO Links and optional Values and exact ScriptPubKeys history with independent coverage. Sat Ranges and Inscriptions appear together under Ordinals while retaining separate consumers and stores. Gateway peerhood and later index stages remain gated. Published releases and updater delivery remain tracked separately in [status](STATUS.md).
 
 ## Development: Raw blocks and optional transaction lookup
 
@@ -21,17 +21,17 @@ Verified local bytes are reused before requesting missing bodies. Core-style blo
 
 ## Canonical Bitmap portable preview
 
-Gateway 0.7.8 provides **Bitmap Districts Standard V1** using the pinned [Bitmap rules](https://github.com/Blockamoto/bitmap/blob/335958311eb1c8ce4d14c48bc5c21d23c7a4b134/README.md). Its identity authenticates the implemented rules and source revision; it does not resume experimental or earlier canonical checkpoints. Read-only index views expose the rules and machine metadata. A fresh index starts at Bitmap's origin, block **792435**, and evaluates consecutive blocks or resumes its own authenticated checkpoint.
+Gateway 0.7.8 provides **Bitmap Districts** using the pinned [Bitmap rules](https://github.com/Blockamoto/bitmap/blob/335958311eb1c8ce4d14c48bc5c21d23c7a4b134/README.md). Its identity authenticates the implemented rules and source revision; it does not resume experimental or earlier canonical checkpoints. Read-only index views expose the rules and machine metadata. A fresh index starts at Bitmap's origin, block **792435**, and evaluates consecutive blocks or resumes its own authenticated checkpoint.
 
 Bodies come from the claimant's own inscription envelope. Parsed `text/plain` matching is case insensitive and permits MIME parameters. Evaluation uses the actual ASCII body bytes and ignores the declared charset. Exact decimal grammar rejects leading zeros, whitespace and trailing bytes. A District cannot exceed its reveal height; the first qualifying reveal wins in Bitcoin order. Current ownership and inscription numbering are separate evidence.
 
-The new **Bitmap Parcels Standard V1 replay** track has a distinct identity;
+The new **Bitmap Parcels** track has a distinct identity;
 old Parcel generations and their saved checkpoints remain read-only. A finite
-reviewed run can discover provisional claims without a proof route. Discovery
-coverage and its cumulative claim counts are separate from validated coverage,
-verified children and selected winners. Claims awaiting proof are explicitly
-labelled not yet validated and cannot reserve positions. Validation requires an
-explicitly selected route and a positive work allowance, up to 10,000,000 units.
+reviewed run publishes only validated coverage and selected winners. Missing
+proof stops Parcel processing without classifying unknown evidence as invalid.
+Experimental discovery data is preserved read-only and is not presented as
+Parcel results. Validation uses one explicitly configured proof route and a
+positive bounded work allowance, up to 10,000,000 units.
 The plan reports prerequisite gaps without starting them. The retained Raw route
 requires complete local Raw inventory from genesis through the current validation
 phase and reads local blocks only. The TX ID Locator route requires complete
@@ -42,9 +42,10 @@ with a positive allowance authorizes bounded provider fetches; Raw retention
 follows its own setting.
 
 The IO Link route requires committed selected-chain IO Link
-coverage from genesis through the selected end and an audit of each batch
+coverage from genesis through the current Parcel block and an audit of each batch
 against its verified source block's complete input inventory and creation
-anchors. The audit can fetch every missing source block; missing reverse links
+anchors. Extending the prefix may require repeating its audit from genesis and
+can exhaust the reviewed allowance. The audit can fetch missing source blocks; missing reverse links
 require an authorized bounded forward scan, and an index miss does not prove
 absence. Selecting this route with a positive allowance authorizes that work.
 Each batch or creation-catalogue visit and each source block read or fetch
@@ -55,9 +56,9 @@ workspace; coverage alone does not establish readiness. Locators and links do
 not themselves prove transactions, values or parent relationships. Verified
 transaction bytes provide values; a separate Values history build is not
 required. The Parcel lane can progress alongside
-Districts and other consumers. District publication and Parcel discovery share a
-fixed catch-up boundary and then advance together; validation can lag. When
-Districts are Off, finite catch-up is capped at saved complete District coverage.
+Districts and other consumers. District publication and validated Parcel completion share a
+fixed catch-up boundary and then advance together. Bitmap Districts must remain
+armed for Parcel work.
 Live Parcel following is not yet available.
 
 The allowance is shared across evidence work, persisted in reservations and
@@ -74,9 +75,8 @@ Bitcoin consensus validation. Both Bitmap chains remain disabled.
 Positive detached receipts are bounded to 128 source blocks, 64 MiB and 128
 movement hops; larger proofs remain pending. Same-transaction relationships are
 resolved when pointerless envelopes share an input and their stable order is
-known; other cases remain pending. A pending earlier candidate can hold up the
-validated checkpoint while discovery advances, so later candidates are not
-presented as final winners prematurely. See the [workflow proposal](INDEXING-WORKFLOW-PROPOSAL-0.7.9.md) for current review and retry limits.
+known; other cases remain pending. A pending earlier candidate holds up the
+validated checkpoint so later candidates cannot be presented as final winners prematurely. See the [workflow proposal](INDEXING-WORKFLOW-PROPOSAL-0.7.9.md) for current review and retry limits.
 
 Custom creation, rule editing, comparisons and legacy execution are unavailable. Legacy definitions and results remain available for inspection and explicit data management. District coverage and timeline Start/Pause/Resume and Live remain available. Opening a view starts no indexing. See [portable testing](TESTING-0.7.8.md) and [verified-block ingestion](SPARSE-INDEXING-0.7.8.md).
 
@@ -154,9 +154,9 @@ An unknown location, temporarily unavailable block bytes and unverified relation
 
 ## Plans, jobs and Live
 
-Selecting a track or range does not start a scan. Historical builds use the global In/Out range and staged track choices; Raw Blocks controls newly fetched source bodies. UTXO uses its genesis-only state workflow and fixed recovery policy. Current addresses build from saved UTXO state without starting that dependency. Historical addresses allow sparse creation ranges and reuse complete retained output facts before fetching raw fallback blocks. Requests containing locked outputs fail before fetching or writing data. One coordinated run admits compatible consumers at safe block boundaries. Arming during an active run does not silently backfill earlier history; missing prior state remains blocked until an explicit Stop and a valid new Start. Pause and cancellation preserve committed work.
+Selecting a track or range does not start a scan. Historical builds use the global In/Out range and staged track choices; Raw Blocks controls newly fetched source bodies. UTXO uses its genesis-only state workflow and fixed recovery policy. Current Addresses setup selects UTXO Arm and Live when compatible up-to-date state is unavailable; saved compatible coverage is reused. Historical addresses allow sparse creation ranges and reuse complete retained output facts before fetching raw fallback blocks. Requests containing locked outputs fail before fetching or writing data. One coordinated run admits compatible consumers at safe block boundaries. Arming during an active run does not silently backfill earlier history; missing prior state remains blocked until an explicit Stop and a valid new Start. Pause and cancellation preserve committed work.
 
-**Arm** selects an available track; **Live** chooses continued following after catch-up. Start begins the selected work. Arming during an active run requests admission at its current safe boundary; consumers needing an earlier prefix show that requirement instead of silently backfilling. A stopped run can start from the validated saved/default origin, including genesis where required. Header pause and outbound-network disable remain effective controls.
+**Arm** selects an available track; **Live** chooses continued following after catch-up. Start begins the selected work. Choices staged during an active run apply to a later reviewed Start; the active admitted scope does not change. A stopped run can start from the validated saved/default origin, including genesis where required. Header pause and outbound-network disable remain effective controls.
 
 Core is optional. Sources include Gateway's local block data, optional read-only Core sources and ordinary Bitcoin peers. Peers may not have a requested historical block. Source unavailability is not evidence that data does not exist.
 
@@ -182,7 +182,7 @@ See [the Sats QA guide](TESTING-0.7.7.md) for current identity, range and recove
 
 ## Export saved records
 
-Inscriptions and the two Standard V1 Bitmap indexes offer native blocators or
+Inscriptions and the two Bitmap indexes offer native blocators or
 conventional inscription IDs in Index settings. Export uses committed saved
 coverage and does not start indexing or fetch missing history. See
 [Saved index exports](INDEX-EXPORTS-0.7.8.md) for the file format, snapshot

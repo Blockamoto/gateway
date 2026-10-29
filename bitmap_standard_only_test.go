@@ -27,7 +27,7 @@ func TestBitmapStandardOnlyPublicCapabilitiesAndMutationFences(t *testing.T) {
 			r.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 			a.handleBitmapProfiles(w, r)
-			if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Bitmap Districts Standard V1") {
+			if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Bitmap Districts") {
 				t.Fatal(path, action, w.Code, w.Body.String())
 			}
 		}

@@ -1,66 +1,59 @@
 # Gateway 0.7.9 indexing workflow proposal
 
-The new Start flow reviews the armed tracks and an explicit In/Out window against
-the current selected chain, compatible committed coverage and each track's
-required origin or next checkpoint. Group equal candidate heights and show the
-tracks affected. For each candidate, report the actual bounds and whether each
-track is ready, starts later, already covered, or needs earlier state. A changed
-range or selection requires explicit review; Resume retains its admitted scope.
-Changes staged during a run apply to a later Start. The older immediate
-amendment endpoint is disabled until a reviewed active-revision flow exists;
-stop and review a new Start to change the active scope.
+This brief supersedes the provisional Parcel discovery workflow. Only checked,
+canonically selected Parcel results and validated coverage are published. Missing
+or unknown proof stops Parcel at the affected block; it is neither invalid nor
+coverage. Preserve any experimental discovery data read-only. District and
+Parcel advance as a coordinated pair based on committed validated Parcel
+completion; other ready producers may advance while Parcel waits. Parcel Live is
+not supported.
 
-Execution makes an ordered sweep of ready missing work using the shared verified
-block source and decode. Compatible committed intervals are reused, holes remain
-missing, and a contiguous format that cannot fill a hole is reported rather than
-silently rebuilt. Complete-prefix state starts at genesis or resumes an exact
-compatible checkpoint. Out is a hard cap. Blocked dependencies retain their owed
-work while independent ready producers continue. Staged/source progress remains
-distinct from committed coverage.
+Attempting to arm Bitmap Parcels opens a concise dependency setup. Parcels is
+pending only while the setup is open and remains off if setup is abandoned.
+Select Bitmap Districts and exactly one of Raw blocks, TX locators, or TXIO as
+the Parcel proof route. The dependency rows stage the actual producer choices;
+other independently selected tracks remain selected. The single footer changes
+from Disarm Parcels to Set In point to zero once both requirements are selected.
+Confirming commits Parcel selection and sets In and the navigation playhead to
+zero without starting work. Selection means configured, not built. The admitted
+proof route and bounded work allowance remain explicit, and the backend checks
+actual evidence, lineage, values, witness and parent proofs. A missing dependency
+or proof cannot become executable through a different API or publication path.
 
-The current read-only review checks at most 4,096 saved sparse Historical
-Address blocks individually against the selected chain. A larger reuse review
-is reported as unverified; review smaller windows rather than treating a
-highest saved height as proof. Resumable large-range verification is not yet
-implemented.
+Current Addresses uses the same single-footer setup when compatible, caught-up
+UTXO state with Live is unavailable. Its UTXO row requires Arm and Live. An
+abandoned setup leaves Current off; confirmation sets In and playhead to zero.
+Existing compatible UTXO coverage is reused without reset. Historical Addresses
+retains its own dependencies. Values and ScriptPubKeys keep their inherited TXIO
+Live behavior in 0.7.9; distinguishing inherited Live from unavailable controls
+is deferred to 0.8.
 
-Districts and Parcel discovery form a dependent group. Admission binds a fixed
-compatible complete District ceiling, capped by Out. A lagging Parcel discovery
-frontier catches up to that ceiling while District publication is held,
-including incidental publication. Once aligned, each District outcome precedes
-the authenticated Parcel candidate scan for that block; the pair does not move
-on until the scan is durable. Other tracks may advance. With Districts off,
-finite catch-up ends at available complete District coverage.
+Genesis-required selection and dependency configurations identify their scope in
+metadata and the plan. Once confirmed with In zero, Play uses that scope without
+another boundary chooser. Otherwise a compact chooser presents each distinct
+relevant genesis, origin, explicit In, and saved continuation boundary once with
+its affected tracks, using direct bottom buttons. A choice is re-planned and
+admitted only with a matching current plan token. Resume retains its admitted
+scope and staged edits do not mutate running work. Existing compatible coverage
+and checkpoints are reused; track origins and gaps remain enforced.
 
-Discovery and validation are separate durable frontiers. A verified source
-block can yield provisional claims and an ordered revalidation backlog without
-fetching ancestry or starting prerequisites. Missing proof remains pending and
-is visibly labelled not yet validated. Provisional claims never reserve a
-position, establish final winners, enter canonical exports or count as verified
-children. Earlier unresolved contenders prevent later candidates becoming final
-winners. Relevant new committed evidence triggers ordered revalidation under the
-original route, range and finite allowance; unchanged evidence does not cause a
-retry loop. Reorgs and interpretation changes invalidate the affected state.
-The user sees discovery coverage separately from validation completeness and can
-distinguish rejected claims from unresolved ones. Live Parcel following remains
-unavailable until separately implemented and verified.
-When District Live is selected with a finite Parcel run, the paired District
-work is capped at that Parcel run's reviewed finite boundary; this does not
-imply that Parcel follows later blocks.
-Raw and TX ID Locator evidence can advance by reviewed phases. The current IO
-Link audit requires the complete finite admitted horizon; it does not yet reuse
-an authenticated incremental audit prefix.
-The current retry signal follows relevant committed route-prefix and District
-changes. Arrival of previously unavailable source bytes alone is not tracked
-precisely; review a new validation attempt in that case. Discovery reorg
-reconciliation is bounded to 4,096 checkpoints per attempt and reports a deeper
-rewind for explicit recovery. Discovery totals are cumulative observations,
-not a count of claims still awaiting validation.
+The ordered sweep shares verified block reads and decoding, reuses compatible
+committed intervals, and keeps holes honest. Independent ready producers may
+advance while a dependency is blocked; a caught-up Live track may receive one
+cohort in eight when the selected tip advances. Out is a hard cap. Reviews of more than
+4,096 sparse Historical Address blocks remain explicitly unverified rather than
+assuming continuity.
 
-Arm notices derive from actual dependencies and coverage: Current Addresses can
-offer its UTXO prerequisite, Historical Addresses retains its distinct rules,
-and Parcels explains District and alternative parent-evidence routes. Arming and
-review do not start work. Dependency panels preserve scroll and focus across
-progress refreshes. Verify the planner, scheduler, all publication paths and
-browser behavior with focused restart, gap, mismatch and blocked-evidence tests;
-do not claim full-chain validation from synthetic fixtures.
+Use the friendly names Bitmap Districts and Bitmap Parcels in user-facing text,
+without changing persisted identities. Timeline hover uses a thin preview line;
+ordinary row clicks move the navigation playhead, including group rows. Shift
+previews the highlighted track's origin before its start or its compatible saved
+indexed end inside or beyond coverage; Shift-click commits that preview. Keyboard
+transitions work with a stationary pointer, and hover never fetches, changes
+range marks, or starts indexing. Sparse gaps must not be presented as continuous.
+Dependency-panel refreshes preserve scroll and focus.
+
+Verify setup dismissal and dependency invariants, plan revalidation, origin and
+coverage enforcement, validation-only Parcel catch-up, proof readiness and real
+Ord proof checks, as well as timeline interaction. Do not claim full-chain
+acceptance from synthetic fixtures.

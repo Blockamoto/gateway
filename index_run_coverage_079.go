@@ -146,6 +146,12 @@ func (a *app) refineRunCoverage079(ctx context.Context, q *indexRunProgress, cho
 	q.MissingRanges = missing
 	if len(missing) > 0 {
 		next := missing[0].From
+		// A requested window can start after the mandatory next prefix block.
+		// Keep that prerequisite explicit instead of replacing it with the
+		// first missing height inside the requested window.
+		if q.RequiresLeadIn && q.NextRequiredHeight != nil {
+			next = min(next, *q.NextRequiredHeight)
+		}
 		q.NextRequiredHeight = &next
 		if q.State == "complete" {
 			q.State = "ready"

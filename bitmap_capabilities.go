@@ -8,7 +8,7 @@ import (
 // Recognition and saved-data authentication remain broader than execution.
 // Existing named and experimental profiles keep their identities and saved
 // data. Only the separately identified canonical indexes can execute.
-var errBitmapComparisonDeferred = errors.New("Bitmap Districts Standard V1 and replay Parcels use fixed rules. Custom rules, previous index generations and comparisons cannot execute. Saved definitions and evidence remain available for inspection and deletion.")
+var errBitmapComparisonDeferred = errors.New("Bitmap Districts and Bitmap Parcels use fixed rules. Custom rules, previous index generations and comparisons cannot execute. Saved definitions and evidence remain available for inspection and deletion.")
 var errBitmapChainDeferred = errors.New("Bitmap Chain methodology is being developed. Saved evidence remains available for inspection.")
 var errBitmapParcelsDeferred = errors.New("Legacy Parcels indexing is disabled; its implementation and saved records are retained for inspection and export. Use the separately identified replay Parcel track for new indexing.")
 

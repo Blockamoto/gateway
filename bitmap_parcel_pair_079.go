@@ -55,12 +55,7 @@ func (a *app) parcelDistrictSnapshot079(ctx context.Context, req indexRunRequest
 	if parcelHead != nil {
 		pair.EvidenceThrough = min(target, parcelHead.Height+1)
 	}
-	if parcel.ParcelEvidenceRoute == "txio-links" {
-		// The current authenticated audit is keyed to a target commitment and
-		// cannot safely reuse a completed prefix for a later target. Audit one
-		// fixed finite horizon rather than silently repeating the whole prefix.
-		pair.EvidenceThrough = target
-	}
+
 	head, err := readBitmapDevelopmentHead(ctx, a.dataDir, instance.DistrictInstance)
 	if err != nil {
 		return nil, err
@@ -100,37 +95,22 @@ func (a *app) parcelDistrictAlignedHeight079(ctx context.Context, pair *parcelDi
 			return -1, fmt.Errorf("District catch-up checkpoint left the selected chain")
 		}
 	}
-	p, err := readParcelDiscoveryHead079(ctx, a.dataDir)
+	validated, err := readBitmapDevelopmentHead(ctx, a.dataDir, bitmapReplayParcelID)
 	if err != nil {
 		return -1, err
 	}
-	if p == nil {
-		validated, err := readBitmapDevelopmentHead(ctx, a.dataDir, bitmapReplayParcelID)
-		if err != nil {
-			return -1, err
-		}
-		if validated == nil {
-			return bitmapDevelopmentStart - 1, nil
-		}
-		d, err := bitmapHeadAt(ctx, a.dataDir, bitmapStandardDistrictID, validated.Height)
-		if err != nil || d == nil || d.BlockHash != validated.BlockHash || d.Commitment != validated.DependencyCommitment || d.ProfileHash != pair.DistrictProfile || !validated.LastBlock.BlockEvaluated || !validated.LastBlock.CompleteScope {
-			return -1, fmt.Errorf("validated Parcel coverage does not match the complete District outcome")
-		}
-		selected, err := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), validated.Height)
-		if err != nil || selected.HashDisplay != validated.BlockHash {
-			return -1, fmt.Errorf("validated Parcel checkpoint left the selected chain")
-		}
-		return validated.Height, nil
+	if validated == nil {
+		return bitmapDevelopmentStart - 1, nil
 	}
-	d, err := bitmapHeadAt(ctx, a.dataDir, bitmapStandardDistrictID, p.Height)
-	if err != nil || d == nil || d.BlockHash != p.BlockHash || p.DistrictState == "complete" && d.Commitment != p.DistrictCommitment || d.ProfileHash != pair.DistrictProfile || p.DistrictProfile != pair.DistrictProfile || !d.LastBlock.BlockEvaluated || !d.LastBlock.CompleteScope {
-		return -1, fmt.Errorf("Parcel discovery does not match the complete District outcome; review the selected chain and profiles")
+	d, err := bitmapHeadAt(ctx, a.dataDir, bitmapStandardDistrictID, validated.Height)
+	if err != nil || d == nil || d.BlockHash != validated.BlockHash || d.Commitment != validated.DependencyCommitment || d.ProfileHash != pair.DistrictProfile || !validated.LastBlock.BlockEvaluated || !validated.LastBlock.CompleteScope {
+		return -1, fmt.Errorf("validated Parcel coverage does not match the complete District outcome")
 	}
-	selected, err := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), p.Height)
-	if err != nil || selected.HashDisplay != p.BlockHash {
-		return -1, fmt.Errorf("Parcel checkpoint left the selected chain")
+	selected, err := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), validated.Height)
+	if err != nil || selected.HashDisplay != validated.BlockHash {
+		return -1, fmt.Errorf("validated Parcel checkpoint left the selected chain")
 	}
-	return p.Height, nil
+	return validated.Height, nil
 }
 
 // Called at the common District publication boundary with the admission fence
@@ -160,28 +140,18 @@ func (a *app) allowPairedDistrictPublication079(ctx context.Context, height int6
 	if !ok || !indexRunSelectionEnabled(parcel) {
 		return nil
 	}
-	// Parcel discovery has a finite admission boundary even when District's
+	// Parcel validation has a finite admission boundary even when District's
 	// saved preference is Live. The shared publication fence also applies to
 	// incidental writers, so none can get one block beyond that boundary.
 	if height > r.InitialTargetHeight {
 		return fmt.Errorf("%w: paired District is capped at the finite Parcel run boundary; review a new run to continue", ErrBitmapEvidenceRequired)
 	}
 	progress, have := indexRunProgressFor(r, bitmapReplayParcelID)
-	if !have || progress.AdmissionState == "blocked" && !progress.ParcelEvidencePending {
-		return fmt.Errorf("%w: District waits for an admitted Parcel discovery track", ErrBitmapEvidenceRequired)
+	if !have || progress.AdmissionState == "blocked" {
+		return fmt.Errorf("%w: District waits for an admitted Parcel track", ErrBitmapEvidenceRequired)
 	}
 	aligned, err := a.parcelDistrictAlignedHeight079(ctx, pair)
 	if err != nil {
-		// An older provisional entry may explicitly lack its District outcome.
-		// Permit the exact selected producer block to fill that missing outcome;
-		// this does not alter or validate the immutable discovery record.
-		row, rowErr := readParcelDiscoveryBlock079(ctx, a.dataDir, height)
-		if rowErr == nil && row != nil && row.DistrictState == "missing" {
-			selected, selectedErr := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), height)
-			if selectedErr == nil && selected.HashDisplay == row.BlockHash && row.DistrictProfile == pair.DistrictProfile {
-				return nil
-			}
-		}
 		return fmt.Errorf("%w: %v", ErrBitmapEvidenceRequired, err)
 	}
 	if aligned < pair.CeilingHeight || height > aligned+1 {

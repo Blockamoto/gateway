@@ -29,19 +29,24 @@ Raw corpus, full-chain Parcel build, installer, updater, or Live Parcel run was
 tested. Review the limits in [indexing](INDEXING.md) before interpreting
 coverage or replayability.
 
-Discovery can run provisionally without a proof route. The validation controls
-distinguish retained Raw, committed TX ID Locators and committed IO Links and
-require explicit finite proof-work consent. The locator
-route reads or fetches selected blocks and may scan for spends; its locator
-coverage is not itself proof. The IO Link route has synthetic audit and route
-fixtures; a full mainnet IO Link audit and its throughput have not been tested.
-Do not infer full-chain validation from the existing focused checks; inspect
-current route availability and the reviewed plan. A locally authenticated negative
-evaluation is not an independently replayable proof, and an independent audit
-action is not yet available.
+The current Parcel workflow requires one reviewed proof route and bounded
+proof-work consent. Experimental discovery data is retained but is not used for
+new processing or user-facing results. Raw, TX ID Locator and IO Link are
+alternative evidence routes; coverage alone does not establish a parent proof.
+The IO Link route has synthetic audit fixtures, but a full mainnet audit and its
+throughput have not been tested. A locally authenticated negative evaluation is
+not an independently replayable proof, and an independent audit action is not
+yet available.
 
-The coordinated sweep, fixed District catch-up boundary, provisional journal,
-selected-chain checks and ordered wakeup tests use synthetic selected-header
-fixtures. The small injected evidence-prefix fixture exercises worker behavior
-without building a full mainnet locator history. See the [workflow proposal](INDEXING-WORKFLOW-PROPOSAL-0.7.9.md)
-for current IO Link, source-byte wakeup and sparse-review limits.
+The coordinated sweep and selected-chain tests use synthetic selected-header
+fixtures. Do not infer full-chain acceptance from these focused checks.
+
+The revised validation-only workflow has focused coverage for all three
+configured route prefixes, the paired publication gate, blocked proof and
+preservation of old experimental records, genesis continuation, Current UTXO
+Arm and Live, and browser setup, chooser and timeline interactions. The broader
+`TestIndexRun`, `TestTimelineRun` and `Test076AddressFinalReview` group passed.
+The route-prefix fixtures are synthetic; they are not a full-chain Parcel run.
+A newly available missing source byte alone does not currently wake a failed
+proof attempt unless relevant committed coverage changes; a later reviewed run
+may be needed. Parcel Live remains unavailable.

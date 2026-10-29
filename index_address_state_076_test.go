@@ -28,6 +28,11 @@ func address076Source(t *testing.T, values []uint64, scripts []string) (*utxoSto
 	}
 	b1 := utxoFixtureBlock(1, b0.Hash, tx)
 	utxoApply(t, u, b1)
+	// Address projections in these fixtures require an explicitly enabled and
+	// unpaused UTXO Live policy, just as production publication does.
+	if err := (&app{dataDir: u.root}).writeIndexLivePolicy(indexLivePolicy{Index: "utxo-state", Enabled: true, Retention: "pruned"}); err != nil {
+		t.Fatal(err)
+	}
 	return u, b0, b1
 }
 

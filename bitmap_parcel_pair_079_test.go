@@ -37,7 +37,7 @@ func TestParcelPairHoldsDistrictUntilExactCompleteCatchup079(t *testing.T) {
 		t.Fatal(err)
 	}
 	choice := indexRunSelection{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "retained-raw", ParcelRawScanBudget: 12}}
-	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true}, choice}}
+	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true}, {Index: "blocks", Armed: true}, choice}}
 	doc, err := a.prepareIndexRun(req)
 	if err != nil {
 		t.Fatal(err)
@@ -93,28 +93,22 @@ func TestParcelPairHoldsDistrictUntilExactCompleteCatchup079(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = appendParcelDiscovery079(ctx, a, b1, nil); err != nil {
+	if err = parcel.Apply(ctx, b1, nil); err != nil {
 		t.Fatal(err)
 	}
-	if parcel.head.Height != b0.Height {
-		t.Fatal("provisional discovery advanced validated Parcel coverage")
-	}
 	if err = writer.Apply(ctx, b2, nil); err != nil {
-		t.Fatal("discovery-aligned first producer block:", err)
+		t.Fatal("validated-aligned first producer block:", err)
 	}
 	if err = writer.Apply(ctx, b3, nil); !errors.Is(err, ErrBitmapEvidenceRequired) {
 		t.Fatalf("producer exceeded one dependent block: %v", err)
 	}
-	if _, err = appendParcelDiscovery079(ctx, a, b2, nil); err != nil {
+	if err = parcel.Apply(ctx, b2, nil); err != nil {
 		t.Fatal(err)
-	}
-	if parcel.head.Height != b0.Height {
-		t.Fatal("discovery incorrectly advanced validation")
 	}
 	if err = writer.Apply(ctx, b3, nil); err != nil {
 		t.Fatal("aligned pair did not resume:", err)
 	}
-	if _, err = appendParcelDiscovery079(ctx, a, b3, nil); err != nil {
+	if err = parcel.Apply(ctx, b3, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err = a.ingestArmedBitmapBlock(ctx, b4, nil); !errors.Is(err, ErrBitmapEvidenceRequired) {
@@ -126,7 +120,7 @@ func TestParcelEvidenceAdmissionRequiresExistingLedger079(t *testing.T) {
 	ctx := context.Background()
 	a := runTestApp(t)
 	choice := indexRunSelection{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "tx-locators", ParcelRawScanBudget: 130}}
-	doc, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{choice, {Index: "tx-locator", Armed: true}}})
+	doc, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{choice, {Index: bitmapStandardDistrictID, Armed: true}, {Index: "tx-locator", Armed: true}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,112 +156,61 @@ func TestParcelEvidenceAdmissionRequiresExistingLedger079(t *testing.T) {
 	}
 }
 
-func TestParcelProducerOffPlansOnlySavedDistrictBoundary079(t *testing.T) {
-	ctx := context.Background()
+func TestParcelProducerOffDisarmsSelection079(t *testing.T) {
 	a := runTestApp(t)
-	b0 := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "")
-	installRunProtocolHeader(t, a, &b0)
-	b1 := bitmapDevelopmentFixtureBlock(b0.Height+1, b0.Hash)
-	installRunProtocolHeader(t, a, &b1)
-	b2 := bitmapDevelopmentFixtureBlock(b1.Height+1, b1.Hash)
-	installRunProtocolHeader(t, a, &b2)
-	district := bitmapTestConsumer(t, a.dataDir, bitmapStandardDistrictID)
-	if err := district.Apply(ctx, b0, nil); err != nil {
-		t.Fatal(err)
-	}
-	if err := district.Apply(ctx, b1, nil); err != nil {
-		t.Fatal(err)
-	}
 	choice := indexRunSelection{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "retained-raw", ParcelRawScanBudget: 12}}
-	plan, err := a.planIndexRun(ctx, indexRunRequest{Consumers: []indexRunSelection{choice}})
+	req := indexRunRequest{Consumers: []indexRunSelection{{Index: "blocks", Armed: true}, choice}}
+	if _, err := normalizeIndexRunRequest(req); err == nil {
+		t.Fatal("Parcel was executable without District selected")
+	}
+	doc, err := a.prepareIndexRun(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.ParcelDistrict == nil || plan.ParcelDistrict.DistrictSelected || plan.ParcelDistrict.CeilingHeight != b1.Height || plan.ParcelDistrict.CeilingCommit != district.head.Commitment || plan.ParcelDistrict.EvidenceThrough != b0.Height {
-		t.Fatalf("wrong finite catch-up plan: %+v", plan.ParcelDistrict)
-	}
-	if len(plan.Consumers) != 1 || plan.Consumers[0].To != b1.Height {
-		t.Fatalf("Parcel did not cap work to saved District: %+v", plan.Consumers)
-	}
-	out := b0.Height
-	plan, err = a.planIndexRun(ctx, indexRunRequest{Out: &out, Consumers: []indexRunSelection{choice}})
-	if err != nil || plan.ParcelDistrict.CeilingHeight != b0.Height || plan.Consumers[0].To != b0.Height {
-		t.Fatalf("Out did not cap saved District boundary: %+v %v", plan, err)
+	parcel, _ := runSelection(doc.Prepared, bitmapReplayParcelID)
+	if parcel.Armed {
+		t.Fatal("Parcel remained armed without District")
 	}
 }
 
-func TestParcelPairAllowsDiscoveryWithoutProofAndRejectsMismatchedCheckpoint079(t *testing.T) {
+func TestParcelPairRejectsMissingProofAndMismatchedCheckpoint079(t *testing.T) {
 	ctx := context.Background()
 	a := runTestApp(t)
 	b0 := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "")
 	installRunProtocolHeader(t, a, &b0)
 	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true}, {Index: bitmapReplayParcelID, Armed: true}}}
+	if _, err := normalizeIndexRunRequest(req); err == nil {
+		t.Fatal("missing route and allowance accepted")
+	}
 	doc, err := a.prepareIndexRun(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	pair, err := a.parcelDistrictSnapshot079(ctx, doc.Prepared, b0.Height)
-	if err != nil || pair.CeilingCommit != "" {
-		t.Fatalf("fresh pair: %+v %v", pair, err)
+	parcel, _ := runSelection(doc.Prepared, bitmapReplayParcelID)
+	if parcel.Armed {
+		t.Fatal("Parcel remained armed without proof")
 	}
-	doc.Run = &indexRunRecord{ID: "pair-discovery", State: "running", Request: doc.Prepared, InitialTargetHeight: b0.Height, ParcelDistrict: pair, Consumers: []indexRunProgress{{Index: bitmapReplayParcelID, AdmissionState: "admitted"}}}
-	a.indexRunMu.Lock()
-	a.indexRunState = doc
-	err = a.persistIndexRunLocked()
-	a.indexRunMu.Unlock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = a.allowPairedDistrictPublication079(ctx, b0.Height); err != nil {
-		t.Fatalf("missing proof consent incorrectly stopped discovery: %v", err)
-	}
-	pair.CeilingHeight, pair.CeilingHash, pair.CeilingCommit = b0.Height, b0.Hash, testID(987)
+	pair := &parcelDistrictPair079{CeilingHeight: b0.Height, CeilingHash: b0.Hash, CeilingCommit: testID(987)}
 	if _, err = a.parcelDistrictAlignedHeight079(ctx, pair); err == nil {
 		t.Fatal("missing/mismatched committed District accepted")
 	}
 }
 
-func TestParcelPairedRunDiscoversWithoutProofRoute079(t *testing.T) {
+func TestParcelPairedRunCannotDiscoverWithoutProofRoute079(t *testing.T) {
 	ctx := context.Background()
 	a := runTestApp(t)
 	b0 := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "", "0.bitmap", "0.0.bitmap")
 	installRunProtocolHeader(t, a, &b0)
-	b1 := bitmapDevelopmentFixtureBlock(b0.Height+1, b0.Hash, "0.0.bitmap")
-	installRunProtocolHeader(t, a, &b1)
-	a.indexRunSourceBlock = func(_ context.Context, target blockTarget, _ string) (blockView, error) {
-		if target.Height == b0.Height {
-			return b0, nil
-		}
-		if target.Height == b1.Height {
-			return b1, nil
-		}
-		return blockView{}, fmt.Errorf("unexpected source height %d", target.Height)
-	}
-	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true}, {Index: bitmapReplayParcelID, Armed: true}}}
-	plan, err := a.planIndexRun(ctx, req)
-	if err != nil || !plan.Ready {
-		t.Fatalf("discovery should not require proof route: %+v %v", plan, err)
-	}
-	if _, err = a.startIndexRun(ctx, req, plan.PlanID); err != nil {
-		t.Fatal(err)
-	}
-	done := waitRun(t, a)
-	if done.Run == nil || done.Run.State != "complete" {
-		t.Fatalf("finite discovery did not complete: %+v", done.Run)
-	}
-	progress, ok := indexRunProgressFor(done.Run, bitmapReplayParcelID)
-	if !ok || progress.ParcelDiscoveryHeight == nil || *progress.ParcelDiscoveryHeight != b1.Height || progress.ParcelValidatedHeight != nil || progress.ParcelValidationState != "pending" {
-		t.Fatalf("discovery/validation were conflated: %+v", progress)
+	zero := int64(0)
+	req := indexRunRequest{In: &zero, Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true}, {Index: bitmapReplayParcelID, Armed: true}}}
+	if _, err := a.planIndexRun(ctx, req); err == nil {
+		t.Fatal("missing proof route was admitted")
 	}
 	if head, err := readBitmapDevelopmentHead(ctx, a.dataDir, bitmapReplayParcelID); err != nil || head != nil {
-		t.Fatalf("no-route discovery published validated winners: %+v %v", head, err)
+		t.Fatalf("published validated winners: %+v %v", head, err)
 	}
-	row, err := readParcelDiscoveryBlock079(ctx, a.dataDir, b0.Height)
-	if err != nil || row == nil || len(row.Candidates) != 1 || row.Candidates[0].Status != "not_yet_validated" {
-		t.Fatalf("provisional declaration missing: %+v %v", row, err)
-	}
-	if _, err = openParcelRawBudget079(a.dataDir, done.Run.ID, 1, false); err == nil {
-		t.Fatal("discovery without allowance created a proof budget")
+	if head, err := readParcelDiscoveryHead079(ctx, a.dataDir); err != nil || head != nil {
+		t.Fatalf("created discovery state: %+v %v", head, err)
 	}
 }
 
@@ -276,54 +219,30 @@ func TestParcelPairCapsDistrictLiveWhenTipAdvances079(t *testing.T) {
 	a := runTestApp(t)
 	b0 := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "")
 	installRunProtocolHeader(t, a, &b0)
-	entered := make(chan struct{}, 1)
-	release := make(chan struct{})
-	a.indexRunSourceBlock = func(_ context.Context, target blockTarget, _ string) (blockView, error) {
-		if target.Height != b0.Height {
-			return blockView{}, fmt.Errorf("read beyond reviewed Parcel boundary: %d", target.Height)
-		}
-		select {
-		case entered <- struct{}{}:
-		default:
-		}
-		<-release
-		return b0, nil
-	}
-	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true, Live: true}, {Index: bitmapReplayParcelID, Armed: true}}}
-	plan, err := a.planIndexRun(ctx, req)
-	if err != nil || !plan.Ready || plan.TargetHeight != b0.Height {
-		t.Fatalf("finite pair plan: %+v %v", plan, err)
-	}
-	if _, err = a.startIndexRun(ctx, req, plan.PlanID); err != nil {
+	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true, Live: true}, {Index: "blocks", Armed: true}, {Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "retained-raw", ParcelRawScanBudget: 12}}}}
+	doc, err := a.prepareIndexRun(req)
+	if err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-entered:
-	case <-time.After(10 * time.Second):
-		close(release)
-		t.Fatal("worker did not start")
+	pair, err := a.parcelDistrictSnapshot079(ctx, doc.Prepared, b0.Height)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.Run = &indexRunRecord{ID: "finite-live-pair", State: "running", Request: doc.Prepared, InitialTargetHeight: b0.Height, TargetHeight: b0.Height, ParcelDistrict: pair, Consumers: []indexRunProgress{{Index: bitmapReplayParcelID, AdmissionState: "admitted", From: b0.Height, To: b0.Height}}}
+	a.indexRunMu.Lock()
+	a.indexRunState = doc
+	err = a.persistIndexRunLocked()
+	a.indexRunMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
 	}
 	b1 := bitmapDevelopmentFixtureBlock(b0.Height+1, b0.Hash)
 	installRunProtocolHeader(t, a, &b1)
-	parcelDistrictAdmissionMu079.Lock()
-	err = a.allowPairedDistrictPublication079(ctx, b1.Height)
-	parcelDistrictAdmissionMu079.Unlock()
-	if !errors.Is(err, ErrBitmapEvidenceRequired) {
-		close(release)
-		t.Fatalf("paired publication crossed the finite admission boundary: %v", err)
+	if err = a.allowPairedDistrictPublication079(ctx, b1.Height); !errors.Is(err, ErrBitmapEvidenceRequired) {
+		t.Fatalf("paired publication crossed finite boundary: %v", err)
 	}
-	close(release)
-	done := waitRun(t, a)
-	if done.Run == nil || done.Run.State != "complete" {
-		t.Fatalf("capped live pair did not complete: %+v", done.Run)
-	}
-	district, ok := indexRunProgressFor(done.Run, bitmapStandardDistrictID)
-	if !ok || district.Height != b0.Height || district.To != b0.Height || district.State != "complete" {
-		t.Fatalf("District crossed the finite Parcel boundary: %+v", district)
-	}
-	parcel, ok := indexRunProgressFor(done.Run, bitmapReplayParcelID)
-	if !ok || parcel.ParcelDiscoveryHeight == nil || *parcel.ParcelDiscoveryHeight != b0.Height {
-		t.Fatalf("Parcel discovery failed to reach the shared boundary: %+v", parcel)
+	if err = a.allowPairedDistrictPublication079(ctx, b0.Height); err != nil {
+		t.Fatalf("admitted boundary was blocked: %v", err)
 	}
 }
 
@@ -376,29 +295,65 @@ func TestParcelValidationWakesOnlyForRelevantPrefixAndRespectsBudget079(t *testi
 		},
 	}
 	choice := indexRunSelection{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "tx-locators", ParcelRawScanBudget: 1}}
-	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true}, choice}}
+	zero := int64(0)
+	req := indexRunRequest{In: &zero, Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true}, {Index: "tx-locator", Armed: true}, choice}}
 	plan, err := a.planIndexRun(ctx, req)
 	if err != nil || !plan.Ready {
 		t.Fatalf("discovery should be admitted while evidence is incomplete: %+v %v", plan, err)
 	}
-	if _, err = a.startIndexRun(ctx, req, plan.PlanID); err != nil {
+	// Only the committed-prefix observations are injected. The reviewed request
+	// includes the locator producer, but the protocol-height-only fixture omits
+	// its worker; constructing 792k fake locator blocks would not verify it.
+	var consumers []indexRunProgress
+	for _, progress := range plan.Consumers {
+		if progress.Index != "tx-locator" {
+			consumers = append(consumers, progress)
+		}
+	}
+	record := &indexRunRecord{ID: "injected-prefix-wakeup", State: "running", Request: plan.Request, TargetHeight: plan.TargetHeight, InitialTargetHeight: plan.TargetHeight, TargetHash: plan.TargetHash, Consumers: consumers, ParcelDistrict: plan.ParcelDistrict}
+	record.FrontierHeight = initialIndexRunFrontier(record)
+	if _, err = openParcelRawBudget079(a.dataDir, record.ID, choice.ParcelRawScanBudget, true); err != nil {
 		t.Fatal(err)
 	}
+	a.indexRunMu.Lock()
+	a.indexRunLoaded = true
+	a.indexRunState.Schema = 1
+	a.indexRunState.Configured = true
+	a.indexRunState.Prepared = plan.Request
+	a.indexRunState.Run = record
+	err = a.persistIndexRunLocked()
+	a.indexRunMu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	a.indexMu.Lock()
+	a.indexCancel = cancel
+	a.indexRunActiveID = record.ID
+	a.indexMu.Unlock()
+	go a.runCoordinatedIndexes(worker, record.ID)
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		doc := a.indexRunSnapshot()
 		if doc.Run != nil {
 			p, _ := indexRunProgressFor(doc.Run, bitmapReplayParcelID)
-			if p.ParcelDiscoveryHeight != nil && *p.ParcelDiscoveryHeight == b1.Height && doc.Run.State == "waiting" {
+			if p.ParcelValidationState == "pending" && doc.Run.State == "waiting" {
 				break
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	doc := a.indexRunSnapshot()
+	if doc.Run == nil {
+		t.Fatalf("run disappeared: %+v", doc)
+	}
 	p, _ := indexRunProgressFor(doc.Run, bitmapReplayParcelID)
-	if p.ParcelDiscoveryHeight == nil || *p.ParcelDiscoveryHeight != b1.Height || doc.Run.State != "waiting" || reads.Load() != 0 {
-		t.Fatalf("did not park provisional discovery: %+v reads=%d", p, reads.Load())
+	if p.ParcelDiscoveryHeight != nil || p.ParcelValidationState != "pending" || doc.Run.State != "waiting" || reads.Load() != 0 {
+		t.Fatalf("did not park validation before proof coverage: %+v reads=%d", p, reads.Load())
+	}
+	if h, err := readParcelDiscoveryHead079(ctx, a.dataDir); err != nil || h != nil {
+		t.Fatalf("validation created discovery state: %+v %v", h, err)
 	}
 	// A later commit outside the required prefix must not trigger proof work.
 	notifyParcelIndexCommit079(a.dataDir, "tx-locator")

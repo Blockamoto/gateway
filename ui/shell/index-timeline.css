@@ -427,6 +427,8 @@ body.indexes-workspace .index-timeline,.index-timeline{--track-label:260px;--tim
 /* One axis-aligned line spans every visible parent/child lane, including empty background. */
 .timeline-playhead-overlay{position:absolute;top:0;bottom:0;overflow:hidden;z-index:2;pointer-events:none}
 .timeline-playhead-line{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--sky);pointer-events:none}
+.timeline-hover-line{position:absolute;top:0;bottom:0;width:0;border-left:1px solid var(--sky);opacity:.55;pointer-events:none}
+.timeline-track[data-setup-pending="true"] .timeline-track-heading{background:color-mix(in srgb,#e6a83d 18%,transparent)}
 @media(forced-colors:active){.timeline-playhead-line{border-color:CanvasText}}
 
 .timeline-group[data-open=false]{height:32px;min-height:32px}
@@ -445,6 +447,11 @@ body.indexes-workspace .index-timeline,.index-timeline{--track-label:260px;--tim
 .timeline-locator-companion p{margin:0 0 18px;line-height:1.6}
 .timeline-locator-companion-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .timeline-locator-companion-actions button{min-height:40px;padding:8px 12px;font-size:12px}
+.timeline-start-review .timeline-locator-companion-actions{flex-direction:column;align-items:stretch}
+.timeline-start-option{display:flex;align-items:center;gap:10px;min-width:0}
+.timeline-start-option button{flex:0 0 auto;white-space:nowrap}
+.timeline-start-option span{min-width:0}
+.timeline-start-review .timeline-locator-companion-actions>button{align-self:flex-end}
 .timeline-start-review{width:min(680px,calc(100vw - 32px));overscroll-behavior:contain}
 .timeline-start-review fieldset{border:1px solid var(--line);border-radius:6px;margin:12px 0;padding:10px}
 .timeline-start-choice{display:block;margin:6px 0;line-height:1.45}
@@ -452,6 +459,3 @@ body.indexes-workspace .index-timeline,.index-timeline{--track-label:260px;--tim
 .timeline-start-outcome{border-top:1px solid var(--line);padding:9px 0}
 .timeline-start-outcome p{margin:4px 0;line-height:1.45}
 .timeline-start-ack{display:block;margin:12px 0}
-.timeline-swatch.provisional{background:#c66c06}
-.timeline-provisional-note{color:#8a4300;border-left:3px solid #c66c06;padding-left:6px}
-:root[data-theme="dark"] .timeline-provisional-note{color:#ffd083;border-left-color:#ffb84c}

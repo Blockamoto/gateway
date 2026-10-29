@@ -171,11 +171,14 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 		out.Note = err.Error()
 		return out, nil
 	}
-	pending, err := readBitmapPending(ctx, a.dataDir, id, h)
-	if err != nil {
-		out.State = "unavailable"
-		out.Note = err.Error()
-		return out, nil
+	var pending *bitmapDevelopmentPending
+	if id != bitmapReplayParcelID {
+		pending, err = readBitmapPending(ctx, a.dataDir, id, h)
+		if err != nil {
+			out.State = "unavailable"
+			out.Note = err.Error()
+			return out, nil
+		}
 	}
 	authority := a.currentChainAuthority()
 	hashAt := a.addressSelectedHashes(ctx, authority)
@@ -206,16 +209,7 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 		out.CompleteScope = true
 		out.Result = map[string]any{"winner_count": h.WinnerCount, "candidate_count": h.CandidateCount}
 	}
-	if id == bitmapReplayParcelID && snapshot == "" {
-		pc := ""
-		if len(provisionalCursor) > 0 {
-			pc = provisionalCursor[0]
-		}
-		if err := a.populateParcelDiscoveryView079(ctx, &out, h, district, transaction, height, pc, limit); err != nil {
-			return out, err
-		}
-	}
-	if pending != nil {
+	if pending != nil && id != bitmapReplayParcelID {
 		target, e := a.utxoSelectedTarget(ctx, authority, pending.Height)
 		if e == nil && target.HashDisplay == pending.BlockHash {
 			out.PendingCandidates = append(out.PendingCandidates, pending.Candidates...)

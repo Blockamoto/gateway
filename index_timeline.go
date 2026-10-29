@@ -5,7 +5,7 @@ package main
 // request must never fetch blocks or start an index build.
 import (
 	"bufio"
-	"context"
+
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -214,28 +214,7 @@ func (a *app) indexTimelineWithBrowseSources(defs []indexDefinition, providers [
 				track.Coverage = append(track.Coverage, recorded...)
 			}
 		}
-		if def.ID == bitmapReplayParcelID {
-			discovery, e := readParcelDiscoveryHead079(context.Background(), a.dataDir)
-			if e != nil {
-				track.DiscoveryState = "unavailable"
-				out.Errors = append(out.Errors, def.ID+": Parcel discovery unavailable: "+e.Error())
-			} else if discovery != nil {
-				valid := h.matches(discovery.Height, discovery.BlockHash)
-				if valid && discovery.DistrictState == "complete" {
-					d, de := bitmapHeadAt(context.Background(), a.dataDir, bitmapStandardDistrictID, discovery.Height)
-					valid = de == nil && d != nil && d.Commitment == discovery.DistrictCommitment && d.BlockHash == discovery.BlockHash && d.ProfileHash == discovery.DistrictProfile
-				}
-				if !valid {
-					track.DiscoveryState = "stale"
-				} else {
-					track.DiscoveryState = "not_yet_validated"
-					track.DiscoveryCoverage = []heightInterval{{From: discovery.BaseHeight + 1, To: discovery.Height}}
-					height := discovery.Height
-					track.DiscoveryThrough = &height
-					track.ProvisionalDiscoveredCount, track.InvalidSyntaxCount = discovery.ProvisionalCount, discovery.InvalidCount
-				}
-			}
-		}
+
 		for _, provider := range providers {
 			if provider.ID != def.ID || (provider.Provider != "bitcoin_core" && !strings.HasPrefix(provider.Provider, "bitcoin_core_")) {
 				continue

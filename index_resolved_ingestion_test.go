@@ -146,7 +146,7 @@ func TestResolvedIngestionSparseTXIOPendingAndParentTranslation(t *testing.T) {
 func TestResolvedIngestionDeferredDependencyQueueAndExactNextState(t *testing.T) {
 	a := runTestApp(t)
 	ctx := context.Background()
-	req := indexRunRequest{Consumers: []indexRunSelection{{Index: "utxo-state", Armed: true}, {Index: "sat-state", Armed: true, indexRunOptions: indexRunOptions{RetainSatHistory: true}}, {Index: "address-state", Armed: true}, {Index: "tx-locator", Armed: true}}}
+	req := indexRunRequest{Consumers: []indexRunSelection{{Index: "utxo-state", Armed: true, Live: true}, {Index: "sat-state", Armed: true, indexRunOptions: indexRunOptions{RetainSatHistory: true}}, {Index: "address-state", Armed: true}, {Index: "tx-locator", Armed: true}}}
 	if _, err := a.prepareIndexRun(req); err != nil {
 		t.Fatal(err)
 	}

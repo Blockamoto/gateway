@@ -99,18 +99,18 @@ func bitmapCanonicalInstance(id string) (bitmapProfileInstance, bool) {
 	kind, label, chain := "", "", ""
 	switch id {
 	case bitmapStandardDistrictID:
-		kind, label = "district", "Bitmap Districts Standard V1"
+		kind, label = "district", "Bitmap Districts"
 	case bitmapStandardParcelID:
-		kind, label = "parcel", "Bitmap Parcels Standard V1"
+		kind, label = "parcel", "Bitmap Parcels"
 	case bitmapReplayParcelID:
-		kind, label = "parcel", "Bitmap Parcels Standard V1"
+		kind, label = "parcel", "Bitmap Parcels"
 	case bitmapCanonicalV2DistrictID, bitmapCanonicalV2ParcelID:
 		kind = "district"
 		if id == bitmapCanonicalV2ParcelID {
 			kind = "parcel"
 		}
 		p := bitmapCanonicalV2Profile(kind)
-		i := bitmapProfileInstance{ID: id, Kind: kind, Label: "Previous Bitmap " + map[string]string{"district": "Districts", "parcel": "Parcels"}[kind] + " canonical-v2 generation", Profile: p, ProfileHash: bitmapProfileHash(p), StartHeight: bitmapDevelopmentStart, State: "ready", Legacy: true, ConfigurationRevision: 1, RulesLocked: true, Classification: "legacy", Note: "Preserved canonical-v2 generation with its original profile, origin and saved identity. Standard V1 uses separate fresh stores; no automatic migration or resume occurs."}
+		i := bitmapProfileInstance{ID: id, Kind: kind, Label: "Previous Bitmap " + map[string]string{"district": "Districts", "parcel": "Parcels"}[kind] + " canonical-v2 generation", Profile: p, ProfileHash: bitmapProfileHash(p), StartHeight: bitmapDevelopmentStart, State: "ready", Legacy: true, ConfigurationRevision: 1, RulesLocked: true, Classification: "legacy", Note: "Preserved canonical-v2 generation with its original profile, origin and saved identity. The current indexes use separate fresh stores; no automatic migration or resume occurs."}
 		if kind == "parcel" {
 			i.DistrictInstance, i.DistrictProfileHash = bitmapCanonicalV2DistrictID, p.DistrictProfileHash
 		}
@@ -149,7 +149,7 @@ func bitmapCanonicalInstance(id string) (bitmapProfileInstance, bool) {
 		ProfileHash: bitmapProfileHash(p), StartHeight: bitmapDevelopmentStart, State: "ready",
 		ConfigurationRevision: 1, RulesLocked: true, Classification: "canonical",
 		ChainInstance: chain,
-		Note:          "Bitmap Standard V1 uses fixed rules pinned to Blockamoto/bitmap main and begins at the first Bitmap reveal, block 792435. This instance has its own authenticated storage identity; previous generations remain available for inspection under their original identities."}
+		Note:          "The Bitmap indexes use fixed rules pinned to Blockamoto/bitmap main and begin at the first Bitmap reveal, block 792435. This instance has its own authenticated storage identity; previous generations remain available for inspection under their original identities."}
 	if kind == "parcel" {
 		i.DistrictInstance = bitmapStandardDistrictID
 		i.DistrictProfileHash = p.DistrictProfileHash

@@ -34,6 +34,10 @@ func Test076AddressFinalReviewCurrentLiveHonorsSavedErrorAndBackoff(t *testing.T
 		t.Fatal(err)
 	}
 	utxoApply(t, u, b)
+	// Current Live requires its UTXO dependency to be enabled and following.
+	if _, err = a.setIndexLivePolicy(indexLiveRequest{Index: "utxo-state", Action: "enable"}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = a.setIndexLivePolicy(indexLiveRequest{Index: "address-state", Action: "enable"}); err != nil {
 		t.Fatal(err)
 	}

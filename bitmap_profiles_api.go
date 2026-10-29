@@ -48,6 +48,6 @@ func (a *app) handleBitmapProfiles(w http.ResponseWriter, r *http.Request) {
 		"capabilities": bitmapCapabilities(), "instances": instances, "drafts": d.Drafts,
 		"revision": d.Revision, "chain_metadata": chainMetadata,
 		"read_only": true,
-		"note":      "Bitmap Districts Standard V1 and Bitmap Parcels Standard V1 use fixed read-only rules and separate authenticated stores. Bitmap Chain methodology is being developed; saved chain evidence remains inspectable. Previous generations and saved custom definitions cannot execute or be reinterpreted as Standard V1.",
+		"note":      "Bitmap Districts and Bitmap Parcels use fixed read-only rules and separate authenticated stores. Bitmap Chain methodology is being developed; saved chain evidence remains inspectable. Previous generations and saved custom definitions cannot execute or be reinterpreted as the current indexes.",
 	})
 }

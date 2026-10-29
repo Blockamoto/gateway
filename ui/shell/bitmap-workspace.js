@@ -10,7 +10,7 @@ window.GatewayBitmapWorkspace = (() => {
   const capabilities = value => value?.capabilities || value?.bitmap_capabilities || value?.bitmap?.capabilities || {};
   const featureEnabled = (value, feature) => capabilities(value)[feature] === true;
   const parcelDefinition=value=>(value?.id||value?.instance)!=='bitmap-parcels-standard-v1-replay'&&(value?.kind==='parcel'||value?.producer_kind==='parcel'||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(value?.id||value?.instance||'')||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(value?.district_instance||''));
-  const parcelReason = 'Parcels processing is temporarily disabled pending Ordinals and provenance validation. Saved records and exports remain available.';
+  const parcelReason = 'This earlier Bitmap Parcels generation remains available for inspection.';
   const deferredReason = 'Legacy experimental definitions and saved results are available for inspection and deletion. Current District indexes use fixed canonical rules. Bitmap Chain methodology is being developed.';
   function address(target) {
     const p = new URLSearchParams();
@@ -19,7 +19,7 @@ window.GatewayBitmapWorkspace = (() => {
   }
   function helpers(root) {
     const doc = root.ownerDocument;
-    const el = (tag, text, cls) => { const node = doc.createElement(tag); if (text !== undefined) node.textContent = String(text); if (cls) node.className = cls; return node; };
+    const el = (tag, text, cls) => { const node = doc.createElement(tag); if (text !== undefined) node.textContent = String(text).replace(/Bitmap (Districts|Parcels) Standard V1/g,'Bitmap $1').replace(/Bitmap Standard V1/g,'Bitmap').replace(/Standard V1/g,'current Bitmap indexes'); if (cls) node.className = cls; return node; };
     const button = (text, action, cls) => { const node = el('button', text, cls); node.type = 'button'; node.onclick = action; return node; };
     const field = (text, input) => { const label = el('label', undefined, 'bitmap-field'); label.append(el('span', text), input); return label; };
     const select = (label, rows) => { const node = el('select'); node.setAttribute('aria-label', label); for (const [value, text] of rows) { const option = el('option', text); option.value = value; node.append(option); } return node; };

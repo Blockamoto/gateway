@@ -10,12 +10,12 @@ import (
 
 func prepareDiscoveryFixtureRun079(t *testing.T, a *app, from, to int64) {
 	t.Helper()
-	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapReplayParcelID, Armed: true}}}
+	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true}, {Index: "blocks", Armed: true}, {Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "retained-raw", ParcelRawScanBudget: 12}}}}
 	doc, err := a.prepareIndexRun(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc.Run = &indexRunRecord{ID: "discovery-fixture", State: "running", Request: doc.Prepared, InitialTargetHeight: to, TargetHeight: to, Consumers: []indexRunProgress{{Index: bitmapReplayParcelID, From: from, To: to, Height: from - 1, AdmissionState: "admitted"}}}
+	doc.Run = &indexRunRecord{ID: "discovery-fixture", State: "running", Request: doc.Prepared, ParcelDistrict: &parcelDistrictPair079{DistrictSelected: false}, InitialTargetHeight: to, TargetHeight: to, Consumers: []indexRunProgress{{Index: bitmapReplayParcelID, From: from, To: to, Height: from - 1, AdmissionState: "admitted"}}}
 	a.indexRunMu.Lock()
 	a.indexRunState = doc
 	err = a.persistIndexRunLocked()

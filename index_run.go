@@ -48,6 +48,7 @@ type indexRunRequest struct {
 	Consumers []indexRunSelection `json:"consumers"`
 }
 type indexRunProgress struct {
+	RequiresGenesis               bool                 `json:"requires_genesis,omitempty"`
 	ParcelEvidencePending         bool                 `json:"parcel_evidence_pending,omitempty"`
 	ParcelDiscoveryHeight         *int64               `json:"parcel_discovery_height,omitempty"`
 	ParcelDiscoveryHash           string               `json:"parcel_discovery_hash,omitempty"`
@@ -69,6 +70,8 @@ type indexRunProgress struct {
 	DistrictProfileHash           string               `json:"district_profile_hash,omitempty"`
 	DistrictConfigurationRevision uint64               `json:"district_configuration_revision,omitempty"`
 	Source                        *indexRunSnapshot    `json:"source,omitempty"`
+	SourceChainState              string               `json:"source_chain_state,omitempty"`
+	SourceCaughtUp                bool                 `json:"source_caught_up,omitempty"`
 	Dependencies                  []indexRunDependency `json:"dependencies"`
 	Index                         string               `json:"index"`
 	State                         string               `json:"state"`
@@ -156,18 +159,29 @@ type indexRunDocument struct {
 	Checksum   string          `json:"checksum,omitempty"`
 }
 type indexRunPlan struct {
-	ParcelDistrict *parcelDistrictPair079 `json:"parcel_district,omitempty"`
-	Reason         string                 `json:"reason"`
-	PlanID         string                 `json:"plan_id"`
-	Ready          bool                   `json:"ready"`
-	In             *int64                 `json:"in"`
-	Out            *int64                 `json:"out"`
-	TargetHeight   int64                  `json:"target_height"`
-	TargetHash     string                 `json:"target_hash"`
-	RawRetention   string                 `json:"raw_retention"`
-	Request        indexRunRequest        `json:"request"`
-	Consumers      []indexRunProgress     `json:"consumers"`
-	Notes          []string               `json:"notes"`
+	RequiresGenesis bool                   `json:"requires_genesis,omitempty"`
+	ParcelDistrict  *parcelDistrictPair079 `json:"parcel_district,omitempty"`
+	Reason          string                 `json:"reason"`
+	PlanID          string                 `json:"plan_id"`
+	Ready           bool                   `json:"ready"`
+	In              *int64                 `json:"in"`
+	Out             *int64                 `json:"out"`
+	TargetHeight    int64                  `json:"target_height"`
+	TargetHash      string                 `json:"target_hash"`
+	RawRetention    string                 `json:"raw_retention"`
+	Request         indexRunRequest        `json:"request"`
+	Consumers       []indexRunProgress     `json:"consumers"`
+	Notes           []string               `json:"notes"`
+}
+
+func indexRunConsumerBlocksPlan079(q *indexRunProgress) bool {
+	if q.State != "needs_prerequisite" && q.State != "blocked" && q.State != "rebuild_required" {
+		return false
+	}
+	if q.Index == bitmapReplayParcelID {
+		q.AdmissionState = "blocked"
+	}
+	return true
 }
 
 type indexRunPlanBlockedError struct{ Plan indexRunPlan }
@@ -346,8 +360,51 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 			return req, fmt.Errorf("%s does not support a state rebuild", c.Index)
 		}
 	}
+	if execution {
+		if current, ok := runSelection(req, "address-state"); ok && indexRunSelectionEnabled(current) {
+			if err := validateCurrentSelection079(req); err != nil {
+				return req, err
+			}
+		}
+		if parcel, ok := runSelection(req, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) {
+			if err := validateParcelSelection079(req, parcel); err != nil {
+				return req, err
+			}
+		}
+	}
 	sort.Slice(req.Consumers, func(i, j int) bool { return req.Consumers[i].Index < req.Consumers[j].Index })
 	return req, nil
+}
+
+func validateCurrentSelection079(req indexRunRequest) error {
+	utxo, ok := runSelection(req, "utxo-state")
+	if !ok || !utxo.Armed || !utxo.Live {
+		return fmt.Errorf("Current Addresses requires UTXO Arm and Live")
+	}
+	return nil
+}
+
+func legacyCurrentUTXOAllowed079(p indexLiveState) bool {
+	utxo := p.Policies["utxo-state"]
+	return utxo.Enabled && !utxo.Stopped && !utxo.Paused
+}
+
+// Configured selection is distinct from completed evidence. It authorizes the
+// chosen producer to build a prefix; publication still checks actual evidence.
+func validateParcelSelection079(req indexRunRequest, parcel indexRunSelection) error {
+	district, ok := runSelection(req, bitmapStandardDistrictID)
+	if !ok || !indexRunSelectionEnabled(district) {
+		return fmt.Errorf("Bitmap Parcels requires Bitmap Districts to be armed")
+	}
+	producer := parcelEvidenceProducer079(parcel.ParcelEvidenceRoute)
+	if producer == "" || parcel.ParcelRawScanBudget <= 0 {
+		return fmt.Errorf("Bitmap Parcels requires one proof route and a positive reviewed work allowance")
+	}
+	choice, ok := runSelection(req, producer)
+	if !ok || !indexRunSelectionEnabled(choice) {
+		return fmt.Errorf("Bitmap Parcels requires its selected proof producer to be armed")
+	}
+	return nil
 }
 func runSelection(req indexRunRequest, id string) (indexRunSelection, bool) {
 	for _, c := range req.Consumers {
@@ -388,10 +445,11 @@ func indexRunOptionalWorkAllowed(root, id string) bool {
 	}
 	if !d.Configured {
 		live, e := readIndexLiveState(root)
-		return e == nil && !live.Policies[id].Stopped
+		return e == nil && !live.Policies[id].Stopped && (id != "address-state" || legacyCurrentUTXOAllowed079(live))
 	}
-	c, ok := runSelection(indexRunEffectiveRequest(d), id)
-	return ok && c.Armed
+	req := indexRunEffectiveRequest(d)
+	c, ok := runSelection(req, id)
+	return ok && c.Armed && (id != "address-state" || validateCurrentSelection079(req) == nil)
 }
 func indexRunProjectionAllowed(root string, height int64) bool {
 	d, err := readIndexRunDocument(root)
@@ -400,7 +458,7 @@ func indexRunProjectionAllowed(root string, height int64) bool {
 	}
 	if !d.Configured {
 		p, e := readIndexLiveState(root)
-		return e == nil && !p.Policies["address-state"].Stopped
+		return e == nil && !p.Policies["address-state"].Stopped && legacyCurrentUTXOAllowed079(p)
 	}
 	if d.Run == nil {
 		return false
@@ -409,6 +467,9 @@ func indexRunProjectionAllowed(root string, height int64) bool {
 		return false
 	}
 	c, ok := runSelection(d.Run.Request, "address-state")
+	if validateCurrentSelection079(d.Run.Request) != nil {
+		return false
+	}
 	if p, exists := indexRunProgressFor(d.Run, "address-state"); exists && (p.AdmissionState == "blocked" || p.EffectiveFrom != nil && height < *p.EffectiveFrom) {
 		return false
 	}
@@ -416,7 +477,21 @@ func indexRunProjectionAllowed(root string, height int64) bool {
 }
 
 func (a *app) prepareIndexRun(req indexRunRequest) (indexRunDocument, error) {
-	req, err := normalizeIndexRunRequest(req)
+	// A dependency switched Off also switches Parcels Off in the staged intent.
+	// Old saved documents are still readable; no data or active admission changes.
+	req, err := normalizeStoredIndexRunRequest(req)
+	if err != nil {
+		return indexRunDocument{}, err
+	}
+	for i := range req.Consumers {
+		if req.Consumers[i].Index == bitmapReplayParcelID && indexRunSelectionEnabled(req.Consumers[i]) && validateParcelSelection079(req, req.Consumers[i]) != nil {
+			req.Consumers[i].Armed, req.Consumers[i].Live = false, false
+		}
+		if req.Consumers[i].Index == "address-state" && indexRunSelectionEnabled(req.Consumers[i]) && validateCurrentSelection079(req) != nil {
+			req.Consumers[i].Armed, req.Consumers[i].Live = false, false
+		}
+	}
+	req, err = normalizeIndexRunRequest(req)
 	if err != nil {
 		return indexRunDocument{}, err
 	}
@@ -442,6 +517,10 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 	}
 	authority := a.currentChainAuthority()
 	p := indexRunPlan{Ready: true, In: req.In, Out: req.Out, Request: req, TargetHeight: authority.Height, TargetHash: authority.Hash, RawRetention: runRawRetention(req), Consumers: []indexRunProgress{}, Notes: []string{"Each consumer publishes its own checkpoint. Blocks On is the only raw retention choice for this run."}}
+	if parcel, ok := runSelection(req, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && (req.In == nil || *req.In != 0) {
+		p.Ready = false
+		p.Notes = append(p.Notes, "Bitmap Parcels requires In at block zero for its selected proof prefix.")
+	}
 	if authority.Height < 0 || !validHash(authority.Hash) {
 		p.Ready = false
 		p.Notes = append(p.Notes, "Selected-chain tip evidence is unavailable.")
@@ -481,6 +560,8 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 		}
 		armed++
 		q := indexRunProgress{Index: c.Index, State: "ready", Height: -1, To: p.TargetHeight}
+		q.RequiresGenesis = c.Index == "utxo-state" || c.Index == "sat-state" || c.Index == "address-state" || c.Index == bitmapReplayParcelID
+		p.RequiresGenesis = p.RequiresGenesis || q.RequiresGenesis
 		q.RangeMode = "contiguous_append"
 		if c.Index == "address-history" {
 			q.RangeMode = "sparse"
@@ -565,7 +646,9 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 				}
 				q.From = 0
 				q.To = h.Height
-				if a.utxoSelectedChainState(ctx, h, authority) != "selected_chain" {
+				q.SourceChainState = a.utxoSelectedChainState(ctx, h, authority)
+				q.SourceCaughtUp = q.SourceChainState == "selected_chain" && h.Height == authority.Height && h.BlockHash == authority.Hash
+				if q.SourceChainState != "selected_chain" {
 					q.State = "needs_prerequisite"
 					q.Reason = "Resume the UTXO source onto the selected chain before projecting Current Addresses."
 				}
@@ -612,7 +695,7 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			requestedFrom := int64(0)
 			if req.In != nil {
 				requestedFrom = *req.In
-				if c.Index == "inscriptions" {
+				if c.Index == "inscriptions" || bitmapConsumerID(c.Index) {
 					requestedFrom = q.From
 				}
 			}
@@ -695,7 +778,7 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			if q.Source.Height > p.TargetHeight {
 				q.State = "blocked"
 				q.Reason = "The saved UTXO source is beyond Out; Current Addresses cannot recreate a historical UTXO snapshot."
-			} else if source, ok := runSelection(req, "utxo-state"); ok && source.Armed && q.State != "blocked" && q.State != "rebuild_required" {
+			} else if source, ok := runSelection(req, "utxo-state"); ok && source.Armed && q.State != "blocked" && q.State != "rebuild_required" && q.State != "needs_prerequisite" {
 				q.To = p.TargetHeight
 				q.State = "waiting_for_consumer"
 				q.Reason = "Project the armed UTXO consumer's committed target; this is not a block-range scan."
@@ -709,6 +792,9 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			}
 			if source, ok := runSelection(req, "utxo-state"); ok && source.Armed {
 				state = "selected"
+			}
+			if q.Source != nil && q.SourceChainState != "selected_chain" {
+				state = "incompatible"
 			}
 			q.Dependencies = []indexRunDependency{{Index: "utxo-state", Kind: "state", State: state, Reason: "Current Addresses projects an exact saved complete UTXO checkpoint.", Action: "include"}}
 		}
@@ -756,7 +842,6 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 		}
 		if bitmapConsumerID(c.Index) && bitmapConsumerKind(c.Index) == "parcel" {
 			if c.Index == bitmapReplayParcelID && q.State != "complete" {
-				priorParcelState := q.State
 				q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "parent-evidence", Kind: "lookup", State: "conditional", Reason: "Each candidate needs selected-chain witness, satpoint movement and value evidence; unavailable proof remains pending and no whole-chain scan begins implicitly.", Action: "inspect"})
 				{
 					reason := ""
@@ -783,18 +868,11 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 						}
 					}
 					if reason != "" {
-						q.ParcelEvidencePending = true
-						if c.ParcelEvidenceRoute == "txio-links" {
-							reason += " The current IO Links audit requires the complete finite admitted horizon; incremental prefix reuse is not yet supported."
-						}
-						q.ParcelValidationState, q.ParcelValidationReason = "pending", reason
-						if priorParcelState == "ready" {
-							q.Reason = "Parcel discovery may proceed; proof validation is pending. " + reason
-						}
-						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "blocks", Kind: "evidence", State: "missing", Reason: reason, Action: "inspect"})
+						q.Reason = "Parcels waits for checked proof coverage. " + reason
+						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: parcelEvidenceProducer079(c.ParcelEvidenceRoute), Kind: "evidence", State: "selected", Reason: reason, Action: "inspect"})
 					}
 					if reason == "" && c.ParcelEvidenceRoute == "txio-links" {
-						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "txo-spender", Kind: "evidence", State: "audit_required", Reason: "The current IO Links audit requires the complete finite admitted horizon before it begins; incremental prefix reuse is not yet supported. It verifies committed batches and source blocks under the fixed allowance. Missing reverse links require a bounded forward block scan.", Action: "inspect"})
+						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "txo-spender", Kind: "evidence", State: "audit_required", Reason: "IO Links audits the committed prefix and source blocks under the fixed allowance. Extending the prefix may require another bounded audit.", Action: "inspect"})
 					}
 				}
 			} else if c.Index != bitmapReplayParcelID {
@@ -826,12 +904,8 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 		if err := a.refineRunCoverage079(ctx, &q, c, head, q.To); err != nil {
 			q.State, q.Reason = "blocked", err.Error()
 		}
-		if q.State == "needs_prerequisite" || q.State == "blocked" || q.State == "rebuild_required" {
-			if c.Index == bitmapReplayParcelID {
-				q.AdmissionState = "blocked"
-			} else {
-				p.Ready = false
-			}
+		if indexRunConsumerBlocksPlan079(&q) {
+			p.Ready = false
 		} else {
 			runnable++
 		}
@@ -850,7 +924,7 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 	}
 	if p.ParcelDistrict != nil && p.ParcelDistrict.DistrictSelected {
 		if district, ok := runSelection(req, bitmapStandardDistrictID); ok && district.Live && req.Out == nil {
-			p.Notes = append(p.Notes, "District Live is capped at this run's finite Parcel discovery boundary. Review a new run to continue beyond it; independently armed Live tracks can continue.")
+			p.Notes = append(p.Notes, "District Live is capped at this run's finite validated Parcel boundary. Review a new run to continue beyond it; independently armed Live tracks can continue.")
 		}
 	}
 	p.Reason = "The prepared consumers are ready for review."

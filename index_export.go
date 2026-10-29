@@ -174,7 +174,7 @@ func (a *app) runIndexExport(ctx context.Context, q indexExportRequest, w io.Wri
 	defer func() { s.close() }()
 	s.meta = indexExportMetadata{Schema: 1, Index: q.Index, Representation: q.Representation, Format: indexExportJSONLFormat, Sources: []indexExportSource{}, Coverage: []heightInterval{}, Missing: []indexExportMissing{}, Requirements: []indexExportRequirement{}, Note: "Coverage describes saved committed source blocks, not output completeness or complete chain coverage. Gaps remain unknown; see the end record for output completeness and omissions. Source commitments authenticate original records; exported bytes have a separate checksum."}
 	if q.Index != "inscriptions" && q.Index != bitmapStandardDistrictID && q.Index != bitmapStandardParcelID {
-		return s.meta, fmt.Errorf("export supports Inscriptions and Bitmap Standard V1 Districts/Parcels only")
+		return s.meta, fmt.Errorf("export supports Inscriptions and Bitmap Districts and Bitmap Parcels only")
 	}
 	if q.Representation != "native" && q.Representation != "conventional" {
 		return s.meta, fmt.Errorf("export representation must be native or conventional")

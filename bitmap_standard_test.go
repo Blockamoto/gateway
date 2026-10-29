@@ -47,7 +47,7 @@ func TestBitmapStandardV1FrozenProfilesAndFreshIdentity(t *testing.T) {
 	if district.head != nil || parcel.head != nil || district.NextHeight() != 792435 || parcel.NextHeight() != 792435 {
 		t.Fatal("new Standard silently adopted an old saved head", district.head, parcel.head)
 	}
-	if district.instance.Label != "Bitmap Districts Standard V1" || parcel.instance.Label != "Bitmap Parcels Standard V1" || parcel.instance.DistrictInstance != bitmapStandardDistrictID || parcel.instance.DistrictProfileHash != district.instance.ProfileHash {
+	if district.instance.Label != "Bitmap Districts" || parcel.instance.Label != "Bitmap Parcels" || parcel.instance.DistrictInstance != bitmapStandardDistrictID || parcel.instance.DistrictProfileHash != district.instance.ProfileHash {
 		t.Fatal("Standard labels/dependency identity mismatch", district.instance, parcel.instance)
 	}
 	if district.instance.ProfileHash == frozen[2].hash || parcel.instance.ProfileHash == frozen[3].hash || indexDigest(district.instance.Profile.Rules) != indexDigest(bitmapCanonicalV2Profile("district").Rules) || indexDigest(parcel.instance.Profile.Rules) != indexDigest(bitmapCanonicalV2Profile("parcel").Rules) {

@@ -64,6 +64,6 @@ body.workspace-panel-maximized #content{position:fixed;inset:0;z-index:40;margin
 @keyframes gateway-arrival-kindle{0%{opacity:0;box-shadow:none}28%,45%{opacity:1;box-shadow:0 0 16px 7px color-mix(in srgb,var(--amber) 22%,transparent)}100%{opacity:0;box-shadow:none}}
 @media(prefers-reduced-motion:reduce){.gateway-arrival{display:none!important}}
 
-.bitmap-provisional{color:#8a4300;border-left:3px solid #c66c06;padding-left:6px}:root[data-theme="dark"] .bitmap-provisional{color:#ffd083;border-left-color:#ffb84c}
+
 
 .bitmap-invalid{color:#9c2424;border-left:3px solid #b63838;padding-left:6px}:root[data-theme="dark"] .bitmap-invalid{color:#ffb3b3;border-left-color:#ff7777}

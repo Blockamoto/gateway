@@ -227,7 +227,8 @@ func TestParcelLocatorRouteReviewedRunAdmission079(t *testing.T) {
 	if err = s.appendBlock(block1, 0, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
-	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "tx-locators", ParcelRawScanBudget: 8}}}}
+	zero := int64(0)
+	req := indexRunRequest{In: &zero, Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true}, {Index: "tx-locator", Armed: true}, {Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "tx-locators", ParcelRawScanBudget: 8}}}}
 	plan, err := a.planIndexRun(context.Background(), req)
 	if err != nil || !plan.Ready {
 		t.Fatalf("locator prerequisite not admitted: %+v %v", plan, err)
@@ -236,8 +237,15 @@ func TestParcelLocatorRouteReviewedRunAdmission079(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := waitRun(t, a)
-	if done.Run == nil || done.Run.State != "complete" {
-		t.Fatalf("locator run did not complete: %+v", done.Run)
+	if done.Run == nil || (done.Run.State != "complete" && done.Run.State != "complete_with_errors") {
+		t.Fatalf("locator run did not reach a terminal state: %+v", done.Run)
+	}
+	if done.Run.State == "complete_with_errors" && len(done.Run.SourceFactErrors) == 0 {
+		t.Fatalf("terminal error was not recorded: %+v", done.Run)
+	}
+	p, ok := indexRunProgressFor(done.Run, bitmapReplayParcelID)
+	if !ok || p.State != "complete" || p.ParcelDiscoveryHeight != nil {
+		t.Fatalf("Parcel admission did not finish without discovery: %+v", p)
 	}
 }
 

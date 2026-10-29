@@ -232,7 +232,7 @@ func bitmapFixedIndexDefinition(id string) (indexDefinition, bool) {
 		Metadata: i.Profile, CanonicalEncoding: i.Profile.FingerprintSchema,
 		Theory: "Fixed canonical Bitmap " + i.Kind + " rules. Source, implemented rules and authenticated implementation identity are available read-only. Ownership is separate."}
 	if i.Legacy {
-		d.Theory = "Preserved earlier Bitmap generation under its original authenticated identity. Saved evidence is available for inspection; this generation cannot execute or be resumed as Standard V1."
+		d.Theory = "Preserved earlier Bitmap generation under its original authenticated identity. Saved evidence is available for inspection; this generation cannot execute or be resumed as the current index."
 	} else {
 		d.Theory = i.Label + " follows the pinned published rules from block 792435. Its own authenticated checkpoint identity is required; ownership is separate."
 	}

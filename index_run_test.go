@@ -80,7 +80,7 @@ func TestTimelineRunPreparationAndPrefixHaveNoImplicitWork(t *testing.T) {
 func TestTimelineRunSharesBlocksWithIndependentStateAndNoRawTrack(t *testing.T) {
 	a := runTestApp(t)
 	zero, one := int64(0), int64(1)
-	req := indexRunRequest{In: &zero, Out: &one, Consumers: []indexRunSelection{{Index: "utxo-state", Armed: true}, {Index: "sat-state", Armed: true}, {Index: "tx-locator", Armed: true}, {Index: "txo-spender", Armed: true}, {Index: "address-history", Armed: true}, {Index: "address-state", Armed: true}}}
+	req := indexRunRequest{In: &zero, Out: &one, Consumers: []indexRunSelection{{Index: "utxo-state", Armed: true, Live: true}, {Index: "sat-state", Armed: true}, {Index: "tx-locator", Armed: true}, {Index: "txo-spender", Armed: true}, {Index: "address-history", Armed: true}, {Index: "address-state", Armed: true}}}
 	p, err := a.planIndexRun(context.Background(), req)
 	if err != nil || !p.Ready {
 		t.Fatal(p, err)
@@ -126,11 +126,14 @@ func TestTimelineRunSharesBlocksWithIndependentStateAndNoRawTrack(t *testing.T) 
 }
 func TestTimelineRunOffPreservesFrozenAddressFacts(t *testing.T) {
 	u, _, b1 := address076Source(t, []uint64{5}, []string{address076P2PKH})
+	a := &app{dataDir: u.root}
+	if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "utxo-state", Armed: true, Live: true}, {Index: "address-state", Armed: true}}}); err != nil {
+		t.Fatal(err)
+	}
 	cp, err := buildAddressStateContext(context.Background(), u.root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &app{dataDir: u.root}
 	_, err = a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "utxo-state", Armed: true}, {Index: "address-state", Armed: false}}})
 	if err != nil {
 		t.Fatal(err)
@@ -348,6 +351,10 @@ func TestTimelineRunPublicationGuardPreservesPriorHead(t *testing.T) {
 func TestTimelineRunFrozenAddressFactsSurviveUndoExpiryAndCollection(t *testing.T) {
 	ctx := context.Background()
 	u, _, b1 := address076Source(t, []uint64{5}, []string{address076P2PKH})
+	a := &app{dataDir: u.root}
+	if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "utxo-state", Armed: true, Live: true}, {Index: "address-state", Armed: true}}}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := buildAddressStateContext(ctx, u.root, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +362,6 @@ func TestTimelineRunFrozenAddressFactsSurviveUndoExpiryAndCollection(t *testing.
 	if err := visitCurrentAddressFactPagesContext(ctx, u.root, func(p string) error { owned[p] = true; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	a := &app{dataDir: u.root}
 	if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "utxo-state", Armed: true}, {Index: "address-state", Armed: false}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -491,7 +497,7 @@ func TestTimelineRunOffAtAddressAndUTXOPublication(t *testing.T) {
 	ctx := context.Background()
 	u, _, b1 := address076Source(t, []uint64{5}, []string{address076P2PKH})
 	a := &app{dataDir: u.root}
-	active := indexRunRequest{Consumers: []indexRunSelection{{Index: "utxo-state", Armed: true}, {Index: "address-state", Armed: true}}}
+	active := indexRunRequest{Consumers: []indexRunSelection{{Index: "utxo-state", Armed: true, Live: true}, {Index: "address-state", Armed: true}}}
 	if _, err := a.prepareIndexRun(active); err != nil {
 		t.Fatal(err)
 	}

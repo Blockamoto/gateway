@@ -512,6 +512,12 @@ func bitmapTargetKey(district uint64, transaction *uint64) string {
 	return fmt.Sprintf("%016x%016x", district, *transaction)
 }
 func (s *bitmapRunConsumer) pending(ctx context.Context, block blockView, rows []bitmapDevelopmentCandidate, note string) error {
+	// Replay Parcels never write an unresolved/provisional journal. Previously
+	// saved experimental pending data is left untouched and is not returned as
+	// validated coverage or candidates.
+	if s.id == bitmapReplayParcelID {
+		return fmt.Errorf("%w: %s", ErrBitmapEvidenceRequired, note)
+	}
 	for i := range rows {
 		rows[i].RuleResults = bitmapRuleAudits(s.instance.Profile, rows[i])
 		if rows[i].Selection == "selected" {

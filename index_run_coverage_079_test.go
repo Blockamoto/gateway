@@ -3,9 +3,204 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestIndexRunReviewsRawReorgBeforeAdmission079(t *testing.T) {
+	ctx := context.Background()
+	a := prepareLiveTestApp063(t)
+	genesis := buildGenesisBlockIndex066(t, a)
+	_, selectedHash := installBlockOneHeader063(t, a)
+	store, err := openIndexStore(a.dataDir, "blocks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := inscriptionTestBlock()
+	ids := make([]string, len(stale.Transactions))
+	for i, tx := range stale.Transactions {
+		ids[i] = tx.TxID
+	}
+	if err := store.commitPreparedIndexBatch(indexBatch{PreviousBlockHash: genesisHashDisplay, Bitcoin: &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: ids, Transactions: stale.Transactions}}, 1, strings.Repeat("f", 64), 0, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	staleCommit := store.checkpoint.Commitment
+	zero, one := int64(0), int64(1)
+	req := indexRunRequest{In: &zero, Out: &one, Consumers: []indexRunSelection{{Index: "blocks", Armed: true, Mode: "lean"}}}
+	plan, err := a.planIndexRun(ctx, req)
+	if err != nil || !plan.Ready || len(plan.Consumers) != 1 {
+		t.Fatal(plan, err)
+	}
+	q := plan.Consumers[0]
+	if q.SavedCoverageState != "changed" || q.ReusedBlocks != 0 || q.Commitment != staleCommit || q.NextRequiredHeight == nil || *q.NextRequiredHeight != 1 || len(q.MissingRanges) != 1 || q.MissingRanges[0] != (heightInterval{1, 1}) {
+		t.Fatalf("review must expose reconciliation and never reuse the stale head: %+v", q)
+	}
+	before, err := indexStoreHead(a.dataDir, "blocks")
+	if err != nil || before.checkpoint.Commitment != staleCommit {
+		t.Fatal("planning changed Raw coverage", err)
+	}
+	if _, err := a.startIndexRun(ctx, req, strings.Repeat("0", 64)); err == nil {
+		t.Fatal("unreviewed reconciliation plan was admitted")
+	}
+	after, err := indexStoreHead(a.dataDir, "blocks")
+	if err != nil || after.checkpoint.Commitment != staleCommit || genesis.BlockHash != genesisHashDisplay || selectedHash == strings.Repeat("f", 64) {
+		t.Fatal("rejected plan changed Raw coverage", err)
+	}
+	if _, err := a.reviewRawReorg079(ctx, after.checkpoint, func(int64) (string, error) { return "", fmt.Errorf("header unavailable") }); err == nil {
+		t.Fatal("reconciliation review accepted unavailable ancestor evidence")
+	}
+	drifted := q
+	two := int64(2)
+	drifted.NextRequiredHeight = &two
+	worker := &indexRunConsumer{selection: req.Consumers[0], progress: drifted, store: after}
+	if err := a.reconcileRunConsumerUncached(ctx, worker, a.currentChainAuthority()); err == nil {
+		t.Fatal("worker reconciled a different boundary from the reviewed plan")
+	}
+	after, err = indexStoreHead(a.dataDir, "blocks")
+	if err != nil || after.checkpoint.Commitment != staleCommit {
+		t.Fatal("boundary drift changed Raw coverage", err)
+	}
+	for _, commitment := range []string{"", strings.Repeat("e", 64)} {
+		changed := q
+		changed.Commitment = commitment
+		worker = &indexRunConsumer{selection: req.Consumers[0], progress: changed, store: after}
+		if err := a.reconcileRunConsumerUncached(ctx, worker, a.currentChainAuthority()); err == nil {
+			t.Fatal("worker reconciled without the exact reviewed Raw commitment", commitment)
+		}
+		unchanged, e := indexStoreHead(a.dataDir, "blocks")
+		if e != nil || unchanged.checkpoint.Commitment != staleCommit {
+			t.Fatal("unreviewed commitment changed Raw coverage", e)
+		}
+	}
+	// A head selected during review can become stale without its commitment
+	// changing. Initial admission must not reconcile that unreviewed reorg.
+	selectedAtReview := q
+	selectedAtReview.SavedCoverageState = "selected_chain"
+	worker = &indexRunConsumer{selection: req.Consumers[0], progress: selectedAtReview, store: after}
+	if err := a.reconcileRunConsumerUncached(ctx, worker, a.currentChainAuthority()); err == nil {
+		t.Fatal("worker silently reconciled a chain change after admission")
+	}
+	unchanged, e := indexStoreHead(a.dataDir, "blocks")
+	if e != nil || unchanged.checkpoint.Commitment != staleCommit {
+		t.Fatal("post-review chain change rewound Raw coverage", e)
+	}
+	// An established active run can reconcile a later reorg only inside its
+	// admitted start, and must not mutate the head for a deeper rewind.
+	selectedAtReview.From = 2
+	worker = &indexRunConsumer{selection: req.Consumers[0], progress: selectedAtReview, store: after, reconciled: true}
+	if err := a.reconcileRunConsumerUncached(ctx, worker, a.currentChainAuthority()); err == nil {
+		t.Fatal("active run rewound before its admitted start")
+	}
+	unchanged, e = indexStoreHead(a.dataDir, "blocks")
+	if e != nil || unchanged.checkpoint.Commitment != staleCommit {
+		t.Fatal("out-of-range active rewind changed Raw coverage", e)
+	}
+	// A rewind earlier than the marked In may not become hidden work.
+	later := indexRunProgress{Index: "blocks", State: "ready", From: 2}
+	if err := a.refineRunCoverage079(ctx, &later, req.Consumers[0], after.checkpoint, 2); err != nil || later.State != "needs_prerequisite" || !later.RequiresLeadIn || later.ReusedBlocks != 0 || later.NextRequiredHeight != nil {
+		t.Fatalf("earlier reconciliation escaped the reviewed boundary: %+v %v", later, err)
+	}
+	selectedAtReview.From = 0
+	worker = &indexRunConsumer{selection: req.Consumers[0], progress: selectedAtReview, store: after, reconciled: true}
+	if err := a.reconcileRunConsumerUncached(ctx, worker, a.currentChainAuthority()); err != nil {
+		t.Fatalf("in-range active reconciliation failed: %v", err)
+	}
+	repaired, err := indexStoreHead(a.dataDir, "blocks")
+	if err != nil || repaired.checkpoint == nil || repaired.checkpoint.Commitment != genesis.Commitment {
+		t.Fatal("in-range active reconciliation did not retain its selected ancestor", err)
+	}
+}
+
+func TestIndexRunResumeReconcilesRawAfterReorg079(t *testing.T) {
+	for _, externallyRepaired := range []bool{false, true} {
+		t.Run(fmt.Sprintf("externally_repaired_%t", externallyRepaired), func(t *testing.T) {
+			testIndexRunResumeReconcilesRawAfterReorg079(t, externallyRepaired)
+		})
+	}
+}
+
+func testIndexRunResumeReconcilesRawAfterReorg079(t *testing.T, externallyRepaired bool) {
+	ctx := context.Background()
+	a := runTestApp(t)
+	genesis := buildGenesisBlockIndex066(t, a)
+	selected, err := a.fetchAndDecodeContext(ctx, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.indexRunSourceBlock = func(context.Context, blockTarget, string) (blockView, error) {
+		return blockView{}, blockUnavailableError{fmt.Errorf("fixture source paused")}
+	}
+	zero, one := int64(0), int64(1)
+	req := indexRunRequest{In: &zero, Out: &one, Consumers: []indexRunSelection{{Index: "blocks", Armed: true, Mode: "lean"}}}
+	plan, err := a.planIndexRun(ctx, req)
+	if err != nil || !plan.Ready {
+		t.Fatal(plan, err)
+	}
+	started, err := a.startIndexRun(ctx, req, plan.PlanID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitRunCondition(t, a, func(d indexRunDocument) bool { return d.Run != nil && d.Run.State == "waiting" })
+	if _, err = a.controlIndexRun(ctx, started.Run.ID, "pause"); err != nil {
+		t.Fatal(err)
+	}
+	if paused := waitRun(t, a); paused.Run.State != "paused" {
+		t.Fatal(paused.Run)
+	}
+	store, err := openIndexStore(a.dataDir, "blocks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := inscriptionTestBlock()
+	ids := make([]string, len(stale.Transactions))
+	for i, tx := range stale.Transactions {
+		ids[i] = tx.TxID
+	}
+	if err = store.commitPreparedIndexBatch(indexBatch{PreviousBlockHash: genesis.BlockHash, Bitcoin: &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: ids, Transactions: stale.Transactions}}, 1, strings.Repeat("f", 64), 0, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	if externallyRepaired {
+		// Model a previously persisted changed-plan state after another
+		// explicit repair brought its saved head back to the selected chain.
+		a.indexRunMu.Lock()
+		progress := &a.indexRunState.Run.Consumers[0]
+		progress.SavedCoverageState = "changed"
+		progress.Commitment = store.checkpoint.Commitment
+		err = a.persistIndexRunLocked()
+		a.indexRunMu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = store.reconcile(a.addressSelectedHashes(ctx, a.currentChainAuthority())); err != nil {
+			t.Fatal(err)
+		}
+	}
+	acquisition := make(chan error, 10)
+	a.indexRunSourceBlock = func(_ context.Context, target blockTarget, _ string) (blockView, error) {
+		current, e := indexStoreHead(a.dataDir, "blocks")
+		if e != nil || current.checkpoint == nil || current.checkpoint.Commitment != genesis.Commitment || target.HashDisplay != selected.Hash {
+			acquisition <- fmt.Errorf("stale Raw coverage was visible when source work began: %v", e)
+			return blockView{}, fmt.Errorf("unreconciled source")
+		}
+		acquisition <- nil
+		return selected, nil
+	}
+	if _, err = a.controlIndexRun(ctx, started.Run.ID, "resume"); err != nil {
+		t.Fatal(err)
+	}
+	done := waitRun(t, a)
+	if done.Run.State != "complete" {
+		t.Fatal(done.Run)
+	}
+	if err = <-acquisition; err != nil {
+		t.Fatal(err)
+	}
+	result, err := indexStoreHead(a.dataDir, "blocks")
+	if err != nil || result.checkpoint == nil || result.checkpoint.BlockHash != selected.Hash {
+		t.Fatal("resume did not extend the reconciled selected prefix", err)
+	}
+}
 
 func TestIndexRunSavedAnchorMustBeSelected079(t *testing.T) {
 	head := &indexCheckpoint{Height: 4, BlockHash: testID(1)}

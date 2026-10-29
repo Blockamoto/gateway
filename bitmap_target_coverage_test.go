@@ -346,7 +346,18 @@ func TestBitmapTargetCoveragePendingMissingHeadSnapshotAndReorgStayUnknown(t *te
 	district := uint64(0)
 	v, err := a.bitmapTargetCoverageContext(ctx, bitmapTargetCoverageQuery{Axis: "transactions", District: &district, From: 0, To: 2, Pixels: 3})
 	winners, unknown := bitmapTargetSum(v)
-	if err != nil || v.State != "ready" || winners != 0 || unknown != 3 || v.Snapshot.Height != b0.Height {
+	if err != nil || v.Instance != bitmapReplayParcelID || v.State != "not_built" || v.Snapshot != nil || winners != 0 || unknown != 3 {
+		t.Fatal("legacy pending data must not become replay coverage", v, err)
+	}
+	// The new replay index has its own validated checkpoint. The older saved
+	// pending candidate is not copied into it or shown as a selected claim.
+	replay := bitmapTestConsumer(t, a.dataDir, bitmapReplayParcelID)
+	if err := replay.Apply(ctx, b0, nil); err != nil {
+		t.Fatal("empty replay checkpoint", err)
+	}
+	v, err = a.bitmapTargetCoverageContext(ctx, bitmapTargetCoverageQuery{Axis: "transactions", District: &district, From: 0, To: 2, Pixels: 3})
+	winners, unknown = bitmapTargetSum(v)
+	if err != nil || v.State != "ready" || winners != 0 || unknown != 3 || v.Snapshot == nil || v.Snapshot.Height != b0.Height {
 		t.Fatal("pending candidate became selected or absent", v, err)
 	}
 	changed, err := a.bitmapTargetCoverageContext(ctx, bitmapTargetCoverageQuery{Axis: "blocks", From: 0, To: 2, Pixels: 3, Snapshot: old})
@@ -493,14 +504,33 @@ func TestBitmapTargetCoverageParcelTransactionAxisFromRealApply(t *testing.T) {
 		t.Fatal("nonempty Parcel fixture was not selected", parcel.head)
 	}
 	target := uint64(parentBlock.Height)
-	v, err := a.bitmapTargetCoverageContext(ctx, bitmapTargetCoverageQuery{Axis: "transactions", District: &target, From: 0, To: 3, Pixels: 4})
-	if err != nil || v.State != "ready" || !v.QueryComplete || v.Bins[1].Winners != 1 || v.Bins[1].Unknown != 0 || v.Snapshot.Height != childBlock.Height {
-		t.Fatal("Parcel target transaction differs from reveal block", v, err)
+	q := bitmapTargetCoverageQuery{Axis: "transactions", District: &target, From: 0, To: 3, Pixels: 4}
+	// This fixture uses the legacy authenticated v2 parent receipt and actual
+	// legacy writer. Keep testing its positive winner-to-transaction mapping at
+	// the evidence-reader boundary; it is not a replay-v3 proof fixture.
+	position := uint64(1)
+	key := bitmapTargetKey(target, &position)
+	pages := filepath.Join(parcel.dir, "pages")
+	var winner bitmapDevelopmentCandidate
+	found, err := newOrdinalTree(pages, parcel.head.WinnerRoot).get(key, &winner)
+	if err != nil || !found {
+		t.Fatal("legacy selected Parcel missing from winner tree", found, err)
 	}
-	for _, i := range []int{0, 2, 3} {
-		if v.Bins[i].Winners != 0 || v.Bins[i].Unknown != 1 {
-			t.Fatal("missing positions must remain unknown", v)
-		}
+	encoded, err := json.Marshal(winner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := &bitmapTargetReadBudget{ctx: ctx, limits: bitmapTargetDefaultLimits, anchors: map[int64]string{}, trees: map[string]*ordinalTree{}}
+	resolved, err := a.bitmapTargetWinner(ctx, budget, pages, parcel.head, q, ordinalKV{Key: key, Value: encoded}, a.addressSelectedHashes(ctx, a.currentChainAuthority()))
+	if err != nil || resolved != position {
+		t.Fatal("legacy Parcel target transaction differs from reveal block", resolved, err)
+	}
+	// Public transaction-axis queries use only validated replay-v3 identities.
+	// The retained older winner must not appear as a newly validated Parcel.
+	v, err := a.bitmapTargetCoverageContext(ctx, q)
+	winners, unknown := bitmapTargetSum(v)
+	if err != nil || v.Instance != bitmapReplayParcelID || v.State != "not_built" || v.Snapshot != nil || winners != 0 || unknown != 4 {
+		t.Fatal("legacy winner leaked into replay target coverage", v, err)
 	}
 }
 func TestBitmapTargetCoverageHTTPBoundsAndNoMutation(t *testing.T) {

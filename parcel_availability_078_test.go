@@ -218,7 +218,6 @@ func Test078ParcelsHTTPActivationRejected(t *testing.T) {
 	request := `{"consumers":[{"index":"` + bitmapStandardParcelID + `","armed":true,"live":true}]}`
 	for _, tc := range []struct{ path, body string }{
 		{"run/prepare", request}, {"run/plan", request}, {"run/start", `{"request":` + request + `}`},
-		{"run/amend", `{"consumers":[{"index":"` + bitmapStandardParcelID + `","armed":true}]}`},
 		{"plan", `{"index":"` + bitmapStandardParcelID + `"}`},
 		{"build", `{"index":"blocks","outputs":["` + bitmapStandardParcelID + `"]}`},
 		{"live", `{"index":"` + bitmapStandardParcelID + `","action":"enable"}`},
@@ -227,6 +226,22 @@ func Test078ParcelsHTTPActivationRejected(t *testing.T) {
 		if response.Code < 400 || !strings.Contains(response.Body.String(), "Parcels indexing is disabled") {
 			t.Fatal(tc.path, response.Code, response.Body.String())
 		}
+	}
+	// The public amendment endpoint now fences all active-run revisions before
+	// inspecting a requested consumer. It must reject the legacy Parcel choice
+	// without changing any saved run state, even though the error is general.
+	runPath := indexRunPath(a.dataDir)
+	before, beforeErr := os.ReadFile(runPath)
+	if beforeErr != nil && !os.IsNotExist(beforeErr) {
+		t.Fatal(beforeErr)
+	}
+	amend := indexInterfaceCall(h, "POST", "/api/v1/index/run/amend", `{"consumers":[{"index":"`+bitmapStandardParcelID+`","armed":true}]}`)
+	if amend.Code != http.StatusConflict || !strings.Contains(amend.Body.String(), "active-run revisions require review") {
+		t.Fatal("run/amend bypassed the active-run review fence", amend.Code, amend.Body.String())
+	}
+	after, afterErr := os.ReadFile(runPath)
+	if (beforeErr == nil) != (afterErr == nil) || (afterErr != nil && !os.IsNotExist(afterErr)) || string(before) != string(after) {
+		t.Fatal("rejected amendment changed saved run state", beforeErr, afterErr)
 	}
 	w := indexInterfaceCall(h, "GET", "/api/v1/index/rules?index="+bitmapStandardParcelID, "")
 	var definition indexDefinition

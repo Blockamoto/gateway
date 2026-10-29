@@ -60,7 +60,7 @@ async function run() {
   for(const index of hiddenIDs){
     ix.live=[{index,enabled:true,state:'synced',tip_fresh:true,lag_known:true,lag:0}];
     ix.job={id:'retained-job',index,state:'paused',height:792435,error:'Saved Parcel work'};
-    ix.errors=['Parcels unavailable','ordinary source error'];
+    ix.errors=['ordinary source error'];
     await next();
     assert.doesNotMatch(state.innerHTML,/parcel/i,'Saved generations and restored Live jobs never appear on Home');
     assert.match(state.innerHTML,/Nothing is being maintained yet/);assert.match(state.innerHTML,/ordinary source error/);
@@ -75,8 +75,13 @@ async function run() {
   assert.equal(visible.job.id,undefined);assert.equal(visible.jobs.length,1);assert.equal(visible.instances.length,1);assert.equal(visible.definitions.length,0);
   assert.equal(JSON.stringify(ix),unchanged,'UI filtering leaves saved API documents untouched');
   await next();assert.doesNotMatch(state.innerHTML,/saved-custom-alias|parcel/i,'Metadata-defined aliases stay hidden');
-  ix.job={id:'parent',index:'blocks',state:'paused',height:792435,error:'Hidden Parcel output unavailable'};
-  await next();assert.match(state.innerHTML,/blocks job paused/);assert.doesNotMatch(state.innerHTML,/parcel/i,'Parent error text never advertises hidden work');
+  ix.job={id:'parent',index:'blocks',state:'paused',height:792435,error:'Bitmap Parcels proof unavailable'};
+  await next();assert.match(state.innerHTML,/blocks job paused/);assert.match(state.innerHTML,/Bitmap Parcels proof unavailable/,'Relevant Parcel errors remain visible on parent jobs');
+  ix.errors=['Bitmap profiles: bitmap-parcels-standard-v1-replay <unavailable>'];
+  ix.job={id:'replay',index:'bitmap-parcels-standard-v1-replay',state:'paused',height:792435,error:'proof unavailable'};
+  await next();assert.match(state.innerHTML,/bitmap-parcels-standard-v1-replay job paused/,'Validated Parcel replay activity remains visible');
+  assert.match(state.innerHTML,/Bitmap profiles: bitmap-parcels-standard-v1-replay &lt;unavailable&gt;/,'Parcel status diagnostics remain visible and escaped');
+  assert.match(sandbox.window.GatewayWorkspace.jobCard(ix.job),/Bitmap Parcels/,'Validated Parcel replay appears on the activity card');
 
   fail = true;
   await next();

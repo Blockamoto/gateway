@@ -69,6 +69,12 @@ func Test076AddressJobsBuildFromSavedStateAndSparseHistoryOffline(t *testing.T) 
 			t.Fatal("invalid current range accepted", request)
 		}
 	}
+	if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{
+		{Index: "utxo-state", Armed: true, Live: true},
+		{Index: "address-state", Armed: true},
+	}}); err != nil {
+		t.Fatal(err)
+	}
 	j, err := a.startIndexBuild(indexBuildRequest{Index: "address-state"})
 	if err != nil {
 		t.Fatal(err)
@@ -83,6 +89,7 @@ func Test076AddressJobsBuildFromSavedStateAndSparseHistoryOffline(t *testing.T) 
 	if err != nil || out.State != "ready" || out.CurrentBalanceSats == nil || *out.CurrentBalanceSats != 0 || out.Snapshot.BlockHash != b.Hash || out.Snapshot.ConsensusValidated {
 		t.Fatal(out, err)
 	}
+	armLegacyBuildTracks(t, a, indexBuildRequest{Index: "address-history"})
 	history, err := a.startIndexBuild(indexBuildRequest{Index: "address-history", From: int64Pointer076(0), To: int64Pointer076(0)})
 	if err != nil {
 		t.Fatal(err)

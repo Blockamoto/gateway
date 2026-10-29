@@ -36,9 +36,31 @@ func setBrowse073(t *testing.T, a *app, id string, on bool) {
 		t.Fatal(err)
 	}
 }
+
+// Put synthetic selected headers at eligible inscription heights; the bytes are
+// unchanged, but the fixture is not asserting impossible mainnet inscriptions.
+func browseOriginFixture073(t *testing.T, count int) (*app, [][]byte, []string) {
+	t.Helper()
+	a, raws, hashes := timelineFixture(t, count)
+	f, err := os.OpenFile(a.headersPath, os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, raw := range raws {
+		if _, err = f.WriteAt(raw[:80], (firstMainnetInscriptionHeight+int64(i))*80); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a.status.HeaderHeight = firstMainnetInscriptionHeight + int64(count) - 1
+	a.status.HeaderCount = a.status.HeaderHeight + 1
+	return a, raws, hashes
+}
 func Test073BrowseOptInIndependentSparseAndRestart(t *testing.T) {
-	a, _, hashes := timelineFixture(t, 7)
-	b2, b5 := browseBlock073(t, 2, hashes[2]), browseBlock073(t, 5, hashes[5])
+	a, _, hashes := browseOriginFixture073(t, 7)
+	b2, b5 := browseBlock073(t, firstMainnetInscriptionHeight+2, hashes[2]), browseBlock073(t, firstMainnetInscriptionHeight+5, hashes[5])
 	assertResults := func(got []indexBrowseResult, want map[string]string) {
 		t.Helper()
 		if len(got) != len(want) {
@@ -60,7 +82,7 @@ func Test073BrowseOptInIndependentSparseAndRestart(t *testing.T) {
 	}
 	setBrowse073(t, a, "tx-locator", true)
 	assertResults(a.indexBrowsedBlock(context.Background(), b2, nil), map[string]string{"tx-locator": "indexed"})
-	if _, available, err := a.browsedBatchContext(context.Background(), "inscriptions", 2, hashes[2]); err != nil || available {
+	if _, available, err := a.browsedBatchContext(context.Background(), "inscriptions", firstMainnetInscriptionHeight+2, hashes[2]); err != nil || available {
 		t.Fatal("TX preference enabled inscriptions", available, err)
 	}
 	setBrowse073(t, a, "inscriptions", true)
@@ -72,7 +94,7 @@ func Test073BrowseOptInIndependentSparseAndRestart(t *testing.T) {
 			t.Fatal("browsing advanced sequential resume", id, s, err)
 		}
 		track := timelineTrack(t, a.indexTimeline(indexDefinitions(), nil, nil), id)
-		if !reflect.DeepEqual(track.Coverage, []heightInterval{{2, 2}, {5, 5}}) || !reflect.DeepEqual(track.Gaps, []heightInterval{{0, 1}, {3, 4}, {6, 6}}) {
+		if !reflect.DeepEqual(track.Coverage, []heightInterval{{767432, 767432}, {767435, 767435}}) || !reflect.DeepEqual(track.Gaps, []heightInterval{{0, 767431}, {767433, 767434}, {767436, 767436}}) {
 			t.Fatal("invented sparse coverage", track)
 		}
 		provider := indexProviderRow(t, a.indexProviderViews(), id, "gateway_browsed_index")
@@ -80,20 +102,20 @@ func Test073BrowseOptInIndependentSparseAndRestart(t *testing.T) {
 			t.Fatal("browsed provider lost exact private coverage", provider)
 		}
 	}
-	b, available, err := a.browsedBatchContext(context.Background(), "inscriptions", 2, hashes[2])
-	if err != nil || !available || !reflect.DeepEqual(b.InscriptionCoordinates, []string{"1i0.2", "1i1.2"}) || len(b.Inscriptions) != 0 || b.Numbering != nil {
+	b, available, err := a.browsedBatchContext(context.Background(), "inscriptions", firstMainnetInscriptionHeight+2, hashes[2])
+	if err != nil || !available || !reflect.DeepEqual(b.InscriptionCoordinates, []string{"1i0.767432", "1i1.767432"}) || len(b.Inscriptions) != 0 || b.Numbering != nil {
 		t.Fatal("browse inscriptions not lean", b, available, err)
 	}
-	value, err := a.indexQueryBlock(context.Background(), "inscriptions", 2, 1000)
+	value, err := a.indexQueryBlock(context.Background(), "inscriptions", firstMainnetInscriptionHeight+2, 1000)
 	if err != nil || value.(map[string]any)["known"] != true || value.(map[string]any)["transaction_count"] != uint32(2) {
 		t.Fatal(value, err)
 	}
 	locations, err := a.browsedTransactionLocations(context.Background(), b2.Transactions[1].TxID, "", -1)
-	if err != nil || len(locations) != 1 || locations[0].TxIndex != 1 || locations[0].Height != 2 {
+	if err != nil || len(locations) != 1 || locations[0].TxIndex != 1 || locations[0].Height != firstMainnetInscriptionHeight+2 {
 		t.Fatal(locations, err)
 	}
 	setBrowse073(t, a, "tx-locator", false)
-	b3 := browseBlock073(t, 3, hashes[3])
+	b3 := browseBlock073(t, firstMainnetInscriptionHeight+3, hashes[3])
 	got := a.indexBrowsedBlock(context.Background(), b3, nil)
 	if len(got) != 1 || got[0].Index != "inscriptions" {
 		t.Fatal("independent off ignored", got)
@@ -108,15 +130,15 @@ func Test073BrowseOptInIndependentSparseAndRestart(t *testing.T) {
 			t.Fatal("restart lost policy", p)
 		}
 	}
-	if _, available, err := restarted.browsedBatchContext(context.Background(), "tx-locator", 2, hashes[2]); err != nil || !available {
+	if _, available, err := restarted.browsedBatchContext(context.Background(), "tx-locator", firstMainnetInscriptionHeight+2, hashes[2]); err != nil || !available {
 		t.Fatal("turning off deleted retained data", available, err)
 	}
 }
 func Test073BrowseConcurrentDedupReorgAndTampering(t *testing.T) {
-	a, raws, hashes := timelineFixture(t, 4)
+	a, raws, hashes := browseOriginFixture073(t, 4)
 	setBrowse073(t, a, "tx-locator", true)
 	setBrowse073(t, a, "inscriptions", true)
-	b := browseBlock073(t, 2, hashes[2])
+	b := browseBlock073(t, firstMainnetInscriptionHeight+2, hashes[2])
 	var workers sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		workers.Add(1)
@@ -138,7 +160,7 @@ func Test073BrowseConcurrentDedupReorgAndTampering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.WriteAt(raws[1][:80], 2*80)
+	_, err = f.WriteAt(raws[1][:80], (firstMainnetInscriptionHeight+2)*80)
 	f.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +176,7 @@ func Test073BrowseConcurrentDedupReorgAndTampering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.WriteAt(raws[2][:80], 2*80)
+	_, err = f.WriteAt(raws[2][:80], (firstMainnetInscriptionHeight+2)*80)
 	f.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -163,16 +185,16 @@ func Test073BrowseConcurrentDedupReorgAndTampering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(s.dir, "commits", head.Blocks["2"]+".json")
+	path := filepath.Join(s.dir, "commits", head.Blocks["767432"]+".json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw = bytes.Replace(raw, []byte("1i0.2"), []byte("1i0.3"), 1)
+	raw = bytes.Replace(raw, []byte("1i0.767432"), []byte("1i0.767433"), 1)
 	if err = os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err = a.browsedBatchContext(context.Background(), "inscriptions", 2, hashes[2]); err == nil {
+	if _, _, err = a.browsedBatchContext(context.Background(), "inscriptions", firstMainnetInscriptionHeight+2, hashes[2]); err == nil {
 		t.Fatal("changed coordinate receipt accepted")
 	}
 	if got := timelineTrack(t, a.indexTimeline(indexDefinitions(), nil, nil), "inscriptions"); len(got.Coverage) != 0 || got.CoverageComplete {

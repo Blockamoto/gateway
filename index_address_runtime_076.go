@@ -513,7 +513,15 @@ func (a *app) runAddressIndexBuild(ctx context.Context, j indexJob) {
 					finish("failed", err)
 					return
 				}
-				block, err := a.indexSourceBlock(ctx, target, j.Retention)
+				// The fetched body also feeds armed sparse tracks. Defer that fanout
+				// until this job commits its own history writer, then reopen it in
+				// case another queued body advanced the history during the drain.
+				work, drain := a.withDeferredBlockIngestion(ctx)
+				block, err := a.indexSourceBlock(work, target, j.Retention)
+				if err == nil {
+					err = store.CommitBlockContext(ctx, block, hashAt)
+				}
+				drain()
 				if err != nil {
 					if ctx.Err() != nil {
 						finish("paused", nil)
@@ -522,12 +530,9 @@ func (a *app) runAddressIndexBuild(ctx context.Context, j indexJob) {
 					}
 					return
 				}
-				if err = store.CommitBlockContext(ctx, block, hashAt); err != nil {
-					if ctx.Err() != nil {
-						finish("paused", nil)
-					} else {
-						finish("failed", err)
-					}
+				store, err = openAddressHistoryStoreContext(ctx, a.dataDir)
+				if err != nil {
+					finish("failed", err)
 					return
 				}
 			}

@@ -1177,6 +1177,21 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 		if a.indexRunState.Run.Consumers[i].AdmissionState == "blocked" {
 			continue
 		}
+		// Resume retains the admitted range and the freshly reviewed Raw head.
+		if a.indexRunState.Run.Consumers[i].Index == "blocks" {
+			for _, reviewed := range plan.Consumers {
+				if reviewed.Index == "blocks" {
+					a.indexRunState.Run.Consumers[i].SavedCoverageState = reviewed.SavedCoverageState
+					a.indexRunState.Run.Consumers[i].Commitment = reviewed.Commitment
+					a.indexRunState.Run.Consumers[i].Height = reviewed.Height
+					a.indexRunState.Run.Consumers[i].BlockHash = reviewed.BlockHash
+					a.indexRunState.Run.Consumers[i].NextRequiredHeight = reviewed.NextRequiredHeight
+					a.indexRunState.Run.Consumers[i].MissingRanges = reviewed.MissingRanges
+					a.indexRunState.Run.Consumers[i].ReusedBlocks = reviewed.ReusedBlocks
+					break
+				}
+			}
+		}
 		a.indexRunState.Run.Consumers[i].State = "ready"
 		a.indexRunState.Run.Consumers[i].Reason = ""
 	}

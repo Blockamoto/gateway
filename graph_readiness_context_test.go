@@ -74,25 +74,31 @@ func Test078RelationshipReadinessGraphCoreAnchorUsesRequestContext(t *testing.T)
 		}
 		_ = json.NewDecoder(r.Body).Decode(&q)
 		methods <- q.Method
-		select {
-		case <-r.Context().Done():
-		case <-time.After(time.Second):
-		}
+		<-r.Context().Done()
 	}))
 	defer server.Close()
 	a.settings = testRPCSettings050(t, server.URL)
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	got := a.relationshipReadinessFor(ctx, relationshipTxProof{Height: 1, Hash: testID(78004), Inputs: []inputView{{N: 0, PrevTxID: genesis.Transactions[0].TxID}}})
-	if len(got.Inputs) != 1 || got.Inputs[0].Available || !errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		t.Fatal(got, ctx.Err())
-	}
+	result := make(chan relationshipReadiness, 1)
+	go func() {
+		result <- a.relationshipReadinessFor(ctx, relationshipTxProof{Height: 1, Hash: testID(78004), Inputs: []inputView{{N: 0, PrevTxID: genesis.Transactions[0].TxID}}})
+	}()
 	select {
 	case method := <-methods:
 		if method != "getblockhash" {
 			t.Fatal("readiness entered unbounded legacy Core inspection", method)
 		}
-	default:
-		t.Fatal("graph selected-chain anchor was not checked")
+	case <-time.After(5 * time.Second):
+		t.Fatal("graph selected-chain anchor was not checked within the test timeout")
+	}
+	cancel()
+	select {
+	case got := <-result:
+		if len(got.Inputs) != 1 || got.Inputs[0].Available || !errors.Is(ctx.Err(), context.Canceled) {
+			t.Fatal(got, ctx.Err())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("readiness did not return after its request was canceled")
 	}
 }

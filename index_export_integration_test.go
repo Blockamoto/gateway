@@ -38,7 +38,7 @@ func exportTestInscriptionFixture(t *testing.T, mode string) (*app, *indexStore,
 	script := inscriptionTestScript([]byte{1}, []byte("text/plain"), nil, []byte("export body"))
 	tx := inscriptionTestTx(append(append([]byte{}, script...), script...))
 	b := inscriptionTestBlock(tx)
-	b.Height, b.PreviousBlockHash = 42, indexDigest("export previous block")
+	b.Height, b.PreviousBlockHash = 767430, indexDigest("export previous block")
 	installRunProtocolHeader(t, a, &b)
 	s, err := openIndexStore(a.dataDir, "inscriptions")
 	if err != nil {
@@ -158,10 +158,10 @@ func TestIndexExportIntegrationInscriptionsMultipleOccurrencesAndLookupOnly(t *t
 			a, _, block := exportTestInscriptionFixture(t, mode)
 			before := exportTestFiles(t, a.dataDir)
 			meta, native := exportTestArtifact(t, a, indexExportRequest{Index: "inscriptions", Representation: "native"})
-			if meta.Blocks != 1 || meta.Rows != 3 || !reflect.DeepEqual(meta.Coverage, []heightInterval{{42, 42}}) {
+			if meta.Blocks != 1 || meta.Rows != 3 || !reflect.DeepEqual(meta.Coverage, []heightInterval{{767430, 767430}}) {
 				t.Fatal(meta)
 			}
-			if native[0]["id"] != "1i0.42" || native[1]["id"] != "1i1.42" || native[2]["type"] != "source_block" {
+			if native[0]["id"] != "1i0.767430" || native[1]["id"] != "1i1.767430" || native[2]["type"] != "source_block" {
 				t.Fatal(native)
 			}
 			for _, row := range native[:2] {
@@ -173,7 +173,7 @@ func TestIndexExportIntegrationInscriptionsMultipleOccurrencesAndLookupOnly(t *t
 			}
 			missing, err := a.indexExportReview(context.Background(), indexExportRequest{Index: "inscriptions", Representation: "conventional"})
 			if mode == "lean" {
-				if err != nil || missing.Ready || missing.Complete || missing.MissingCount != 2 || missing.LookupRange == nil || *missing.LookupRange != (heightInterval{42, 42}) || len(missing.Requirements) != 1 || missing.Requirements[0].Index != "tx-locator" {
+				if err != nil || missing.Ready || missing.Complete || missing.MissingCount != 2 || missing.LookupRange == nil || *missing.LookupRange != (heightInterval{767430, 767430}) || len(missing.Requirements) != 1 || missing.Requirements[0].Index != "tx-locator" {
 					t.Fatal(missing, err)
 				}
 				q := indexExportRequest{Index: "inscriptions", Representation: "conventional", Snapshot: missing.Snapshot}
@@ -265,12 +265,12 @@ func TestIndexExportIntegrationPinnedProgressRestartAndStagedLookup(t *testing.T
 	body, _ := json.Marshal(q)
 	w := httptest.NewRecorder()
 	a.handleIndexExportDownload(w, indexExportHTTPTestRequest("POST", "download", string(body)))
-	if w.Code != 200 || w.Header().Get("X-Gateway-Export-Snapshot") != old.Snapshot || w.Header().Get("X-Gateway-Export-SHA256") != oldPin.digest || int64(w.Body.Len()) != oldPin.size || !strings.Contains(w.Body.String(), `"block_height":42`) || strings.Contains(w.Body.String(), `"block_height":43`) {
+	if w.Code != 200 || w.Header().Get("X-Gateway-Export-Snapshot") != old.Snapshot || w.Header().Get("X-Gateway-Export-SHA256") != oldPin.digest || int64(w.Body.Len()) != oldPin.size || !strings.Contains(w.Body.String(), `"block_height":767430`) || strings.Contains(w.Body.String(), `"block_height":767431`) {
 		t.Fatal("append invalidated the reviewed snapshot", w.Code, w.Body.String())
 	}
 	q.Snapshot = ""
 	meta, rows := exportTestArtifact(t, a, q)
-	if meta.Snapshot == old.Snapshot || meta.Blocks != 2 || len(rows) != 4 || !reflect.DeepEqual(meta.Coverage, []heightInterval{{42, 43}}) {
+	if meta.Snapshot == old.Snapshot || meta.Blocks != 2 || len(rows) != 4 || !reflect.DeepEqual(meta.Coverage, []heightInterval{{767430, 767431}}) {
 		t.Fatal(meta, rows)
 	}
 	restarted := &app{dataDir: a.dataDir, headersPath: a.headersPath, settings: a.settings}
@@ -557,7 +557,7 @@ func TestIndexExportIntegrationCoherentFullBrowseOverridesLeanRangeOnce(t *testi
 	before := exportTestFiles(t, a.dataDir)
 	for _, representation := range []string{"native", "conventional"} {
 		meta, rows := exportTestArtifact(t, a, indexExportRequest{Index: "inscriptions", Representation: representation})
-		if meta.Blocks != 1 || meta.Rows != 3 || !reflect.DeepEqual(meta.Coverage, []heightInterval{{42, 42}}) {
+		if meta.Blocks != 1 || meta.Rows != 3 || !reflect.DeepEqual(meta.Coverage, []heightInterval{{767430, 767430}}) {
 			t.Fatal("overlapping saved coverage duplicated", meta)
 		}
 		for _, row := range rows[:2] {

@@ -653,6 +653,40 @@ func (a *app) reconcileRunConsumerUncached(ctx context.Context, c *indexRunConsu
 	}
 	if c.store != nil {
 		c.store.locatorContext = ctx
+		if c.selection.Index == "blocks" && !c.reconciled {
+			if c.store.checkpoint == nil && c.progress.Commitment != "" || c.store.checkpoint != nil && (!validHash(c.progress.Commitment) || c.store.checkpoint.Commitment != c.progress.Commitment) {
+				return fmt.Errorf("Raw checkpoint changed after review; stop and review the run again")
+			}
+		}
+		if c.selection.Index == "blocks" && c.progress.SavedCoverageState == "changed" {
+			if c.store.checkpoint == nil || c.progress.NextRequiredHeight == nil || !validHash(c.progress.Commitment) || c.store.checkpoint.Commitment != c.progress.Commitment {
+				return fmt.Errorf("reviewed Raw reconciliation boundary is unavailable")
+			}
+			next, err := a.reviewRawReorg079(ctx, c.store.checkpoint, hashAt)
+			if err != nil || next != *c.progress.NextRequiredHeight {
+				return fmt.Errorf("Raw reconciliation boundary changed; stop and review the run again")
+			}
+			if err := c.store.reconcile(hashAt); err != nil {
+				return err
+			}
+			c.progress.SavedCoverageState = "selected_chain"
+			return nil
+		}
+		if c.selection.Index == "blocks" && c.store.checkpoint != nil {
+			state := indexRunSavedAnchorState079(c.store.checkpoint, hashAt)
+			if state != "selected_chain" {
+				if state != "changed" {
+					return fmt.Errorf("selected-chain evidence is unavailable for Raw reconciliation")
+				}
+				if !c.reconciled {
+					return fmt.Errorf("Raw selected-chain anchor changed after review; stop and review the run again")
+				}
+				next, err := a.reviewRawReorg079(ctx, c.store.checkpoint, hashAt)
+				if err != nil || next < c.progress.From {
+					return fmt.Errorf("Raw reconciliation needs evidence or a boundary outside the admitted range; stop and review the run again")
+				}
+			}
+		}
 		if c.selection.Index == "sat-state" {
 			return c.store.reconcileSatStateSelected(ctx, authority.Height, hashAt)
 		}

@@ -200,11 +200,15 @@ func Test078FlowCompleteVerifiedBlockFeedsAlreadyArmedTracks(t *testing.T) {
 			t.Fatal("flow advanced indexing", id, err)
 		}
 	}
-	for _, id := range []string{"tx-locator", "inscriptions"} {
-		_, head, e := a.browseStore(id)
-		if e != nil || len(head.Blocks) != 1 || head.Blocks["0"] == "" {
-			t.Fatal("complete flow source did not feed existing armed sparse owner", id, head, e)
-		}
+	_, locatorHead, err := a.browseStore("tx-locator")
+	if err != nil || len(locatorHead.Blocks) != 1 || locatorHead.Blocks["0"] == "" {
+		t.Fatal("complete flow source did not feed armed TX locator", locatorHead, err)
+	}
+	// Genesis predates the inscription origin; viewing it must not publish
+	// inscription coverage even when that sparse owner is armed.
+	_, inscriptionHead, err := a.browseStore("inscriptions")
+	if err != nil || len(inscriptionHead.Blocks) != 0 {
+		t.Fatal("pre-origin flow published inscription coverage", inscriptionHead, err)
 	}
 	if doc := a.indexRunSnapshot(); doc.Run != nil {
 		t.Fatal("flow started a background range", doc.Run)

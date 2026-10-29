@@ -79,6 +79,41 @@ func indexRunSavedAnchorState079(head *indexCheckpoint, selected func(int64) (st
 	return "selected_chain"
 }
 
+// Review the exact Raw rewind without changing its head. The worker performs
+// the actual reconciliation after admission and rechecks selected-chain hashes.
+// Limit metadata reads so a deep or damaged history cannot make planning an
+// unbounded scan. A missing selected ancestor means restarting at the store's
+// original boundary, not fabricating a compatible prefix.
+func (a *app) reviewRawReorg079(ctx context.Context, head *indexCheckpoint, selected func(int64) (string, error)) (int64, error) {
+	store, err := indexStoreHead(a.dataDir, "blocks")
+	if err != nil || store.checkpoint == nil || store.checkpoint.Commitment != head.Commitment {
+		return 0, fmt.Errorf("Raw checkpoint changed during reconciliation review")
+	}
+	next := head.PreviousCommitment
+	for count := int64(0); next != ""; count++ {
+		if count >= indexRunSparseReviewLimit079 {
+			return 0, fmt.Errorf("Raw reconciliation review exceeds the bounded checkpoint limit")
+		}
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		batch, err := store.readBatch(next)
+		if err != nil {
+			return 0, err
+		}
+		checkpoint := batch.Checkpoint
+		hash, err := selected(checkpoint.Height)
+		if err != nil || !validHash(hash) {
+			return 0, fmt.Errorf("selected-chain evidence is unavailable for Raw reconciliation")
+		}
+		if strings.EqualFold(hash, checkpoint.BlockHash) {
+			return checkpoint.Height + 1, nil
+		}
+		next = checkpoint.PreviousCommitment
+	}
+	return head.From, nil
+}
+
 // Refine the review using the same sparse-coverage sources the worker uses.
 // This never reconciles, repairs, backfills or changes an index on disk.
 func (a *app) refineRunCoverage079(ctx context.Context, q *indexRunProgress, choice indexRunSelection, head *indexCheckpoint, target int64) error {
@@ -87,6 +122,27 @@ func (a *app) refineRunCoverage079(ctx context.Context, q *indexRunProgress, cho
 	}
 	q.SavedCoverageState = indexRunSavedAnchorState079(head, a.addressSelectedHashes(ctx, a.currentChainAuthority()))
 	if head != nil && q.SavedCoverageState != "selected_chain" {
+		if q.Index == "blocks" && q.SavedCoverageState == "changed" && (q.State == "ready" || q.State == "complete") {
+			next, err := a.reviewRawReorg079(ctx, head, a.addressSelectedHashes(ctx, a.currentChainAuthority()))
+			if err == nil && next >= q.From {
+				q.State = "ready"
+				q.ReusedBlocks = 0
+				q.NextRequiredHeight = &next
+				q.MissingRanges = nil
+				if next <= target {
+					q.MissingRanges = []heightInterval{{From: next, To: target}}
+				}
+				q.Reason = fmt.Sprintf("Saved Raw coverage is on a different chain. Starting will reconcile it first, then process from block %d within the reviewed window.", next)
+				return nil
+			}
+			if err == nil {
+				indexRunBlockUnverifiedCoverage079(q, "changed", fmt.Sprintf("Raw reconciliation needs block %d before In; move In back and review again.", next))
+				q.RequiresLeadIn = true
+				return nil
+			}
+			indexRunBlockUnverifiedCoverage079(q, "unavailable", "Raw reconciliation could not be reviewed: "+err.Error())
+			return nil
+		}
 		reason := "The selected-chain anchor for the saved checkpoint is unavailable. Check chain evidence before reusing coverage."
 		if q.SavedCoverageState == "changed" {
 			reason = "The saved checkpoint belongs to a different selected chain. Review its reconciliation before reusing coverage."

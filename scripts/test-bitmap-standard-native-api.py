@@ -153,7 +153,8 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     assert len(GENESIS) == 285
     checks, calls, runtime, profile = [], [], None, None
-    fixed = {'bitmap-districts-standard-v1': 'district', 'bitmap-parcels-standard-v1': 'parcel'}
+    fixed = {'bitmap-districts-standard-v1': 'district', 'bitmap-parcels-standard-v1': 'parcel',
+             'bitmap-parcels-standard-v1-replay': 'parcel'}
     previous = {'bitmap-districts-canonical-v2': 'district', 'bitmap-parcels-canonical-v2': 'parcel',
                 'bitmap-districts-canonical': 'district', 'bitmap-parcels-canonical': 'parcel'}
     chains = {'bitmap-district-chain-dev-v1': 'chain', 'bitmap-parcel-chain-dev-v1': 'chain'}
@@ -167,10 +168,10 @@ def main():
         assert set(instances) == set(fixed) | set(previous) | set(chains) | set(FIXED)
         for identity, kind in fixed.items():
             item = instances[identity]
-            assert item['kind'] == kind and item['execution_available'] is (kind == 'district') and not item.get('rules_editable')
-            if kind == 'parcel':
+            assert item['kind'] == kind and item['execution_available'] is (kind == 'district' or identity.endswith('-replay')) and not item.get('rules_editable')
+            if identity == 'bitmap-parcels-standard-v1':
                 assert item.get('execution_unavailable_reason')
-            assert item['label'] == ('Bitmap Districts Standard V1' if kind == 'district' else 'Bitmap Parcels Standard V1')
+            assert item['label'] == ('Bitmap Districts' if kind == 'district' else 'Bitmap Parcels')
             assert len(item['profile_hash']) == 64
             pinned = '335958311eb1c8ce4d14c48bc5c21d23c7a4b134'
             assert item['profile']['reference_revision'] == pinned
@@ -196,16 +197,16 @@ def main():
             if identity in chains:
                 assert 'methodology is being developed' in instances[identity]['execution_unavailable_reason']
         assert runtime.call('/api/v1/bitmap/view?kind=district')['instance'] == 'bitmap-districts-standard-v1'
-        assert runtime.call('/api/v1/bitmap/view?kind=parcel')['instance'] == 'bitmap-parcels-standard-v1'
+        assert runtime.call('/api/v1/bitmap/view?kind=parcel')['instance'] == 'bitmap-parcels-standard-v1-replay'
         assert set(initial['chain_metadata']) == set(chains)
-        checks.append('current District/Parcel identities start at 792435 with six/seven published rules; District execution is available and Parcel execution is deferred; previous hashes remain unchanged and chains are inspect-only')
+        checks.append('current District and replay Parcel identities start at 792435 with six/seven published rules; legacy Parcel execution is deferred; previous hashes remain unchanged and chains are inspect-only')
         status = runtime.call('/api/v1/index/status')
         definitions = {i['id']: i for i in status['definitions']}
         assert not status['jobs'] and not status['run'].get('run')
         for identity, kind in fixed.items():
-            assert definitions[identity]['buildable'] is (kind == 'district')
+            assert definitions[identity]['buildable'] is (kind == 'district' or identity.endswith('-replay'))
             assert not definitions[identity].get('locked'), 'Saved rules remain readable even when execution is deferred'
-            if kind == 'parcel':
+            if identity == 'bitmap-parcels-standard-v1':
                 assert definitions[identity].get('lock_reason')
             assert definitions[identity]['metadata'] and definitions[identity]['source_url']
         for identity in FIXED | previous | chains:
@@ -225,7 +226,18 @@ def main():
             if identity == 'bitmap-parcels-standard-v1':
                 assert all('Parcels indexing is disabled' in result['error'] for result in results)
         assert preserved_files(profile) == before
-        checks.append('creation/editing/drafts/validation/comparison routes refuse work; Parcel, all chain, previous-generation and custom admission routes refuse execution without mutating evidence')
+        checks.append('creation/editing/drafts/validation/comparison routes refuse work; legacy Parcel, all chain, previous-generation and custom admission routes refuse execution without mutating evidence')
+        replay = selection('bitmap-parcels-standard-v1-replay')
+        replay_request = dict(consumers=[selection('bitmap-districts-standard-v1'), selection('blocks'), replay])
+        missing = runtime.call('/api/v1/index/run/plan', replay_request, expected=400)
+        assert 'one selected proof route' in missing['error']
+        replay['parcel_evidence_route'] = 'retained-raw'
+        plan = runtime.call('/api/v1/index/run/plan', replay_request)
+        replay_plan = next(c for c in plan['consumers'] if c['index'] == replay['index'])
+        assert not plan['ready'] and plan['requires_genesis'] and plan['parcel_district']['district_selected']
+        assert replay_plan['origin_height'] == 792435 and replay_plan['district_instance'] == 'bitmap-districts-standard-v1'
+        assert preserved_files(profile) == before and not runtime.call('/api/v1/index/run').get('run')
+        checks.append('replay Parcel requires one explicit evidence route and selected District; a genesis-only missing-prefix plan cannot start work')
         request = dict(consumers=[selection('bitmap-districts-standard-v1')])
         runtime.call('/api/v1/index/run/prepare', request)
         plan = runtime.call('/api/v1/index/run/plan', request)
@@ -247,7 +259,7 @@ def main():
             'This fixture does not validate live indexing or source-gap retries beyond the genuine genesis-only authority.',
             'Canonical witnesses, blocator-only persistence, parent evaluation receipts and disabled-chain admission are checked by focused Go tests.'])
         (output / 'result.json').write_text(json.dumps(receipt, indent=2) + chr(10), encoding='utf-8')
-        print('Compiled Bitmap Standard V1 API PASS: District enabled, Parcel deferred, origin 792435, six/seven published rules, disabled chains, both previous canonical generations unchanged and denied custom execution.')
+        print('Compiled Bitmap API PASS: District and replay Parcel enabled, legacy Parcel deferred, origin 792435, six/seven published rules, disabled chains, previous canonical generations unchanged and custom execution denied.')
     finally:
         if runtime is not None:
             runtime.stop()

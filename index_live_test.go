@@ -37,7 +37,8 @@ func startTimelineRawLive063(t *testing.T, a *app, mode string) indexRunDocument
 	}
 	d, err := a.startIndexRun(context.Background(), req, "")
 	if err != nil {
-		t.Fatal(err)
+		plan, planErr := a.planIndexRun(context.Background(), req)
+		t.Fatalf("start: %v; plan: %+v; planning error: %v", err, plan, planErr)
 	}
 	return d
 }

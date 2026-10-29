@@ -9,7 +9,7 @@ window.GatewayWorkspace = (() => {
  const visibleIndexText=value=>value;
  function visibleIndexStatus(value={}){
   const definitions=value.definitions||[],visible=row=>!hiddenIndex(row,definitions),job=row=>!row||!visible(row)?{}:{...row,error:visibleIndexText(row.error),waiting_reason:visibleIndexText(row.waiting_reason)};
-  return {...value,definitions:definitions.filter(visible),instances:(value.instances||[]).filter(visible),live:(value.live||[]).filter(visible),jobs:(value.jobs||[]).filter(visible).map(job),job:job(value.job),errors:(value.errors||[]).filter(message=>!/parcel/i.test(String(message)))};
+  return {...value,definitions:definitions.filter(visible),instances:(value.instances||[]).filter(visible),live:(value.live||[]).filter(visible),jobs:(value.jobs||[]).filter(visible).map(job),job:job(value.job),errors:value.errors||[]};
  }
  function servingStatus(view){
   if(!view)return '';

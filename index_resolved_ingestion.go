@@ -375,8 +375,11 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 		}
 	}
 	sparse("inscriptions")
-	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID} {
+	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID, bitmapReplayParcelID} {
 		id := id
+		if id == bitmapReplayParcelID && native[id] == nil {
+			continue // Only an explicitly admitted coordinated run may do replay work.
+		}
 		apply(id, func(work context.Context, _ indexRunSelection) error {
 			work = context.WithValue(work, bitmapIngestOnlyKey{}, id)
 			return a.ingestArmedBitmapBlock(work, block, prepared.extraction)

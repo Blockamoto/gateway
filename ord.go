@@ -22,37 +22,41 @@ import (
 const ordModuleID = "a2765aa747891677136419b516a7fde8896b0cc97141cdd419cda33454f5aebcb"
 
 type ordRecord struct {
-	RevealCoordinate string          `json:"reveal_coordinate,omitempty"`
-	TxIndex          *int            `json:"tx_index,omitempty"`
-	ResolutionState  string          `json:"resolution_state,omitempty"`
-	ParserFlags      []string        `json:"parser_flags,omitempty"`
-	ViewerSession    string          `json:"viewer_session,omitempty"`
-	DependencyURL    string          `json:"dependency_status_url,omitempty"`
-	SatNumber        *uint64         `json:"sat_number,omitempty"`
-	CanonicalNumber  *int64          `json:"canonical_number,omitempty"`
-	NumberingProfile string          `json:"numbering_profile,omitempty"`
-	Schema           int             `json:"schema"`
-	VerifierVersion  int             `json:"verifier_version"`
-	ID               string          `json:"id"`
-	TxID             string          `json:"txid"`
-	Index            int             `json:"index"`
-	BlockHash        string          `json:"block_hash,omitempty"`
-	Height           int64           `json:"height"`
-	Envelope         ordEnvelope     `json:"envelope"`
-	Size             int             `json:"content_size"`
-	SHA256           string          `json:"content_sha256"`
-	Evidence         string          `json:"evidence"`
-	Provider         string          `json:"provider"`
-	Profile          string          `json:"interpretation_profile"`
-	Interpretation   string          `json:"interpretation"`
-	InitialSatpoint  *satlinePoint   `json:"initial_satpoint,omitempty"`
-	InitialState     string          `json:"initial_state,omitempty"`
-	ContentURL       string          `json:"content_url,omitempty"`
-	RawURL           string          `json:"raw_url,omitempty"`
-	PreviewURL       string          `json:"preview_url,omitempty"`
-	Note             string          `json:"note,omitempty"`
-	AdapterMetadata  json.RawMessage `json:"adapter_metadata,omitempty"`
-	Updated          time.Time       `json:"updated"`
+	BitmapAddresses      []ordBitmapAddress `json:"bitmap_addresses,omitempty"`
+	Relationships        []ordRelationship  `json:"relationships,omitempty"`
+	KnownChildren        []ordRelationship  `json:"known_children,omitempty"`
+	RelationshipCoverage string             `json:"relationship_coverage,omitempty"`
+	RevealCoordinate     string             `json:"reveal_coordinate,omitempty"`
+	TxIndex              *int               `json:"tx_index,omitempty"`
+	ResolutionState      string             `json:"resolution_state,omitempty"`
+	ParserFlags          []string           `json:"parser_flags,omitempty"`
+	ViewerSession        string             `json:"viewer_session,omitempty"`
+	DependencyURL        string             `json:"dependency_status_url,omitempty"`
+	SatNumber            *uint64            `json:"sat_number,omitempty"`
+	CanonicalNumber      *int64             `json:"canonical_number,omitempty"`
+	NumberingProfile     string             `json:"numbering_profile,omitempty"`
+	Schema               int                `json:"schema"`
+	VerifierVersion      int                `json:"verifier_version"`
+	ID                   string             `json:"id"`
+	TxID                 string             `json:"txid"`
+	Index                int                `json:"index"`
+	BlockHash            string             `json:"block_hash,omitempty"`
+	Height               int64              `json:"height"`
+	Envelope             ordEnvelope        `json:"envelope"`
+	Size                 int                `json:"content_size"`
+	SHA256               string             `json:"content_sha256"`
+	Evidence             string             `json:"evidence"`
+	Provider             string             `json:"provider"`
+	Profile              string             `json:"interpretation_profile"`
+	Interpretation       string             `json:"interpretation"`
+	InitialSatpoint      *satlinePoint      `json:"initial_satpoint,omitempty"`
+	InitialState         string             `json:"initial_state,omitempty"`
+	ContentURL           string             `json:"content_url,omitempty"`
+	RawURL               string             `json:"raw_url,omitempty"`
+	PreviewURL           string             `json:"preview_url,omitempty"`
+	Note                 string             `json:"note,omitempty"`
+	AdapterMetadata      json.RawMessage    `json:"adapter_metadata,omitempty"`
+	Updated              time.Time          `json:"updated"`
 }
 
 func (a *app) ordRoot() string               { return filepath.Join(a.dataDir, "ord") }
@@ -125,6 +129,7 @@ func (a *app) resolveInscription(ctx context.Context, id, blockHint string) (rec
 	defer func() {
 		if err == nil {
 			a.enrichOrdIdentity(&record)
+			a.enrichOrdBitmap(ctx, &record)
 		}
 	}()
 	stem := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(id)), ".bitcoin")
@@ -256,12 +261,23 @@ func (a *app) resolveInscriptionInBlock(ctx context.Context, block blockView, tx
 	return rec, nil
 }
 func (a *app) resolveOrdInitial(ctx context.Context, rec ordRecord) (satlinePoint, error) {
+	return a.resolveOrdInitialUsing(ctx, rec, contextSatlineBackend{appSatlineBackend{a}, ctx})
+}
+func (a *app) resolveOrdInitialUsing(ctx context.Context, rec ordRecord, backend satlineBackend) (satlinePoint, error) {
+	return a.resolveOrdInitialWithPolicy(ctx, rec, backend, false)
+}
+func (a *app) resolveOrdProvenanceInitialUsing(ctx context.Context, rec ordRecord, backend satlineBackend) (satlinePoint, error) {
+	return a.resolveOrdInitialWithPolicy(ctx, rec, backend, true)
+}
+func (a *app) resolveOrdInitialWithPolicy(ctx context.Context, rec ordRecord, backend satlineBackend, provenance bool) (satlinePoint, error) {
 	if rec.Provider != "bitcoin_on_demand_witness" {
 		return satlinePoint{}, fmt.Errorf("native initial location needs locally checked Bitcoin reveal evidence")
 	}
 	env := rec.Envelope
-	if state, note := inscriptionPlacementRuleState(rec.Height, env); state != "" {
-		return satlinePoint{}, fmt.Errorf("%s", note)
+	if !provenance {
+		if state, note := inscriptionPlacementRuleState(rec.Height, env); state != "" {
+			return satlinePoint{}, fmt.Errorf("%s", note)
+		}
 	}
 	block, e := a.fetchBlockAtLocationContext(ctx, rec.Height, rec.BlockHash, "Ord initial satpoint")
 	if e != nil {
@@ -274,13 +290,19 @@ func (a *app) resolveOrdInitial(ctx context.Context, rec ordRecord) (satlinePoin
 			break
 		}
 	}
-	resolver := newSatlineResolver(contextSatlineBackend{appSatlineBackend{a}, ctx})
+	resolver := newSatlineResolver(backend)
 	resolver.ctx = ctx
 	resolver.primeInputValues(tx, block.Height)
-	placement, e := deriveInscriptionInitialPlacement(ctx, tx, block.Height, env, func(i int) (uint64, error) {
+	value := func(i int) (uint64, error) {
 		in := tx.Inputs[i]
 		return resolver.prevoutValue(in.PrevTxID, in.PrevVout, block.Height)
-	})
+	}
+	var placement inscriptionInitialPlacement
+	if provenance {
+		placement, e = deriveOrdProvenancePlacement(ctx, tx, env, value)
+	} else {
+		placement, e = deriveInscriptionInitialPlacement(ctx, tx, block.Height, env, value)
+	}
 	if e != nil {
 		return satlinePoint{}, e
 	}
@@ -395,6 +417,7 @@ func (a *app) handleOrdResolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.enrichOrdIdentity(&rec)
+	a.enrichOrdRelationships(r.Context(), &rec)
 	if !a.attachOrdViewerForRequest(r, &rec) {
 		return
 	}

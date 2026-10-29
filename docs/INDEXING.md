@@ -1,5 +1,10 @@
 # Indexing and positional inscriptions
 
+The 0.7.9 development preview adds bounded parent relationship inspection,
+Bitmap address badges backed by selected saved evidence, and a fresh Parcel
+track. Child lists reflect locally observed declarations, not complete global
+coverage; saved links may need revalidation. See [the 0.7.9 brief](IMPLEMENTATION-BRIEF-0.7.9.md).
+
 The 0.7.8 development source enables **Headers**, **Bitcoin Blocks**, **Inscriptions**, **TX ID Locators**, **Transaction Input/Output (TXIO)**, **UTXO set**, **Addresses**, **Sats** and fixed canonical **Bitmap Districts Standard V1**. Addresses offers Current UTXOs and independently retained Historical outputs; see [the Addresses guide](ADDRESSES-INDEX.md). The TXIO store supports IO Links and optional Values and exact ScriptPubKeys history with independent coverage. Sat Ranges and Inscriptions appear together under Ordinals while retaining separate consumers and stores. Gateway peerhood and later index stages remain gated. Published releases and updater delivery remain tracked separately in [status](STATUS.md).
 
 ## Development: Raw blocks and optional transaction lookup
@@ -20,7 +25,34 @@ Gateway 0.7.8 provides **Bitmap Districts Standard V1** using the pinned [Bitmap
 
 Bodies come from the claimant's own inscription envelope. Parsed `text/plain` matching is case insensitive and permits MIME parameters. Evaluation uses the actual ASCII body bytes and ignores the declared charset. Exact decimal grammar rejects leading zeros, whitespace and trailing bytes. A District cannot exceed its reveal height; the first qualifying reveal wins in Bitcoin order. Current ownership and inscription numbering are separate evidence.
 
-**Bitmap Parcels are disabled** pending further Ordinals and parent-provenance validation. All Parcel generations, custom profiles and restored work are blocked from execution. The normal interface omits Parcels, while existing definitions and saved evidence remain available through passive backend read and export compatibility. A parent tag alone does not prove a child relationship. Both Bitmap chains are disabled; their saved evidence remains inspectable and the provisional codec is not an active methodology.
+The new **Bitmap Parcels Standard V1 replay** track has a distinct identity;
+old Parcel generations and their saved checkpoints remain read-only. A finite
+run requires an explicitly selected retained-Raw route, a positive block-read
+allowance, and a complete physical Raw inventory from genesis through the
+selected end. The plan reports gaps; it does not start prerequisites. Locators
+and IO Links can accelerate individual lookups, but neither is yet an alternate
+full admission route. Verified transaction bytes provide values; a separate
+Values history build is not required. The Parcel lane can progress alongside
+Districts and other consumers, waiting for the exact District outcome. Live
+Parcel following is not yet available.
+
+The scan allowance is shared across lookups, persisted in reservations and
+never increased automatically on resume. Up to 64 unused reserved reads can be
+lost after interruption. Checkpointed scan progress is reused when its selected
+chain remains valid; missing evidence and exhausted budgets remain pending.
+Positive parent proofs replay authenticated source blocks. A complete negative
+scan produces a profile-authenticated local evaluation; independent replay
+requires the retained Raw interval and is not performed by opening a view.
+Deleting Raw can therefore make independent replay unavailable without changing
+the recorded local evaluation. Scan results are header-anchored, not full
+Bitcoin consensus validation. Both Bitmap chains remain disabled.
+
+Positive detached receipts are bounded to 128 source blocks, 64 MiB and 128
+movement hops; larger proofs remain pending. Same-transaction relationships are
+resolved when pointerless envelopes share an input and their stable order is
+known; other cases remain pending. A pending earlier candidate can hold up its
+reveal-block checkpoint until the evidence is resolved, so later candidates in
+that block are not presented as final winners prematurely.
 
 Custom creation, rule editing, comparisons and legacy execution are unavailable. Legacy definitions and results remain available for inspection and explicit data management. District coverage and timeline Start/Pause/Resume and Live remain available. Opening a view starts no indexing. See [portable testing](TESTING-0.7.8.md) and [verified-block ingestion](SPARSE-INDEXING-0.7.8.md).
 
@@ -34,7 +66,7 @@ Blocks records processing and availability for requested ranges. A block can als
 
 The schema and explorer work with a known block's transactions, inputs, outputs and output-relative offsets. A transaction-ID lookup can use explicit TX ID Locators coverage or existing legacy/location evidence; an unknown ID may need a containing-block hint. New Raw block storage alone does not supply that reverse lookup. An offset is not proof of global sat identity, ownership or movement history.
 
-Sats adds genesis-first ordinal identity. Satline history tracing is deferred in this version; saved Sat locations and output ranges remain available. Bitmap Districts Standard V1 and the disabled Parcel and Chain execution paths are described above. Terrain Claim Chains, Gateway peerhood and index sharing remain gated. Fetching or viewing a block, address or sat does not start a Sat build or history trace. TX ID Locators and Inscriptions remain separately opt-in through their timeline Arm controls; their sparse viewed-block capture does not start a historical scan.
+Sats adds genesis-first ordinal identity. Satline history tracing is deferred in this version; saved Sat locations and output ranges remain available. Bitmap District and Parcel tracks and disabled Chain execution are described above. Terrain Claim Chains, Gateway peerhood and index sharing remain gated. Fetching or viewing a block, address or sat does not start a Sat build or history trace. TX ID Locators and Inscriptions remain separately opt-in through their timeline Arm controls; their sparse viewed-block capture does not start a historical scan.
 
 TXIO keeps one committed set of spend relationships with automatic lookup in both directions. A supplied blocator needs no transaction-hash locator. Construction still needs verified creation evidence; sparse missing predecessors remain unresolved. Relationships survive source-body eviction, while navigation may need to fetch the target's bytes. See [the canonical format and measured overhead](TXIO-INDEX.md).
 

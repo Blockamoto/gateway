@@ -283,11 +283,36 @@ func (a *app) bitmapTargetWinner(ctx context.Context, b *bitmapTargetReadBudget,
 		if !validHash(c.Provenance.EvidenceHash) {
 			return 0, fmt.Errorf("Parcel parent receipt unavailable")
 		}
-		if err := b.chargeFile(bitmapParentReceiptPathV2(a.dataDir, c.Provenance.EvidenceHash)); err != nil {
-			return 0, err
-		}
-		if err := verifyBitmapParentReceiptV2(ctx, a.dataDir, c.Provenance); err != nil {
-			return 0, err
+		if h.Index == bitmapReplayParcelID {
+			path := parcelReplayReceiptPath079(a.dataDir, c.Provenance.EvidenceHash)
+			if err := b.chargeFile(path); err != nil {
+				return 0, err
+			}
+			var receipt parcelReplayReceipt079
+			if err := readBitmapJSON(ctx, path, &receipt); err != nil {
+				return 0, err
+			}
+			if len(receipt.Blocks) == 0 || len(receipt.Blocks) > parcelReplayMaxBlocks079 {
+				return 0, fmt.Errorf("invalid Parcel receipt block count")
+			}
+			for _, ref := range receipt.Blocks {
+				if !validHash(ref.SHA256) {
+					return 0, fmt.Errorf("invalid Parcel receipt block digest")
+				}
+				if err := b.chargeFile(parcelReplayBlockPath079(a.dataDir, ref.SHA256)); err != nil {
+					return 0, err
+				}
+			}
+			if err := verifyBitmapCandidateEvidence079(ctx, a, h.Index, c, hashAt); err != nil {
+				return 0, err
+			}
+		} else {
+			if err := b.chargeFile(bitmapParentReceiptPathV2(a.dataDir, c.Provenance.EvidenceHash)); err != nil {
+				return 0, err
+			}
+			if err := verifyBitmapParentReceiptV2(ctx, a.dataDir, c.Provenance); err != nil {
+				return 0, err
+			}
 		}
 		target = *c.Transaction
 	}
@@ -349,7 +374,7 @@ func (a *app) bitmapTargetCoverageWithLimits(parent context.Context, q bitmapTar
 	out.Limits = limits
 	out.Instance = bitmapCanonicalDistrictID
 	if q.Axis == "transactions" {
-		out.Instance = bitmapCanonicalParcelID
+		out.Instance = bitmapReplayParcelID
 	}
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
@@ -382,7 +407,7 @@ func (a *app) bitmapTargetCoverageWithLimits(parent context.Context, q bitmapTar
 	}
 	// This count covers the entire authenticated snapshot, not just the bounded
 	// winner samples inspected for the visible pixel bins below.
-	out.TotalWinners, out.TotalWinnersKnown = h.WinnerCount, true
+	out.TotalWinners, out.TotalWinnersKnown = h.WinnerCount, q.Axis != "transactions"
 	out.CacheKey = indexDigest(struct {
 		Version                                 int
 		Root, Instance, Head, Profile, Provider string
@@ -503,7 +528,7 @@ func (a *app) handleBitmapTargetCoverage(w http.ResponseWriter, r *http.Request)
 	}
 	id := bitmapCanonicalDistrictID
 	if q.Axis == "transactions" {
-		id = bitmapCanonicalParcelID
+		id = bitmapReplayParcelID
 	}
 	if requested := r.URL.Query().Get("instance"); requested != "" && requested != id {
 		jsonError(w, 400, fmt.Errorf("target coverage uses only the active Standard track for its axis"))

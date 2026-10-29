@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -41,6 +42,9 @@ type indexRunConsumer struct {
 	locatorGuardReleases []func()
 	pointAckFlushes      int64
 	pointAckCommit       string
+	parcelBusy           bool // coordinator-owned; external state is not read until the worker joins
+	parcelBudget         *parcelRawScanBudget079
+	parcelCancel         context.CancelFunc
 }
 type indexRunPreparedKey struct{}
 type indexRunPublicationKey struct{}
@@ -50,6 +54,29 @@ type indexRunCoordinatorSourceKey struct{}
 type indexRunCohortOwnersKey struct{}
 type indexRunBlockConsumersKey struct{}
 type indexRunBlockConsumer func(context.Context) error
+type parcelLaneResult struct {
+	consumer *indexRunConsumer
+	height   int64
+	err      error
+	elapsed  time.Duration
+}
+
+func launchParcelLane(done chan<- parcelLaneResult, c *indexRunConsumer, height int64, work func() error) {
+	go func() {
+		started := time.Now()
+		err := work()
+		done <- parcelLaneResult{consumer: c, height: height, err: err, elapsed: time.Since(started)}
+	}()
+}
+
+func parcelWaitsForDistrict079(err error) bool {
+	if err == nil || !errors.Is(err, ErrBitmapEvidenceRequired) {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "District evaluation is required") || strings.Contains(message, "completed District evaluation is unavailable") || strings.Contains(message, "completed selected District evaluation is unavailable")
+}
+
 type indexRunSourceOwnership struct {
 	RunID  string
 	Height int64
@@ -336,6 +363,28 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 	switch {
 	case bitmapConsumerID(c.Index):
 		v.external, err = openBitmapRunConsumer(ctx, a, c.Index)
+		if err == nil && c.Index == bitmapReplayParcelID {
+			if c.ParcelEvidenceRoute != "retained-raw" || c.ParcelRawScanBudget <= 0 {
+				return v, fmt.Errorf("Replay Parcels require an explicitly reviewed retained-raw route and positive block-read budget")
+			}
+			budget, budgetErr := openParcelRawBudget079(a.dataDir, r.ID, c.ParcelRawScanBudget, false)
+			if budgetErr != nil {
+				return v, fmt.Errorf("Parcel scan budget unavailable: %w", budgetErr)
+			}
+			v.parcelBudget = budget
+			// Take one fresh inventory snapshot at admission, never on each block.
+			timeline := a.indexStatus().Timeline
+			spender, transaction, blockAt, routeErr := a.newParcelRawRoute079(ctx, timeline, r.InitialTargetHeight, budget)
+			if routeErr != nil {
+				return v, routeErr
+			}
+			consumer, ok := v.external.(*bitmapRunConsumer)
+			if !ok {
+				return v, fmt.Errorf("Parcel replay consumer unavailable")
+			}
+			consumer.parcelRawSpender, consumer.parcelRawTransaction = spender, transaction
+			consumer.SetBlockSource(blockAt)
+		}
 		if configured, ok := v.external.(indexRunRetentionConsumer); ok {
 			configured.ConfigureRetention(c.Retention)
 		}
@@ -680,8 +729,10 @@ func (a *app) saveRunProgress(id, state, reason string, consumers []*indexRunCon
 				p = pending
 			}
 		}
-		if cp := c.checkpoint(); cp != nil {
-			p.Height, p.BlockHash, p.Commitment = cp.Height, cp.BlockHash, cp.Commitment
+		if !c.parcelBusy {
+			if cp := c.checkpoint(); cp != nil {
+				p.Height, p.BlockHash, p.Commitment = cp.Height, cp.BlockHash, cp.Commitment
+			}
 		}
 		if selection, ok := runSelection(r.Request, p.Index); !ok || !indexRunSelectionEnabled(selection) {
 			p.State, p.AdmissionState, p.Reason = "off", "off", "Off; committed records are retained."
@@ -750,8 +801,77 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 		}
 	}()
+	parcelCtx, cancelParcel := context.WithCancel(baseRunCtx)
+	parcelDone := make(chan parcelLaneResult, 1)
+	parcelActive := false
+	defer func() {
+		cancelParcel()
+		if parcelActive {
+			<-parcelDone
+		}
+	}()
+	consumeParcel := func(result parcelLaneResult) {
+		parcelActive = false
+		c := result.consumer
+		c.parcelBusy = false
+		c.parcelCancel = nil
+		counts.ApplyMilliseconds += result.elapsed.Milliseconds()
+		if result.err == nil {
+			c.progress.State, c.progress.Reason = "ready", ""
+			c.progress.Height = result.height
+			c.progress.AddedBlocks++
+			next := result.height + 1
+			c.progress.NextRequiredHeight = &next
+			return
+		}
+		c.progress.Reason = result.err.Error()
+		var unavailable blockUnavailableError
+		var changed satPublicationAnchorError077
+		districtPending := parcelWaitsForDistrict079(result.err)
+		districtCanAdvance := false
+		if selected, ok := runSelection(record.Request, bitmapStandardDistrictID); ok && indexRunSelectionEnabled(selected) {
+			for _, upstream := range consumers {
+				if upstream.selection.Index == bitmapStandardDistrictID && upstream.progress.State != "failed" && upstream.progress.State != "rebuild_required" && upstream.progress.State != "off" && upstream.progress.State != "blocked" && upstream.progress.State != "complete" {
+					districtCanAdvance = true
+				}
+			}
+		}
+		if errors.Is(result.err, errParcelRawBudgetExhausted079) || c.parcelBudget != nil && c.parcelBudget.exhausted() || strings.Contains(strings.ToLower(result.err.Error()), "raw scan budget exhausted") {
+			c.progress.State, c.progress.AdmissionState = "blocked", "blocked"
+			c.progress.Reason += " Review a new run with an additional scan allowance."
+		} else if errors.Is(result.err, ErrBitmapEvidenceRequired) && (!districtPending || !districtCanAdvance) {
+			// A fixed local proof route cannot acquire missing bytes or exceed
+			// receipt/journal limits by retrying the same block every second.
+			c.progress.State, c.progress.AdmissionState = "blocked", "blocked"
+			c.progress.Reason += " Review the missing evidence before starting a new run."
+		} else if errors.Is(result.err, errIndexRunConsumerStopped) {
+			c.progress.State = "off"
+		} else if errors.Is(result.err, context.Canceled) {
+			c.progress.State, c.progress.Reason = "paused", "Paused at the last committed Parcel checkpoint."
+		} else if errors.Is(result.err, ErrBitmapEvidenceRequired) || errors.As(result.err, &unavailable) || errors.As(result.err, &changed) || isSelectedAuthorityRetry(result.err) || errors.Is(result.err, errIndexRunAdmissionChanged) {
+			c.progress.State = "waiting"
+			c.retryAfter = time.Now().Add(time.Second)
+			c.reconciled = false
+		} else if runTerminal(result.err) {
+			c.progress.State = "rebuild_required"
+		} else {
+			c.progress.State = "failed"
+		}
+	}
 	target, targetHash := record.TargetHeight, record.TargetHash
 	finish := func(state, reason string) {
+		// A successful in-flight publication must be reflected in final status.
+		// Cancel first so pause/cancel never waits for additional evidence work.
+		if parcelActive {
+			if state != "complete" {
+				cancelParcel()
+			}
+			result := <-parcelDone
+			consumeParcel(result)
+			if state == "complete" && result.err != nil {
+				state, reason = "complete_with_errors", result.err.Error()
+			}
+		}
 		stopIntent := func() bool {
 			current := a.indexRunSnapshot().Run
 			if current != nil && current.ID == id && (current.State == "pausing" || current.State == "paused" || current.State == "cancelled") {
@@ -803,7 +923,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				memberState = "cancelled"
 			}
 			for _, c := range consumers {
-				if c.progress.State == "running" || c.progress.State == "waiting" || c.progress.State == "ready" || c.progress.State == "pending" {
+				if c.progress.State == "running" || c.progress.State == "waiting" || c.progress.State == "ready" || c.progress.State == "pending" || memberState == "cancelled" && c.progress.State == "paused" {
 					c.progress.State, c.progress.Reason = memberState, reason
 				}
 			}
@@ -972,7 +1092,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		return p, nil
 	}
 	for _, c := range consumers {
-		if source, ok := c.external.(indexRunBlockSource); ok {
+		if source, ok := c.external.(indexRunBlockSource); ok && c.selection.Index != bitmapReplayParcelID {
 			source.SetBlockSource(func(callCtx context.Context, h int64) (blockView, error) {
 				p, err := load(callCtx, h)
 				if err != nil {
@@ -985,6 +1105,11 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 	last := 0
 	processed := int64(0)
 	for {
+		select {
+		case result := <-parcelDone:
+			consumeParcel(result)
+		default:
+		}
 		if ctx.Err() != nil {
 			finish("paused", "Paused; resume continues from each committed checkpoint.")
 			return
@@ -1015,6 +1140,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					existing, position = c, j
 					break
 				}
+			}
+			if existing != nil && existing.parcelBusy {
+				continue
 			}
 			if existing != nil && sameIndexRunAdmission(existing.progress, p) && p.AdmissionState != "pending" && p.AdmissionState != "blocked" {
 				continue
@@ -1047,7 +1175,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					c.progress.State = "ready"
 				}
 			}
-			if source, ok := c.external.(indexRunBlockSource); ok {
+			if source, ok := c.external.(indexRunBlockSource); ok && c.selection.Index != bitmapReplayParcelID {
 				source.SetBlockSource(func(callCtx context.Context, h int64) (blockView, error) {
 					p, err := load(callCtx, h)
 					if err != nil {
@@ -1080,6 +1208,15 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		eligible := []int{}
 		failed, waiting := false, false
 		for i, c := range consumers {
+			if c.parcelBusy {
+				prepared, on := runSelection(d.Prepared, c.selection.Index)
+				selected, included := runSelection(record.Request, c.selection.Index)
+				if (!on || !included || !indexRunSelectionEnabled(prepared) || !indexRunSelectionEnabled(selected)) && c.parcelCancel != nil {
+					c.parcelCancel()
+				}
+				waiting = true
+				continue
+			}
 			consumerTarget := record.InitialTargetHeight
 			selection, _ := runSelection(record.Request, c.selection.Index)
 			prepared, on := runSelection(d.Prepared, c.selection.Index)
@@ -1281,6 +1418,8 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 			select {
 			case <-ctx.Done():
+			case result := <-parcelDone:
+				consumeParcel(result)
 			case <-time.After(time.Second):
 			}
 			continue
@@ -1568,6 +1707,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		rawErr := a.ensurePreparedRawProducer(blockCtx, p) // frozen before either worker lane
 		type consumerResult struct {
 			attempted bool
+			async     bool
 			err       error
 			elapsed   time.Duration
 			outcome   bool
@@ -1589,6 +1729,41 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				if p.extractionErr != nil && resolvedNeedsInventory(c.selection.Index) {
 					result.err = p.extractionErr
 					return result.err
+				}
+				if c.selection.Index == bitmapReplayParcelID {
+					// One bounded independent lane may hold one frozen shared block.
+					// District commits first in the dispatch order; other consumers
+					// continue while the proof lane works on this block.
+					result.async = true
+					c.parcelBusy, parcelActive = true, true
+					prepared := &indexRunPrepared{block: p.block, extraction: p.extraction, extractionErr: p.extractionErr, extractionAttempted: p.extractionAttempted, rawProduced: p.rawProduced, owner: p.owner}
+					progress, sourceHeight, sourceHash, rawProduced := c.progress, h, p.block.Hash, p.rawProduced
+					retention := runRawRetention(record.Request)
+					workCtx, workCancel := context.WithCancel(parcelCtx)
+					c.parcelCancel = workCancel
+					launchParcelLane(parcelDone, c, sourceHeight, func() error {
+						defer workCancel()
+						work := context.WithValue(workCtx, indexRunPreparedKey{}, prepared)
+						work = a.indexRunBoundConsumerContext(work, progress)
+						publish := context.WithValue(work, indexRunPublicationKey{}, func() error {
+							if err := checkIndexRunPublication(work); err != nil {
+								return err
+							}
+							if err := a.checkPreparedRawReceipt(work, rawProduced); err != nil {
+								return err
+							}
+							current, err := a.utxoSelectedTarget(work, a.currentChainAuthority(), sourceHeight)
+							if err != nil {
+								return err
+							}
+							if current.HashDisplay != sourceHash {
+								return satPublicationAnchorError077{fmt.Errorf("selected block changed before consumer publication")}
+							}
+							return nil
+						})
+						return a.applyRunConsumer(publish, c, prepared, authority, retention)
+					})
+					return nil
 				}
 				consumerCtx := a.indexRunBoundConsumerContext(sharedCtx, c.progress)
 				publishCtx := context.WithValue(consumerCtx, indexRunPublicationKey{}, func() error {
@@ -1644,6 +1819,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				continue
 			}
 			c, result := consumers[i], results[i]
+			if result.async {
+				continue
+			}
 			if !result.attempted {
 				result.err = rawErr
 				if result.err == nil {

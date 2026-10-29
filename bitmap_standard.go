@@ -3,6 +3,11 @@ package main
 const bitmapStandardDistrictID = "bitmap-districts-standard-v1"
 const bitmapStandardParcelID = "bitmap-parcels-standard-v1"
 
+// The older Standard V1 Parcel store is preserved for inspection. The replay
+// generation has a separate identity so old Sat-attestation receipts cannot
+// be mistaken for independently replayed relationship proofs.
+const bitmapReplayParcelID = "bitmap-parcels-standard-v1-replay"
+
 // Product Standard V1 is separate from internal serialization/evaluator
 // versions. Existing checkpoint schema 1 and blocator receipt schema 2 remain
 // unchanged; this is the third local immutable profile generation.

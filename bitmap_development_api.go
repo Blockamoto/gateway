@@ -118,7 +118,7 @@ func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, dis
 func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedProfile, snapshot string, district, transaction, height *uint64, cursor string, limit int, records bool) (bitmapDevelopmentView, error) {
 	out := bitmapNewView(kind)
 	if id == "" {
-		id = map[string]string{"district": bitmapStandardDistrictID, "parcel": bitmapStandardParcelID, "chain": "bitmap-district-chain-dev-v1"}[kind]
+		id = map[string]string{"district": bitmapStandardDistrictID, "parcel": bitmapReplayParcelID, "chain": "bitmap-district-chain-dev-v1"}[kind]
 	}
 	if kind != "district" && kind != "parcel" && kind != "chain" {
 		return out, fmt.Errorf("Bitmap kind must be district, parcel or chain")
@@ -145,6 +145,11 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 	if limit < 1 || limit > 100 {
 		return out, fmt.Errorf("Bitmap page limit must be 1..100")
 	}
+	// Replay receipts can contain many blocks. Bound each read page to one
+	// candidate; pagination exposes additional rows without unbounded IO.
+	if id == bitmapReplayParcelID && limit > 1 {
+		limit = 1
+	}
 	var h *bitmapDevelopmentHead
 	var err error
 	if snapshot != "" {
@@ -164,6 +169,19 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 		return out, nil
 	}
 	authority := a.currentChainAuthority()
+	hashAt := a.addressSelectedHashes(ctx, authority)
+	verifiedCandidates := map[string]bool{}
+	verifyCandidate := func(c bitmapDevelopmentCandidate) error {
+		key := indexDigest(c)
+		if verifiedCandidates[key] {
+			return nil
+		}
+		if err := verifyBitmapCandidateEvidence079(ctx, a, id, c, hashAt); err != nil {
+			return err
+		}
+		verifiedCandidates[key] = true
+		return nil
+	}
 	if h != nil {
 		if a.utxoSelectedChainState(ctx, &utxoCheckpoint{Height: h.Height, BlockHash: h.BlockHash}, authority) != "selected_chain" {
 			out.State = "stale"
@@ -260,7 +278,7 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 			out.Result = map[string]any{"district": district, "transaction": transaction, "winner_blocator": nil, "ownership": "unknown"}
 		}
 		if have {
-			if err := verifyBitmapParentEvidence(ctx, a.dataDir, winner.Provenance); err != nil {
+			if err := verifyCandidate(winner); err != nil {
 				return out, err
 			}
 			out.State = "selected"
@@ -345,7 +363,7 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 				break
 			}
 			out.Rows = append(out.Rows, row)
-			if err := verifyBitmapParentEvidence(ctx, a.dataDir, row.Provenance); err != nil {
+			if err := verifyCandidate(row); err != nil {
 				return out, err
 			}
 			out.Candidates = append(out.Candidates, row)

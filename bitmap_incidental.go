@@ -13,8 +13,8 @@ type bitmapIngestOnlyKey struct{}
 // same height. The writer always adopts the authenticated durable head; it
 // cannot overwrite a newer incidental publication with its earlier snapshot.
 func (s *bitmapRunConsumer) RefreshForBlock(ctx context.Context, block blockView) (bool, error) {
-	bitmapDevelopmentMu.Lock()
-	defer bitmapDevelopmentMu.Unlock()
+	unlock := s.lockWriter()
+	defer unlock()
 	latest, err := readBitmapDevelopmentHead(ctx, s.root, s.id)
 	if err != nil {
 		return false, err
@@ -45,6 +45,8 @@ func (a *app) ingestArmedBitmapBlock(ctx context.Context, block blockView, prepa
 	}
 	var failures []error
 	only, _ := ctx.Value(bitmapIngestOnlyKey{}).(string)
+	// Replay Parcel work is admitted only by an explicit coordinated run. An
+	// incidental browse must not start its bounded evidence scans.
 	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID} {
 		if !releaseIndexExecutionAvailable(id) {
 			continue

@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const sandbox={window:{},URLSearchParams,URL};vm.runInNewContext(fs.readFileSync('ui/shell/bitmap-view.js','utf8'),sandbox);
+const view=sandbox.window.GatewayBitmapView,negative={provenance:{evaluation_kind:'local-selected-raw-no-spend-attestation-v1',relation_state:'rejected',scan_from:10,scan_through:20}},route={id:'raw_blocks',state:'coverage_gaps',from:0,to:30,gaps:[{from:3,to:4},{from:15,to:17}]};
+assert.match(view.proofNote(negative),/local attestation may remain usable if Raw blocks are removed/);
+assert.match(view.proofNote(negative),/independent replay requires the retained Raw blocks/);
+assert.match(view.proofNote(negative),/does not start a scan/);
+assert.match(view.rawInventoryNote({parcel_prerequisites:{routes:[route]}},negative),/15–17/);
+assert.doesNotMatch(view.rawInventoryNote({parcel_prerequisites:{routes:[route]}},negative),/3–4/);
+assert.match(view.rawInventoryNote({parcel_prerequisites:{routes:[{...route,gaps:[{from:3,to:4}]}]}},negative),/No Raw inventory gaps/);
+assert.match(view.rawInventoryNote({},negative),/availability is unknown/);
+assert.equal(view.proofNote({provenance:{evaluation_kind:'local-selected-raw-no-spend-attestation-v1',relation_state:'verified'}}),'');
+console.log('Bitmap proof copy PASS: local vs replay evidence, scoped Raw gaps, and unknown inventory.');

@@ -5,7 +5,7 @@ window.GatewayIndexTimeline = (() => {
   const height = n => Number.isSafeInteger(n) && n >= 0 && n < Number.MAX_SAFE_INTEGER;
   const format = n => height(n) ? n.toLocaleString('en-GB') : 'Unknown';
   const blockCount = n => format(n) + (n === 1 ? ' block' : ' blocks');
-  const parcelDefinition = definition => definition?.kind === 'parcel' || definition?.producer_kind === 'parcel' || /^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(definition?.id || '');
+  const parcelDefinition = definition => definition?.id !== 'bitmap-parcels-standard-v1-replay' && (definition?.kind === 'parcel' || definition?.producer_kind === 'parcel' || /^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(definition?.id || ''));
   function parcelVisible(definition){return !parcelDefinition(definition);}
   const count = ranges => ranges.reduce((n, r) => n + r.to - r.from + 1, 0);
   const labelRange = r => r.from === r.to ? format(r.from) : format(r.from) + '–' + format(r.to);
@@ -175,7 +175,7 @@ window.GatewayIndexTimeline = (() => {
     const bitmapParent=d=>parcelParent(d)||chainParent(d);
     const groupName=id=>({blocks:'Blocks',txio:'Transactions',addresses:'Addresses',ordinals:'Ordinals',bitmap:'Bitmap'})[id];
     const trackName=d=>({headers:'Headers',blocks:'Raw blocks','address-state':'Current UTXOs','address-history':'Historical outputs'})[d.id]||d.name;
-    const miniName=d=>({'tx-locator':'TX ID Locators','txio-links':'IO Links','txio-values':'Values','txio-scripts':'Scripts','utxo-state':'UTXO','txio-sat-ranges':'Sat Ranges','bitmap-districts-standard-v1':'Districts','bitmap-parcels-standard-v1':'Parcels','address-state':'Current','address-history':'History'})[d.id]||trackName(d);
+    const miniName=d=>({'tx-locator':'TX ID Locators','txio-links':'IO Links','txio-values':'Values','txio-scripts':'Scripts','utxo-state':'UTXO','txio-sat-ranges':'Sat Ranges','bitmap-districts-standard-v1':'Districts','bitmap-parcels-standard-v1-replay':'Parcels','address-state':'Current','address-history':'History'})[d.id]||trackName(d);
     const definitionFor=id=>childDefinitions(snapshot).find(d=>d.id===id)||(snapshot.definitions||[]).find(d=>d.id===id);
     function select(id,nextView){skipContext=id;const d=definitionFor(id);selectIndex(d?.owner||id,nextView);if(d?.owner){selected=id;skipContext=id;selection={id,kind:'track'};render();}}
     let trackHeight=Math.max(24,Math.min(220,Number(preferences.trackZoomHeight)||24)),spaceHeld=false,spaceDragged=false,drag=null,suppressClick=false,hovering=false;
@@ -344,7 +344,7 @@ window.GatewayIndexTimeline = (() => {
     function bitmapTargetQuery(){const g=groups.get('bitmap');if(doc.hidden||!g||trackArea.hidden||root.dataset.timelineCollapsed==='true')return null;const rect=g.bands.getBoundingClientRect(),viewport=trackViewport.getBoundingClientRect();if(rect.width<1||rect.bottom<viewport.top||rect.top>viewport.bottom)return null;const p=frame();if(p)return null;const v=navView(),query={axis:p?'transactions':'blocks',from:v.from,to:v.to,pixels:Math.min(1024,Math.max(1,Math.round(rect.width)))};if(p)query.district=p.height;return query;}
     function queueBitmapTargets(){if(bitmapTargetTimer)doc.defaultView.clearTimeout(bitmapTargetTimer);bitmapTargetTimer=doc.defaultView.setTimeout(readBitmapTargets,140);}
     function bitmapTargetContext(query){
-      if(!query)return null;const ids=query.axis==='blocks'?['bitmap-districts-standard-v1']:['bitmap-districts-standard-v1','bitmap-parcels-standard-v1'],definitions=(snapshot.definitions||[]).filter(d=>ids.includes(d.id)).sort((a,b)=>a.id.localeCompare(b.id)),instances=(snapshot.instances||[]).filter(i=>ids.includes(i.definition)).sort((a,b)=>a.definition.localeCompare(b.definition)),run=(snapshot.run?.run?.consumers||[]).filter(c=>ids.includes(c.index)&&c.commitment).sort((a,b)=>a.index.localeCompare(b.index));
+      if(!query)return null;const ids=query.axis==='blocks'?['bitmap-districts-standard-v1']:['bitmap-districts-standard-v1','bitmap-parcels-standard-v1-replay'],definitions=(snapshot.definitions||[]).filter(d=>ids.includes(d.id)).sort((a,b)=>a.id.localeCompare(b.id)),instances=(snapshot.instances||[]).filter(i=>ids.includes(i.definition)).sort((a,b)=>a.definition.localeCompare(b.definition)),run=(snapshot.run?.run?.consumers||[]).filter(c=>ids.includes(c.index)&&c.commitment).sort((a,b)=>a.index.localeCompare(b.index));
       const unsafe=instances.some(i=>/stale_reorg|anchor_unavailable|unavailable/.test(i.verification||'')),scope=JSON.stringify({query,profiles:definitions.map(d=>[d.id,d.profile_hash,d.network]),instanceProfiles:instances.map(i=>[i.definition,i.profile_hash]),providers:(snapshot.providers||[]).filter(p=>p.id==='headers'&&p.queryable).map(p=>p.provider).sort(),epoch:bitmapTargetChainEpoch,parent:query.axis==='transactions'?frame()?.block_hash:null});
       const primary=ids.at(-1),head=run.find(c=>c.index===primary)||instances.find(i=>i.definition===primary)?.checkpoint,profile=definitions.find(d=>d.id===primary)?.profile_hash;
       return{scope,unsafe,primary,head:head?{...head}:null,profile,key:scope+JSON.stringify({tip:[snapshot.timeline?.tip_height,snapshot.timeline?.tip_hash],instances:instances.map(i=>[i.definition,i.checkpoint,i.verification]),run:run.map(c=>[c.index,c.commitment,c.height,c.block_hash])})};

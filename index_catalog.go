@@ -10,6 +10,7 @@ import (
 
 // Definitions describe recipes. They never assert that this node holds their data.
 type indexDefinition struct {
+	LiveSupported         *bool    `json:"live_supported,omitempty"`
 	SourceURL             string   `json:"source_url,omitempty"`
 	SourceRevision        string   `json:"source_revision,omitempty"`
 	Metadata              any      `json:"metadata,omitempty"`
@@ -205,7 +206,7 @@ func indexDefinitions() []indexDefinition {
 			d.LockReason = releaseLockReason(d.ID)
 		}
 	}
-	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID, bitmapCanonicalV2DistrictID, bitmapCanonicalV2ParcelID, bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1"} {
+	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID, bitmapReplayParcelID, bitmapCanonicalV2DistrictID, bitmapCanonicalV2ParcelID, bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1"} {
 		if d, ok := bitmapFixedIndexDefinition(id); ok {
 			defs = append(defs, d)
 		}
@@ -237,6 +238,9 @@ func bitmapFixedIndexDefinition(id string) (indexDefinition, bool) {
 	}
 	if i.Kind == "parcel" {
 		d.Dependencies = []string{i.DistrictInstance, "blocks"}
+	}
+	if id == bitmapReplayParcelID {
+		d.LiveSupported = boolPointer(false)
 	}
 	if i.Kind == "chain" {
 		d.Dependencies = []string{i.DistrictInstance}

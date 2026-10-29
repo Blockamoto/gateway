@@ -5,8 +5,8 @@ window.GatewayWorkspace = (() => {
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const num=v=>typeof v==='number'?v.toLocaleString('en-GB'):String(v??'unknown');
  const route=(address,label,primary=false)=>`<button class="${primary?'primary':'quiet'}" data-route="${esc(address)}">${esc(label)}</button>`;
- const hiddenIndex=(value,definitions=[])=>{const id=typeof value==='string'?value:value?.index||value?.definition||value?.id||'',definition=definitions.find(d=>d.id===id);return value?.kind==='parcel'||value?.producer_kind==='parcel'||definition?.kind==='parcel'||definition?.producer_kind==='parcel'||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(id)||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(value?.district_instance||definition?.district_instance||'');};
- const visibleIndexText=value=>/parcel/i.test(String(value||''))?'Saved work is unavailable in this build.':value;
+ const hiddenIndex=(value,definitions=[])=>{const id=typeof value==='string'?value:value?.index||value?.definition||value?.id||'',definition=definitions.find(d=>d.id===id);return id!=='bitmap-parcels-standard-v1-replay'&&(value?.kind==='parcel'||value?.producer_kind==='parcel'||definition?.kind==='parcel'||definition?.producer_kind==='parcel'||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(id)||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(value?.district_instance||definition?.district_instance||''));};
+ const visibleIndexText=value=>value;
  function visibleIndexStatus(value={}){
   const definitions=value.definitions||[],visible=row=>!hiddenIndex(row,definitions),job=row=>!row||!visible(row)?{}:{...row,error:visibleIndexText(row.error),waiting_reason:visibleIndexText(row.waiting_reason)};
   return {...value,definitions:definitions.filter(visible),instances:(value.instances||[]).filter(visible),live:(value.live||[]).filter(visible),jobs:(value.jobs||[]).filter(visible).map(job),job:job(value.job),errors:(value.errors||[]).filter(message=>!/parcel/i.test(String(message)))};

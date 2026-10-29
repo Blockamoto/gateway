@@ -1,7 +1,7 @@
 'use strict';
 importScripts('search.js');
 const HOST = 'com.gateway.client';
-const VERSION = '0.7.8';
+const VERSION = '0.7.9';
 let namespaces=null,handshake=null;
 async function native(action,address='') {
   try {

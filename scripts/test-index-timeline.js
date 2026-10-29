@@ -158,3 +158,5 @@ assert.equal(sandbox.window.GatewayIndexTimeline.parcelVisible(parcelDefinition,
 const disabledParcelModel=trackModel(parcelDefinition,{live:[{index:parcelDefinition.id,on:true,enabled:true}]});
 assert.equal(disabledParcelModel.on,false);assert.equal(disabledParcelModel.live,false);assert.equal(disabledParcelModel.state,'Processing disabled');
 console.log('Parcel timeline availability PASS: empty policies/jobs hidden; saved data hidden from timeline; stale active status remains disabled.');
+
+assert.equal(sandbox.window.GatewayIndexTimeline.parcelVisible({id:'bitmap-parcels-standard-v1-replay',kind:'parcel',buildable:true}),true,'Replay-backed Parcel track is visible');

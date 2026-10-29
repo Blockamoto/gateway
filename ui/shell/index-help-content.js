@@ -236,6 +236,8 @@
     'txio-sat-ranges': ['Sats processes every block in order from the first Bitcoin block, or resumes its own checked saved state. This is separate from UTXO and IO Links.', 'Historical output ranges are saved only when their retention option is explicitly enabled. Turning it on later does not recreate older range history.'],
     'bitmap-districts-standard-v1': ['District processing starts at block 792435 and continues in order, or resumes its own checked saved result. Its shared inscription reading is separate from retaining the Inscriptions track.']
   };
+  purposes['bitmap-parcels-standard-v1-replay'] = {title:'Bitmap Parcels', paragraphs:['Selects Parcel claims for transactions in a District using verified parent relationships and the selected District interpretation. Saved coverage describes examined blocks, not complete global child discovery.', 'Pending declarations and rejected claims do not reserve positions or count as selected Parcels. Ownership remains separate.', 'Some negative relationships are locally evaluated and backed by an installation-specific attestation, not independently replayed proof. Independent replay requires the retained Raw blocks for the relevant interval. Viewing results does not start a scan.']};
+  dependencyCards['bitmap-parcels-standard-v1-replay'] = {paragraphs:['A matching District interpretation and replayable parent evidence are required. Missing bytes, values, spend links or parent history remain unresolved. Review the specific plan before fetching or building.'], dependencies:[{name:'Matching selected District results',requirement:'hard',otherTrack:true,why:'The Parcel must reference the selected District.'},{name:'Parent satpoint and movement evidence',requirement:'conditional',why:'Each claimed parent must be validated at the child reveal; values and selected-chain transaction bytes are required.'},...bodyInputs]};
   const legacy = new Set(['bitmap', 'bitmap-districts', 'bitmap-parcels', 'bitmap-districts-canonical', 'bitmap-parcels-canonical', 'bitmap-compatibility']);
   function key(id) { return typeof id === 'string' ? id.trim() : ''; }
   function isChain(id, definition) { return id === 'bitmap-chain' || /^bitmap-(?:district|parcel)-chain(?:-|$)/.test(id) || definition?.kind === 'chain'; }
@@ -244,7 +246,7 @@
   function copy(card, title) {
     return {title: title || card.title, paragraphs: [...card.paragraphs], ...(card.dependencies ? {dependencies: card.dependencies.map(row => ({...row}))} : {})};
   }
-  const hiddenIndex=(id,definition)=>definition?.kind==='parcel'||definition?.producer_kind==='parcel'||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(id||'');
+  const hiddenIndex=(id,definition)=>id!=='bitmap-parcels-standard-v1-replay'&&(definition?.kind==='parcel'||definition?.producer_kind==='parcel'||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(id||''));
   function get(id, definition) {
     id = key(id); id = aliases[id] || id;
     if(hiddenIndex(id,definition))return {title:'Unavailable index',paragraphs:['This index is unavailable in this version. Its retained data and rules are unchanged.','Opening this help cannot enable processing or modify saved records.']};

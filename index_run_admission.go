@@ -97,6 +97,12 @@ func (a *app) amendIndexRun(ctx context.Context, change indexRunAmendment) (inde
 	merged := r.Request
 	merged.Consumers = append([]indexRunSelection(nil), r.Request.Consumers...)
 	for _, c := range delta.Consumers {
+		if c.Index == bitmapReplayParcelID && indexRunSelectionEnabled(c) {
+			old, exists := runSelection(r.Request, c.Index)
+			if !exists || !indexRunSelectionEnabled(old) {
+				return d, fmt.Errorf("stop this run and review a new run to admit Parcel's bounded evidence scan")
+			}
+		}
 		if old, exists := runSelection(r.Request, c.Index); exists {
 			options := c
 			options.Armed, options.Live = old.Armed, old.Live

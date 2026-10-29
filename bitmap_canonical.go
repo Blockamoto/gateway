@@ -102,6 +102,8 @@ func bitmapCanonicalInstance(id string) (bitmapProfileInstance, bool) {
 		kind, label = "district", "Bitmap Districts Standard V1"
 	case bitmapStandardParcelID:
 		kind, label = "parcel", "Bitmap Parcels Standard V1"
+	case bitmapReplayParcelID:
+		kind, label = "parcel", "Bitmap Parcels Standard V1"
 	case bitmapCanonicalV2DistrictID, bitmapCanonicalV2ParcelID:
 		kind = "district"
 		if id == bitmapCanonicalV2ParcelID {
@@ -131,6 +133,18 @@ func bitmapCanonicalInstance(id string) (bitmapProfileInstance, bool) {
 		return bitmapProfileInstance{}, false
 	}
 	p := bitmapStandardProfile(kind)
+	if id == bitmapReplayParcelID {
+		p.ID = "gateway-bitmap-parcel-standard-v1-replay"
+		p.ImplementationVersion = "gateway-bitmap-parcel-replay-v1"
+		p.ParentPolicy = "tag3-selected-district-replayed-satpoint-v3"
+		p.ImplementationLimits = []string{
+			"This replay generation starts at block 792435 and never resumes or reinterprets an older Parcel checkpoint.",
+			"Candidate order follows reveal block height, Bitcoin transaction position and transaction-wide inscription index. Missing evidence never becomes a completed empty block.",
+			"Current ownership, inscription numbering and chain records are separate from Parcel validity.",
+		}
+		p.ImplementationLimits = append(p.ImplementationLimits,
+			"Accepted parent relationships replay selected-chain witness and transaction block evidence. A no-spend rejection uses an installation-authenticated local scan attestation; independent replay requires its retained Raw interval. Missing evidence remains unresolved.")
+	}
 	i := bitmapProfileInstance{ID: id, Kind: kind, Label: label, Profile: p,
 		ProfileHash: bitmapProfileHash(p), StartHeight: bitmapDevelopmentStart, State: "ready",
 		ConfigurationRevision: 1, RulesLocked: true, Classification: "canonical",

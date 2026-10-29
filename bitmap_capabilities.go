@@ -8,9 +8,9 @@ import (
 // Recognition and saved-data authentication remain broader than execution.
 // Existing named and experimental profiles keep their identities and saved
 // data. Only the separately identified canonical indexes can execute.
-var errBitmapComparisonDeferred = errors.New("Bitmap supports Bitmap Districts Standard V1. Parcels are disabled pending Ordinals/provenance validation. Custom rules, previous index generations and comparisons cannot execute. Saved definitions and evidence remain available for inspection and deletion.")
+var errBitmapComparisonDeferred = errors.New("Bitmap Districts Standard V1 and replay Parcels use fixed rules. Custom rules, previous index generations and comparisons cannot execute. Saved definitions and evidence remain available for inspection and deletion.")
 var errBitmapChainDeferred = errors.New("Bitmap Chain methodology is being developed. Saved evidence remains available for inspection.")
-var errBitmapParcelsDeferred = errors.New("Parcels indexing is disabled pending Ordinals/provenance validation. Its implementation and saved records are retained; saved results remain available for inspection and export.")
+var errBitmapParcelsDeferred = errors.New("Legacy Parcels indexing is disabled; its implementation and saved records are retained for inspection and export. Use the separately identified replay Parcel track for new indexing.")
 
 type bitmapCapabilitiesView struct {
 	CustomProfiles  bool   `json:"custom_profiles"`
@@ -24,10 +24,13 @@ func bitmapCapabilities() bitmapCapabilitiesView {
 }
 
 func bitmapBuiltinExecutionAvailable(id string) bool {
-	return id == bitmapStandardDistrictID
+	return id == bitmapStandardDistrictID || id == bitmapReplayParcelID
 }
 
 func bitmapParcelExecutionDeferred(id string) bool {
+	if id == bitmapReplayParcelID {
+		return false
+	}
 	if id != "bitmap-parcels" && !strings.HasPrefix(id, "bitmap-parcels-") {
 		return false
 	}

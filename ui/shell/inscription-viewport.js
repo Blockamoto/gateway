@@ -26,6 +26,15 @@ window.GatewayInscriptionViewport = (() => {
     function metadata(rows){const list=el('dl',undefined,'kv');for(const [name,value]of rows)list.append(el('dt',name),el('dd',value===null||value===undefined||value===''?'Not established':String(value)));return list;}
     async function copy(value){try{await win.navigator.clipboard.writeText(value);notify?.('Copied to clipboard.');}catch{notify?.('Clipboard unavailable. Select the displayed address to copy.',true);}}
     function safeLink(record,download=false,preview=false){const url=contentURL(download?(record.raw_url||record.content_url):preview?(record.preview_url||record.content_url):record.content_url,contentOrigin,win.location.origin);if(!url)return null;if(download)url.searchParams.set('download','1');return url.href;}
+    async function loadSelectedParcelCount(address,holder,ticket){
+      const match=/^(0|[1-9][0-9]*)\.bitmap$/.exec(address),district=match&&Number(match[1]);if(!match||!integer(district)||district>9007199254740990)return;
+      const controller=new win.AbortController(),timer=win.setTimeout(()=>controller.abort(),5000);
+      try{const query=new URLSearchParams({axis:'transactions',district:String(district),from:'0',to:'9007199254740990',pixels:'1',instance:'bitmap-parcels-standard-v1-replay'});const response=await win.fetch('/api/v1/bitmap/target-coverage?'+query,{credentials:'same-origin',signal:controller.signal}),value=await response.json();if(dead||ticket!==generation||!holder.isConnected)return;
+        const count=value.bins?.[0]?.winners,height=value.snapshot?.height,start=value.snapshot?.segment_start;
+        if(!response.ok||!['ready','partial'].includes(value.state)||value.instance!=='bitmap-parcels-standard-v1-replay'||value.axis!=='transactions'||value.district!==district||!integer(count)||count>4||!integer(height)||!integer(start)){holder.textContent='Selected Parcel count: not established in available saved coverage.';return;}
+        holder.textContent='Selected Parcels: at least '+count.toLocaleString('en-GB')+' confirmed in a bounded local sample of saved coverage (reveal blocks '+start.toLocaleString('en-GB')+'–'+height.toLocaleString('en-GB')+'). This lower bound is separate from verified children and pending declarations; it is not a global total. No chain scan was started.';
+      }catch{if(!dead&&ticket===generation&&holder.isConnected)holder.textContent='Selected Parcel count: not established in available saved coverage.';}finally{win.clearTimeout(timer);}
+    }
     function render(record){
       const position=coordinate(record),env=record.envelope||{},resolved=record.resolution_state!=='location_unknown'&&record.resolution_state!=='located_bytes_unavailable';
       const media=el('section',undefined,'inscription-monitor'),evidence=el('section',undefined,'inscription-evidence'),heading=el('h2',position||record.id||'Inscription');evidence.append(heading);
@@ -37,7 +46,22 @@ window.GatewayInscriptionViewport = (() => {
       const sourceType=env.content_type||'application/octet-stream',size=record.content_size??record.size;
       evidence.append(metadata([['Conventional ID',record.id],['Reveal block',integer(record.height)?record.height:null],['Transaction position',record.tx_index],['Inscription index',record.index],['Input',env.input],['Content type',sourceType],['Content bytes',size],['SHA-256',record.content_sha256||record.sha256],['Verification',record.evidence],['Provider',record.provider],['Interpretation profile',record.interpretation_profile||record.profile],['Inscription number',record.canonical_number],['Sat number',record.sat_number],['Current location',record.current_satpoint?JSON.stringify(record.current_satpoint):null]]));
       if(record.note)evidence.append(el('p',record.note,'hint small'));
-      for(const [title,ids]of [['Delegate',env.delegate?[env.delegate]:[]],['Parent claims',env.parent_claims||[]]])if(ids.length){const box=el('div',undefined,'inscription-reference-list');box.append(el('h3',title));for(const id of ids)box.append(action(id,()=>open(id)));if(title==='Parent claims')box.append(el('small','Loading a referenced inscription does not prove the parent relationship.','block muted'));evidence.append(box);}
+      if(env.delegate){const box=el('div',undefined,'inscription-reference-list');box.append(el('h3','Delegate'),action(env.delegate,()=>open(env.delegate)));evidence.append(box);}
+      for(const item of record.bitmap_addresses||[]){if(typeof item.address!=='string')continue;const button=action(item.address,()=>onNavigate?.(item.address));button.className='badge';button.title='Selected '+item.kind+' in saved Bitmap coverage through block '+item.through;evidence.append(button);}
+      const relationships=Array.isArray(record.relationships)?record.relationships:[];
+      const children=Array.isArray(record.known_children)?record.known_children:[];
+      const verifiedParents=relationships.filter(r=>r.state==='verified'&&r.parent_id);
+      const verifiedChildren=[...new Map(children.filter(r=>r.state==='verified'&&r.child_id).map(r=>[r.child_id,r])).values()];
+      function references(title,rows,key){if(!rows.length)return;const box=el('div',undefined,'inscription-reference-list');box.append(el('h3',title));for(const row of rows)box.append(action(row[key],()=>open(row[key])));evidence.append(box);}
+      references('Verified parents',verifiedParents,'parent_id');
+      references('Known verified children ('+verifiedChildren.length+')',verifiedChildren,'child_id');
+      const declarations=relationships.filter(r=>r.state!=='verified').map(r=>({...r,direction:'Parent',id:r.parent_id}));
+      const represented=new Set(relationships.map(r=>r.parent_id));
+      for(const id of env.parent_claims||[])if(!represented.has(id)){declarations.push({direction:'Parent',id,state:'pending',reason:'Relationship evidence has not been established.'});represented.add(id);}
+      for(const row of children.filter(r=>r.state!=='verified'&&r.child_id))declarations.push({...row,direction:'Child',id:row.child_id});
+      if(declarations.length){const details=el('details',undefined,'inscription-reference-list');details.append(el('summary','Unverified declarations ('+declarations.length+')'));for(const row of declarations){const line=el('div');line.append(el('span',row.direction+' · '+(row.state==='rejected'?'Rejected':'Pending')+' · '));if(row.id)line.append(action(row.id,()=>open(row.id)));else line.append(el('span','Malformed declaration'+(row.declaration_hex?' ('+row.declaration_hex+')':''),'mono'));line.append(el('p',row.reason||'Relationship evidence has not been established.','small muted'));details.append(line);}evidence.append(details);}
+      evidence.append(el('p',record.relationship_coverage||'Known relationships come from locally examined evidence. Child lists may be incomplete; a missing child is not proof of absence.','small muted'));
+      const district=(record.bitmap_addresses||[]).find(item=>item.kind==='district'&&typeof item.address==='string');if(district){const count=el('p','Selected Parcel count: checking bounded saved evidence…','small muted');evidence.append(count);loadSelectedParcelCount(district.address,count,generation);}
       const technical=el('details');technical.append(el('summary','Reveal evidence'),el('pre',JSON.stringify(record,null,2)));evidence.append(technical);
       const url=safeLink(record,false,true);
       if(!resolved)media.append(el('p',record.resolution_state==='location_unknown'?'Location unknown. This ID needs a saved locator or a reveal block hint. Gateway peer lookup is not enabled.':'Location known; block bytes unavailable. Connect a Bitcoin provider with this block, then retry.','inscription-empty'));

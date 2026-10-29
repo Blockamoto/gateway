@@ -50,7 +50,7 @@ if ($Remove) {
     Write-Output 'Only the matching preview key was removed. Production registrations were not touched.'
     return
 }
-$manifest = [ordered]@{ name = $identity.host; description = 'Gateway isolated 0.7.8 preview'; path = $hostExe; type = 'stdio'; allowed_origins = @('chrome-extension://' + $identity.extension_id + '/') }
+$manifest = [ordered]@{ name = $identity.host; description = 'Gateway isolated 0.7.9 preview'; path = $hostExe; type = 'stdio'; allowed_origins = @('chrome-extension://' + $identity.extension_id + '/') }
 if (Test-Path -LiteralPath $manifestPath) {
     $prior = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     if ($prior.name -ne $identity.host -or $prior.type -ne 'stdio' -or @($prior.allowed_origins).Count -ne 1 -or $prior.allowed_origins[0] -ne $manifest.allowed_origins[0] -or -not [string]::Equals($prior.path, $hostExe, [StringComparison]::OrdinalIgnoreCase)) { throw 'The manifest file is not owned by this exact preview location; nothing was changed.' }

@@ -79,6 +79,9 @@ func verifyBitmapParentEvidence(ctx context.Context, root string, proof *bitmapP
 	if proof == nil {
 		return nil
 	}
+	if proof.ReplayVersion != 0 {
+		return fmt.Errorf("replayed Parcel evidence requires selected-chain and candidate validation")
+	}
 	if proof.ParentBlocator != "" {
 		return verifyBitmapParentReceiptV2(ctx, root, proof)
 	}

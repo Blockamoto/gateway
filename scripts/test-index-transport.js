@@ -55,3 +55,18 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../ui/shell/index-cards.
 assert.equal(context.window.GatewayIndexCards.jobFor('sat-state',waiting).error,'Missing authenticated source bytes.');
 const withProgressError=context.window.GatewayIndexTransport.visibleSnapshot({jobs:[{id:'waiting',index:'sat-state',state:'waiting',error:'Parent error',progress:[{index:'sat-state',state:'running',error:'Specific error'}]}]});
 assert.equal(context.window.GatewayIndexCards.jobFor('sat-state',withProgressError).error,'Specific error','A present progress error still takes precedence');
+
+const replay={id:'bitmap-parcels-standard-v1-replay',kind:'parcel',buildable:true};
+assert.equal(context.window.GatewayIndexTransport.processingAvailable(replay),true,'Only the replay track can be offered for processing');
+assert.equal(context.window.GatewayIndexTransport.processingAvailable({...replay,buildable:false}),false,'Backend buildability gates admission');
+assert.equal(context.window.GatewayIndexTransport.visibleSnapshot({definitions:[replay,parcel],timeline:{tracks:[{id:replay.id},{id:parcel.id}]}}).definitions.length,1);
+assert.equal(executionRequest({consumers:[{index:replay.id,armed:true}]},'play',[replay]).consumers[0].index,replay.id);
+console.log('Replay Parcel UI guard PASS: exact track visible, backend buildability honored, legacy fenced.');
+assert.throws(()=>executionRequest({consumers:[{index:replay.id,armed:true}]},'play',[]),/not available/,'Replay requires current buildable catalog evidence');
+
+const options=context.window.GatewayIndexTransport.parcelEvidenceOptions;
+assert.deepEqual(plain(options('',100)),{parcel_evidence_route:'',parcel_raw_scan_budget:0},'Default authorizes no scan');
+assert.deepEqual(plain(options('retained-raw','')), {parcel_evidence_route:'retained-raw',parcel_raw_scan_budget:0},'Choosing route does not supply a budget');
+for(const n of [-1,1.5,10000001,'bad'])assert.equal(options('retained-raw',n).parcel_raw_scan_budget,0);
+assert.equal(options('retained-raw',250).parcel_raw_scan_budget,250,'Explicit bounded read budget preserved');
+console.log('Parcel evidence consent PASS: no implicit route or scan budget, explicit positive bounded reads only.');

@@ -17,6 +17,8 @@ import (
 )
 
 type indexRunOptions struct {
+	ParcelEvidenceRoute string            `json:"parcel_evidence_route,omitempty"`
+	ParcelRawScanBudget int64             `json:"parcel_raw_scan_budget,omitempty"`
 	Retention           string            `json:"retention,omitempty"`
 	Mode                string            `json:"mode,omitempty"`
 	RetainOutputValues  *bool             `json:"retain_output_values,omitempty"`
@@ -302,6 +304,23 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 		if c.ConventionalIDs != nil && c.Index != "inscriptions" {
 			return req, fmt.Errorf("related inscription locators belong to Inscriptions")
 		}
+		if c.Index != bitmapReplayParcelID && (c.ParcelEvidenceRoute != "" || c.ParcelRawScanBudget != 0) {
+			return req, fmt.Errorf("Parcel evidence route and scan budget belong to replay Parcels")
+		}
+		if c.Index == bitmapReplayParcelID {
+			if c.Live {
+				return req, fmt.Errorf("Replay Parcels require a finite reviewed run; Live extension is not yet available")
+			}
+			if c.ParcelEvidenceRoute != "" && c.ParcelEvidenceRoute != "retained-raw" {
+				return req, fmt.Errorf("unsupported Parcel evidence route")
+			}
+			if c.ParcelRawScanBudget < 0 || c.ParcelRawScanBudget > 10000000 {
+				return req, fmt.Errorf("Parcel raw scan budget must be at most 10000000 block reads")
+			}
+			if c.ParcelEvidenceRoute == "" && c.ParcelRawScanBudget != 0 {
+				return req, fmt.Errorf("Parcel scan budget requires an explicit evidence route")
+			}
+		}
 		if c.RebuildSnapshot != nil && c.Index != "address-state" {
 			return req, fmt.Errorf("a reviewed address checkpoint belongs to Current Addresses")
 		}
@@ -440,7 +459,7 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			}
 		}
 	}
-	armed := 0
+	armed, runnable := 0, 0
 	for _, c := range req.Consumers {
 		if !indexRunSelectionEnabled(c) {
 			continue
@@ -475,6 +494,7 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			next := q.From
 			q.NextRequiredHeight = &next
 			p.Consumers = append(p.Consumers, q)
+			runnable++
 			continue
 		}
 		var head *indexCheckpoint
@@ -653,13 +673,25 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			depState := "missing"
 			if source, ok := runSelection(req, instance.DistrictInstance); ok && source.Armed {
 				depState = "selected"
+			} else if bitmapConsumerKind(c.Index) == "parcel" {
+				next := max(q.From, q.Height+1)
+				if ready, e := bitmapCompletedOutcomeInterval(ctx, a.dataDir, instance.DistrictInstance, next, next, instance.DistrictProfileHash); e == nil && ready {
+					depState = "partial"
+					if next == p.TargetHeight {
+						depState = "ready"
+					}
+					if q.Reason == "" {
+						q.Reason = "Process available completed outcomes, then wait for the exact producer when the next outcome is missing. Its Off state is preserved."
+					}
+				}
 			} else if ready, e := bitmapCompletedOutcomeInterval(ctx, a.dataDir, instance.DistrictInstance, max(q.From, q.Height+1), p.TargetHeight, instance.DistrictProfileHash); e == nil && ready {
 				depState = "ready"
 			} else if c.Live && bitmapConsumerKind(c.Index) == "chain" {
-				if source, e := readBitmapDevelopmentHead(ctx, a.dataDir, instance.DistrictInstance); e == nil && source != nil && source.ProfileHash == instance.DistrictProfileHash && source.Height >= max(q.From, q.Height+1) {
+				next := max(q.From, q.Height+1)
+				if ready, e := bitmapCompletedOutcomeInterval(ctx, a.dataDir, instance.DistrictInstance, next, next, instance.DistrictProfileHash); e == nil && ready {
 					depState = "partial"
 					if q.Reason == "" {
-						q.Reason = "Catch up through retained completed outcomes, then wait for this exact producer. Its Off state is preserved."
+						q.Reason = "Process available completed outcomes, then wait for the exact producer when the next outcome is missing. Its Off state is preserved."
 					}
 				}
 			}
@@ -673,7 +705,28 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			}
 		}
 		if bitmapConsumerID(c.Index) && bitmapConsumerKind(c.Index) == "parcel" {
-			q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "sat-state", Kind: "lookup", State: "conditional", Reason: "Parcel candidates need checked parent provenance; missing saved evidence waits without starting Satline.", Action: "inspect"})
+			if c.Index == bitmapReplayParcelID {
+				q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "parent-evidence", Kind: "lookup", State: "conditional", Reason: "Each candidate needs selected-chain witness, satpoint movement and value evidence; unavailable proof remains pending and no whole-chain scan begins implicitly.", Action: "inspect"})
+				{
+					reason := ""
+					if c.ParcelEvidenceRoute != "retained-raw" || c.ParcelRawScanBudget <= 0 {
+						reason = "Select retained Raw and approve a positive finite block-read budget."
+					} else {
+						gaps, gapErr := parcelRawRouteGaps079(a.indexStatus().Timeline, p.TargetHeight)
+						if gapErr != nil {
+							reason = gapErr.Error()
+						} else if len(gaps) > 0 {
+							reason = fmt.Sprintf("Retained Raw coverage gaps from genesis to selected end: %v", gaps)
+						}
+					}
+					if reason != "" {
+						q.State, q.Reason = "needs_prerequisite", reason
+						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "blocks", Kind: "evidence", State: "missing", Reason: reason, Action: "inspect"})
+					}
+				}
+			} else {
+				q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "sat-state", Kind: "lookup", State: "conditional", Reason: "Parcel candidates need checked parent provenance; missing saved evidence waits without starting Satline.", Action: "inspect"})
+			}
 		}
 		if bitmapConsumerID(c.Index) && bitmapConsumerKind(c.Index) == "chain" && c.Retention != "" {
 			view, e := bitmapChainRetentionStatus(ctx, a.dataDir, c.Index)
@@ -698,7 +751,13 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			q.NextRequiredHeight = &next
 		}
 		if q.State == "needs_prerequisite" || q.State == "blocked" || q.State == "rebuild_required" {
-			p.Ready = false
+			if c.Index == bitmapReplayParcelID {
+				q.AdmissionState = "blocked"
+			} else {
+				p.Ready = false
+			}
+		} else {
+			runnable++
 		}
 		p.Consumers = append(p.Consumers, q)
 		err = nil
@@ -706,6 +765,9 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 	if armed == 0 {
 		p.Ready = false
 		p.Notes = append(p.Notes, "Arm at least one available consumer.")
+	}
+	if armed > 0 && runnable == 0 {
+		p.Ready = false
 	}
 	if req.Out != nil {
 		p.Notes = append(p.Notes, "Out is a hard cap. Saved Live preferences cannot follow beyond it.")
@@ -821,6 +883,12 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 	}
 	prior := cloneIndexRunDocument(a.indexRunState)
 	record := &indexRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), AdmissionRevision: 1, State: "running", Phase: "boundary", Request: p.Request, TargetHeight: p.TargetHeight, InitialTargetHeight: p.TargetHeight, TargetHash: p.TargetHash, Consumers: p.Consumers, Updated: time.Now().UTC().Format(time.RFC3339)}
+	parcelProgress, parcelHasProgress := indexRunProgressFor(record, bitmapReplayParcelID)
+	if parcel, ok := runSelection(record.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.AdmissionState != "blocked" && parcel.ParcelEvidenceRoute == "retained-raw" {
+		if _, err := openParcelRawBudget079(a.dataDir, record.ID, parcel.ParcelRawScanBudget, true); err != nil {
+			return indexRunDocument{}, err
+		}
+	}
 	record.FrontierHeight = initialIndexRunFrontier(record)
 	a.indexRunState.Configured = true
 	a.indexRunState.Prepared = p.Request
@@ -945,6 +1013,12 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 			if p, ok := runSelection(a.indexRunState.Prepared, c.Index); !ok || !indexRunSelectionEnabled(p) {
 				return indexRunDocument{}, fmt.Errorf("%s is Off; arm it before resuming the admitted run", c.Index)
 			}
+		}
+	}
+	parcelProgress, parcelHasProgress := indexRunProgressFor(r, bitmapReplayParcelID)
+	if parcel, ok := runSelection(r.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.AdmissionState != "blocked" && parcel.ParcelEvidenceRoute == "retained-raw" {
+		if _, err := openParcelRawBudget079(a.dataDir, r.ID, parcel.ParcelRawScanBudget, false); err != nil {
+			return indexRunDocument{}, fmt.Errorf("Parcel scan budget unavailable on resume: %w", err)
 		}
 	}
 	prior := cloneIndexRunDocument(a.indexRunState)

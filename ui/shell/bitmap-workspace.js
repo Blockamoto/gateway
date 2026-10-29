@@ -4,12 +4,12 @@ window.GatewayBitmapWorkspace = (() => {
   const known = n => Number.isSafeInteger(n) && n >= 0;
   const number = n => known(n) ? n.toLocaleString('en-GB') : 'Not established';
   const kindOf = value => value?.kind || (/^bitmap-parcels(?:-|$)/.test(value?.id || '') ? 'parcel' : /^bitmap-(?:district|parcel)-chain-dev-v1$|^bitmap-chain(?:-|$)/.test(value?.id || '') ? 'chain' : 'district');
-  const instanceID = value => typeof value === 'string' && /^(?:bitmap-(?:districts|parcels)(?:-canonical(?:-v2)?|-standard-v1|-[0-9a-f]{32})?|bitmap-chain(?:-[0-9a-f]{32})?|bitmap-(?:district|parcel)-chain-dev-v1)$/.test(value);
+  const instanceID = value => typeof value === 'string' && /^(?:bitmap-(?:districts|parcels)(?:-canonical(?:-v2)?|-standard-v1(?:-replay)?|-[0-9a-f]{32})?|bitmap-chain(?:-[0-9a-f]{32})?|bitmap-(?:district|parcel)-chain-dev-v1)$/.test(value);
   const answerBits = (ids, values) => ids.map(id => values[id]).join('').replace(/0+$/, '');
   const customInstance = id => /^bitmap-(?:districts|parcels|chain)-[0-9a-f]{32}$/.test(id || '');
   const capabilities = value => value?.capabilities || value?.bitmap_capabilities || value?.bitmap?.capabilities || {};
   const featureEnabled = (value, feature) => capabilities(value)[feature] === true;
-  const parcelDefinition=value=>value?.kind==='parcel'||value?.producer_kind==='parcel'||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(value?.id||value?.instance||'')||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(value?.district_instance||'');
+  const parcelDefinition=value=>(value?.id||value?.instance)!=='bitmap-parcels-standard-v1-replay'&&(value?.kind==='parcel'||value?.producer_kind==='parcel'||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(value?.id||value?.instance||'')||/^bitmap-(?:parcels(?:-|$)|parcel-chain(?:-|$))/.test(value?.district_instance||''));
   const parcelReason = 'Parcels processing is temporarily disabled pending Ordinals and provenance validation. Saved records and exports remain available.';
   const deferredReason = 'Legacy experimental definitions and saved results are available for inspection and deletion. Current District indexes use fixed canonical rules. Bitmap Chain methodology is being developed.';
   function address(target) {

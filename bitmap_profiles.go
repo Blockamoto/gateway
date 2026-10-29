@@ -486,7 +486,7 @@ func bitmapProfileInstances(ctx context.Context, root string) ([]bitmapProfileIn
 		return nil, err
 	}
 	out := []bitmapProfileInstance{}
-	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID, bitmapCanonicalV2DistrictID, bitmapCanonicalV2ParcelID, bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1"} {
+	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID, bitmapReplayParcelID, bitmapCanonicalV2DistrictID, bitmapCanonicalV2ParcelID, bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1"} {
 		i, e := bitmapResolvedInstance(ctx, root, id)
 		if e != nil {
 			return nil, e

@@ -24,7 +24,7 @@ func Test078ParcelsExecutionDisabledWithoutChangingSavedRecipe(t *testing.T) {
 		t.Fatal("native definition identity changed", definition, instance, err)
 	}
 	for _, req := range []indexBuildRequest{{Index: bitmapStandardParcelID}, {Index: "blocks", Outputs: []string{bitmapStandardParcelID}}} {
-		if _, err := a.planIndexBuild(req); err == nil || !strings.Contains(err.Error(), "disabled pending Ordinals/provenance validation") {
+		if _, err := a.planIndexBuild(req); err == nil || !strings.Contains(err.Error(), errBitmapParcelsDeferred.Error()) {
 			t.Fatal("individual/parent plan admitted Parcels", req, err)
 		}
 		if _, err := a.startIndexBuild(req); err == nil {
@@ -80,6 +80,9 @@ func Test078EveryParcelGenerationAndCustomAliasIsOff(t *testing.T) {
 		if instance.Kind != "parcel" {
 			continue
 		}
+		if instance.ID == bitmapReplayParcelID {
+			continue
+		} // New replay identity is separate from frozen generations.
 		seen++
 		if !bitmapParcelExecutionDeferred(instance.ID) || releaseIndexExecutionAvailable(instance.ID) || releaseAvailability()[instance.ID] {
 			t.Fatal("Parcel generation/alias remained available", instance.ID)

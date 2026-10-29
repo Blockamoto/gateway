@@ -213,7 +213,7 @@ func decodeInscriptionReference(b []byte) string {
 	if len(b) < 32 || len(b) > 36 {
 		return ""
 	}
-	if len(b) > 32 && b[len(b)-1] == 0 {
+	if len(b) > 32 && len(b) != 36 && b[len(b)-1] == 0 {
 		return ""
 	}
 	var n uint32

@@ -15,10 +15,25 @@ import (
 )
 
 var bitmapDevelopmentMu sync.Mutex
+var bitmapReplayParcelMu sync.Mutex
 
 // Queries hold this read lease across a snapshot. Compaction cannot reclaim its
 // pages midway through a response; subsequent requests authenticate a new lease.
 var bitmapSnapshotMu sync.RWMutex
+
+// Replay Parcels own a separate immutable store. Holding a snapshot lease
+// protects against deletion/compaction without blocking District publication
+// while an explicitly approved evidence scan runs.
+func (s *bitmapRunConsumer) lockWriter() func() {
+	if s.id == bitmapReplayParcelID {
+		bitmapReplayParcelMu.Lock()
+		bitmapSnapshotMu.RLock()
+		return func() { bitmapSnapshotMu.RUnlock(); bitmapReplayParcelMu.Unlock() }
+	}
+	bitmapDevelopmentMu.Lock()
+	return bitmapDevelopmentMu.Unlock
+}
+
 var ErrBitmapEvidenceRequired = errors.New("Bitmap requires checked dependency evidence")
 var ErrBitmapParentInvalid = errors.New("authenticated parent output is not consumed by the reveal")
 
@@ -51,6 +66,12 @@ type bitmapDevelopmentCandidate struct {
 	DelegateFieldEvidence  string             `json:"delegate_field_evidence,omitempty"`
 }
 type bitmapParentProof struct {
+	ReplayVersion  int             `json:"replay_version,omitempty"`
+	ChildID        string          `json:"child_id,omitempty"`
+	RelationState  string          `json:"relation_state,omitempty"`
+	ScanFrom       *int64          `json:"scan_from,omitempty"`
+	ScanThrough    *int64          `json:"scan_through,omitempty"`
+	AuditNote      string          `json:"audit_note,omitempty"`
 	ParentID       string          `json:"parent_id,omitempty"`
 	ParentBlocator string          `json:"parent_blocator,omitempty"`
 	ChildBlocator  string          `json:"child_blocator,omitempty"`
@@ -119,13 +140,15 @@ type bitmapDevelopmentPending struct {
 	Digest      string                       `json:"digest"`
 }
 type bitmapRunConsumer struct {
-	a             *app
-	root, dir, id string
-	head          *bitmapDevelopmentHead
-	hashAt        func(int64) (string, error)
-	blockAt       func(context.Context, int64) (blockView, error)
-	instance      bitmapProfileInstance
-	retention     string
+	a                    *app
+	root, dir, id        string
+	head                 *bitmapDevelopmentHead
+	hashAt               func(int64) (string, error)
+	blockAt              func(context.Context, int64) (blockView, error)
+	parcelRawSpender     func(context.Context, satlinePoint, int64, parcelScanObserver079) (spenderLookupView, error)
+	parcelRawTransaction func(context.Context, string, int64) (satlineTxEvidence, error)
+	instance             bitmapProfileInstance
+	retention            string
 }
 
 func bitmapDevelopmentDir(root, id string) string {
@@ -380,8 +403,8 @@ func (s *bitmapRunConsumer) publish(ctx context.Context, h bitmapDevelopmentHead
 	return nil
 }
 func (s *bitmapRunConsumer) Reconcile(ctx context.Context, hashAt func(int64) (string, error)) error {
-	bitmapDevelopmentMu.Lock()
-	defer bitmapDevelopmentMu.Unlock()
+	unlock := s.lockWriter()
+	defer unlock()
 	s.hashAt = hashAt
 	if hashAt == nil {
 		return fmt.Errorf("selected Bitcoin authority required")
@@ -560,8 +583,8 @@ func flushBitmapTrees(trees [4]*ordinalTree) ([4]string, error) {
 }
 
 func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared *inscriptionBlockResult) error {
-	bitmapDevelopmentMu.Lock()
-	defer bitmapDevelopmentMu.Unlock()
+	unlock := s.lockWriter()
+	defer unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -600,7 +623,7 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 			return s.pending(ctx, block, nil, "District evaluation is required at this block; no District build was started.")
 		}
 		source := d.LastBlock
-		if source.BlockHash != block.Hash || !source.BlockEvaluated {
+		if source.Height != block.Height || d.ProfileHash != s.instance.DistrictProfileHash || source.BlockHash != block.Hash || !source.BlockEvaluated || !source.CompleteScope {
 			return s.pending(ctx, block, nil, "Matching completed District evaluation is unavailable.")
 		}
 		h.DependencyCommitment = d.Commitment
@@ -778,7 +801,7 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 				staged = append(staged, c)
 				continue
 			}
-			if parent.RevealHeight == block.Height && (parent.TxIndex > o.TxIndex || parent.TxIndex == o.TxIndex && parent.InscriptionIndex >= o.Index) {
+			if parent.RevealHeight == block.Height && parent.TxIndex > o.TxIndex {
 				c.Reason = "district_parent_not_yet_recognized"
 				staged = append(staged, c)
 				continue
@@ -839,7 +862,12 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 				c.SelectedParentDeclared = true
 				c.ParentBlocators = []string{parent.Blocator}
 			}
-			proof, e := checkedBitmapParent(ctx, s.a, block, o, parent)
+			var proof *bitmapParentProof
+			if s.id == bitmapReplayParcelID {
+				proof, e = s.checkedReplayParent(ctx, block, o, parent)
+			} else {
+				proof, e = checkedBitmapParent(ctx, s.a, block, o, parent)
+			}
 			if e != nil {
 				if errors.Is(e, ErrBitmapParentInvalid) {
 					c.Eligibility = "ineligible"
@@ -848,9 +876,12 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 					continue
 				}
 				c.Eligibility = "unresolved"
-				c.Reason = "saved_sat_dependency_unavailable"
+				c.Reason = "parent_proof_evidence_unavailable"
+				if s.id != bitmapReplayParcelID {
+					c.Reason = "saved_sat_dependency_unavailable"
+				}
 				c.UnresolvedDependencies = []string{e.Error()}
-				return s.pending(ctx, block, append(staged, c), "The saved Sat dependency cannot supply checked parent provenance: "+e.Error())
+				return s.pending(ctx, block, append(staged, c), "Checked parent provenance is unavailable: "+e.Error())
 			}
 			if proof == nil {
 				c.Eligibility = "unresolved"
@@ -861,6 +892,11 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 				continue
 			}
 			c.Provenance = proof
+			if proof.ReplayVersion == 3 && proof.RelationState == "rejected" {
+				c.Eligibility, c.Reason = "ineligible", "parent_not_consumed_by_reveal"
+				staged = append(staged, c)
+				continue
+			}
 		}
 		c.Eligibility = "eligible"
 		key := bitmapTargetKey(district, c.Transaction)

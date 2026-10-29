@@ -15,12 +15,12 @@ func Test074IndexReleaseAvailability(t *testing.T) {
 	for _, d := range indexDefinitions() {
 		// Only the current canonical Bitmap generation can execute. Previous
 		// generations and every Chain keep their saved identities inspectable.
-		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender" || d.ID == "utxo-state" || d.ID == "address-state" || d.ID == "address-history" || d.ID == "sat-state" || d.ID == bitmapCanonicalDistrictID || d.ID == bitmapCanonicalParcelID
+		available := d.ID == "headers" || d.ID == "blocks" || d.ID == "inscriptions" || d.ID == "tx-locator" || d.ID == "txo-spender" || d.ID == "utxo-state" || d.ID == "address-state" || d.ID == "address-history" || d.ID == "sat-state" || d.ID == bitmapCanonicalDistrictID || d.ID == bitmapCanonicalParcelID || d.ID == bitmapReplayParcelID
 		if d.Locked == available || releaseFeatureAvailable(d.ID) != available {
 			t.Fatalf("wrong release availability: %+v", d)
 		}
 		if available && d.ID != bitmapStandardParcelID {
-			if d.ID == bitmapCanonicalDistrictID {
+			if d.ID == bitmapCanonicalDistrictID || d.ID == bitmapReplayParcelID {
 				for _, start := range []func(indexBuildRequest) (indexJob, error){a.startIndexBuild, func(req indexBuildRequest) (indexJob, error) { return a.startIndexBuildID(req, false, "") }} {
 					if _, err := start(indexBuildRequest{Index: d.ID}); err == nil || !strings.Contains(err.Error(), "coordinated timeline run") {
 						t.Fatal("canonical Bitmap consumer entered the legacy executor", d.ID, err)

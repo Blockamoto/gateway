@@ -30,6 +30,7 @@ func resolvedIngestionCapabilities(d indexRunDocument) []indexBrowsePolicy {
 	add("inscriptions", "sparse", "Current Lean/Full and conventional-ID choices apply to this block's own envelope extraction.", true)
 	add(bitmapStandardDistrictID, "exact_next", "Bitmap Districts Standard V1 from its authenticated origin; no skipped prefix or custom execution.", true)
 	add(bitmapStandardParcelID, "disabled", errBitmapParcelsDeferred.Error(), false)
+	add(bitmapReplayParcelID, "coordinated_run_only", "An explicit reviewed run is required; browsing does not initiate Parcel evidence work.", false)
 	add("bitmap-district-chain-dev-v1", "disabled", "Chain execution is disabled while its draft codec is reviewed; saved state remains inspectable.", false)
 	add("bitmap-parcel-chain-dev-v1", "disabled", "Chain execution is disabled while its draft codec is reviewed; saved state remains inspectable.", false)
 	return rows

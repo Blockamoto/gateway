@@ -239,6 +239,12 @@ func (a *app) setIndexLivePolicy(req indexLiveRequest) (indexLiveView, error) {
 	if err := requireReleaseIndexExecution(strings.ToLower(strings.TrimSpace(req.Index))); err != nil {
 		return indexLiveView{}, err
 	}
+	if strings.EqualFold(strings.TrimSpace(req.Index), bitmapReplayParcelID) {
+		action := strings.ToLower(strings.TrimSpace(req.Action))
+		if action == "enable" || action == "start" || action == "resume" {
+			return indexLiveView{}, fmt.Errorf("Replay Parcels require a finite reviewed run; Live extension is not yet available")
+		}
+	}
 	// Serialize the policy snapshot through scheduling/cancellation. A paused
 	// policy must not be restarted by an already-running supervisor decision.
 	a.indexLiveControlMu.Lock()

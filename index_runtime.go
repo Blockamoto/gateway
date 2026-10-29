@@ -57,22 +57,23 @@ func cloneIndexJob(j indexJob) indexJob {
 }
 
 type indexStatusView struct {
-	Observation        *indexStatusObservation `json:"observation,omitempty"`
-	BitmapCapabilities bitmapCapabilitiesView  `json:"bitmap_capabilities"`
-	Run                indexRunDocument        `json:"run"`
-	Sats               *indexSatStatusView077  `json:"sats,omitempty"`
-	Addresses          *indexAddressStatusView `json:"addresses,omitempty"`
-	UTXO               *indexUTXOStatusView    `json:"utxo,omitempty"`
-	BlockBodyMigration *blocksBodyMigration    `json:"block_body_migration,omitempty"`
-	Browse             []indexBrowsePolicy     `json:"browse"`
-	Timeline           indexTimelineView       `json:"timeline"`
-	Jobs               []indexJob              `json:"jobs"`
-	Definitions        []indexDefinition       `json:"definitions"`
-	Providers          []indexProviderView     `json:"providers"`
-	Instances          []indexInstance         `json:"instances"`
-	Live               []indexLiveView         `json:"live"`
-	Job                indexJob                `json:"job"`
-	Errors             []string                `json:"errors,omitempty"`
+	ParcelPrerequisites parcelPrerequisiteView079 `json:"parcel_prerequisites"`
+	Observation         *indexStatusObservation   `json:"observation,omitempty"`
+	BitmapCapabilities  bitmapCapabilitiesView    `json:"bitmap_capabilities"`
+	Run                 indexRunDocument          `json:"run"`
+	Sats                *indexSatStatusView077    `json:"sats,omitempty"`
+	Addresses           *indexAddressStatusView   `json:"addresses,omitempty"`
+	UTXO                *indexUTXOStatusView      `json:"utxo,omitempty"`
+	BlockBodyMigration  *blocksBodyMigration      `json:"block_body_migration,omitempty"`
+	Browse              []indexBrowsePolicy       `json:"browse"`
+	Timeline            indexTimelineView         `json:"timeline"`
+	Jobs                []indexJob                `json:"jobs"`
+	Definitions         []indexDefinition         `json:"definitions"`
+	Providers           []indexProviderView       `json:"providers"`
+	Instances           []indexInstance           `json:"instances"`
+	Live                []indexLiveView           `json:"live"`
+	Job                 indexJob                  `json:"job"`
+	Errors              []string                  `json:"errors,omitempty"`
 }
 
 func (a *app) loadIndexJobLocked() {
@@ -241,6 +242,7 @@ func (a *app) indexStatus() indexStatusView {
 			}
 		}
 	}
+	out.ParcelPrerequisites = parcelPrerequisites079(out.Timeline)
 	return out
 }
 

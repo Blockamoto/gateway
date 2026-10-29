@@ -811,6 +811,16 @@ func (a *app) applyRunConsumer(ctx context.Context, c *indexRunConsumer, prepare
 func runTerminal(err error) bool {
 	return satTerminalError077(err) || errors.Is(err, ErrUTXORebuildRequired) || errors.Is(err, ErrUTXOStateCorrupt) || errors.Is(err, ErrAddressStateCorrupt)
 }
+
+// Preserve genuine failures, but do not mislabel a publication interrupted by
+// the run's own Pause/Stop cancellation as a failed consumer.
+func indexRunMarkInterrupted(ctx context.Context, err error, progress *indexRunProgress) bool {
+	if ctx.Err() == nil || runTerminal(err) || !errors.Is(err, ctx.Err()) && !errors.Is(err, errIndexRunConsumerStopped) {
+		return false
+	}
+	progress.State, progress.Reason = "paused", "Paused; committed records are retained."
+	return true
+}
 func (a *app) saveRunProgress(id, state, reason string, consumers []*indexRunConsumer, counts indexRunCounts, target int64, hash string) error {
 	a.indexRunMu.Lock()
 	defer a.indexRunMu.Unlock()
@@ -922,6 +932,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				c.progress.State = "rebuild_required"
 			}
 			c.progress.Reason = err.Error()
+			indexRunMarkInterrupted(ctx, err, &c.progress)
 		}
 		consumers = append(consumers, c)
 	}
@@ -1397,6 +1408,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				}
 				if err != nil {
 					c.progress.State, c.progress.Reason = "failed", err.Error()
+					indexRunMarkInterrupted(ctx, err, &c.progress)
 				} else {
 					c.progress.AdmissionState = "admitted"
 					c.progress.State = "ready"
@@ -1509,7 +1521,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				if err := checkIndexRunPublication(consumerCtx); err != nil {
 					c.progress.State = "failed"
 					c.progress.Reason = err.Error()
-					failed = true
+					if !indexRunMarkInterrupted(ctx, err, &c.progress) {
+						failed = true
+					}
 					continue
 				}
 			}
@@ -1587,14 +1601,17 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				if e != nil {
 					c.progress.State = "failed"
 					c.progress.Reason = e.Error()
-					if errors.Is(e, errIndexRunConsumerStopped) {
+					if runTerminal(e) {
+						c.progress.State = "rebuild_required"
+						failed = true
+					} else if indexRunMarkInterrupted(ctx, e, &c.progress) {
+						// Pause or Stop interrupted this projection.
+					} else if errors.Is(e, errIndexRunConsumerStopped) {
 						c.progress.State = "off"
 					} else if isSelectedAuthorityRetry(e) {
 						c.progress.State = "waiting"
 						c.retryAfter = time.Now().Add(time.Second)
 						waiting = true
-					} else if ctx.Err() != nil {
-						c.progress.State = "paused"
 					} else {
 						failed = true
 					}
@@ -1626,8 +1643,11 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					countLocatorWrites(c, &counts)
 					if err != nil {
 						c.progress.State, c.progress.Reason = "failed", err.Error()
+						interrupted := indexRunMarkInterrupted(ctx, err, &c.progress)
 						c.abortLocatorBatch()
-						failed = true
+						if !interrupted {
+							failed = true
+						}
 						continue
 					}
 					a.noteRunLocatorPublication(consumerCtx, id, c, true)
@@ -1682,6 +1702,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			c.progress.Reason = ""
 			nexts[i] = h
 			eligible = append(eligible, i)
+		}
+		if ctx.Err() != nil {
+			finish("paused", "Paused; committed records are retained.")
+			return
 		}
 		for _, c := range consumers {
 			if c.selection.Index != bitmapReplayParcelID {
@@ -1902,7 +1926,11 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 						c.progress.State = "waiting"
 						c.retryAfter = time.Now().Add(time.Second)
 					}
+					if runTerminal(err) {
+						c.progress.State = "rebuild_required"
+					}
 					c.progress.Reason = err.Error()
+					indexRunMarkInterrupted(ctx, err, &c.progress)
 				} else {
 					counts.ChainSteps++
 					c.progress.AddedBlocks++
@@ -2189,6 +2217,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					c.progress.State = "rebuild_required"
 				}
 				c.progress.Reason = err.Error()
+				indexRunMarkInterrupted(ctx, err, &c.progress)
 			} else {
 				c.progress.AddedBlocks++
 				c.progress.Height = h
@@ -2196,6 +2225,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				c.progress.NextRequiredHeight = &next
 				c.progress.Reason = ""
 			}
+		}
+		if ctx.Err() != nil {
+			finish("paused", "Paused; committed records are retained.")
+			return
 		}
 		if queue, ok := blockCtx.Value(resolvedIngestionKey{}).(*resolvedIngestionQueue); ok && queue.err() != nil {
 			finish("failed", "Deferred verified source fanout failed; independently committed checkpoints are retained: "+queue.err().Error())

@@ -69,13 +69,15 @@ func Test073TransactionPublicationsFrozenPrivateTailAndRevocation(t *testing.T) 
 func Test073SparseRelatedPublicationHasExactActualPositionAndPrivateSource(t *testing.T) {
 	a, _, hashes := timelineFixture(t, 4)
 	a.settings.ServeGatewayData = true
-	block := browseBlock073(t, 2, hashes[2])
+	height := firstMainnetInscriptionHeight
+	block := browseBlock073(t, height, hashes[2])
+	installRunProtocolHeader(t, a, &block)
 	source, err := openIndexStore(a.dataDir, "inscriptions")
 	if err != nil {
 		t.Fatal(err)
 	}
 	source.head.Mode = "lean"
-	if err = source.appendBlock(block, 2, "ephemeral"); err != nil {
+	if err = source.appendBlock(block, height, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
 	b, err := source.readBatch(source.checkpoint.Commitment)
@@ -87,7 +89,7 @@ func Test073SparseRelatedPublicationHasExactActualPositionAndPrivateSource(t *te
 		t.Fatal(err)
 	}
 	related.head.Mode = "lean"
-	if err = related.appendInscriptionLocators(b, &block, 2, "ephemeral"); err != nil {
+	if err = related.appendInscriptionLocators(b, &block, height, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
 	m, err := a.storeIndexPublication(inscriptionLocatorIndex, true, related.checkpoint.Commitment)

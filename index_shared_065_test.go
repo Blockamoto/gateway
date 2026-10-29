@@ -295,12 +295,9 @@ func Test065CombinedHistoricalPrerequisitesAndMissingDerivations(t *testing.T) {
 	if err = s.appendBlock(b, 0, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
-	p, err := a.planIndexBuild(indexBuildRequest{Index: "blocks", From: &zero, To: &zero, Outputs: []string{"inscriptions"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(p.Outputs) != 2 || len(p.Outputs[0].Reuse) != 1 || len(p.Outputs[1].Reuse) != 0 || len(p.Outputs[1].Add) != 1 {
-		t.Fatalf("raw/derived coverage conflated %+v", p.Outputs)
+	_, err = a.planIndexBuild(indexBuildRequest{Index: "blocks", From: &zero, To: &zero, Outputs: []string{"inscriptions"}})
+	if err == nil || !strings.Contains(err.Error(), "beyond this plan's end") {
+		t.Fatalf("pre-origin combined window should be rejected: %v", err)
 	}
 }
 

@@ -25,7 +25,18 @@ func sharedSealedGenesis(t *testing.T) blockView {
 }
 
 func TestSharedBlockSpillRestoresAuthenticatedFactsWithoutParsing(t *testing.T) {
-	b := sharedSealedGenesis(t)
+	// Reuse genuine serialized genesis bytes at a synthetic protocol height:
+	// this test checks byte and extraction persistence, not chain membership.
+	raw := testGenesisBlockPayload(t)
+	b, err := parseBlockDetailed(firstMainnetInscriptionHeight, genesisHashDisplay, raw[:80], raw, "private spool fixture", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, err := extractInscriptionOccurrences(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.inscriptionExtraction = &x
 	q := &resolvedIngestionQueue{maxResidentBytes: 1}
 	defer q.close()
 	if err := queueResolvedBlock(q, b); err != nil {
@@ -57,7 +68,7 @@ func TestSharedBlockSpillRestoresAuthenticatedFactsWithoutParsing(t *testing.T) 
 			t.Fatal(err)
 		}
 		s.head.Mode = "lean"
-		if err = s.appendPreparedBlock(block, 0, "ephemeral", block.inscriptionExtraction); err != nil {
+		if err = s.appendPreparedBlock(block, firstMainnetInscriptionHeight, "ephemeral", block.inscriptionExtraction); err != nil {
 			t.Fatal(err)
 		}
 		commitments = append(commitments, s.checkpoint.Commitment)

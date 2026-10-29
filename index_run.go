@@ -492,6 +492,9 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 		if q.From < d.StartHeight {
 			q.From = d.StartHeight
 		}
+		if c.Index == "inscriptions" && d.Network == "bitcoin-mainnet" && q.From < firstMainnetInscriptionHeight {
+			q.From = firstMainnetInscriptionHeight
+		}
 		if indexRunFactsOnly(c) {
 			q.RangeMode = "sparse_facts"
 			q.Height = q.From - 1
@@ -593,12 +596,26 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			q.Reason = err.Error()
 		}
 		if head != nil && !c.Rebuild {
-			if req.In != nil && *req.In < head.From && c.Index != "address-state" && c.Index != "address-history" {
+			requestedFrom := int64(0)
+			if req.In != nil {
+				requestedFrom = *req.In
+				if c.Index == "inscriptions" {
+					requestedFrom = q.From
+				}
+			}
+			if req.In != nil && requestedFrom < head.From && c.Index != "address-state" && c.Index != "address-history" {
 				q.State = "blocked"
 				q.Reason = "The saved instance starts after In. Preserve its start when preparing this global window; existing coverage cannot be silently prepended."
 			}
 			if req.In == nil && c.Index != "address-state" {
 				q.From = head.From
+			}
+			if c.Index == "inscriptions" && d.Network == "bitcoin-mainnet" && q.From < firstMainnetInscriptionHeight {
+				q.From = firstMainnetInscriptionHeight
+			}
+			if c.Index == "inscriptions" && d.Network == "bitcoin-mainnet" && head.Height+1 < firstMainnetInscriptionHeight {
+				q.State = "needs_prerequisite"
+				q.Reason = "Existing inscription coverage ends before the mainnet inscription origin; it remains readable but cannot be extended across the gap."
 			}
 			q.Height, q.BlockHash, q.Commitment = head.Height, head.BlockHash, head.Commitment
 			q.ReusedBlocks = max(int64(0), min(head.Height, q.To)-q.From+1)

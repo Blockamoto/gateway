@@ -494,6 +494,11 @@ func (s *indexStore) appendBlock(block blockView, from int64, retention string) 
 }
 
 func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention string, prepared *inscriptionBlockResult) error {
+	if s.definition.ID == "inscriptions" {
+		if err := requireInscriptionIngestionRange(s.definition.Network, block.Height, from); err != nil {
+			return err
+		}
+	}
 	if s.definition.ID == "sat-state" {
 		return s.appendSat077Block(block, from, retention, prepared)
 	}
@@ -605,6 +610,11 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 }
 
 func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash string, from int64, retention string) error {
+	if s.definition.ID == "inscriptions" || s.definition.ID == inscriptionLocatorIndex {
+		if err := requireInscriptionIngestionRange(s.definition.Network, height, from); err != nil {
+			return err
+		}
+	}
 	if s.definition.ID == "blocks" && !s.stagedMigration {
 		blocksBodyMigrationMu.Lock()
 		defer blocksBodyMigrationMu.Unlock()

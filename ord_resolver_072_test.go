@@ -74,26 +74,33 @@ func Test072OrdSparseLocationResolvesAndDistinguishesUnavailableBytes(t *testing
 	binary.LittleEndian.PutUint64(header[72:], 992)
 	digest := hash256(header)
 	hash := reverseHex(digest[:])
-	if err := os.WriteFile(a.headersPath, header, 0600); err != nil {
+	height := firstMainnetInscriptionHeight
+	f, err := os.OpenFile(a.headersPath, os.O_WRONLY, 0600)
+	if err != nil {
 		t.Fatal(err)
 	}
-	a.status.HeaderCount, a.status.HeaderHeight = 1, 0
-	_, source, block := positionalInscriptionFixture(t, a.dataDir, "lean", 0, hash, "", true)
+	_, err = f.WriteAt(header, height*80)
+	closeErr := f.Close()
+	if err != nil || closeErr != nil {
+		t.Fatal(err, closeErr)
+	}
+	a.status.HeaderCount, a.status.HeaderHeight = height+1, height
+	_, source, block := positionalInscriptionFixture(t, a.dataDir, "lean", height, hash, "", true)
 	store, err := openIndexStore(a.dataDir, inscriptionLocatorIndex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = store.appendInscriptionLocators(source, &block, 0, "ephemeral"); err != nil {
+	if err = store.appendInscriptionLocators(source, &block, height, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
-	target, err := a.localBlockTarget(0)
+	target, err := a.localBlockTarget(height)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ordDecodedFixture072(t, a, block, target)
 	id := block.Transactions[12].TxID + "i1"
 	rec, err := a.resolveInscription(context.Background(), id, "")
-	if err != nil || rec.RevealCoordinate != "12i1.0" || rec.TxIndex == nil || *rec.TxIndex != 12 {
+	if err != nil || rec.RevealCoordinate != fmt.Sprintf("12i1.%d", height) || rec.TxIndex == nil || *rec.TxIndex != 12 {
 		t.Fatalf("sparse exact location: %+v %v", rec, err)
 	}
 	// A different sparse reveal is located, but no raw block is available in an

@@ -155,13 +155,7 @@ func Test077SatlineDeferralKeepsSavedInscriptionIdentityAndSkipsHistoricalFetch(
 	if err != nil || len(x.Occurrences) != 1 {
 		t.Fatal(x, err)
 	}
-	occ, err := openIndexStore(a.dataDir, "inscriptions")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = occ.appendPreparedBlock(reveal, 2, "pruned", &x); err != nil {
-		t.Fatal(err)
-	}
+	savePreOriginInscriptionFixture(t, a.dataDir, reveal, &x, "pruned")
 	settings, rawCalls, stop := satline077RPC(t, map[int64]string{0: block(0).Hash, 1: block(1).Hash, 2: reveal.Hash})
 	defer stop()
 	a.settings = settings

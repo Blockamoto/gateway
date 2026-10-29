@@ -21,7 +21,7 @@ func TestResolvedIngestionLocalBodiesAllSparseTracksWithoutRaw(t *testing.T) {
 			t.Fatal(query, err)
 		}
 	}
-	for _, id := range []string{"tx-locator", "inscriptions", "txo-spender"} {
+	for _, id := range []string{"tx-locator", "txo-spender"} {
 		_, h, err := a.browseStore(id)
 		if err != nil || len(h.Blocks) != 2 {
 			t.Fatal(id, h, err)
@@ -35,8 +35,8 @@ func TestResolvedIngestionLocalBodiesAllSparseTracksWithoutRaw(t *testing.T) {
 		t.Fatal(value, err)
 	}
 	b, have, err := a.browsedBatchContext(ctx, "inscriptions", 1, "")
-	if err != nil || !have || inscriptionBatchMode(b) != "full" {
-		t.Fatal("current Full choice ignored", b, err)
+	if err != nil || have {
+		t.Fatal("pre-origin block created an inscription scan", b, have, err)
 	}
 	h, err := openAddressHistoryStoreContext(ctx, a.dataDir)
 	if err != nil || len(h.head.Coverage) != 1 || h.head.Coverage[0] != (heightInterval{0, 1}) {
@@ -46,7 +46,7 @@ func TestResolvedIngestionLocalBodiesAllSparseTracksWithoutRaw(t *testing.T) {
 		t.Fatal("ordinary resolution started background work", got.Run)
 	}
 	rows, _ := a.indexBrowsePolicies()
-	if len(rows) != 15 {
+	if len(rows) != 16 {
 		t.Fatal("capability lanes", rows)
 	}
 }
@@ -269,10 +269,11 @@ func TestResolvedIngestionInscriptionModeIDsAndPublicationFence(t *testing.T) {
 	if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{choice}}); err != nil {
 		t.Fatal(err)
 	}
-	b := bitmapDevelopmentFixtureBlock(2, testID(1), "0.bitmap")
+	height := firstMainnetInscriptionHeight
+	b := bitmapDevelopmentFixtureBlock(height, testID(1), "0.bitmap")
 	installRunProtocolHeader(t, a, &b)
 	a.ingestResolvedVerifiedBlock(ctx, b)
-	batch, have, err := a.browsedBatchContext(ctx, "inscriptions", 2, b.Hash)
+	batch, have, err := a.browsedBatchContext(ctx, "inscriptions", height, b.Hash)
 	if err != nil || !have || len(batch.Inscriptions) != 1 || len(batch.InscriptionBlock.ConventionalIDs) != 1 {
 		t.Fatal(batch, err)
 	}
@@ -282,7 +283,7 @@ func TestResolvedIngestionInscriptionModeIDsAndPublicationFence(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.ingestResolvedVerifiedBlock(ctx, b)
-	batch, have, err = a.browsedBatchContext(ctx, "inscriptions", 2, b.Hash)
+	batch, have, err = a.browsedBatchContext(ctx, "inscriptions", height, b.Hash)
 	if err != nil || !have || len(batch.Inscriptions) != 1 {
 		t.Fatal("normal lookup discarded saved Full data", batch, err)
 	}

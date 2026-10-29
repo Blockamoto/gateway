@@ -26,16 +26,21 @@ func olderExplorerFixture064(t *testing.T, id string, count int) (*app, *indexSt
 	}
 	first := genesis.Transactions[0].TxID
 	previous := ""
+	start := int64(0)
+	if id == "inscriptions" {
+		start = firstMainnetInscriptionHeight
+	}
 	for h := 0; h < count; h++ {
+		height := start + int64(h)
 		b := genesis
 		if id == "inscriptions" {
-			b = bitmapTestBlock(int64(h), "", previous, "old retained content")
+			b = bitmapTestBlock(height, "", previous, "old retained content")
 			if h != 0 {
 				b.Transactions = b.Transactions[:1]
 				b.TransactionCount = 1
 			}
 		}
-		b.Height = int64(h)
+		b.Height = height
 		b.PreviousBlockHash = previous
 		if h != 0 || id == "inscriptions" {
 			header := make([]byte, 80)
@@ -46,7 +51,7 @@ func olderExplorerFixture064(t *testing.T, id string, count int) (*app, *indexSt
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = f.WriteAt(header, int64(h)*80)
+			_, err = f.WriteAt(header, height*80)
 			f.Close()
 			if err != nil {
 				t.Fatal(err)
@@ -66,7 +71,7 @@ func olderExplorerFixture064(t *testing.T, id string, count int) (*app, *indexSt
 			}
 			err = s.commitPreparedIndexBatch(indexBatch{PreviousBlockHash: b.PreviousBlockHash, Bitcoin: &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: ids, Transactions: b.Transactions}}, b.Height, b.Hash, 0, "ephemeral")
 		} else {
-			err = s.appendBlock(b, 0, "ephemeral")
+			err = s.appendBlock(b, start, "ephemeral")
 		}
 		if err != nil {
 			t.Fatal(h, err)
@@ -76,8 +81,8 @@ func olderExplorerFixture064(t *testing.T, id string, count int) (*app, *indexSt
 	if id == "blocks" {
 		installLegacyRawLocators(t, s)
 	}
-	a.status.HeaderCount = int64(count)
-	a.status.HeaderHeight = int64(count - 1)
+	a.status.HeaderCount = start + int64(count)
+	a.status.HeaderHeight = start + int64(count-1)
 	if id == "inscriptions" {
 		var oldest indexBatch
 		err = s.walk(func(b indexBatch) error { oldest = b; return nil })
@@ -115,7 +120,7 @@ func TestIntegrationDurableOlderIDsAfterRestartAndEphemeralEviction(t *testing.T
 			r := restartExplorerFixture064(t, a)
 			if id == "inscriptions" {
 				rec, err := r.resolveInscription(context.Background(), key, "")
-				if err != nil || string(rec.Envelope.Body) != "old retained content" || rec.Height != 0 {
+				if err != nil || string(rec.Envelope.Body) != "old retained content" || rec.Height != firstMainnetInscriptionHeight {
 					t.Fatal(rec, err)
 				}
 			} else {

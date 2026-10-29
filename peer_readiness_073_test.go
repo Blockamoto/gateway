@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -186,15 +187,29 @@ func Test073PeerReadinessLoopbackBitcoinBytesAndTransactionPublication(t *testin
 func Test073PeerReadinessLoopbackSparseInscriptionSnapshotsAndPrivateBrowse(t *testing.T) {
 	readinessFuturePeers073(t)
 	provider, headers, hashes := timelineFixture(t, 4)
+	start := firstMainnetInscriptionHeight
+	headerFile, err := os.OpenFile(provider.headersPath, os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, header := range headers {
+		if _, err := headerFile.WriteAt(header[:80], (start+int64(i))*80); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := headerFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	provider.status.HeaderCount, provider.status.HeaderHeight = start+4, start+3
 	provider.settings.ServeGatewayData = true
 	provider.settings.NetworkDisabled = false
-	source, batch, block := positionalInscriptionFixture(t, provider.dataDir, "lean", 0, hashes[0], "", true)
+	source, batch, block := positionalInscriptionFixture(t, provider.dataDir, "lean", start, hashes[0], "", true)
 	related, err := openIndexStore(provider.dataDir, inscriptionLocatorIndex)
 	if err != nil {
 		t.Fatal(err)
 	}
 	related.head.Mode = "lean"
-	if err = related.appendInscriptionLocators(batch, &block, 0, "ephemeral"); err != nil {
+	if err = related.appendInscriptionLocators(batch, &block, start, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
 	peer := readinessLoopback073(t, provider)
@@ -207,7 +222,7 @@ func Test073PeerReadinessLoopbackSparseInscriptionSnapshotsAndPrivateBrowse(t *t
 		t.Fatal(err)
 	}
 	page, err := client.queryIndexPeerPage(peer, inscriptions, indexPeerFirstRequest(inscriptions, 1))
-	if err != nil || len(page.Batches) != 1 || len(page.Batches[0].Inscriptions) != 0 || !reflect.DeepEqual(page.Batches[0].InscriptionCoordinates, []string{"12i0.0", "12i1.0", "500i0.0", "500i1.0"}) || page.Verification != indexPeerClaimState {
+	if err != nil || len(page.Batches) != 1 || len(page.Batches[0].Inscriptions) != 0 || !reflect.DeepEqual(page.Batches[0].InscriptionCoordinates, []string{fmt.Sprintf("12i0.%d", start), fmt.Sprintf("12i1.%d", start), fmt.Sprintf("500i0.%d", start), fmt.Sprintf("500i1.%d", start)}) || page.Verification != indexPeerClaimState {
 		t.Fatal("Lean positional inscription claim failed wire exchange", page, err)
 	}
 	readinessUnknown073(t, client, peer, revealID) // Source publication does not imply related-locator consent.
@@ -220,27 +235,27 @@ func Test073PeerReadinessLoopbackSparseInscriptionSnapshotsAndPrivateBrowse(t *t
 		t.Fatal("sparse locator wire page replaced actual transaction position by array offset", relatedPage, err)
 	}
 	resp, err := client.queryGatewayPeer(peer, overlayRequest{Type: "txloc", TxID: revealID})
-	if err != nil || resp.TxLocation == nil || resp.TxLocation.Height != 0 || resp.TxLocation.TxIndex != 500 || resp.TxLocation.BlockHash != hashes[0] {
+	if err != nil || resp.TxLocation == nil || resp.TxLocation.Height != start || resp.TxLocation.TxIndex != 500 || resp.TxLocation.BlockHash != hashes[0] {
 		t.Fatal("sparse reveal ID did not bridge to positional coordinates", resp, err)
 	}
 	readinessUnknown073(t, client, peer, block.Transactions[1].TxID)
 	// Private sequential growth must not move the frozen publication or its old
 	// locator membership. Sparse browsing likewise never grants sharing consent.
-	private := browseBlock073(t, 1, hashes[1])
+	private := browseBlock073(t, start+1, hashes[1])
 	private.PreviousBlockHash = hashes[0]
-	if err = source.appendBlock(private, 0, "ephemeral"); err != nil {
+	if err = source.appendBlock(private, start, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
 	privateSource, err := source.readBatch(source.checkpoint.Commitment)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = related.appendInscriptionLocators(privateSource, &private, 0, "ephemeral"); err != nil {
+	if err = related.appendInscriptionLocators(privateSource, &private, start, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
 	setBrowse073(t, provider, "tx-locator", true)
 	setBrowse073(t, provider, "inscriptions", true)
-	browsed := browseBlock073(t, 3, hashes[3])
+	browsed := browseBlock073(t, start+3, hashes[3])
 	results := provider.indexBrowsedBlock(context.Background(), browsed, nil)
 	if len(results) != 2 || results[0].State == "error" || results[1].State == "error" {
 		t.Fatal("private browse fixture failed", results)
@@ -256,7 +271,7 @@ func Test073PeerReadinessLoopbackSparseInscriptionSnapshotsAndPrivateBrowse(t *t
 		t.Fatal(manifests, err)
 	}
 	for _, manifest := range manifests {
-		if !reflect.DeepEqual(manifest.Coverage, []heightInterval{{0, 0}}) || manifest.Checkpoint.Height != 0 {
+		if !reflect.DeepEqual(manifest.Coverage, []heightInterval{{start, start}}) || manifest.Checkpoint.Height != start {
 			t.Fatal("private tail/browse expanded public coverage", manifest)
 		}
 	}
@@ -269,7 +284,7 @@ func Test073PeerReadinessLoopbackSparseInscriptionSnapshotsAndPrivateBrowse(t *t
 	// Receiver verification is structural only: altered coordinates are rejected,
 	// and successful peer claims still do not become local authenticated records.
 	changed := cloneIndexPeerPage(t, page)
-	changed.Batches[0].InscriptionCoordinates[0] = "13i0.0"
+	changed.Batches[0].InscriptionCoordinates[0] = fmt.Sprintf("13i0.%d", start)
 	if _, err = validateIndexPeerPage(inscriptions, indexPeerFirstRequest(inscriptions, 1), changed); err == nil {
 		t.Fatal("tampered inscription claim was accepted")
 	}
@@ -282,7 +297,7 @@ func Test073PeerReadinessLoopbackSparseInscriptionSnapshotsAndPrivateBrowse(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.WriteAt(headers[2][:80], 0)
+	_, err = f.WriteAt(headers[2][:80], start*80)
 	f.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +310,7 @@ func Test073PeerReadinessLoopbackSparseInscriptionSnapshotsAndPrivateBrowse(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.WriteAt(headers[0][:80], 0)
+	_, err = f.WriteAt(headers[0][:80], start*80)
 	f.Close()
 	if err != nil {
 		t.Fatal(err)

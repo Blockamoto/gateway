@@ -216,6 +216,12 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 		if id == "bitmap" && from < 792435 {
 			from = 792435
 		}
+		if (id == "inscriptions" || id == inscriptionLocatorIndex) && store.definition.Network == "bitcoin-mainnet" && from < firstMainnetInscriptionHeight {
+			from = firstMainnetInscriptionHeight
+		}
+		if (id == "inscriptions" || id == inscriptionLocatorIndex) && store.definition.Network == "bitcoin-mainnet" && store.checkpoint != nil && store.checkpoint.Height+1 < firstMainnetInscriptionHeight {
+			return p, fmt.Errorf("%s existing coverage ends before the mainnet inscription origin and cannot be extended across the gap; its saved data remains readable", id)
+		}
 		if p.To >= 0 && from > p.To {
 			return p, fmt.Errorf("%s starts at %d, beyond this plan's end height %d", id, from, p.To)
 		}
@@ -231,6 +237,9 @@ func (a *app) planIndexBuild(req indexBuildRequest) (indexPlan, error) {
 				return p, fmt.Errorf("%s retains a contiguous range from %d through %d; this plan would create a gap or prepend history", id, store.checkpoint.From, store.checkpoint.Height)
 			}
 			out.From = store.checkpoint.From
+			if (id == "inscriptions" || id == inscriptionLocatorIndex) && store.definition.Network == "bitcoin-mainnet" && out.From < firstMainnetInscriptionHeight {
+				out.From = firstMainnetInscriptionHeight
+			}
 			out.Mode = store.head.Mode
 			if out.Mode == "" {
 				out.Mode = "full"

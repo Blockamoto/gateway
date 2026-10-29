@@ -373,13 +373,11 @@ func TestSharedBlockDependencyQueueDrainsOnlyAfterJoinedOwners(t *testing.T) {
 	if _, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{{Index: "tx-locator", Armed: true}, {Index: "inscriptions", Armed: true, indexRunOptions: indexRunOptions{ConventionalIDs: boolPointer(false)}}}}); err != nil {
 		t.Fatal(err)
 	}
-	b := sharedSealedGenesis(t)
-	raw := mainnetBlockOne(t)
-	hash := hash256(raw[:80])
-	child, err := parseBlockDetailed(1, reverseHex(hash[:]), raw[:80], raw, "nested queue fixture", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	start := firstMainnetInscriptionHeight
+	b := bitmapDevelopmentFixtureBlock(start, "", "parent")
+	sharedProtocolHeader(t, a, &b)
+	child := bitmapDevelopmentFixtureBlock(start+1, b.Hash, "child")
+	sharedProtocolHeader(t, a, &child)
 	x, err := extractInscriptionOccurrences(child)
 	if err != nil {
 		t.Fatal(err)
@@ -409,7 +407,7 @@ func TestSharedBlockDependencyQueueDrainsOnlyAfterJoinedOwners(t *testing.T) {
 			txCalls.Add(1)
 			<-queued
 			tx.locatorContext = ctx
-			err := tx.appendPreparedBlock(b, 0, "ephemeral", nil)
+			err := tx.appendPreparedBlock(b, start, "ephemeral", nil)
 			close(txDone)
 			return err
 		},
@@ -417,11 +415,11 @@ func TestSharedBlockDependencyQueueDrainsOnlyAfterJoinedOwners(t *testing.T) {
 			if rows := a.ingestResolvedVerifiedBlock(ctx, child); len(rows) != 0 {
 				return fmt.Errorf("dependency did not queue: %v", rows)
 			}
-			if _, have, err := readBrowseTXPoint(context.Background(), a.dataDir, 1); err != nil || have {
+			if _, have, err := readBrowseTXPoint(context.Background(), a.dataDir, child.Height); err != nil || have {
 				return fmt.Errorf("dependency published while parent owner active: %v/%v", have, err)
 			}
 			close(queued)
-			return ins.appendPreparedBlock(b, 0, "ephemeral", p.extraction)
+			return ins.appendPreparedBlock(b, start, "ephemeral", p.extraction)
 		},
 	}
 	ctx = context.WithValue(ctx, indexRunBlockConsumersKey{}, ops)
@@ -435,17 +433,17 @@ func TestSharedBlockDependencyQueueDrainsOnlyAfterJoinedOwners(t *testing.T) {
 	default:
 		t.Fatal("fanout returned before TX joined")
 	}
-	if _, have, err := readBrowseTXPoint(context.Background(), a.dataDir, 1); err != nil || have {
+	if _, have, err := readBrowseTXPoint(context.Background(), a.dataDir, child.Height); err != nil || have {
 		t.Fatal("queue drained before explicit join boundary", have, err)
 	}
 	drain()
 	if txCalls.Load() != 1 {
 		t.Fatal("dependency inherited parent native callback", txCalls.Load())
 	}
-	if _, have, err := readBrowseTXPoint(context.Background(), a.dataDir, 1); err != nil || !have {
+	if _, have, err := readBrowseTXPoint(context.Background(), a.dataDir, child.Height); err != nil || !have {
 		t.Fatal("joined queue lost future point", have, err)
 	}
-	if point, have, err := a.browsedBatchContext(context.Background(), "inscriptions", 1, child.Hash); err != nil || !have || !inscriptionBatchInventoryComplete(point) {
+	if point, have, err := a.browsedBatchContext(context.Background(), "inscriptions", child.Height, child.Hash); err != nil || !have || !inscriptionBatchInventoryComplete(point) {
 		t.Fatal("dependency lost complete inventory", have, err)
 	}
 	q := ctx.Value(resolvedIngestionKey{}).(*resolvedIngestionQueue)

@@ -65,6 +65,27 @@ func lockIndexBrowse(ctx context.Context) error {
 		}
 	}
 }
+
+func (a *app) lockInscriptionBrowseRange(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if a.indexRunMu.TryLock() {
+		return nil
+	}
+	t := time.NewTicker(10 * time.Millisecond)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-t.C:
+			if a.indexRunMu.TryLock() {
+				return nil
+			}
+		}
+	}
+}
 func indexBrowseAvailable(id string) bool {
 	return (id == "tx-locator" || id == "inscriptions" || id == "txo-spender") && releaseFeatureAvailable(id)
 }
@@ -270,6 +291,15 @@ func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (
 	if err := checkTimelineTrackArmed(ctx, a.dataDir, id); err != nil {
 		return false, err
 	}
+	if id == "inscriptions" {
+		d, err := readIndexRunDocument(a.dataDir)
+		if err != nil {
+			return false, err
+		}
+		if err = resolvedAdmissionAllowedForRoot(a.dataDir, d, id, b.Checkpoint.Height); err != nil {
+			return false, err
+		}
+	}
 	if id == "tx-locator" {
 		return a.persistBrowseTXPointBatch(ctx, a.newBrowseStore(id), b)
 	}
@@ -285,7 +315,34 @@ func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (
 	if err = updateapply.CheckPath(s.dir); err != nil {
 		return false, err
 	}
-	if err = atomicWriteJSON(filepath.Join(s.dir, "commits", b.Checkpoint.Commitment+".json"), b); err != nil {
+	commitPath := filepath.Join(s.dir, "commits", b.Checkpoint.Commitment+".json")
+	if id == "inscriptions" {
+		// Serialize this record write with prepared/run range changes. A
+		// later head check alone would leave an out-of-range orphan commit.
+		if err = a.lockInscriptionBrowseRange(ctx); err != nil {
+			return false, err
+		}
+		current, e := readIndexRunDocument(a.dataDir)
+		if e == nil {
+			choice, ok := runSelection(current.Prepared, id)
+			if !current.Configured || !ok || !choice.Armed {
+				e = errIndexRunConsumerStopped
+			} else {
+				e = resolvedAdmissionAllowedForRoot(a.dataDir, current, id, b.Checkpoint.Height)
+			}
+		}
+		if e == nil {
+			e = ctx.Err()
+		}
+		if e == nil {
+			e = atomicWriteJSON(commitPath, b)
+		}
+		a.indexRunMu.Unlock()
+		err = e
+	} else {
+		err = atomicWriteJSON(commitPath, b)
+	}
+	if err != nil {
 		return false, err
 	}
 	if err = syncDirectory(filepath.Join(s.dir, "commits")); err != nil {
@@ -311,6 +368,15 @@ func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (
 	}
 	if err = checkTimelineTrackArmed(ctx, a.dataDir, id); err != nil {
 		return false, err
+	}
+	if id == "inscriptions" {
+		d, e := readIndexRunDocument(a.dataDir)
+		if e != nil {
+			return false, e
+		}
+		if e = resolvedAdmissionAllowedForRoot(a.dataDir, d, id, b.Checkpoint.Height); e != nil {
+			return false, e
+		}
 	}
 	if err = atomicWriteBytes(filepath.Join(s.dir, "head.json"), data); err != nil {
 		return false, err

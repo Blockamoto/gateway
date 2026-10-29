@@ -316,13 +316,13 @@ func TestTimelineExplicitInstanceGapsAreNeverPaintedAsIndexed(t *testing.T) {
 	}
 }
 
-func TestTimelinePotentialStartMatchesCatalogWithoutRestrictingCoverage(t *testing.T) {
+func TestTimelineInscriptionOriginPreservesExistingCoverageAndIdentity(t *testing.T) {
 	inscriptions, err := findIndexDefinition("inscriptions")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if inscriptions.StartHeight != 0 || !inscriptions.ArbitraryStart {
-		t.Fatal("suggested start restricted explicit earlier scans", inscriptions)
+		t.Fatal("historical inscription recipe identity changed", inscriptions)
 	}
 	for _, tc := range []struct {
 		name string
@@ -356,7 +356,7 @@ func TestTimelinePotentialStartMatchesCatalogWithoutRestrictingCoverage(t *testi
 	}
 	genesis := int64(0)
 	plan, err = planIndex(indexBuildRequest{Index: "inscriptions", From: &genesis})
-	if err != nil || plan.From != 0 || plan.Definition.RuleHash != inscriptions.RuleHash {
-		t.Fatal("explicit genesis range or recipe changed", plan, err)
+	if err != nil || plan.From != 767430 || plan.Definition.RuleHash != inscriptions.RuleHash {
+		t.Fatal("explicit genesis range was not clamped or recipe changed", plan, err)
 	}
 }

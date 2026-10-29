@@ -236,6 +236,33 @@ func TestSatHistoryOnlyLineageIncludesSameBlockHopsAndFees(t *testing.T) {
 		t.Fatal("disabling range recording erased independent FIFO facts", e)
 	}
 }
+
+// Model an authenticated inscription batch saved by an older version before
+// the mainnet scan-origin guard existed. These Sat tests intentionally use
+// height 2 to exercise a short genesis-first history, and must still be able
+// to read a previously saved record without granting new pre-origin writes.
+func savePreOriginInscriptionFixture(t *testing.T, root string, block blockView, extracted *inscriptionBlockResult, retention string) *indexStore {
+	t.Helper()
+	batch, err := singletonBrowseBatchMode(indexRunSelection{Index: "inscriptions", indexRunOptions: indexRunOptions{Mode: "full", ConventionalIDs: boolPointer(false)}}, block, extracted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Install a previously saved, authenticated singleton checkpoint directly;
+	// no production writer is invoked for a pre-origin block.
+	dir := filepath.Join(root, "indexes", "inscriptions")
+	if err = atomicWriteJSON(filepath.Join(dir, "commits", batch.Checkpoint.Commitment+".json"), batch); err != nil {
+		t.Fatal(err)
+	}
+	if err = atomicWriteJSON(filepath.Join(dir, "head.json"), indexHead{Mode: "full", Commitment: batch.Checkpoint.Commitment, Retention: retention}); err != nil {
+		t.Fatal(err)
+	}
+	store, err := indexStoreHead(root, "inscriptions")
+	if err != nil || store.checkpoint == nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
 func TestSatInscriptionIdentitySurvivesPruningWithoutNumberingOrHistory(t *testing.T) {
 	a, s, block := retainedSatFixture(t, 260)
 	coinbase, one, two := testID(6101), testID(6102), testID(6103)
@@ -261,13 +288,7 @@ func TestSatInscriptionIdentitySurvivesPruningWithoutNumberingOrHistory(t *testi
 			t.Fatal(h, e)
 		}
 		if h == 2 {
-			occ, e := openIndexStore(a.dataDir, "inscriptions")
-			if e != nil {
-				t.Fatal(e)
-			}
-			if e = occ.appendPreparedBlock(b, 2, "ephemeral", &x); e != nil {
-				t.Fatal(e)
-			}
+			occ := savePreOriginInscriptionFixture(t, a.dataDir, b, &x, "ephemeral")
 			batch, e := occ.readBatch(occ.checkpoint.Commitment)
 			if e != nil || batch.Inscriptions[0].CanonicalNumberKnown {
 				t.Fatal("invented canonical number", e)

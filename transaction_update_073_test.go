@@ -374,13 +374,25 @@ func Test073TransactionBuildResumeAndRetroactiveInscriptionLocators(t *testing.T
 	if err != nil || s.checkpoint.Commitment != commit {
 		t.Fatal("completed transaction resume rewrote history", s, err)
 	}
-	build(indexBuildRequest{Index: "inscriptions", From: &zero, To: &zero, Mode: "lean", ConventionalIDs: boolPointer(false)})
+	// The inscription stage uses a synthetic selected empty block at its
+	// protocol origin; the earlier transaction-locator stage remains genesis.
+	height := firstMainnetInscriptionHeight
+	block := inscriptionTestBlock()
+	block.Height = height
+	installRunProtocolHeader(t, a, &block)
+	a.blockBaseAcquire = func(ctx context.Context, target blockTarget, _ appSettings) (blockView, error) {
+		if target.Height != block.Height || target.HashDisplay != block.Hash {
+			return blockView{}, fmt.Errorf("unexpected fixture block")
+		}
+		return block, ctx.Err()
+	}
+	build(indexBuildRequest{Index: "inscriptions", From: &height, To: &height, Mode: "lean", ConventionalIDs: boolPointer(false)})
 	source, err := indexStoreHead(a.dataDir, "inscriptions")
 	if err != nil || source.checkpoint == nil {
 		t.Fatal(err)
 	}
 	sourceCommit := source.checkpoint.Commitment
-	build(indexBuildRequest{Index: "inscriptions", From: &zero, To: &zero, ConventionalIDs: boolPointer(true)})
+	build(indexBuildRequest{Index: "inscriptions", From: &height, To: &height, ConventionalIDs: boolPointer(true)})
 	source, err = indexStoreHead(a.dataDir, "inscriptions")
 	if err != nil || source.checkpoint.Commitment != sourceCommit {
 		t.Fatal("retroactive related locator build changed inscription records", source, err)

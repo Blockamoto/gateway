@@ -3,6 +3,11 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const context={window:{}};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../ui/shell/index-transport.js'),'utf8'),context);
 const {point,compare,project,owner,executionRequest,stagedProgressText}=context.window.GatewayIndexTransport,plain=value=>JSON.parse(JSON.stringify(value)),anchor='a'.repeat(64),other='b'.repeat(64);
+const utxoLeadIn=context.window.GatewayIndexTransport.utxoLeadIn,utxoRequest={consumers:[{index:'utxo-state',armed:true}]};
+assert.equal(utxoLeadIn({consumers:[{index:'utxo-state',state:'blocked'}]},utxoRequest),null,'Unrelated failures do not open a lead-in notice');
+assert.equal(utxoLeadIn({consumers:[{index:'utxo-state',requires_lead_in:true}]},utxoRequest),null,'Missing next height is not inferred');
+assert.equal(utxoLeadIn({consumers:[{index:'utxo-state',requires_lead_in:true,next_required_height:0,height:-1}]},utxoRequest).fresh,true);
+assert.equal(utxoLeadIn({consumers:[{index:'utxo-state',requires_lead_in:true,next_required_height:11,height:10,block_hash:anchor,commitment:other}]},{consumers:[{index:'utxo-state',armed:true,rebuild:true}]}).saved,false,'Rebuild cannot offer the saved boundary');
 assert.equal(stagedProgressText({height:792434,staged_height:792435,staged_blocks:1,staged_records:3139,staged_bytes:100,logical_batch_from:792288,logical_batch_to:792623}),'No committed checkpoint yet. Staged 1 block through 792,435 · 3,139 records · 100 bytes; staged data is not yet committed. Logical batch 792,288–792,623. Run boundaries and staging limits may flush it earlier.','An uncommitted initial cursor never claims saved coverage');
 assert.match(stagedProgressText({height:2,commitment:anchor,staged_height:3,staged_blocks:1}),/^Committed through block 2\. Staged 1 block through 3/);
 assert.equal(stagedProgressText({height:2,commitment:anchor,staged_blocks:0}), '');

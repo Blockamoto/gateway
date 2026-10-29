@@ -411,6 +411,9 @@ func sparseTransactionsFromInscription(source indexBatch, block *blockView) (*tr
 }
 
 func (s *indexStore) appendInscriptionLocators(source indexBatch, block *blockView, from int64, retention string) error {
+	if err := requireInscriptionIngestionRange(s.definition.Network, source.Checkpoint.Height, from); err != nil {
+		return err
+	}
 	payload, err := sparseTransactionsFromInscription(source, block)
 	if err != nil {
 		return err

@@ -43,10 +43,10 @@ func TestInscriptionWorkspaceCLIOptionalLocatorsAndStageGate(t *testing.T) {
 		}
 	}
 	a := prepareLiveTestApp063(t)
-	request := `{"index":"inscriptions","from":0,"to":0,"mode":"lean","conventional_ids":true}`
+	request := `{"index":"inscriptions","from":767430,"to":767430,"mode":"lean","conventional_ids":true}`
 	response := indexInterfaceCall(indexInterfaceHandler(a), "POST", "/api/v1/index/plan", request)
 	var plan indexPlan
-	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &plan) != nil || !plan.ConventionalIDs || len(plan.Outputs) != 2 || plan.Outputs[1].Index != inscriptionLocatorIndex {
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &plan) != nil || !plan.ConventionalIDs || len(plan.Outputs) != 2 || plan.Outputs[1].Index != inscriptionLocatorIndex || plan.Outputs[1].From != firstMainnetInscriptionHeight {
 		t.Fatal("transaction stage must accept explicit inscription locator enrichment", response.Code, response.Body.String())
 	}
 }

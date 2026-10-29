@@ -88,7 +88,7 @@ func TestPositionalInscriptionLeanFullAndAuthentication(t *testing.T) {
 }
 
 func TestPositionalInscriptionEmptyCoverageAndStrictPositions(t *testing.T) {
-	_, empty, _ := positionalInscriptionFixture(t, t.TempDir(), "lean", 0, strings.Repeat("a", 64), "", false)
+	_, empty, _ := positionalInscriptionFixture(t, t.TempDir(), "lean", firstMainnetInscriptionHeight, strings.Repeat("a", 64), "", false)
 	if len(empty.InscriptionCoordinates) != 0 || empty.InscriptionBlock.TransactionCount != 1 {
 		t.Fatal("empty evaluated coverage lost its denominator")
 	}
@@ -97,7 +97,7 @@ func TestPositionalInscriptionEmptyCoverageAndStrictPositions(t *testing.T) {
 	if validateInscriptionPayload(missing) == nil {
 		t.Fatal("new recipe accepted an unauthenticated denominator/depth")
 	}
-	for _, coordinates := range [][]string{{"0i0.0"}, {"1.i0.0"}, {"1i1.0"}, {"1i0.0", "1i0.0"}, {"2i0.0", "1i0.0"}} {
+	for _, coordinates := range [][]string{{"0i0.767430"}, {"1.i0.767430"}, {"1i1.767430"}, {"1i0.767430", "1i0.767430"}, {"2i0.767430", "1i0.767430"}} {
 		bad := empty
 		meta := *empty.InscriptionBlock
 		meta.TransactionCount = 3
@@ -151,7 +151,7 @@ func TestSparseTransactionNewCompletePayloadAndDenseBlocksStability(t *testing.T
 
 func TestSparseInscriptionInterruptedCheckpointRetryDoesNotDuplicatePointers(t *testing.T) {
 	root := t.TempDir()
-	sourceStore, source, block := positionalInscriptionFixture(t, root, "lean", 0, strings.Repeat("a", 64), "", true)
+	sourceStore, source, block := positionalInscriptionFixture(t, root, "lean", firstMainnetInscriptionHeight, strings.Repeat("a", 64), "", true)
 	s, err := openIndexStore(root, inscriptionLocatorIndex)
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +170,7 @@ func TestSparseInscriptionInterruptedCheckpointRetryDoesNotDuplicatePointers(t *
 		}
 		return nil
 	}
-	if err = s.appendInscriptionLocators(source, &block, 0, "ephemeral"); !errors.Is(err, failure) || s.checkpoint != nil {
+	if err = s.appendInscriptionLocators(source, &block, firstMainnetInscriptionHeight, "ephemeral"); !errors.Is(err, failure) || s.checkpoint != nil {
 		t.Fatal("failed related checkpoint became visible", err, s.checkpoint)
 	}
 	if reopened, err := indexStoreHead(root, "inscriptions"); err != nil || reopened.head.Commitment != sourceStore.head.Commitment {
@@ -181,7 +181,7 @@ func TestSparseInscriptionInterruptedCheckpointRetryDoesNotDuplicatePointers(t *
 		t.Fatal(err)
 	}
 	s.head.Mode = "lean"
-	if err = s.appendInscriptionLocators(source, &block, 0, "ephemeral"); err != nil {
+	if err = s.appendInscriptionLocators(source, &block, firstMainnetInscriptionHeight, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
 	records, err := s.bitcoinLocatorRecords(context.Background(), block.Transactions[12].TxID)
@@ -203,29 +203,29 @@ func TestSparseInscriptionLookupAmbiguityAndSourceBinding(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = f.WriteAt(header, height*80)
+		_, err = f.WriteAt(header, (firstMainnetInscriptionHeight+height)*80)
 		f.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, source, block := positionalInscriptionFixture(t, a.dataDir, "lean", height, hashes[height], previous, true)
+		_, source, block := positionalInscriptionFixture(t, a.dataDir, "lean", firstMainnetInscriptionHeight+height, hashes[height], previous, true)
 		s, err := openIndexStore(a.dataDir, inscriptionLocatorIndex)
 		if err != nil {
 			t.Fatal(err)
 		}
 		s.head.Mode = "lean"
-		if err = s.appendInscriptionLocators(source, &block, 0, "ephemeral"); err != nil {
+		if err = s.appendInscriptionLocators(source, &block, firstMainnetInscriptionHeight, "ephemeral"); err != nil {
 			t.Fatal(err)
 		}
 		previous = hashes[height]
 	}
-	a.status.HeaderCount, a.status.HeaderHeight = 2, 1
+	a.status.HeaderCount, a.status.HeaderHeight = firstMainnetInscriptionHeight+2, firstMainnetInscriptionHeight+1
 	txid := indexDigest("reveal-12")
 	if _, found, err := a.indexedInscriptionTransactionContext(context.Background(), txid, ""); !found || err == nil {
 		t.Fatal("duplicate historical TXID lost ambiguity", found, err)
 	}
 	location, found, err := a.indexedInscriptionTransactionContext(context.Background(), txid, hashes[0])
-	if err != nil || !found || location.Height != 0 || location.TxIndex != 12 {
+	if err != nil || !found || location.Height != firstMainnetInscriptionHeight || location.TxIndex != 12 {
 		t.Fatal("explicit containing block did not disambiguate", location, found, err)
 	}
 	// The related store cannot outlive the active inscription source it binds.
@@ -247,17 +247,24 @@ func TestSparseInscriptionTransactionsAbsolutePositionsDedupAndRepair(t *testing
 	binary.LittleEndian.PutUint64(header[72:], 872)
 	hash := hash256(header)
 	blockHash := reverseHex(hash[:])
-	if err := os.WriteFile(a.headersPath, header, 0600); err != nil {
+	f, err := os.OpenFile(a.headersPath, os.O_WRONLY, 0600)
+	if err != nil {
 		t.Fatal(err)
 	}
-	a.status.HeaderCount, a.status.HeaderHeight = 1, 0
-	_, source, block := positionalInscriptionFixture(t, a.dataDir, "lean", 0, blockHash, "", true)
+	if _, err = f.WriteAt(header, firstMainnetInscriptionHeight*80); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a.status.HeaderCount, a.status.HeaderHeight = firstMainnetInscriptionHeight+1, firstMainnetInscriptionHeight
+	_, source, block := positionalInscriptionFixture(t, a.dataDir, "lean", firstMainnetInscriptionHeight, blockHash, "", true)
 	s, err := openIndexStore(a.dataDir, inscriptionLocatorIndex)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.head.Mode = "lean"
-	if err = s.appendInscriptionLocators(source, &block, 0, "ephemeral"); err != nil {
+	if err = s.appendInscriptionLocators(source, &block, firstMainnetInscriptionHeight, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
 	batch, err := s.readBatch(s.head.Commitment)
@@ -309,7 +316,7 @@ func TestSparseInscriptionTransactionsAbsolutePositionsDedupAndRepair(t *testing
 
 func TestSparseRetroFullEmptyAndLeanSourceRequirements(t *testing.T) {
 	for _, mode := range []string{"lean", "full"} {
-		_, source, block := positionalInscriptionFixture(t, t.TempDir(), mode, 0, strings.Repeat("a", 64), "", true)
+		_, source, block := positionalInscriptionFixture(t, t.TempDir(), mode, firstMainnetInscriptionHeight, strings.Repeat("a", 64), "", true)
 		payload, err := sparseTransactionsFromInscription(source, nil)
 		if mode == "lean" && err == nil || mode == "full" && (err != nil || len(payload.Block.Transactions) != 2) {
 			t.Fatal(mode, payload, err)
@@ -330,7 +337,7 @@ func TestSparseRetroFullEmptyAndLeanSourceRequirements(t *testing.T) {
 			t.Fatal("wrong source block accepted")
 		}
 	}
-	_, empty, _ := positionalInscriptionFixture(t, t.TempDir(), "lean", 0, strings.Repeat("a", 64), "", false)
+	_, empty, _ := positionalInscriptionFixture(t, t.TempDir(), "lean", firstMainnetInscriptionHeight, strings.Repeat("a", 64), "", false)
 	payload, err := sparseTransactionsFromInscription(empty, nil)
 	if err != nil || len(payload.Block.Transactions) != 0 || payload.Block.TransactionCount == nil {
 		t.Fatal(payload, err)
@@ -364,7 +371,7 @@ func TestSparseTransactionCountCompletenessAndCommitment(t *testing.T) {
 
 func Test073InscriptionLocatorStageChoiceIsolation(t *testing.T) {
 	a := prepareLiveTestApp063(t)
-	zero := int64(0)
+	zero := firstMainnetInscriptionHeight
 	plan, err := a.planIndexBuild(indexBuildRequest{Index: "inscriptions", From: &zero, To: &zero, ConventionalIDs: boolPointer(true)})
 	if err != nil || !plan.ConventionalIDs || len(plan.Outputs) != 2 {
 		t.Fatal(plan, err)
@@ -395,7 +402,16 @@ func Test073InscriptionLocatorStageChoiceIsolation(t *testing.T) {
 
 func Test073InscriptionLeanBuildPersistsExplicitOffAndKnownEmptyQuery(t *testing.T) {
 	a := prepareLiveTestApp063(t)
-	zero := int64(0)
+	zero := firstMainnetInscriptionHeight
+	block := inscriptionTestBlock()
+	block.Height = zero
+	installRunProtocolHeader(t, a, &block)
+	a.blockBaseAcquire = func(ctx context.Context, target blockTarget, _ appSettings) (blockView, error) {
+		if target.Height != block.Height || target.HashDisplay != block.Hash {
+			return blockView{}, fmt.Errorf("unexpected fixture block")
+		}
+		return block, ctx.Err()
+	}
 	if _, err := a.startIndexBuild(indexBuildRequest{Index: "inscriptions", From: &zero, To: &zero, ConventionalIDs: boolPointer(false)}); err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +435,7 @@ func Test073InscriptionLeanBuildPersistsExplicitOffAndKnownEmptyQuery(t *testing
 	if _, err = os.Stat(filepath.Join(a.dataDir, "indexes", inscriptionLocatorIndex)); !os.IsNotExist(err) {
 		t.Fatal("explicit-off scan wrote related locators", err)
 	}
-	value, err := a.indexQueryBlock(ctx, "inscriptions", 0, 1000)
+	value, err := a.indexQueryBlock(ctx, "inscriptions", zero, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,7 +443,7 @@ func Test073InscriptionLeanBuildPersistsExplicitOffAndKnownEmptyQuery(t *testing
 	if result["known"] != true || result["scanned"] != true || result["transaction_count_known"] != true || result["total"] != 0 {
 		t.Fatal(result)
 	}
-	value, err = a.indexQueryBlock(ctx, "inscriptions", 1, 1000)
+	value, err = a.indexQueryBlock(ctx, "inscriptions", zero+1, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,18 +462,18 @@ func Test073InscriptionLeanBuildPersistsExplicitOffAndKnownEmptyQuery(t *testing
 func TestSparseInscriptionCheckpointReorgAndTemporaryFailure(t *testing.T) {
 	root := t.TempDir()
 	firstHash, secondHash := strings.Repeat("a", 64), strings.Repeat("b", 64)
-	_, source, block := positionalInscriptionFixture(t, root, "lean", 0, firstHash, "", true)
+	_, source, block := positionalInscriptionFixture(t, root, "lean", firstMainnetInscriptionHeight, firstHash, "", true)
 	s, err := openIndexStore(root, inscriptionLocatorIndex)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.head.Mode = "lean"
-	if err = s.appendInscriptionLocators(source, &block, 0, "ephemeral"); err != nil {
+	if err = s.appendInscriptionLocators(source, &block, firstMainnetInscriptionHeight, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
 	first := s.head.Commitment
-	_, source, block = positionalInscriptionFixture(t, root, "lean", 1, secondHash, firstHash, false)
-	if err = s.appendInscriptionLocators(source, nil, 0, "ephemeral"); err != nil {
+	_, source, block = positionalInscriptionFixture(t, root, "lean", firstMainnetInscriptionHeight+1, secondHash, firstHash, false)
+	if err = s.appendInscriptionLocators(source, nil, firstMainnetInscriptionHeight, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
 	last := s.head.Commitment
@@ -465,7 +481,7 @@ func TestSparseInscriptionCheckpointReorgAndTemporaryFailure(t *testing.T) {
 		t.Fatal("unavailable evidence rewound derived knowledge", err)
 	}
 	if err = s.reconcile(func(h int64) (string, error) {
-		if h == 0 {
+		if h == firstMainnetInscriptionHeight {
 			return firstHash, nil
 		}
 		return strings.Repeat("c", 64), nil
@@ -484,7 +500,7 @@ func TestInscriptionStorageInspectionSeparatesContentAndSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := beforeValue.(indexStorageReport).Bytes["source_block_cache"]
-	_, _, _ = positionalInscriptionFixture(t, a.dataDir, "full", 0, strings.Repeat("a", 64), "", true)
+	_, _, _ = positionalInscriptionFixture(t, a.dataDir, "full", firstMainnetInscriptionHeight, strings.Repeat("a", 64), "", true)
 	if err := os.MkdirAll(filepath.Join(a.dataDir, "blocks", "raw"), 0700); err != nil {
 		t.Fatal(err)
 	}

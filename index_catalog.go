@@ -312,9 +312,9 @@ func findIndexDefinition(id string) (indexDefinition, error) {
 	return indexDefinition{}, fmt.Errorf("unknown index %q", id)
 }
 
-// This is a suggested occurrence scan start, not a claim of numbering or
-// complete preceding sat history. Explicit ranges and existing checkpoints
-// may begin at genesis and remain valid under the unchanged definition.
+// The mainnet occurrence scan starts at the first inscription. This does not
+// claim canonical numbering or complete preceding sat history. Old records
+// remain readable; new scans cannot publish below that origin.
 func defaultIndexFrom(d indexDefinition) int64 {
 	if d.ID == "inscriptions" && d.Network == "bitcoin-mainnet" {
 		return 767430
@@ -353,7 +353,13 @@ func planIndex(req indexBuildRequest) (indexPlan, error) {
 	}
 	from := defaultIndexFrom(d)
 	if req.From != nil {
+		if *req.From < 0 {
+			return indexPlan{}, fmt.Errorf("invalid index range")
+		}
 		from = *req.From
+	}
+	if d.ID == "inscriptions" && d.Network == "bitcoin-mainnet" && from < firstMainnetInscriptionHeight {
+		from = firstMainnetInscriptionHeight
 	}
 	to := int64(-1)
 	if req.To != nil && !req.Live {

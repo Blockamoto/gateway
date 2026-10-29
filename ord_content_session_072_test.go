@@ -29,19 +29,26 @@ func ordLocatedContentFixture072(t *testing.T) (*app, string) {
 	binary.LittleEndian.PutUint64(header[72:], 997)
 	digest := hash256(header)
 	hash := reverseHex(digest[:])
-	if err := os.WriteFile(a.headersPath, header, 0600); err != nil {
+	height := firstMainnetInscriptionHeight
+	f, err := os.OpenFile(a.headersPath, os.O_WRONLY, 0600)
+	if err != nil {
 		t.Fatal(err)
 	}
-	a.status.HeaderCount, a.status.HeaderHeight = 1, 0
-	_, batch, block := positionalInscriptionFixture(t, a.dataDir, "lean", 0, hash, "", true)
+	_, err = f.WriteAt(header, height*80)
+	closeErr := f.Close()
+	if err != nil || closeErr != nil {
+		t.Fatal(err, closeErr)
+	}
+	a.status.HeaderCount, a.status.HeaderHeight = height+1, height
+	_, batch, block := positionalInscriptionFixture(t, a.dataDir, "lean", height, hash, "", true)
 	s, err := openIndexStore(a.dataDir, inscriptionLocatorIndex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.appendInscriptionLocators(batch, &block, 0, "ephemeral"); err != nil {
+	if err = s.appendInscriptionLocators(batch, &block, height, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
-	target, err := a.localBlockTarget(0)
+	target, err := a.localBlockTarget(height)
 	if err != nil {
 		t.Fatal(err)
 	}

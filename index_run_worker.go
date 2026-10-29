@@ -694,6 +694,11 @@ func (a *app) applyRunConsumer(ctx context.Context, c *indexRunConsumer, prepare
 		return appendSatSelectedBlock077(ctx, s, b, 0, retention, prepared.extraction, hashAt)
 	}
 	from := c.progress.From
+	if c.selection.Index == "inscriptions" {
+		if err := requireInscriptionIngestionRange(s.definition.Network, b.Height, from); err != nil {
+			return err
+		}
+	}
 	if s.checkpoint != nil {
 		from = s.checkpoint.From
 	}
@@ -1705,7 +1710,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 
 		extractionStarted := time.Now()
 		wasAttempted := p.extractionAttempted || p.extraction != nil
-		prepareSharedBlockInventory(p, a.indexRunSnapshot())
+		prepareSharedBlockInventory(a.dataDir, p, a.indexRunSnapshot())
 		if !wasAttempted && p.extractionAttempted {
 			counts.ExtractionMilliseconds += time.Since(extractionStarted).Milliseconds()
 		}

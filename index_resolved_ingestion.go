@@ -29,7 +29,7 @@ func prepareResolvedBlockExtraction(ctx context.Context, root string, b *blockVi
 		return
 	}
 	for _, c := range d.Prepared.Consumers {
-		if c.Armed && (c.Index == "inscriptions" || c.Index == "sat-state" || bitmapConsumerID(c.Index)) && resolvedAdmissionAllowed(d, c.Index, b.Height) == nil {
+		if c.Armed && (c.Index == "inscriptions" || c.Index == "sat-state" || bitmapConsumerID(c.Index)) && resolvedAdmissionAllowedForRoot(root, d, c.Index, b.Height) == nil {
 			if x, err := extractInscriptionOccurrences(*b); err == nil {
 				b.inscriptionExtraction = &x
 			}
@@ -148,6 +148,11 @@ func resolvedAdmissionAllowed(d indexRunDocument, id string, height int64) error
 	if bitmapParcelExecutionDeferred(resolvedSelectionOwner(id)) {
 		return errBitmapParcelsDeferred
 	}
+	if resolvedSelectionOwner(id) == "inscriptions" {
+		if err := resolvedInscriptionRangeAllowed(d, height); err != nil {
+			return err
+		}
+	}
 	if d.Run == nil {
 		return nil
 	}
@@ -223,7 +228,7 @@ func resolvedSelectionContext(ctx context.Context, root, id string, captured ind
 		if !d.Configured || !ok || !resolvedSelectionEnabled(current, id) {
 			return errIndexRunConsumerStopped
 		}
-		if err := resolvedAdmissionAllowed(d, id, block.Height); err != nil {
+		if err := resolvedAdmissionAllowedForRoot(root, d, id, block.Height); err != nil {
 			return err
 		}
 		if indexDigest(current) != indexDigest(captured) {
@@ -274,7 +279,7 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 			return []indexBrowseResult{{Index: "resolved", State: "unavailable", Error: err.Error()}}
 		}
 	}
-	prepareSharedBlockInventory(prepared, d)
+	prepareSharedBlockInventory(a.dataDir, prepared, d)
 	ctx = context.WithValue(ctx, indexRunPreparedKey{}, prepared)
 
 	out := []indexBrowseResult{}
@@ -282,6 +287,11 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 	appendResult := func(row indexBrowseResult) { resultsMu.Lock(); out = append(out, row); resultsMu.Unlock() }
 	apply := func(id string, fn func(context.Context, indexRunSelection) error) {
 		if !releaseIndexExecutionAvailable(resolvedSelectionOwner(id)) {
+			return
+		}
+		// Native cohort callbacks and sparse fallback share the same range
+		// fence; an earlier block belonging to another track is not a scan.
+		if resolvedSelectionOwner(id) == "inscriptions" && resolvedAdmissionAllowedForRoot(a.dataDir, d, id, block.Height) != nil {
 			return
 		}
 		// The actual cohort owns exactly this body. An unrelated admitted future
@@ -463,13 +473,13 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 func resolvedNeedsInventory(id string) bool {
 	return id == "inscriptions" || id == "sat-state" || bitmapConsumerID(id)
 }
-func prepareSharedBlockInventory(p *indexRunPrepared, d indexRunDocument) {
+func prepareSharedBlockInventory(root string, p *indexRunPrepared, d indexRunDocument) {
 	if p.extractionAttempted {
 		return
 	}
 	needed := false
 	for _, c := range d.Prepared.Consumers {
-		if c.Armed && resolvedNeedsInventory(c.Index) && resolvedAdmissionAllowed(d, c.Index, p.block.Height) == nil {
+		if c.Armed && resolvedNeedsInventory(c.Index) && resolvedAdmissionAllowedForRoot(root, d, c.Index, p.block.Height) == nil {
 			needed = true
 			break
 		}

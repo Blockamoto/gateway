@@ -34,9 +34,9 @@ func TestBitmapNamedProfilesRegistryAndImmutableDependencies(t *testing.T) {
 		t.Fatal(a, b)
 	}
 	instances, err := bitmapProfileInstances(ctx, root)
-	// Eleven fixed current/preserved definitions plus the five named instances
+	// Twelve fixed current/preserved definitions plus the five named instances
 	// created above (two District/Chain pairs and one linked Parcel).
-	if err != nil || len(instances) != 16 {
+	if err != nil || len(instances) != 17 {
 		t.Fatal(instances, err)
 	}
 	fixed := map[string]bitmapProfileInstance{}
@@ -45,11 +45,14 @@ func TestBitmapNamedProfilesRegistryAndImmutableDependencies(t *testing.T) {
 			fixed[i.ID] = i
 		}
 	}
-	for _, id := range []string{bitmapCanonicalDistrictID, bitmapCanonicalParcelID} {
+	for _, id := range []string{bitmapCanonicalDistrictID, bitmapCanonicalParcelID, bitmapReplayParcelID} {
 		i, ok := fixed[id]
 		if !ok || i.Legacy || i.StartHeight != 792435 || !i.Profile.CanonicalStandard || !releaseFeatureAvailable(id) {
 			t.Fatal("current canonical identity unavailable", id, i)
 		}
+	}
+	if !bitmapParcelExecutionDeferred(bitmapCanonicalParcelID) || bitmapBuiltinExecutionAvailable(bitmapCanonicalParcelID) || bitmapParcelExecutionDeferred(bitmapReplayParcelID) || !bitmapBuiltinExecutionAvailable(bitmapReplayParcelID) || fixed[bitmapCanonicalParcelID].ProfileHash == fixed[bitmapReplayParcelID].ProfileHash {
+		t.Fatal("preserved standard Parcel and executable replay identities must remain distinct")
 	}
 	for _, id := range []string{bitmapCanonicalV2DistrictID, bitmapCanonicalV2ParcelID, bitmapCanonicalV1DistrictID, bitmapCanonicalV1ParcelID, "bitmap-district-chain-dev-v1", "bitmap-parcel-chain-dev-v1", "bitmap-districts", "bitmap-parcels", "bitmap-chain"} {
 		i, ok := fixed[id]

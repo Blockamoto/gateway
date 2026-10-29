@@ -25,11 +25,10 @@ in the existing locator integration fixture, and one graph-readiness test
 failed in that run. That graph test passed when rerun individually. The
 focused integration group, Go vet and UI checks passed. The Windows race detector was
 not run because a supported C compiler was unavailable. No complete mainnet
-Raw corpus, full-chain Parcel build, installer, updater, or Live Parcel run was
-tested. Review the limits in [indexing](INDEXING.md) before interpreting
+Raw corpus, full-chain Parcel Live build, installer, or updater was tested. Review the limits in [indexing](INDEXING.md) before interpreting
 coverage or replayability.
 
-The current Parcel workflow requires one reviewed proof route and finite
+The current Parcel workflow requires one reviewed proof route and an explicit
 indexing scope, without a per-run proof-operation quota. Experimental discovery data is retained but is not used for
 new processing or user-facing results. Raw, TX ID Locator and IO Link are
 alternative evidence routes; coverage alone does not establish a parent proof.
@@ -47,9 +46,13 @@ preservation of old experimental records, genesis continuation, Current UTXO
 Arm and Live, and browser setup, chooser and timeline interactions. The broader
 `TestIndexRun`, `TestTimelineRun` and `Test076AddressFinalReview` group passed.
 The route-prefix fixtures are synthetic; they are not a full-chain Parcel run.
-A newly available missing source byte alone does not currently wake a failed
-proof attempt unless relevant committed coverage changes; a later reviewed run
-may be needed. Parcel Live remains unavailable.
+Missing exact source bytes trigger a bounded-backoff retry in the active run;
+other missing evidence remains pending until relevant committed coverage changes.
+Focused Live checks cover dependency admission, evidence lag and recovery,
+pause/resume, finite Out, reorganization and a reorganization at head
+publication. They use synthetic headers and an injected evidence prefix, not a
+full-history proof-route build. A separate TXIO test checks suffix-only reads
+after an authenticated completed audit and rejects reorgs or tampering.
 
 The quota removal was checked with synthetic operation counts beyond the former
 10,000,000 ceiling, coordinated validation past an old one-unit grant,

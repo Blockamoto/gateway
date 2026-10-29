@@ -286,6 +286,35 @@ func auditParcelTXIO079(ctx context.Context, s *indexStore, through int64, selec
 		if e = ordRequireSelected(selected, b.Checkpoint.Height, b.Checkpoint.BlockHash); e != nil {
 			return state, e
 		}
+		// A completed audit of this exact immutable ancestor already checked the
+		// entire older prefix. The current backward walk has verified the links
+		// from the new selected target to that checkpoint; validate the saved
+		// MAC and selected-chain anchor before reusing it. A partial checkpoint
+		// cannot establish the prefix and is deliberately ignored.
+		if state.NextHeight < through {
+			ancestorPath := filepath.Join(s.profileRoot, "indexes", "parcel-txio-audits-v2", state.NextCommit+".json")
+			var prior parcelTXIOAudit079
+			if readErr := readBitmapJSON(ctx, ancestorPath, &prior); readErr == nil {
+				key, keyErr := parcelScanKey079(s.profileRoot, false)
+				if keyErr != nil {
+					return state, keyErr
+				}
+				given, decodeErr := hex.DecodeString(prior.MAC)
+				if decodeErr != nil || !hmac.Equal(given, mustDecodeParcelMAC079(parcelTXIOAuditMAC079(prior, key))) || prior.Schema != 3 || prior.TargetCommit != state.NextCommit || prior.TargetHeight != state.NextHeight || !strings.EqualFold(prior.TargetHash, state.ExpectedHash) || prior.NextHeight < -1 || prior.NextHeight > prior.TargetHeight || prior.Complete != (prior.NextHeight == -1) || prior.Complete && (prior.NextCommit != "" || prior.ExpectedHash != "") || !prior.Complete && (!validHash(prior.NextCommit) || !validHash(prior.ExpectedHash)) {
+					return state, fmt.Errorf("TXIO ancestor audit checkpoint authentication failed")
+				}
+				if prior.Complete {
+					state.ContainsV2 = state.ContainsV2 || prior.ContainsV2
+					state.NextHeight, state.NextCommit, state.ExpectedHash, state.Complete = -1, "", "", true
+					if err = save(); err != nil {
+						return state, err
+					}
+					return state, nil
+				}
+			} else if !os.IsNotExist(readErr) {
+				return state, readErr
+			}
+		}
 		block, e := blockAt(ctx, b.Checkpoint.Height)
 		if e != nil {
 			if dirty > 0 {

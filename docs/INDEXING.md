@@ -26,12 +26,12 @@ Gateway 0.7.8 provides **Bitmap Districts** using the pinned [Bitmap rules](http
 Bodies come from the claimant's own inscription envelope. Parsed `text/plain` matching is case insensitive and permits MIME parameters. Evaluation uses the actual ASCII body bytes and ignores the declared charset. Exact decimal grammar rejects leading zeros, whitespace and trailing bytes. A District cannot exceed its reveal height; the first qualifying reveal wins in Bitcoin order. Current ownership and inscription numbering are separate evidence.
 
 The new **Bitmap Parcels** track has a distinct identity;
-old Parcel generations and their saved checkpoints remain read-only. A finite
+old Parcel generations and their saved checkpoints remain read-only. A
 reviewed run publishes only validated coverage and selected winners. Missing
 proof stops Parcel processing without classifying unknown evidence as invalid.
 Experimental discovery data is preserved read-only and is not presented as
 Parcel results. Validation uses one explicitly configured proof route and the
-reviewed finite indexing scope. There is no per-run validation-operation quota.
+reviewed indexing scope. There is no per-run validation-operation quota.
 The plan reports prerequisite gaps without starting them. The retained Raw route
 requires complete local Raw inventory from genesis through the current validation
 phase and reads local blocks only. The TX ID Locator route requires complete
@@ -41,8 +41,9 @@ may scan forward for spends. Raw retention follows its own setting.
 
 The IO Link route requires committed selected-chain IO Link coverage from genesis
 through the current Parcel block and an audit of each batch against its verified
-source block's complete input inventory and creation anchors. Extending the
-prefix may require repeating its audit from genesis. The audit can fetch missing
+source block's complete input inventory and creation anchors. A complete authenticated audit of an unchanged, selected-chain
+ancestor is reused when the prefix extends; the new suffix is checked. The audit
+can fetch missing
 source blocks; missing reverse links require a forward scan of the selected
 history, and an index miss does not prove absence. Route selection and the
 reviewed scope authorize the required evidence work, not other index builds.
@@ -51,7 +52,10 @@ prove transactions, values or parent relationships. Verified transaction bytes
 provide values; a separate Values history build is not required. District
 publication and validated Parcel completion share a fixed catch-up boundary and
 then advance together. Bitmap Districts must remain armed for Parcel work.
-Live Parcel following is not yet available.
+Parcel Live follows selected-chain extensions after catch-up when Districts and
+the chosen proof producer are also Live. It waits for actual compatible evidence
+and resumes when the required committed prefix arrives. A marked Out caps all
+of this work.
 
 Pause, stop and cancellation remain available. Checkpointed scan progress is
 reused when its selected chain remains valid; unavailable or incomplete evidence

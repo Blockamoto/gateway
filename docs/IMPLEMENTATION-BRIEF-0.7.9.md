@@ -14,15 +14,15 @@ Blockamoto/bitmap main revision `335958311eb1c8ce4d14c48bc5c21d23c7a4b134`,
 and binds decisions to the selected District interpretation and chain. Only
 qualifying verified children compete for positions.
 
-A reviewed finite run selects Bitmap Districts and exactly one proof route:
+A reviewed run selects Bitmap Districts and exactly one proof route:
 Raw blocks, TX locators, or resolved TXIO. These are alternatives, not a mandate
 to build all three. A locator alone is not transaction bytes or proof. The
-backend rechecks evidence within the admitted route and finite indexing scope.
+backend rechecks evidence within the admitted route and indexing scope. A selected Live run follows new selected blocks when District
+and the configured proof producer also have Live enabled; Out is a hard cap.
 There is no per-run validation-operation quota.
 Dependencies can build from genesis while Parcel waits, and compatible saved
 coverage and checkpoints are reused. Paired District and Parcel progress follows
-committed validated completion; independently ready work may continue. Parcel
-Live-follow is not enabled.
+committed validated completion; independently ready work may continue. Parcel waits for evidence rather than publishing unchecked coverage.
 
 The dependency setup, genesis selection, compact start chooser and timeline
 behavior are specified in INDEXING-WORKFLOW-PROPOSAL-0.7.9.md. The public

@@ -188,18 +188,18 @@ func TestReplayParcelBrowseDoesNotStart079(t *testing.T) {
 	}
 }
 
-func TestReplayParcelCannotStartLive079(t *testing.T) {
+func TestReplayParcelLiveRequiresReviewedCoordinatedDependencies079(t *testing.T) {
 	if !bitmapBuiltinExecutionAvailable(bitmapReplayParcelID) {
 		t.Skip("replay execution remains gated")
 	}
 	a := runTestApp(t)
 	for _, action := range []string{"enable", "start", "resume"} {
 		if _, err := a.setIndexLivePolicy(indexLiveRequest{Index: bitmapReplayParcelID, Action: action}); err == nil {
-			t.Fatalf("Live action %s unexpectedly accepted", action)
+			t.Fatalf("uncoordinated Live action %s unexpectedly accepted", action)
 		}
 	}
 	if _, err := normalizeIndexRunRequest(indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapReplayParcelID, Armed: true, Live: true}}}); err == nil {
-		t.Fatal("Live coordinated run unexpectedly accepted")
+		t.Fatal("Live coordinated run without required dependencies unexpectedly accepted")
 	}
 }
 

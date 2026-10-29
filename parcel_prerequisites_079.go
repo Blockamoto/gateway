@@ -29,7 +29,7 @@ func parcelPrerequisites079(t indexTimelineView) parcelPrerequisiteView079 {
 		Reason: "Parcel execution is disabled: a complete replayable parent-evidence route is not implemented. Coverage alone cannot establish readiness.", Routes: []parcelPrerequisiteRoute079{}}
 	if bitmapBuiltinExecutionAvailable(bitmapReplayParcelID) {
 		out.State = "requires_review"
-		out.Reason = "A finite Parcel run requires an explicitly selected evidence route and indexing scope. Retained Raw requires a complete local inventory from genesis through the requested end; coverage alone does not prove individual relationships."
+		out.Reason = "Bitmap Parcels requires an explicitly selected evidence route and indexing scope. Live following also requires Live Districts and the selected proof producer. Retained Raw requires a complete local inventory; coverage alone does not prove individual relationships."
 	}
 	out.District = parcelPrerequisiteRoute079{ID: "district", State: "unknown", From: bitmapDevelopmentStart, To: t.TipHeight, Coverage: []heightInterval{}, Note: "The selected District interpretation must have committed selected-chain evaluations through each Parcel reveal. A District winner and target-block transaction count are checked for each candidate."}
 	if t.TipKnown && t.TipHeight >= bitmapDevelopmentStart {

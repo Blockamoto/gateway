@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,34 +29,48 @@ type indexRunOutcomeConsumer interface {
 type indexRunRetentionConsumer interface{ ConfigureRetention(string) }
 type indexRunSourceFunc func(context.Context, blockTarget, string) (blockView, error)
 type indexRunConsumer struct {
-	selection             indexRunSelection
-	progress              indexRunProgress
-	store                 *indexStore
-	utxo                  *utxoStore
-	history               *addressHistoryStore
-	external              indexRunExternalConsumer
-	enrich                bool
-	retryAfter            time.Time
-	reconciled            bool
-	authority             chainAuthorityView
-	locatorStats          indexLocatorWriteStats
-	locatorGuardReleases  []func()
-	pointAckFlushes       int64
-	pointAckCommit        string
-	parcelBusy            bool // coordinator-owned; external state is not read until the worker joins
-	parcelBudget          *parcelRawScanBudget079
-	parcelWorkBase        uint64
-	parcelCancel          context.CancelFunc
-	parcelPrepare         func(context.Context) error
-	parcelPrepared        bool
-	parcelEvidenceThrough int64
-	parcelDiscovery       *parcelDiscoveryHead079
-	parcelValidationKey   string
-	parcelObservationKey  string
-	parcelAnchorHeight    int64
-	parcelAnchorTip       string
-	parcelAnchorHash      string
+	selection                indexRunSelection
+	progress                 indexRunProgress
+	store                    *indexStore
+	utxo                     *utxoStore
+	history                  *addressHistoryStore
+	external                 indexRunExternalConsumer
+	enrich                   bool
+	retryAfter               time.Time
+	reconciled               bool
+	authority                chainAuthorityView
+	locatorStats             indexLocatorWriteStats
+	locatorGuardReleases     []func()
+	pointAckFlushes          int64
+	pointAckCommit           string
+	parcelBusy               bool // coordinator-owned; external state is not read until the worker joins
+	parcelBudget             *parcelRawScanBudget079
+	parcelWorkBase           uint64
+	parcelCancel             context.CancelFunc
+	parcelPrepare            func(context.Context) error
+	parcelPrepared           bool
+	parcelEvidenceThrough    int64
+	parcelEvidenceAnchorHash string
+	parcelDiscovery          *parcelDiscoveryHead079
+	parcelValidationKey      string
+	parcelObservationKey     string
+	parcelAnchorHeight       int64
+	parcelAnchorTip          string
+	parcelAnchorHash         string
+	parcelSourceMissing      atomic.Bool
+	parcelSourceRetryAt      time.Time
 }
+
+// A retry is scheduled only when a proof reader failed to obtain exact source
+// bytes. The flag survives errors converted to unresolved proof descriptions.
+type parcelSourceMissingKey079 struct{}
+
+func noteParcelSourceMissing079(ctx context.Context) {
+	if marker, ok := ctx.Value(parcelSourceMissingKey079{}).(*atomic.Bool); ok && marker != nil {
+		marker.Store(true)
+	}
+}
+
 type indexRunPreparedKey struct{}
 type indexRunPublicationKey struct{}
 type indexRunAddressProjectionKey struct{}
@@ -91,6 +106,25 @@ func prepareParcelLane079(ctx context.Context, c *indexRunConsumer) error {
 	}
 	c.parcelPrepared = true
 	return nil
+}
+
+// The last head write checks current selected-chain and exact District state,
+// even if either changed while immutable proof files were being written.
+func (a *app) parcelGuardedPublication079(work context.Context, height int64, expectedHash, districtCommit string) context.Context {
+	return context.WithValue(work, indexRunPublicationKey{}, func() error {
+		if err := checkIndexRunPublication(work); err != nil {
+			return err
+		}
+		selected, err := a.utxoSelectedTarget(work, a.currentChainAuthority(), height)
+		if err != nil || selected.HashDisplay != expectedHash {
+			return satPublicationAnchorError077{fmt.Errorf("selected Parcel block changed before publication")}
+		}
+		district, err := bitmapHeadAt(work, a.dataDir, bitmapStandardDistrictID, height)
+		if err != nil || district == nil || district.BlockHash != expectedHash || district.Commitment != districtCommit || !district.LastBlock.BlockEvaluated || !district.LastBlock.CompleteScope {
+			return fmt.Errorf("%w: selected District changed before Parcel publication", ErrBitmapEvidenceRequired)
+		}
+		return nil
+	})
 }
 
 func parcelWaitsForDistrict079(err error) bool {
@@ -509,8 +543,13 @@ func (a *app) reconcileRunConsumer(ctx context.Context, c *indexRunConsumer, aut
 	if c.reconciled && c.authority.Source == authority.Source && c.authority.Height == authority.Height && c.authority.Hash == authority.Hash {
 		return nil
 	}
-	if c.reconciled && c.selection.Index == bitmapReplayParcelID && c.parcelPrepare != nil {
-		c.parcelPrepared = false
+	if c.reconciled && c.selection.Index == bitmapReplayParcelID && c.parcelPrepare != nil && c.parcelPrepared {
+		// Extending the chain leaves an already checked evidence prefix valid.
+		// Invalidate only if its selected endpoint has actually changed.
+		anchor, err := a.utxoSelectedTarget(ctx, authority, c.parcelEvidenceThrough)
+		if err != nil || c.parcelEvidenceAnchorHash == "" || anchor.HashDisplay != c.parcelEvidenceAnchorHash {
+			c.parcelPrepared = false
+		}
 	}
 	if c.store != nil && c.selection.Index == "tx-locator" {
 		if pending, _, _ := c.store.LocatorBatchStats(); pending > 0 {
@@ -882,6 +921,8 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		c.parcelCancel = nil
 		counts.ApplyMilliseconds += result.elapsed.Milliseconds()
 		if result.err == nil {
+			c.parcelSourceMissing.Store(false)
+			c.parcelSourceRetryAt = time.Time{}
 			c.progress.Height = result.height
 			c.progress.AddedBlocks++
 			height := result.height
@@ -894,6 +935,13 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			return
 		}
 		c.progress.ParcelValidationState, c.progress.ParcelValidationReason = "pending", result.err.Error()
+		if c.parcelSourceMissing.Swap(false) && !errors.Is(result.err, context.Canceled) {
+			delay := 30 * time.Second
+			if a.parcelEvidenceHooks079 != nil && a.parcelEvidenceHooks079.RetryDelay > 0 {
+				delay = a.parcelEvidenceHooks079.RetryDelay
+			}
+			c.parcelSourceRetryAt = time.Now().Add(delay)
+		}
 		if errors.Is(result.err, context.Canceled) {
 			c.progress.ParcelValidationReason = "Validation paused at its last committed checkpoint."
 		}
@@ -919,6 +967,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				return false
 			}
 			c.parcelAnchorHeight, c.parcelAnchorTip, c.parcelAnchorHash = next, authority.Hash, selected.HashDisplay
+		}
+		if !c.parcelSourceRetryAt.IsZero() && !time.Now().Before(c.parcelSourceRetryAt) {
+			c.parcelSourceRetryAt = time.Time{}
+			c.parcelObservationKey, c.parcelValidationKey = "", ""
 		}
 		observation := indexDigest(struct {
 			Height               int64
@@ -979,6 +1031,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		launchParcelLane(parcelDone, c, next, func() error {
 			defer workCancel()
 			work := a.indexRunBoundConsumerContext(workCtx, progress)
+			work = context.WithValue(work, parcelSourceMissingKey079{}, &c.parcelSourceMissing)
 			if err := prepareParcelLane079(work, c); err != nil {
 				return err
 			}
@@ -994,8 +1047,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			if err != nil || district == nil || district.BlockHash != block.Hash || district.Commitment != currentDistrict || !district.LastBlock.BlockEvaluated || !district.LastBlock.CompleteScope {
 				return fmt.Errorf("complete District outcome changed before Parcel validation")
 			}
+			guarded := a.parcelGuardedPublication079(work, next, expectedHash, currentDistrict)
 			prepared := &indexRunPrepared{block: block}
-			return a.applyRunConsumer(work, c, prepared, authority, retention)
+			return a.applyRunConsumer(guarded, c, prepared, authority, retention)
 		})
 		return true
 	}
@@ -1373,7 +1427,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				consumerTarget = target
 			}
 			if c.selection.Index == bitmapStandardDistrictID && record.ParcelDistrict != nil && record.ParcelDistrict.DistrictSelected {
-				consumerTarget = min(consumerTarget, record.InitialTargetHeight)
+				parcel, _ := runSelection(record.Request, bitmapReplayParcelID)
+				if !parcel.Live || record.Request.Out != nil {
+					consumerTarget = min(consumerTarget, record.InitialTargetHeight)
+				}
 			}
 			if c.selection.Index == bitmapReplayParcelID && record.ParcelDistrict != nil && !record.ParcelDistrict.DistrictSelected {
 				consumerTarget = min(consumerTarget, record.ParcelDistrict.CeilingHeight)
@@ -1542,7 +1599,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					a.noteRunLocatorPublication(consumerCtx, id, c, true)
 				}
 				c.progress.State = "complete"
-				if c.selection.Index == bitmapStandardDistrictID && selection.Live && record.ParcelDistrict != nil && record.ParcelDistrict.DistrictSelected {
+				if parcel, _ := runSelection(record.Request, bitmapReplayParcelID); c.selection.Index == bitmapStandardDistrictID && selection.Live && record.ParcelDistrict != nil && record.ParcelDistrict.DistrictSelected && (!parcel.Live || record.Request.Out != nil) {
 					c.progress.Reason = "District reached the finite paired Parcel boundary. Review a new run to continue District Live."
 				} else {
 					c.progress.Reason = "Committed coverage satisfies this run target."
@@ -1591,6 +1648,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				continue
 			}
 			validationTarget := record.InitialTargetHeight
+			if c.selection.Live && record.Request.Out == nil {
+				validationTarget = target
+			}
 			if record.ParcelDistrict != nil && !record.ParcelDistrict.DistrictSelected {
 				validationTarget = min(validationTarget, record.ParcelDistrict.CeilingHeight)
 			}
@@ -1604,7 +1664,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			for _, c := range consumers {
 				if c.selection.Index == bitmapReplayParcelID && c.progress.ParcelValidationState == "blocked" {
 					failed = true
-				} else if c.selection.Index == bitmapReplayParcelID && c.progress.ParcelValidationState != "complete" && c.external != nil && (c.parcelBusy || c.external.NextHeight() <= record.InitialTargetHeight) {
+				} else if c.selection.Index == bitmapReplayParcelID && c.progress.ParcelValidationState != "complete" && c.external != nil && (c.parcelBusy || c.external.NextHeight() <= c.progress.To) {
 					validationWaiting = true
 					waiting = true
 				} else if c.selection.Index != bitmapReplayParcelID && c.progress.State != "complete" && c.progress.State != "off" && c.progress.State != "failed" && c.progress.State != "rebuild_required" {
@@ -1642,6 +1702,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				case result := <-parcelDone:
 					consumeParcel(result)
 				case <-parcelEvidenceEventsFor079(a.dataDir).wake:
+				case <-time.After(time.Second): // check deferred source retries; no proof work until due
 				}
 			} else {
 				select {

@@ -183,6 +183,10 @@ func TestParcelPairRejectsMissingProofAndMismatchedCheckpoint079(t *testing.T) {
 	if _, err = a.parcelDistrictAlignedHeight079(ctx, pair); err == nil {
 		t.Fatal("missing/mismatched committed District accepted")
 	}
+	pair.CeilingHash = b0.Hash
+	if _, _, err = a.parcelDistrictAlignedCeiling079(ctx, pair, true); err == nil {
+		t.Fatal("Live silently accepted a missing District checkpoint without a proven reorg")
+	}
 }
 
 func TestParcelPairedRunCannotDiscoverWithoutProofRoute079(t *testing.T) {

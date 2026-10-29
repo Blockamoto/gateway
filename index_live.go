@@ -242,7 +242,7 @@ func (a *app) setIndexLivePolicy(req indexLiveRequest) (indexLiveView, error) {
 	if strings.EqualFold(strings.TrimSpace(req.Index), bitmapReplayParcelID) {
 		action := strings.ToLower(strings.TrimSpace(req.Action))
 		if action == "enable" || action == "start" || action == "resume" {
-			return indexLiveView{}, fmt.Errorf("Replay Parcels require a finite reviewed run; Live extension is not yet available")
+			return indexLiveView{}, fmt.Errorf("Bitmap Parcels Live requires a reviewed coordinated run with its District and selected proof producer")
 		}
 	}
 	// Serialize the policy snapshot through scheduling/cancellation. A paused

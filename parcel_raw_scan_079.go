@@ -81,9 +81,11 @@ func (a *app) newParcelRawRoute079(ctx context.Context, t indexTimelineView, thr
 		s := &indexExportSession{a: a, ctx: callCtx}
 		b, err := s.readRaw(callCtx, height, hash)
 		if err != nil || b == nil {
+			noteParcelSourceMissing079(callCtx)
 			return b, err
 		}
 		if b.Height != height || !strings.EqualFold(b.Hash, hash) || !integrityVerified(*b) {
+			noteParcelSourceMissing079(callCtx)
 			return nil, fmt.Errorf("retained block failed verification at height %d", height)
 		}
 		encoded, err := json.Marshal(b)

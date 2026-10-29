@@ -71,9 +71,11 @@ func (a *app) newParcelTXIORoute079(ctx context.Context, t indexTimelineView, th
 		}
 		block, err := a.fetchAndDecodeTargetContext(context.WithValue(callCtx, parcelEvidenceReadKey079{}, true), target)
 		if err != nil {
+			noteParcelSourceMissing079(callCtx)
 			return nil, err
 		}
 		if block.Height != height || !strings.EqualFold(block.Hash, hash) || !integrityVerified(block) || len(block.verifiedRaw) < 81 {
+			noteParcelSourceMissing079(callCtx)
 			return nil, fmt.Errorf("verified transaction block unavailable at %d", height)
 		}
 		encoded, err := json.Marshal(block)

@@ -240,7 +240,7 @@ func bitmapFixedIndexDefinition(id string) (indexDefinition, bool) {
 		d.Dependencies = []string{i.DistrictInstance, "blocks"}
 	}
 	if id == bitmapReplayParcelID {
-		d.LiveSupported = boolPointer(false)
+		d.LiveSupported = boolPointer(true)
 	}
 	if i.Kind == "chain" {
 		d.Dependencies = []string{i.DistrictInstance}

@@ -5,8 +5,10 @@ canonically selected Parcel results and validated coverage are published. Missin
 or unknown proof stops Parcel at the affected block; it is neither invalid nor
 coverage. Preserve any experimental discovery data read-only. District and
 Parcel advance as a coordinated pair based on committed validated Parcel
-completion; other ready producers may advance while Parcel waits. Parcel Live is
-not supported.
+completion; other ready producers may advance while Parcel waits. Parcel Live
+continues after catch-up when District and its selected proof producer are also
+explicitly configured for Live. It waits without publishing if evidence lags.
+Out remains a hard cap.
 
 Attempting to arm Bitmap Parcels opens a concise dependency setup. Parcels is
 pending only while the setup is open and remains off if setup is abandoned.
@@ -16,7 +18,7 @@ other independently selected tracks remain selected. The single footer changes
 from Disarm Parcels to Set In point to zero once both requirements are selected.
 Confirming commits Parcel selection and sets In and the navigation playhead to
 zero without starting work. Selection means configured, not built. The admitted
-proof route and finite indexing scope remain explicit, and the backend checks
+proof route and indexing scope remain explicit, and the backend checks
 actual evidence, lineage, values, witness and parent proofs. There is no per-run
 validation-operation quota; pause, stop or missing evidence still stop work. A missing dependency
 or proof cannot become executable through a different API or publication path.

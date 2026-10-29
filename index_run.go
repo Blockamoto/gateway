@@ -343,9 +343,6 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 			return req, fmt.Errorf("Parcel evidence options belong to Bitmap Parcels")
 		}
 		if c.Index == bitmapReplayParcelID {
-			if c.Live {
-				return req, fmt.Errorf("Replay Parcels require a finite reviewed run; Live extension is not yet available")
-			}
 			if c.ParcelEvidenceRoute != "" && c.ParcelEvidenceRoute != "retained-raw" && c.ParcelEvidenceRoute != "tx-locators" && c.ParcelEvidenceRoute != "txio-links" {
 				return req, fmt.Errorf("unsupported Parcel evidence route")
 			}
@@ -404,8 +401,11 @@ func validateParcelSelection079(req indexRunRequest, parcel indexRunSelection) e
 		return fmt.Errorf("Bitmap Parcels requires one selected proof route")
 	}
 	choice, ok := runSelection(req, producer)
-	if !ok || !indexRunSelectionEnabled(choice) {
+	if !ok || !choice.Armed {
 		return fmt.Errorf("Bitmap Parcels requires its selected proof producer to be armed")
+	}
+	if parcel.Live && (!district.Live || !choice.Live) {
+		return fmt.Errorf("Bitmap Parcels Live requires Bitmap Districts and the selected proof producer to have Live enabled")
 	}
 	return nil
 }
@@ -925,7 +925,9 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 	if req.Out != nil {
 		p.Notes = append(p.Notes, "Out is a hard cap. Saved Live preferences cannot follow beyond it.")
 	}
-	if p.ParcelDistrict != nil && p.ParcelDistrict.DistrictSelected {
+	if parcel, ok := runSelection(req, bitmapReplayParcelID); ok && parcel.Armed && parcel.Live {
+		p.Notes = append(p.Notes, "Bitmap Parcels Live follows checked District outcomes and the selected proof producer; it waits if either falls behind.")
+	} else if p.ParcelDistrict != nil && p.ParcelDistrict.DistrictSelected {
 		if district, ok := runSelection(req, bitmapStandardDistrictID); ok && district.Live && req.Out == nil {
 			p.Notes = append(p.Notes, "District Live is capped at this run's finite validated Parcel boundary. Review a new run to continue beyond it; independently armed Live tracks can continue.")
 		}

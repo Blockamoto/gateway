@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // Admission and District publication share this fence. It makes the saved
@@ -14,8 +15,10 @@ var parcelDistrictAdmissionMu079 sync.Mutex
 // Unexported injection mirrors indexRunSourceBlock and is only assigned by
 // isolated tests. Normal application construction always uses actual stores.
 type parcelEvidenceHooks079 struct {
-	Timeline  func() indexTimelineView
-	Configure func(context.Context, *indexRunConsumer, int64) error
+	Timeline         func() indexTimelineView
+	Configure        func(context.Context, *indexRunConsumer, int64) error
+	RetryDelay       time.Duration // tests only; production uses a bounded backoff
+	BeforeParcelHead func(int64)   // tests only; simulates selected-chain changes at publication
 }
 
 func (a *app) parcelEvidenceTimeline079() indexTimelineView {
@@ -82,35 +85,64 @@ func (a *app) parcelDistrictSnapshot079(ctx context.Context, req indexRunRequest
 // Verify the actual complete Parcel checkpoint and the exact District outcome
 // it used; a height or scan count on its own is never alignment evidence.
 func (a *app) parcelDistrictAlignedHeight079(ctx context.Context, pair *parcelDistrictPair079) (int64, error) {
+	aligned, _, err := a.parcelDistrictAlignedCeiling079(ctx, pair, false)
+	return aligned, err
+}
+
+// During Live a reorg can invalidate the original fixed catch-up checkpoint.
+// Rebind the hold only after the current District head is fully reconciled and
+// selected; then Parcel must catch that new complete head before it can grow.
+func (a *app) parcelDistrictAlignedCeiling079(ctx context.Context, pair *parcelDistrictPair079, live bool) (int64, int64, error) {
 	if pair == nil {
-		return -1, nil
+		return -1, -1, nil
 	}
+	ceiling := pair.CeilingHeight
 	if pair.CeilingCommit != "" {
-		d, err := bitmapHeadAt(ctx, a.dataDir, bitmapStandardDistrictID, pair.CeilingHeight)
-		if err != nil || d == nil || d.Commitment != pair.CeilingCommit || d.BlockHash != pair.CeilingHash || d.ProfileHash != pair.DistrictProfile {
-			return -1, fmt.Errorf("District catch-up checkpoint changed; review the selected chain and profiles")
+		selected, selectedErr := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), pair.CeilingHeight)
+		if selectedErr != nil {
+			return -1, -1, fmt.Errorf("District catch-up selected-chain anchor unavailable")
 		}
-		selected, e := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), pair.CeilingHeight)
-		if e != nil || selected.HashDisplay != pair.CeilingHash {
-			return -1, fmt.Errorf("District catch-up checkpoint left the selected chain")
+		if selected.HashDisplay == pair.CeilingHash {
+			d, err := bitmapHeadAt(ctx, a.dataDir, bitmapStandardDistrictID, pair.CeilingHeight)
+			if err != nil || d == nil || d.Commitment != pair.CeilingCommit || d.BlockHash != pair.CeilingHash || d.ProfileHash != pair.DistrictProfile {
+				return -1, -1, fmt.Errorf("District catch-up checkpoint changed or is unavailable")
+			}
+		} else {
+			// Only a positively observed change of selected block proves a
+			// reorg; unavailable or altered checkpoint data must fail closed.
+			if !live {
+				return -1, -1, fmt.Errorf("District catch-up checkpoint left the selected chain")
+			}
+			current, e := readBitmapDevelopmentHead(ctx, a.dataDir, bitmapStandardDistrictID)
+			if e != nil {
+				return -1, -1, e
+			}
+			ceiling = bitmapDevelopmentStart - 1
+			if current != nil {
+				source, e := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), current.Height)
+				if e != nil || source.HashDisplay != current.BlockHash || current.ProfileHash != pair.DistrictProfile || !current.LastBlock.BlockEvaluated || !current.LastBlock.CompleteScope {
+					return -1, -1, fmt.Errorf("District checkpoint is awaiting selected-chain reconciliation")
+				}
+				ceiling = current.Height
+			}
 		}
 	}
 	validated, err := readBitmapDevelopmentHead(ctx, a.dataDir, bitmapReplayParcelID)
 	if err != nil {
-		return -1, err
+		return -1, -1, err
 	}
 	if validated == nil {
-		return bitmapDevelopmentStart - 1, nil
+		return bitmapDevelopmentStart - 1, ceiling, nil
 	}
 	d, err := bitmapHeadAt(ctx, a.dataDir, bitmapStandardDistrictID, validated.Height)
 	if err != nil || d == nil || d.BlockHash != validated.BlockHash || d.Commitment != validated.DependencyCommitment || d.ProfileHash != pair.DistrictProfile || !validated.LastBlock.BlockEvaluated || !validated.LastBlock.CompleteScope {
-		return -1, fmt.Errorf("validated Parcel coverage does not match the complete District outcome")
+		return -1, -1, fmt.Errorf("validated Parcel coverage does not match the complete District outcome")
 	}
 	selected, err := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), validated.Height)
 	if err != nil || selected.HashDisplay != validated.BlockHash {
-		return -1, fmt.Errorf("validated Parcel checkpoint left the selected chain")
+		return -1, -1, fmt.Errorf("validated Parcel checkpoint left the selected chain")
 	}
-	return validated.Height, nil
+	return validated.Height, ceiling, nil
 }
 
 // Called at the common District publication boundary with the admission fence
@@ -140,21 +172,24 @@ func (a *app) allowPairedDistrictPublication079(ctx context.Context, height int6
 	if !ok || !indexRunSelectionEnabled(parcel) {
 		return nil
 	}
-	// Parcel validation has a finite admission boundary even when District's
-	// saved preference is Live. The shared publication fence also applies to
-	// incidental writers, so none can get one block beyond that boundary.
-	if height > r.InitialTargetHeight {
+	// Finite Parcel work always retains its original ceiling. Live following
+	// may grow only to the current selected-chain target and never past Out.
+	live := parcel.Live && r.Request.Out == nil
+	if !live && height > r.InitialTargetHeight {
 		return fmt.Errorf("%w: paired District is capped at the finite Parcel run boundary; review a new run to continue", ErrBitmapEvidenceRequired)
+	}
+	if live && height > a.currentChainAuthority().Height {
+		return fmt.Errorf("%w: paired District waits for the selected chain", ErrBitmapEvidenceRequired)
 	}
 	progress, have := indexRunProgressFor(r, bitmapReplayParcelID)
 	if !have || progress.AdmissionState == "blocked" {
 		return fmt.Errorf("%w: District waits for an admitted Parcel track", ErrBitmapEvidenceRequired)
 	}
-	aligned, err := a.parcelDistrictAlignedHeight079(ctx, pair)
+	aligned, ceiling, err := a.parcelDistrictAlignedCeiling079(ctx, pair, live)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrBitmapEvidenceRequired, err)
 	}
-	if aligned < pair.CeilingHeight || height > aligned+1 {
+	if aligned < ceiling || height > aligned+1 {
 		return fmt.Errorf("%w: District waits for complete Parcel catch-up", ErrBitmapEvidenceRequired)
 	}
 	return nil
@@ -192,10 +227,14 @@ func (a *app) configureParcelEvidence079(ctx context.Context, c *indexRunConsume
 	if !ok {
 		return fmt.Errorf("Parcel replay consumer unavailable")
 	}
+	anchor, err := a.utxoSelectedTarget(ctx, a.currentChainAuthority(), through)
+	if err != nil {
+		return fmt.Errorf("Parcel evidence endpoint unavailable: %w", err)
+	}
 	consumer.parcelRawSpender, consumer.parcelRawTransaction = spender, transaction
 	consumer.SetBlockSource(blockAt)
 	c.parcelPrepare, c.parcelPrepared = prepare, false
-	c.parcelEvidenceThrough = through
+	c.parcelEvidenceThrough, c.parcelEvidenceAnchorHash = through, anchor.HashDisplay
 	return nil
 }
 

@@ -395,6 +395,9 @@ func (s *bitmapRunConsumer) publish(ctx context.Context, h bitmapDevelopmentHead
 	if err := syncDirectory(filepath.Join(s.dir, "commits")); err != nil {
 		return err
 	}
+	if s.id == bitmapReplayParcelID && s.a != nil && s.a.parcelEvidenceHooks079 != nil && s.a.parcelEvidenceHooks079.BeforeParcelHead != nil {
+		s.a.parcelEvidenceHooks079.BeforeParcelHead(h.Height)
+	}
 	if err := checkIndexRunPublication(ctx); err != nil {
 		return err
 	}

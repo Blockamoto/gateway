@@ -27,7 +27,7 @@ func TestIndexRunReviewsRawReorgBeforeAdmission079(t *testing.T) {
 	}
 	staleCommit := store.checkpoint.Commitment
 	zero, one := int64(0), int64(1)
-	req := indexRunRequest{In: &zero, Out: &one, Consumers: []indexRunSelection{{Index: "blocks", Armed: true, Mode: "lean"}}}
+	req := indexRunRequest{In: &zero, Out: &one, Consumers: []indexRunSelection{{Index: "blocks", Armed: true, indexRunOptions: indexRunOptions{Mode: "lean"}}}}
 	plan, err := a.planIndexRun(ctx, req)
 	if err != nil || !plan.Ready || len(plan.Consumers) != 1 {
 		t.Fatal(plan, err)
@@ -132,7 +132,7 @@ func testIndexRunResumeReconcilesRawAfterReorg079(t *testing.T, externallyRepair
 		return blockView{}, blockUnavailableError{fmt.Errorf("fixture source paused")}
 	}
 	zero, one := int64(0), int64(1)
-	req := indexRunRequest{In: &zero, Out: &one, Consumers: []indexRunSelection{{Index: "blocks", Armed: true, Mode: "lean"}}}
+	req := indexRunRequest{In: &zero, Out: &one, Consumers: []indexRunSelection{{Index: "blocks", Armed: true, indexRunOptions: indexRunOptions{Mode: "lean"}}}}
 	plan, err := a.planIndexRun(ctx, req)
 	if err != nil || !plan.Ready {
 		t.Fatal(plan, err)

@@ -14,11 +14,8 @@ func (b *parcelCaptureBackend079) localSpender(point satlinePoint) (spenderLooku
 	if b.ctx.Err() != nil {
 		return spenderLookupView{}, false
 	}
-	if row, ok := b.app.graphFindSpend(point.TxID, point.Vout); ok {
-		if v, ok := b.checkedLocalSpender(point, row.Height, row.BlockHash, row.SpendingTxID, row.SpendingVin); ok {
-			return v, true
-		}
-	}
+	// Graph's generic lookup uses a background context; the optional hint must
+	// not outlive the reviewed run or switch its selected-chain authority.
 	store, err := indexStoreHead(b.app.dataDir, "txo-spender")
 	if err != nil || store.checkpoint == nil {
 		return spenderLookupView{}, false

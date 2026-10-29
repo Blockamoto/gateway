@@ -5,8 +5,8 @@ import "testing"
 func TestParcelPrerequisitesDistinguishInventoryAndProof(t *testing.T) {
 	timeline := indexTimelineView{TipKnown: true, TipHeight: 792440, TipHash: "tip", Tracks: []indexTimelineTrack{
 		{ID: "blocks", RetainedCoverage: &rawCoverageView{Complete: true, Ranges: []heightInterval{{0, 10}, {12, 792440}}}},
-		{ID: "tx-locator", CoverageComplete: true, RecordedCoverage: []heightInterval{{0, 792440}}},
-		{ID: "txo-spender", CoverageComplete: true, RecordedCoverage: []heightInterval{{792435, 792440}}},
+		{ID: "tx-locator", CoverageComplete: true, RecordedCoverage: []heightInterval{{0, 792440}}, Sources: []indexTimelineSource{{ID: "gateway_committed_index", Kind: "committed_records", Complete: true, Ranges: []heightInterval{{0, 792440}}}}},
+		{ID: "txo-spender", CoverageComplete: true, RecordedCoverage: []heightInterval{{0, 792440}}, Sources: []indexTimelineSource{{ID: "gateway_committed_index", Kind: "committed_records", Complete: true, Ranges: []heightInterval{{0, 792440}}}}},
 		{ID: bitmapStandardDistrictID, CoverageComplete: true, RecordedCoverage: []heightInterval{{792435, 792437}}},
 	}}
 	got := parcelPrerequisites079(timeline)
@@ -28,7 +28,7 @@ func TestParcelPrerequisitesDistinguishInventoryAndProof(t *testing.T) {
 	}
 	// Unknown physical inventory must not be promoted to a complete negative.
 	timeline.Tracks[0].RetainedCoverage.Complete = false
-	timeline.Tracks[1].CoverageComplete = false
+	timeline.Tracks[1].Sources[0].Complete = false
 	got = parcelPrerequisites079(timeline)
 	if got.Routes[0].State != "unknown" || got.Routes[0].Gaps != nil || got.Routes[1].State != "unknown" {
 		t.Fatal(got.Routes)

@@ -27,3 +27,13 @@ not run because a supported C compiler was unavailable. No complete mainnet
 Raw corpus, full-chain Parcel build, installer, updater, or Live Parcel run was
 tested. Review the limits in [indexing](INDEXING.md) before interpreting
 coverage or replayability.
+
+The route controls distinguish complete retained Raw, committed TX ID Locators
+and committed IO Links and require explicit finite work consent. The locator
+route reads or fetches selected blocks and may scan for spends; its locator
+coverage is not itself proof. The IO Link route has synthetic audit and route
+fixtures; a full mainnet IO Link audit and its throughput have not been tested.
+Do not infer full-chain validation from the existing focused checks; inspect
+current route availability and the reviewed plan. A locally authenticated negative
+evaluation is not an independently replayable proof, and an independent audit
+action is not yet available.

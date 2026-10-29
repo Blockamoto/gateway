@@ -98,6 +98,52 @@ func TestParcelReplayMainnetReference079(t *testing.T) {
 	// Exercise the candidate capture boundary against the same authentic
 	// witnesses. The selected District is a deliberately synthetic test
 	// binding; this reference inscription itself is not a Bitmap claim.
+	// The locator built here is intentionally a one-block partial fixture; the
+	// separate admission test requires a complete genesis-first locator prefix.
+	locator, err := openIndexStore(root, "tx-locator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	locator.head.Mode = "full"
+	if err := locator.BeginLocatorBatch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := locator.appendBlock(byHeight[818117], 818117, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	if err := locator.FlushLocatorBatch(ctx); err != nil {
+		t.Fatal(err)
+	}
+	parentInput := byHeight[818117].Transactions[parentOccurrence.TxIndex].Inputs[parentOccurrence.InputIndex]
+	visits := 0
+	locatorBlockAt := func(_ context.Context, h int64) (blockView, error) {
+		visits++
+		if visits > 1 {
+			return blockView{}, fmt.Errorf("fixture fetch budget exhausted")
+		}
+		v, ok := byHeight[h]
+		if !ok {
+			return blockView{}, fmt.Errorf("fixture bytes unavailable")
+		}
+		return v, nil
+	}
+	located, err := parcelLocatorTransaction079(ctx, locator, parentInput.PrevTxID, 818117, 818182, locatorBlockAt)
+	if err != nil || located.Tx.TxID != parentInput.PrevTxID || visits != 1 {
+		t.Fatalf("real parent prevout locator: %+v %v", located, err)
+	}
+	if _, err := parcelLocatorTransaction079(ctx, locator, parentInput.PrevTxID, 818117, 818182, locatorBlockAt); err == nil {
+		t.Fatal("locator lookup ignored fetch budget")
+	}
+	if _, err := parcelLocatorTransaction079(ctx, locator, parentInput.PrevTxID, 818117, 818182, func(context.Context, int64) (blockView, error) { return blockView{}, fmt.Errorf("bytes unavailable") }); err == nil {
+		t.Fatal("locator alone provided parent value")
+	}
+	if _, err := parcelLocatorTransaction079(ctx, locator, parentInput.PrevTxID, 818117, 818182, func(_ context.Context, h int64) (blockView, error) {
+		v := byHeight[h]
+		v.Hash = testID(9999)
+		return v, nil
+	}); err == nil {
+		t.Fatal("locator accepted a replaced block")
+	}
 	backend := &parcelReplayBackend079{blocks: byHeight}
 	app := &app{dataDir: root}
 	rawSpenderCalls := 0

@@ -27,22 +27,40 @@ Bodies come from the claimant's own inscription envelope. Parsed `text/plain` ma
 
 The new **Bitmap Parcels Standard V1 replay** track has a distinct identity;
 old Parcel generations and their saved checkpoints remain read-only. A finite
-run requires an explicitly selected retained-Raw route, a positive block-read
-allowance, and a complete physical Raw inventory from genesis through the
-selected end. The plan reports gaps; it does not start prerequisites. Locators
-and IO Links can accelerate individual lookups, but neither is yet an alternate
-full admission route. Verified transaction bytes provide values; a separate
-Values history build is not required. The Parcel lane can progress alongside
+run requires an explicitly selected evidence route and a positive work
+allowance, up to 10,000,000 units. The plan reports prerequisite gaps without
+starting them. The retained Raw route requires complete local Raw inventory
+from genesis through the selected end and reads local blocks only. The TX ID
+Locator route requires complete committed selected-chain locator coverage over
+that interval. It uses locators for transaction positions, then reads or
+fetches verified selected blocks and may scan forward for spends. Choosing it
+with a positive allowance authorizes bounded provider fetches; Raw retention
+follows its own setting.
+
+The IO Link route requires committed selected-chain IO Link
+coverage from genesis through the selected end and an audit of each batch
+against its verified source block's complete input inventory and creation
+anchors. The audit can fetch every missing source block; missing reverse links
+require an authorized bounded forward scan, and an index miss does not prove
+absence. Selecting this route with a positive allowance authorizes that work.
+Each batch or creation-catalogue visit and each source block read or fetch
+consumes one unit. A creation catalogue can require an additional batch visit
+and source block read or fetch. If an allowance cannot finish one block's audit,
+a later reviewed run may repeat that block. The current route availability is reported in the
+workspace; coverage alone does not establish readiness. Locators and links do
+not themselves prove transactions, values or parent relationships. Verified
+transaction bytes provide values; a separate Values history build is not
+required. The Parcel lane can progress alongside
 Districts and other consumers, waiting for the exact District outcome. Live
 Parcel following is not yet available.
 
-The scan allowance is shared across lookups, persisted in reservations and
-never increased automatically on resume. Up to 64 unused reserved reads can be
+The allowance is shared across evidence work, persisted in reservations and
+never increased automatically on resume. Up to 64 unused reserved units can be
 lost after interruption. Checkpointed scan progress is reused when its selected
 chain remains valid; missing evidence and exhausted budgets remain pending.
 Positive parent proofs replay authenticated source blocks. A complete negative
 scan produces a profile-authenticated local evaluation; independent replay
-requires the retained Raw interval and is not performed by opening a view.
+requires the source interval; an independent audit action is not yet available.
 Deleting Raw can therefore make independent replay unavailable without changing
 the recorded local evaluation. Scan results are header-anchored, not full
 Bitcoin consensus validation. Both Bitmap chains remain disabled.

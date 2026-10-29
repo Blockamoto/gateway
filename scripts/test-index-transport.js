@@ -70,3 +70,5 @@ assert.deepEqual(plain(options('retained-raw','')), {parcel_evidence_route:'reta
 for(const n of [-1,1.5,10000001,'bad'])assert.equal(options('retained-raw',n).parcel_raw_scan_budget,0);
 assert.equal(options('retained-raw',250).parcel_raw_scan_budget,250,'Explicit bounded read budget preserved');
 console.log('Parcel evidence consent PASS: no implicit route or scan budget, explicit positive bounded reads only.');
+
+for(const route of ['tx-locators','txio-links']){assert.deepEqual(plain(options(route,0)),{parcel_evidence_route:route,parcel_raw_scan_budget:0},'Route alone authorizes no block work');assert.deepEqual(plain(options(route,21)),{parcel_evidence_route:route,parcel_raw_scan_budget:21});}

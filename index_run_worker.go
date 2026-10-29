@@ -45,6 +45,8 @@ type indexRunConsumer struct {
 	parcelBusy           bool // coordinator-owned; external state is not read until the worker joins
 	parcelBudget         *parcelRawScanBudget079
 	parcelCancel         context.CancelFunc
+	parcelPrepare        func(context.Context) error
+	parcelPrepared       bool
 }
 type indexRunPreparedKey struct{}
 type indexRunPublicationKey struct{}
@@ -67,6 +69,20 @@ func launchParcelLane(done chan<- parcelLaneResult, c *indexRunConsumer, height 
 		err := work()
 		done <- parcelLaneResult{consumer: c, height: height, err: err, elapsed: time.Since(started)}
 	}()
+}
+
+func prepareParcelLane079(ctx context.Context, c *indexRunConsumer) error {
+	if c.parcelPrepare == nil || c.parcelPrepared {
+		return nil
+	}
+	if err := c.parcelPrepare(ctx); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		return fmt.Errorf("%w: IO Links prerequisite audit: %v", ErrBitmapEvidenceRequired, err)
+	}
+	c.parcelPrepared = true
+	return nil
 }
 
 func parcelWaitsForDistrict079(err error) bool {
@@ -364,8 +380,8 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 	case bitmapConsumerID(c.Index):
 		v.external, err = openBitmapRunConsumer(ctx, a, c.Index)
 		if err == nil && c.Index == bitmapReplayParcelID {
-			if c.ParcelEvidenceRoute != "retained-raw" || c.ParcelRawScanBudget <= 0 {
-				return v, fmt.Errorf("Replay Parcels require an explicitly reviewed retained-raw route and positive block-read budget")
+			if (c.ParcelEvidenceRoute != "retained-raw" && c.ParcelEvidenceRoute != "tx-locators" && c.ParcelEvidenceRoute != "txio-links") || c.ParcelRawScanBudget <= 0 {
+				return v, fmt.Errorf("Replay Parcels require an explicitly reviewed evidence route and positive block-read/fetch budget")
 			}
 			budget, budgetErr := openParcelRawBudget079(a.dataDir, r.ID, c.ParcelRawScanBudget, false)
 			if budgetErr != nil {
@@ -374,7 +390,17 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 			v.parcelBudget = budget
 			// Take one fresh inventory snapshot at admission, never on each block.
 			timeline := a.indexStatus().Timeline
-			spender, transaction, blockAt, routeErr := a.newParcelRawRoute079(ctx, timeline, r.InitialTargetHeight, budget)
+			var spender func(context.Context, satlinePoint, int64, parcelScanObserver079) (spenderLookupView, error)
+			var transaction func(context.Context, string, int64) (satlineTxEvidence, error)
+			var blockAt func(context.Context, int64) (blockView, error)
+			var routeErr error
+			if c.ParcelEvidenceRoute == "retained-raw" {
+				spender, transaction, blockAt, routeErr = a.newParcelRawRoute079(ctx, timeline, r.InitialTargetHeight, budget)
+			} else if c.ParcelEvidenceRoute == "tx-locators" {
+				spender, transaction, blockAt, routeErr = a.newParcelLocatorRoute079(ctx, timeline, r.InitialTargetHeight, budget)
+			} else {
+				v.parcelPrepare, spender, transaction, blockAt, routeErr = a.newParcelTXIORoute079(ctx, timeline, r.InitialTargetHeight, budget)
+			}
 			if routeErr != nil {
 				return v, routeErr
 			}
@@ -468,6 +494,9 @@ func (a *app) reconcileRunConsumer(ctx context.Context, c *indexRunConsumer, aut
 	}
 	if c.reconciled && c.authority.Source == authority.Source && c.authority.Height == authority.Height && c.authority.Hash == authority.Hash {
 		return nil
+	}
+	if c.reconciled && c.selection.Index == bitmapReplayParcelID && c.parcelPrepare != nil {
+		c.parcelPrepared = false
 	}
 	if c.store != nil && c.selection.Index == "tx-locator" {
 		if pending, _, _ := c.store.LocatorBatchStats(); pending > 0 {
@@ -836,7 +865,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				}
 			}
 		}
-		if errors.Is(result.err, errParcelRawBudgetExhausted079) || c.parcelBudget != nil && c.parcelBudget.exhausted() || strings.Contains(strings.ToLower(result.err.Error()), "raw scan budget exhausted") {
+		if errors.Is(result.err, errParcelRawBudgetExhausted079) || c.parcelBudget != nil && c.parcelBudget.exhausted() || strings.Contains(strings.ToLower(result.err.Error()), "evidence work budget exhausted") {
 			c.progress.State, c.progress.AdmissionState = "blocked", "blocked"
 			c.progress.Reason += " Review a new run with an additional scan allowance."
 		} else if errors.Is(result.err, ErrBitmapEvidenceRequired) && (!districtPending || !districtCanAdvance) {
@@ -1736,6 +1765,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					// continue while the proof lane works on this block.
 					result.async = true
 					c.parcelBusy, parcelActive = true, true
+					if c.parcelPrepare != nil && !c.parcelPrepared {
+						c.progress.Reason = "Verifying committed IO Links against selected block input inventories."
+					}
 					prepared := &indexRunPrepared{block: p.block, extraction: p.extraction, extractionErr: p.extractionErr, extractionAttempted: p.extractionAttempted, rawProduced: p.rawProduced, owner: p.owner}
 					progress, sourceHeight, sourceHash, rawProduced := c.progress, h, p.block.Hash, p.rawProduced
 					retention := runRawRetention(record.Request)
@@ -1745,6 +1777,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 						defer workCancel()
 						work := context.WithValue(workCtx, indexRunPreparedKey{}, prepared)
 						work = a.indexRunBoundConsumerContext(work, progress)
+						if err := prepareParcelLane079(work, c); err != nil {
+							return err
+						}
 						publish := context.WithValue(work, indexRunPublicationKey{}, func() error {
 							if err := checkIndexRunPublication(work); err != nil {
 								return err

@@ -311,11 +311,17 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 			if c.Live {
 				return req, fmt.Errorf("Replay Parcels require a finite reviewed run; Live extension is not yet available")
 			}
-			if c.ParcelEvidenceRoute != "" && c.ParcelEvidenceRoute != "retained-raw" {
+			if c.ParcelEvidenceRoute != "" && c.ParcelEvidenceRoute != "retained-raw" && c.ParcelEvidenceRoute != "tx-locators" && c.ParcelEvidenceRoute != "txio-links" {
 				return req, fmt.Errorf("unsupported Parcel evidence route")
 			}
+			if execution && c.ParcelEvidenceRoute == "tx-locators" && !parcelLocatorExecutionAvailable079 {
+				return req, fmt.Errorf("TX ID Locator Parcel route is not available until its combined admission and replay checks pass")
+			}
+			if execution && c.ParcelEvidenceRoute == "txio-links" && !parcelTXIOExecutionAvailable079 {
+				return req, fmt.Errorf("IO Links Parcel route is not available until full inventory verification and replay checks pass")
+			}
 			if c.ParcelRawScanBudget < 0 || c.ParcelRawScanBudget > 10000000 {
-				return req, fmt.Errorf("Parcel raw scan budget must be at most 10000000 block reads")
+				return req, fmt.Errorf("Parcel evidence work budget must be at most 10000000 block reads, fetches or index-batch visits")
 			}
 			if c.ParcelEvidenceRoute == "" && c.ParcelRawScanBudget != 0 {
 				return req, fmt.Errorf("Parcel scan budget requires an explicit evidence route")
@@ -709,19 +715,30 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 				q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "parent-evidence", Kind: "lookup", State: "conditional", Reason: "Each candidate needs selected-chain witness, satpoint movement and value evidence; unavailable proof remains pending and no whole-chain scan begins implicitly.", Action: "inspect"})
 				{
 					reason := ""
-					if c.ParcelEvidenceRoute != "retained-raw" || c.ParcelRawScanBudget <= 0 {
-						reason = "Select retained Raw and approve a positive finite block-read budget."
+					if c.ParcelEvidenceRoute == "" || c.ParcelRawScanBudget <= 0 {
+						reason = "Select an evidence route and approve a positive finite block-read/fetch budget."
 					} else {
-						gaps, gapErr := parcelRawRouteGaps079(a.indexStatus().Timeline, p.TargetHeight)
+						var gaps []heightInterval
+						var gapErr error
+						if c.ParcelEvidenceRoute == "retained-raw" {
+							gaps, gapErr = parcelRawRouteGaps079(a.indexStatus().Timeline, p.TargetHeight)
+						} else if c.ParcelEvidenceRoute == "tx-locators" {
+							gaps, gapErr = parcelLocatorRouteGaps079(a.indexStatus().Timeline, p.TargetHeight)
+						} else {
+							gaps, gapErr = parcelTXIORouteGaps079(a.indexStatus().Timeline, p.TargetHeight)
+						}
 						if gapErr != nil {
 							reason = gapErr.Error()
 						} else if len(gaps) > 0 {
-							reason = fmt.Sprintf("Retained Raw coverage gaps from genesis to selected end: %v", gaps)
+							reason = fmt.Sprintf("%s coverage gaps from genesis to selected end: %v", c.ParcelEvidenceRoute, gaps)
 						}
 					}
 					if reason != "" {
 						q.State, q.Reason = "needs_prerequisite", reason
 						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "blocks", Kind: "evidence", State: "missing", Reason: reason, Action: "inspect"})
+					}
+					if reason == "" && c.ParcelEvidenceRoute == "txio-links" {
+						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "txo-spender", Kind: "evidence", State: "audit_required", Reason: fmt.Sprintf("The reviewed run will verify at least %d committed batches and %d source blocks; additional creation-catalogue visits and candidate block fetches consume the same allowance. Missing reverse links require a bounded forward block scan.", p.TargetHeight+1, p.TargetHeight+1), Action: "inspect"})
 					}
 				}
 			} else {
@@ -884,7 +901,7 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 	prior := cloneIndexRunDocument(a.indexRunState)
 	record := &indexRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), AdmissionRevision: 1, State: "running", Phase: "boundary", Request: p.Request, TargetHeight: p.TargetHeight, InitialTargetHeight: p.TargetHeight, TargetHash: p.TargetHash, Consumers: p.Consumers, Updated: time.Now().UTC().Format(time.RFC3339)}
 	parcelProgress, parcelHasProgress := indexRunProgressFor(record, bitmapReplayParcelID)
-	if parcel, ok := runSelection(record.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.AdmissionState != "blocked" && parcel.ParcelEvidenceRoute == "retained-raw" {
+	if parcel, ok := runSelection(record.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.AdmissionState != "blocked" && parcel.ParcelEvidenceRoute != "" {
 		if _, err := openParcelRawBudget079(a.dataDir, record.ID, parcel.ParcelRawScanBudget, true); err != nil {
 			return indexRunDocument{}, err
 		}
@@ -1016,7 +1033,7 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 		}
 	}
 	parcelProgress, parcelHasProgress := indexRunProgressFor(r, bitmapReplayParcelID)
-	if parcel, ok := runSelection(r.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.AdmissionState != "blocked" && parcel.ParcelEvidenceRoute == "retained-raw" {
+	if parcel, ok := runSelection(r.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.AdmissionState != "blocked" && parcel.ParcelEvidenceRoute != "" {
 		if _, err := openParcelRawBudget079(a.dataDir, r.ID, parcel.ParcelRawScanBudget, false); err != nil {
 			return indexRunDocument{}, fmt.Errorf("Parcel scan budget unavailable on resume: %w", err)
 		}

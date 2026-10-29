@@ -308,7 +308,7 @@ func (s *bitmapRunConsumer) checkedReplayParent(ctx context.Context, childBlock 
 	if b.negative != nil {
 		from, through := b.negative.Point.Height, b.negative.Through
 		proof.ScanFrom, proof.ScanThrough = &from, &through
-		proof.AuditNote = "Locally evaluated no-spend scan. Independent replay needs the retained Raw blocks in this interval; an audit action is not yet available."
+		proof.AuditNote = "Locally evaluated no-spend scan. Independent replay needs verified Bitcoin block bytes for this interval; an audit action is not yet available. Raw Off may leave those bytes unretained."
 	}
 	return proof, nil
 }

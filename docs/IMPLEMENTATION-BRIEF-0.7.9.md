@@ -22,8 +22,8 @@ Parcel counts are distinct.
 Parcel work may run with other armed consumers when the evidence needed for
 each decision is ready. Full retained blocks, complete transaction locators,
 or resolved IO Links are alternative routes to locating evidence, with verified
-transaction bytes or retained Values facts supplying the amounts required for
-sat movement. A locator is not itself transaction bytes or proof. Report exact
+transaction bytes supplying the amounts required for sat movement. A locator
+is not itself transaction bytes or proof. Report exact
 gaps and use the existing bounded planning and consent workflow; do not silently
 scan the chain. Commit only authenticated coverage, recover safely after restart
 and selected-chain changes, and reuse shared block decoding where possible.
@@ -33,13 +33,21 @@ Preserve block-level Bitmap navigation and the existing inscription viewer.
 Keep legacy saved records readable and do not merge locator and TXIO stores.
 This work does not change the public updater, publish a release, or resume 0.8.
 
-Implementation scope: the executable prerequisite route is complete retained
-Raw inventory from genesis to the finite requested end, with explicit read
-budget and resumable scan checkpoints. Locators and IO Links accelerate
-individual lookups but are not independent full admission routes yet. Positive
+Implementation scope: finite runs require a separately selected evidence route
+and a positive, bounded allowance. The retained Raw route requires a complete
+local inventory from genesis through the requested end and scans local blocks.
+The TX ID Locator route requires complete committed locator coverage over that
+interval; it authorizes bounded selected-block reads or provider fetches and
+forward scans for spends. The IO Link route requires complete committed
+coverage and an audit against selected source-block input inventories, with
+bounded reads, fetches, index visits and forward scans when a reverse link is
+missing. Consult route availability and the plan rather than treating coverage
+as readiness.
+The plan reports gaps without starting the prerequisites. Positive
 detached receipts are limited to 128 blocks, 64 MiB and 128 movement hops;
 larger or ambiguous cases remain pending. Long negative checks are recorded as
 profile-authenticated local evaluations, not independently portable proofs;
-independent replay needs the retained Raw interval and is not automatic.
+independent replay needs the source interval, and an audit action is not yet
+available. Local evaluations can remain valid after source deletion.
 Parcel Live-follow is not enabled. These boundaries do not imply global child
 enumeration, full-chain acceptance or Bitcoin consensus validation.

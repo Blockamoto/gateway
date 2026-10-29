@@ -119,6 +119,35 @@ func TestReplayParcelLaneJoinsOnCancellation079(t *testing.T) {
 	}
 }
 
+func TestTXIOPrerequisiteAuditRunsInIndependentParcelLane079(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	c := &indexRunConsumer{parcelPrepare: func(context.Context) error { close(entered); <-release; return nil }}
+	done := make(chan parcelLaneResult, 1)
+	launchParcelLane(done, c, 42, func() error { return prepareParcelLane079(context.Background(), c) })
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("audit did not start")
+	}
+	district := &bitmapRunConsumer{id: bitmapStandardDistrictID}
+	unlock := district.lockWriter()
+	unlock()
+	select {
+	case <-done:
+		t.Fatal("audit unexpectedly finished before release")
+	default:
+	}
+	close(release)
+	select {
+	case result := <-done:
+		if result.err != nil || !c.parcelPrepared {
+			t.Fatalf("audit did not finish: %+v", result)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("audit lane did not join")
+	}
+}
+
 func TestReplayParcelBrowseDoesNotStart079(t *testing.T) {
 	if !bitmapBuiltinExecutionAvailable(bitmapReplayParcelID) {
 		t.Skip("replay execution remains gated until proof implementation is ready")
@@ -169,6 +198,98 @@ func TestReplayParcelGapDoesNotBlockOtherTrack079(t *testing.T) {
 		}
 	}
 	t.Fatal("Parcel plan was omitted")
+}
+
+func TestParcelLocatorRouteReviewedRunAdmission079(t *testing.T) {
+	if !parcelLocatorExecutionAvailable079 {
+		t.Skip("locator route remains gated")
+	}
+	a, raw0 := testAppWithGenesis(t)
+	a.settings.CoreDisabled = true
+	a.settings.CoreMountDisabled = true
+	a.settings.NetworkDisabled = true
+	raw1, hash1 := installBlockOneHeader063(t, a)
+	genesis, err := parseBlockDetailed(0, genesisHashDisplay, raw0[:80], raw0, "genesis fixture", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block1, err := parseBlockDetailed(1, hash1, raw1[:80], raw1, "block one fixture", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := openIndexStore(a.dataDir, "tx-locator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.appendBlock(genesis, 0, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.appendBlock(block1, 0, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "tx-locators", ParcelRawScanBudget: 8}}}}
+	plan, err := a.planIndexRun(context.Background(), req)
+	if err != nil || !plan.Ready {
+		t.Fatalf("locator prerequisite not admitted: %+v %v", plan, err)
+	}
+	if _, err = a.startIndexRun(context.Background(), req, plan.PlanID); err != nil {
+		t.Fatal(err)
+	}
+	done := waitRun(t, a)
+	if done.Run == nil || done.Run.State != "complete" {
+		t.Fatalf("locator run did not complete: %+v", done.Run)
+	}
+}
+
+func TestTXIORouteWorkerBindsBudgetAndAudits079(t *testing.T) {
+	if !parcelTXIOExecutionAvailable079 {
+		t.Skip("IO Links route remains gated")
+	}
+	a, raw0 := testAppWithGenesis(t)
+	a.settings.CoreDisabled = true
+	a.settings.CoreMountDisabled = true
+	a.settings.NetworkDisabled = true
+	raw1, hash1 := installBlockOneHeader063(t, a)
+	genesis, err := parseBlockDetailed(0, genesisHashDisplay, raw0[:80], raw0, "real genesis fixture", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, err := parseBlockDetailed(1, hash1, raw1[:80], raw1, "real block-one fixture", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := openIndexStore(a.dataDir, "txo-spender")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = store.appendBlock(genesis, 0, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	if err = store.appendBlock(one, 0, "ephemeral"); err != nil {
+		t.Fatal(err)
+	}
+	a.blockBaseAcquire = func(_ context.Context, target blockTarget, _ appSettings) (blockView, error) {
+		switch target.Height {
+		case 0:
+			return genesis, nil
+		case 1:
+			return one, nil
+		default:
+			return blockView{}, fmt.Errorf("unexpected source block")
+		}
+	}
+	choice := indexRunSelection{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "txio-links", ParcelRawScanBudget: 10}}
+	record := &indexRunRecord{ID: "test-txio-admission", InitialTargetHeight: 1, Request: indexRunRequest{Consumers: []indexRunSelection{choice}}}
+	if _, err = openParcelRawBudget079(a.dataDir, record.ID, choice.ParcelRawScanBudget, true); err != nil {
+		t.Fatal(err)
+	}
+	consumer, err := a.openRunConsumer(context.Background(), record, indexRunProgress{Index: choice.Index})
+	if err != nil || consumer.parcelPrepare == nil || consumer.parcelBudget == nil {
+		t.Fatalf("worker route not bound: %+v %v", consumer, err)
+	}
+	if err = prepareParcelLane079(context.Background(), consumer); err != nil || !consumer.parcelPrepared {
+		t.Fatalf("worker audit: %v", err)
+	}
 }
 
 func TestReplayParcelCohortJoinsDistrictAndTX079(t *testing.T) {

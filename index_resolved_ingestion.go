@@ -15,7 +15,12 @@ type resolvedIngestionKey struct{}
 var errResolvedAlreadyIndexed = errors.New("resolved block already indexed")
 var errResolvedNotApplicable = errors.New("resolved block is not the next applicable transition")
 
+type parcelEvidenceReadKey079 struct{}
+
 func prepareResolvedBlockExtraction(ctx context.Context, root string, b *blockView) {
+	if evidence, _ := ctx.Value(parcelEvidenceReadKey079{}).(bool); evidence {
+		return
+	}
 	if b.inscriptionExtraction != nil || ctx.Err() != nil {
 		return
 	}
@@ -69,6 +74,9 @@ func (a *app) withDeferredBlockIngestion(ctx context.Context) (context.Context, 
 	}
 }
 func (a *app) ingestResolvedVerifiedBlock(ctx context.Context, block blockView) []indexBrowseResult {
+	if evidence, _ := ctx.Value(parcelEvidenceReadKey079{}).(bool); evidence {
+		return nil
+	}
 	if ctx.Err() != nil || !integrityVerified(block) || block.Height < 0 || len(block.Transactions) == 0 || block.TransactionCount != uint64(len(block.Transactions)) || (!block.Verification.HeaderChainMatch && !block.Verification.ConsensusValidated) {
 		return nil
 	}

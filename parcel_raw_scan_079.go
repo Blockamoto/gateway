@@ -13,7 +13,7 @@ import (
 	"sync"
 )
 
-var errParcelRawBudgetExhausted079 = errors.New("raw scan budget exhausted")
+var errParcelRawBudgetExhausted079 = errors.New("Parcel evidence work budget exhausted")
 
 // A single explicitly approved run shares this budget across every candidate
 // and hop. Exhaustion is unresolved, never proof that an output is unspent.
@@ -60,7 +60,7 @@ func (a *app) newParcelRawRoute079(ctx context.Context, t indexTimelineView, thr
 		return nil, nil, nil, fmt.Errorf("retained Raw coverage gaps in genesis–%d: %v", through, gaps)
 	}
 	if budget == nil {
-		return nil, nil, nil, fmt.Errorf("explicit raw scan allowance is required")
+		return nil, nil, nil, fmt.Errorf("explicit Parcel evidence work allowance is required")
 	}
 	authority := a.currentChainAuthority()
 	selected := func(height int64) (string, error) {
@@ -176,7 +176,7 @@ func (a *app) newParcelRawRoute079(ctx context.Context, t indexTimelineView, thr
 // but cannot silently grant extra scan work.
 func openParcelRawBudget079(root, runID string, limit int64, create bool) (*parcelRawScanBudget079, error) {
 	if runID == "" || limit <= 0 || limit > 10000000 {
-		return nil, fmt.Errorf("invalid raw scan allowance")
+		return nil, fmt.Errorf("invalid Parcel evidence work allowance")
 	}
 	sum := sha256.Sum256([]byte(runID))
 	path := filepath.Join(root, "indexes", "parcel-raw-budgets-v1", hex.EncodeToString(sum[:])+".json")
@@ -191,19 +191,19 @@ func openParcelRawBudget079(root, runID string, limit int64, create bool) (*parc
 			return nil, err
 		}
 	} else if err != nil {
-		return nil, fmt.Errorf("raw scan allowance unavailable: %w", err)
+		return nil, fmt.Errorf("Parcel evidence work allowance unavailable: %w", err)
 	} else if err = json.Unmarshal(raw, &doc); err != nil {
-		return nil, fmt.Errorf("invalid raw scan allowance: %w", err)
+		return nil, fmt.Errorf("invalid Parcel evidence work allowance: %w", err)
 	}
 	if doc.RunID != runID || doc.Limit != limit || doc.Remaining < 0 || doc.Remaining > doc.Limit {
-		return nil, fmt.Errorf("raw scan allowance does not match this run")
+		return nil, fmt.Errorf("Parcel evidence work allowance does not match this run")
 	}
 	return &parcelRawScanBudget079{path: path, doc: doc}, nil
 }
 
 func (b *parcelRawScanBudget079) take() error {
 	if b == nil {
-		return fmt.Errorf("raw scan allowance unavailable")
+		return fmt.Errorf("Parcel evidence work allowance unavailable")
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -222,10 +222,10 @@ func (b *parcelRawScanBudget079) take() error {
 		next := b.doc
 		next.Remaining -= reserved
 		if err := atomicWriteJSON(b.path, next); err != nil {
-			return fmt.Errorf("cannot reserve raw scan budget: %w", err)
+			return fmt.Errorf("cannot reserve Parcel evidence work budget: %w", err)
 		}
 		if err := syncDirectory(filepath.Dir(b.path)); err != nil {
-			return fmt.Errorf("cannot commit raw scan reservation: %w", err)
+			return fmt.Errorf("cannot commit Parcel evidence work reservation: %w", err)
 		}
 		b.doc, b.held = next, reserved
 	}
@@ -355,7 +355,7 @@ func parcelRawSpenderObserved079(ctx context.Context, point satlinePoint, throug
 	if completeTranscript {
 		hash, e := selected(through)
 		if e != nil || !validHash(hash) {
-			return spenderLookupView{}, fmt.Errorf("selected chain changed during raw scan")
+			return spenderLookupView{}, fmt.Errorf("selected chain changed during Parcel evidence scan")
 		}
 		return spenderLookupView{ConfirmedState: "unspent_at_snapshot", Provider: "approved_retained_raw_scan", VerificationState: "header_anchored", Snapshot: &chainSnapshot{Network: "bitcoin-mainnet", Height: through, Hash: hash}, Note: "Every retained selected block in the bounded interval was examined; the receipt must replay these blocks."}, nil
 	}

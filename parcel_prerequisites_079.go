@@ -13,13 +13,14 @@ type parcelPrerequisiteView079 struct {
 	Reason       string                       `json:"reason"`
 }
 type parcelPrerequisiteRoute079 struct {
-	ID       string           `json:"id"`
-	State    string           `json:"state"`
-	From     int64            `json:"from"`
-	To       int64            `json:"to"`
-	Coverage []heightInterval `json:"coverage"`
-	Gaps     []heightInterval `json:"gaps,omitempty"`
-	Note     string           `json:"note"`
+	ExecutionAvailable bool             `json:"execution_available"`
+	ID                 string           `json:"id"`
+	State              string           `json:"state"`
+	From               int64            `json:"from"`
+	To                 int64            `json:"to"`
+	Coverage           []heightInterval `json:"coverage"`
+	Gaps               []heightInterval `json:"gaps,omitempty"`
+	Note               string           `json:"note"`
 }
 
 func parcelPrerequisites079(t indexTimelineView) parcelPrerequisiteView079 {
@@ -54,10 +55,10 @@ func parcelPrerequisites079(t indexTimelineView) parcelPrerequisiteView079 {
 	}{
 		{"raw_blocks", "blocks", 0, "Durable Raw body inventory, not metadata or an external provider. Each body still requires integrity validation; finding predecessors requires bounded scanning. Input values and parent satpoint must be established."},
 		{"tx_locators", "tx-locator", 0, "Transaction positions alone do not provide bytes, values, spend links, or parent proof. Required verified transaction bodies must be available or explicitly fetched."},
-		{"txio_links", "txo-spender", bitmapDevelopmentStart, "Committed block coverage does not prove all input links are resolved. Creation and spending endpoints, verified block data and input values are still required; Values history is optional if verified bytes supply values."},
+		{"txio_links", "txo-spender", 0, "Committed block coverage does not prove all input links are resolved. Creation and spending endpoints, verified block data and input values are still required; Values history is optional if verified bytes supply values."},
 	}
 	for _, s := range specs {
-		route := parcelPrerequisiteRoute079{ID: s.id, State: "unknown", From: s.from, To: t.TipHeight, Coverage: []heightInterval{}, Note: s.note}
+		route := parcelPrerequisiteRoute079{ID: s.id, ExecutionAvailable: s.id == "raw_blocks" || s.id == "tx_locators" && parcelLocatorExecutionAvailable079 || s.id == "txio_links" && parcelTXIOExecutionAvailable079, State: "unknown", From: s.from, To: t.TipHeight, Coverage: []heightInterval{}, Note: s.note}
 		if t.TipKnown && t.TipHeight >= s.from {
 			for _, track := range t.Tracks {
 				if track.ID != s.track {
@@ -70,8 +71,14 @@ func parcelPrerequisites079(t indexTimelineView) parcelPrerequisiteView079 {
 						complete = track.RetainedCoverage.Complete
 					}
 				} else {
-					route.Coverage = append(route.Coverage, track.RecordedCoverage...)
-					complete = track.CoverageComplete
+					// Sparse browsed records are not a complete prerequisite. Only
+					// selected-chain committed index instances count here.
+					for _, source := range track.Sources {
+						if source.Kind == "committed_records" && source.ID == "gateway_committed_index" && source.Complete {
+							route.Coverage = append(route.Coverage, source.Ranges...)
+							complete = true
+						}
+					}
 				}
 				route.Coverage = mergeIntervals(route.Coverage)
 				if complete {

@@ -17,7 +17,8 @@
   sessionStorage.setItem('gateway.dev_mode','1');applyDevMode();toast('Development tools unlocked for this session.');
  }
  applyDevMode();
- let current='.gateway',sequence=0,lastResource=null,settings=null,activityTimer=null,txContext=null,addressView=null,satView=null,workspaceFrame=null;
+ let current='.gateway',sequence=0,lastResource=null,settings=null,activityTimer=null,txContext=null,addressView=null,satView=null,workspaceFrame=null,addressEdited=false,addressEditRevision=0,workspaceNavigationId=0,workspaceEchoAllowed=false;
+ $('address').addEventListener('input',()=>{addressEdited=true;addressEditRevision++;});
  $('version').textContent='v'+boot.version+' · early access';$('footer-status').textContent='Gateway '+boot.version+' · early access';
  const featureLocked=id=>id==='satline'||boot.release_availability?.[id]!==true; const lockMessage='Available in a later stage. Headers, Bitcoin Blocks, transactions and inscriptions are available now; Gateway peer lookup remains locked.'; const lockedAction=label=>`<button type="button" data-release-locked aria-disabled="true" title="${lockMessage}">🔒 ${esc(label)}</button>`; function showLockedFeature(name){const message=name==='Satline'?'Satline is deferred in v0.7.7 while trace progress and cancellation are improved. Saved trace evidence is retained. Sat locations, ranges and address views remain available.':lockMessage;root.innerHTML=heading('AVAILABLE LATER','🔒 '+name,message)+`<section class="panel"><p>Saved data is retained. This feature cannot be started from this build.</p>${btn('bitcoin.gateway','Explore Bitcoin blocks','primary')}${btn('indexes.gateway','View indexes')}</section>`;} document.addEventListener('click',e=>{if(e.target.closest('[data-release-locked]')){e.preventDefault();e.stopImmediatePropagation();notice(lockMessage);}},true); const badge=(s,warn=false)=>`<span class="badge ${warn?'warn':''}">${esc(String(s||'unknown').replaceAll('_',' '))}</span>`;
  const btn=(address,label,cls='quiet')=>`<button class="${cls}" data-route="${esc(address)}">${esc(label)}</button>`;
@@ -32,21 +33,21 @@
  window.GatewayUpdates.start({api,currentVersion:boot.version});
  function actionError(p){Promise.resolve(p).catch(e=>notice(e.message,true));}
  function activateNav(module){document.body.classList.toggle('indexes-workspace',module==='indexes');document.querySelectorAll('.nav-item').forEach(b=>{const route=b.dataset.route||'';const key=route==='.gateway'?'home':route.split('.')[0];const active=key===module;b.classList.toggle('active',active);if(active)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});root.classList.remove('embed-host');}
- async function navigate(address,history=true){
+ async function navigate(address,history=true,inputRevision=null){
   dismissArrival();
-  address=String(address||'.gateway').trim();const ticket=++sequence;
+  address=String(address||'.gateway').trim();const ticket=++sequence;workspaceEchoAllowed=false;
   if(!['bitcoin','tip','latest'].includes(address)&&window.GatewaySatView.nameNumber(address)!==null)address+='.sat';
   if(/^[0-9]+$/.test(address)&&address.length!==64&&!((address.length===66||address.length===130)&&window.GatewayAddressView.destination(address).isPublicKey)){
-   const number=Number(address);if(!Number.isSafeInteger(number))throw Error('Enter a whole number within the supported exact range.');
-   let target;try{target=await api('/api/v1/navigate/number?number='+encodeURIComponent(address));}catch(error){if(ticket!==sequence)return;throw error;}
-   if(ticket!==sequence)return;
-   if(!target||typeof target!=='object')throw Error('The number classification is unavailable. Please retry.');
+   const number=Number(address);if(!Number.isSafeInteger(number)){workspaceEchoAllowed=true;throw Error('Enter a whole number within the supported exact range.');}
+   let target;try{target=await api('/api/v1/navigate/number?number='+encodeURIComponent(address));}catch(error){if(ticket!==sequence)return;workspaceEchoAllowed=true;if(inputRevision!==null&&inputRevision!==addressEditRevision)return;throw error;}
+   if(ticket!==sequence)return;if(inputRevision!==null&&inputRevision!==addressEditRevision){workspaceEchoAllowed=true;return;}
+   if(!target||typeof target!=='object'){workspaceEchoAllowed=true;throw Error('The number classification is unavailable. Please retry.');}
    const kind=number<=target.tip_height?'block':'sat',canonical=number+(kind==='sat'?'.sat':'.bitcoin');
-   if(!Number.isSafeInteger(target.tip_height)||target.tip_height<0||target.kind!==kind||target.address!==canonical)throw Error('The number classification does not match this entry. Please retry.');
+   if(!Number.isSafeInteger(target.tip_height)||target.tip_height<0||target.kind!==kind||target.address!==canonical){workspaceEchoAllowed=true;throw Error('The number classification does not match this entry. Please retry.');}
    address=canonical;
   }
   const exceptions=['settings.gateway','peers.gateway'];
-  addressView?.teardown();addressView=null;satView?.teardown();satView=null;current=address;$('address').value=address;notice('');if($('workspace-location-hint'))$('workspace-location-hint').hidden=true;window.GatewayUpdates.unmount();if(activityTimer){clearTimeout(activityTimer);activityTimer=null;}
+  addressView?.teardown();addressView=null;satView?.teardown();satView=null;current=address;workspaceNavigationId=ticket;workspaceEchoAllowed=true;addressEdited=false;$('address').value=address;notice('');if($('workspace-location-hint'))$('workspace-location-hint').hidden=true;window.GatewayUpdates.unmount();if(activityTimer){clearTimeout(activityTimer);activityTimer=null;}
   if(history){window.history.pushState({address},'',location.pathname+'?resolve='+encodeURIComponent(address));}
   if(exceptions.includes(address)){
    setWorkspacePanelMode(null);const existing=$('indexes-module');if(existing){workspaceFrame=existing;existing.contentWindow.postMessage({type:'gateway:workspace-visibility',visible:false},location.origin);existing.hidden=true;existing.style.display='none';}let exception=$('workspace-exception');if(!exception){exception=document.createElement('section');exception.id='workspace-exception';$('content').append(exception);}root=exception;root.tabIndex=-1;
@@ -103,7 +104,7 @@ $('rpc-mode').value=settings.rpc_auth_mode||'auto';$('settings-form').onsubmit=a
 
  }catch(e){notice(e.message,true)}}
  document.addEventListener('click',e=>{const route=e.target.closest('[data-route]');if(route){e.preventDefault();actionError(navigate(route.dataset.route));return}const copy=e.target.closest('[data-copy]');if(copy)navigator.clipboard.writeText(copy.dataset.copy).then(()=>toast('Copied.')).catch(()=>notice('Clipboard unavailable on this origin. Select the displayed identifier to copy.',true));});
- $('address-form').onsubmit=e=>{e.preventDefault();actionError(navigate($('address').value))};$('back').onclick=()=>history.back();$('copy-address').onclick=()=>navigator.clipboard.writeText(current).then(()=>toast('Resource address copied.')).catch(()=>notice('Select the address to copy it.',true));window.onpopstate=e=>actionError(navigate(e.state?.address||new URLSearchParams(location.search).get('resolve')||'.gateway',false));
+ $('address-form').onsubmit=e=>{e.preventDefault();actionError(navigate($('address').value,true,addressEditRevision))};$('back').onclick=()=>history.back();$('copy-address').onclick=()=>navigator.clipboard.writeText(current).then(()=>toast('Resource address copied.')).catch(()=>notice('Select the address to copy it.',true));window.onpopstate=e=>actionError(navigate(e.state?.address||new URLSearchParams(location.search).get('resolve')||'.gateway',false));
  const locationHint=$('workspace-location-hint');let missingLocationAddress='';
  $('workspace-hint-close')?.addEventListener('click',()=>{locationHint.hidden=true;$('address').focus();});
  $('workspace-block-hint-form')?.addEventListener('submit',event=>{event.preventDefault();const frame=$('indexes-module'),blockHint=$('workspace-block-hint').value.trim();if(!frame||!missingLocationAddress||!blockHint)return;if(!/^(?:[0-9]+|[0-9a-f]{64})$/i.test(blockHint)){notice('Use a reveal block height or its 64-character hash.',true);return;}locationHint.hidden=true;frame.contentWindow.postMessage({type:'gateway:workspace-address',address:missingLocationAddress,blockHint},location.origin);});
@@ -123,10 +124,11 @@ $('rpc-mode').value=settings.rpc_auth_mode||'auto';$('settings-form').onsubmit=a
    const frame=$('indexes-module'),address=e.data.address;if(!frame||e.source!==frame.contentWindow||typeof address!=='string'||! /^[0-9a-f]{64}i[0-9]+(?:\.ord)?$/i.test(address))return;
    missingLocationAddress=address;if(locationHint){locationHint.hidden=false;$('workspace-block-hint').value='';}return;
   }
+  if(e.data?.type==='gateway:workspace-intent'){const frame=$('indexes-module');if(frame&&e.source===frame.contentWindow&&!frame.hidden&&frame.style.display!=='none'&&document.activeElement===frame&&Number.isSafeInteger(e.data.navigationId)&&e.data.navigationId===workspaceNavigationId){addressEdited=false;addressEditRevision++;sequence++;workspaceEchoAllowed=true;}return;}
   if(e.data?.type==='gateway:workspace-focused'){
    const frame=$('indexes-module'),address=e.data.address;
-   if(!frame||e.source!==frame.contentWindow||typeof address!=='string'||!address||address.length>1024||/[\x00-\x1f]/.test(address))return;
-   if(Number.isSafeInteger(e.data.navigationId)&&e.data.navigationId!==sequence)return;const changed=current!==address;if(changed)dismissArrival();current=address;$('address').value=address;if(locationHint)locationHint.hidden=true;const method=e.data.historyMode==='push'&&changed?'pushState':'replaceState';window.history[method]({address},'',location.pathname+'?resolve='+encodeURIComponent(address));if(e.data.resolved===true&&boot.activation){const activation=boot.activation;boot.activation='';api('/api/v1/activation',{id:activation,stage:'displayed',error:''}).catch(()=>{});}return;
+   if(!frame||frame.hidden||frame.style.display==='none'||e.source!==frame.contentWindow||typeof address!=='string'||!address||address.length>1024||/[\x00-\x1f]/.test(address))return;
+   if(!workspaceEchoAllowed||!Number.isSafeInteger(e.data.navigationId)||e.data.navigationId!==workspaceNavigationId)return;const changed=current!==address;if(changed)dismissArrival();current=address;if(!addressEdited)$('address').value=address;if(locationHint)locationHint.hidden=true;const method=e.data.historyMode==='push'&&changed?'pushState':'replaceState';window.history[method]({address},'',location.pathname+'?resolve='+encodeURIComponent(address));if(e.data.resolved===true&&boot.activation){const activation=boot.activation;boot.activation='';api('/api/v1/activation',{id:activation,stage:'displayed',error:''}).catch(()=>{});}return;
   }
   if(e.data?.type==='gateway:index-status'){
    const frame=$('indexes-module'),value=e.data;
@@ -136,7 +138,7 @@ $('rpc-mode').value=settings.rpc_auth_mode||'auto';$('settings-form').onsubmit=a
    return;
   }
   if(e.data?.type==='gateway:satline'&&e.source===$('indexes-module')?.contentWindow&&typeof e.data.input==='string'&&/^(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*)){3}$/.test(e.data.input)&&e.data.input.split('.').every(n=>Number.isSafeInteger(Number(n)))){openSatline(e.data.input);return;}
-  if(e.data?.type==='gateway:navigate'&&e.source===$('indexes-module')?.contentWindow&&typeof e.data.address==='string'){boot.from_satline=e.data.from||'';actionError(navigate(e.data.address));}
+  if(e.data?.type==='gateway:navigate'){const frame=$('indexes-module');if(frame&&!frame.hidden&&frame.style.display!=='none'&&e.source===frame.contentWindow&&workspaceEchoAllowed&&!addressEdited&&Number.isSafeInteger(e.data.navigationId)&&e.data.navigationId===workspaceNavigationId&&typeof e.data.address==='string'){boot.from_satline=e.data.from||'';actionError(navigate(e.data.address));}}
  });
  // Decoration has no relationship to workspace, provider or index readiness.
  // Startup has already dispatched navigation before this optional first paint.

@@ -12,7 +12,7 @@ func TestParcelValidatedSelectionInvariant079(t *testing.T) {
 	for _, route := range []struct{ name, producer string }{{"retained-raw", "blocks"}, {"tx-locators", "tx-locator"}, {"txio-links", "txo-spender"}} {
 		t.Run(route.name, func(t *testing.T) {
 			a := runTestApp(t)
-			parcel := indexRunSelection{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: route.name, ParcelRawScanBudget: 50}}
+			parcel := indexRunSelection{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: route.name}}
 			district := indexRunSelection{Index: bitmapStandardDistrictID, Armed: true}
 			producer := indexRunSelection{Index: route.producer, Armed: true}
 			zero := int64(0)

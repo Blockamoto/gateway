@@ -17,7 +17,8 @@ qualifying verified children compete for positions.
 A reviewed finite run selects Bitmap Districts and exactly one proof route:
 Raw blocks, TX locators, or resolved TXIO. These are alternatives, not a mandate
 to build all three. A locator alone is not transaction bytes or proof. The
-backend rechecks evidence and applies a bounded admitted proof-work allowance.
+backend rechecks evidence within the admitted route and finite indexing scope.
+There is no per-run validation-operation quota.
 Dependencies can build from genesis while Parcel waits, and compatible saved
 coverage and checkpoints are reused. Paired District and Parcel progress follows
 committed validated completion; independently ready work may continue. Parcel

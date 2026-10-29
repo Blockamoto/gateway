@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,11 +44,34 @@ func TestParcelScanConsentRoundTrip079(t *testing.T) {
 	if err := json.Unmarshal(encoded, &saved); err != nil || saved.Consumers[0].ParcelRawScanBudget != 25 {
 		t.Fatalf("consent not persisted: %s %v", encoded, err)
 	}
+	// A legacy flattened value survives newer route-only nested options.
+	var mixed indexRunRequest
+	if err := json.Unmarshal([]byte(`{"consumers":[{"index":"bitmap-parcels-standard-v1-replay","armed":true,"parcel_raw_scan_budget":10000001,"options":{"parcel_evidence_route":"tx-locators"}}]}`), &mixed); err != nil {
+		t.Fatal(err)
+	}
+	mixed, err = normalizeStoredIndexRunRequest(mixed)
+	if err != nil || mixed.Consumers[0].ParcelRawScanBudget != 10000001 || mixed.Consumers[0].ParcelEvidenceRoute != "tx-locators" {
+		t.Fatalf("lost legacy flattened metadata: %+v %v", mixed, err)
+	}
+	encodedMixed, err := json.Marshal(mixed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reopened indexRunRequest
+	if err = json.Unmarshal(encodedMixed, &reopened); err != nil || reopened.Consumers[0].ParcelRawScanBudget != 10000001 {
+		t.Fatalf("legacy metadata not round-trippable: %s %v", encodedMixed, err)
+	}
+
+	// Old grants remain round-trippable but are inert regardless of their value.
+	for _, legacy := range []int64{0, 1, 10000001} {
+		choice := indexRunSelection{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "retained-raw", ParcelRawScanBudget: legacy}}
+		if _, err := normalizeStoredIndexRunRequest(indexRunRequest{Consumers: []indexRunSelection{choice}}); err != nil {
+			t.Fatalf("legacy allowance %d prevented reading selection: %v", legacy, err)
+		}
+	}
 	for _, bad := range []indexRunSelection{
 		{Index: "tx-locator", Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "retained-raw", ParcelRawScanBudget: 1}},
 		{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "unknown", ParcelRawScanBudget: 1}},
-		{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelRawScanBudget: 1}},
-		{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "retained-raw", ParcelRawScanBudget: 10000001}},
 	} {
 		if _, err := normalizeStoredIndexRunRequest(indexRunRequest{Consumers: []indexRunSelection{bad}}); err == nil {
 			t.Fatalf("invalid scan consent accepted: %+v", bad)
@@ -184,20 +208,42 @@ func TestReplayParcelGapDoesNotBlockOtherTrack079(t *testing.T) {
 		t.Skip("replay execution remains gated until proof implementation is ready")
 	}
 	a := runTestApp(t)
-	req := indexRunRequest{Consumers: []indexRunSelection{{Index: "tx-locator", Armed: true}, {Index: bitmapReplayParcelID, Armed: true}}}
+	block := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "")
+	installRunProtocolHeader(t, a, &block)
+	// The selected locator producer has not built any committed coverage.
+	a.parcelEvidenceHooks079 = &parcelEvidenceHooks079{Timeline: func() indexTimelineView {
+		return indexTimelineView{TipKnown: true, TipHeight: block.Height, Tracks: []indexTimelineTrack{{ID: "tx-locator", Sources: []indexTimelineSource{{ID: "gateway_committed_index", Kind: "committed_records", Complete: true}}}}}
+	}}
+	zero := int64(0)
+	req := indexRunRequest{In: &zero, Consumers: []indexRunSelection{
+		{Index: bitmapStandardDistrictID, Armed: true},
+		{Index: "tx-locator", Armed: true},
+		{Index: "inscriptions", Armed: true},
+		{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "tx-locators"}},
+	}}
 	plan, err := a.planIndexRun(context.Background(), req)
 	if err != nil || !plan.Ready {
-		t.Fatalf("unrelated work was blocked: %+v %v", plan, err)
+		t.Fatalf("configured producers could not run while proof coverage is missing: %+v %v", plan, err)
 	}
-	for _, p := range plan.Consumers {
+	var parcel, independent *indexRunProgress
+	for i := range plan.Consumers {
+		p := &plan.Consumers[i]
 		if p.Index == bitmapReplayParcelID {
-			if p.State != "complete" || p.From <= p.To {
-				t.Fatalf("an interval entirely before Parcel origin was not an empty no-op: %+v", p)
-			}
-			return
+			parcel = p
+		}
+		if p.Index == "inscriptions" {
+			independent = p
 		}
 	}
-	t.Fatal("Parcel plan was omitted")
+	if parcel == nil || parcel.State == "complete" || !strings.Contains(parcel.Reason, "prefix is unavailable") {
+		t.Fatalf("missing proof coverage was not reported: %+v", parcel)
+	}
+	if independent == nil || independent.State != "ready" || independent.From != 767430 {
+		t.Fatalf("independent producer was not ready: %+v", independent)
+	}
+	if head, err := readBitmapDevelopmentHead(context.Background(), a.dataDir, bitmapReplayParcelID); err != nil || head != nil {
+		t.Fatalf("planning a proof gap published Parcel coverage: %+v %v", head, err)
+	}
 }
 
 func TestParcelLocatorRouteReviewedRunAdmission079(t *testing.T) {

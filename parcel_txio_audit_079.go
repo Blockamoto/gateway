@@ -124,14 +124,14 @@ func parcelTXIOCatalog079(ctx context.Context, s *indexStore, b indexBatch) (txi
 	return catalog, nil
 }
 
-// Walks the exact genesis-first immutable batch chain backward. It visits at
-// most the user's remaining allowance and persists authenticated progress in
+// Walks the exact genesis-first immutable batch chain backward within
+// the admitted prefix and persists authenticated progress in
 // 64-batch checkpoints. This is explicitly invoked by reviewed run work, never
 // by a status view or an incidental browse.
 func auditParcelTXIO079(ctx context.Context, s *indexStore, through int64, selected func(int64) (string, error), budget *parcelRawScanBudget079, blockAt func(context.Context, int64) (blockView, error)) (parcelTXIOAudit079, error) {
 	var state parcelTXIOAudit079
-	if s == nil || s.checkpoint == nil || s.checkpoint.From != 0 || through < 0 || through > s.checkpoint.Height || budget == nil || selected == nil || blockAt == nil {
-		return state, fmt.Errorf("complete genesis-first TXIO checkpoint and explicit evidence allowance required")
+	if s == nil || s.checkpoint == nil || s.checkpoint.From != 0 || through < 0 || through > s.checkpoint.Height || selected == nil || blockAt == nil {
+		return state, fmt.Errorf("complete genesis-first TXIO checkpoint, selected chain and source reader required")
 	}
 	commit, ready, err := s.activeLocatorCommitContext(ctx, through)
 	if err != nil || !ready || !validHash(commit) {
@@ -206,9 +206,10 @@ func auditParcelTXIO079(ctx context.Context, s *indexStore, through int64, selec
 		if h < 0 || h > through {
 			return indexBatch{}, txioTranslationBlock{}, fmt.Errorf("TXIO creation outside audited prefix")
 		}
-		if err := budget.take(); err != nil {
+		if err := work.Err(); err != nil {
 			return indexBatch{}, txioTranslationBlock{}, err
 		}
+		_ = budget.take()
 		commit, ready, err := s.activeLocatorCommitContext(work, h)
 		if err != nil || !ready || !validHash(commit) {
 			return indexBatch{}, txioTranslationBlock{}, fmt.Errorf("TXIO creation catalogue unavailable at %d", h)
@@ -270,14 +271,7 @@ func auditParcelTXIO079(ctx context.Context, s *indexStore, through int64, selec
 			}
 			return state, err
 		}
-		if err = budget.take(); err != nil {
-			if dirty > 0 {
-				if e := save(); e != nil {
-					return state, e
-				}
-			}
-			return state, err
-		}
+		_ = budget.take()
 		b, e := s.readBatch(state.NextCommit)
 		if e != nil {
 			return state, e

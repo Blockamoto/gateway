@@ -35,7 +35,7 @@ func parcelLocatorRouteGaps079(t indexTimelineView, through int64) ([]heightInte
 
 // This route uses complete locators for known predecessor IDs. It does not
 // claim they enumerate spenders: a missing checked IO Link is resolved only by
-// the explicitly budgeted forward scan through the child reveal. Block reads
+// a forward scan within the admitted range through the child reveal. Block reads
 // may obtain verified bytes from configured sources or Bitcoin peers.
 func (a *app) newParcelLocatorRoute079(ctx context.Context, timeline indexTimelineView, through int64, budget *parcelRawScanBudget079) (func(context.Context, satlinePoint, int64, parcelScanObserver079) (spenderLookupView, error), func(context.Context, string, int64) (satlineTxEvidence, error), func(context.Context, int64) (blockView, error), error) {
 	gaps, err := parcelLocatorRouteGaps079(timeline, through)
@@ -44,9 +44,6 @@ func (a *app) newParcelLocatorRoute079(ctx context.Context, timeline indexTimeli
 	}
 	if len(gaps) != 0 {
 		return nil, nil, nil, fmt.Errorf("TX ID Locators coverage gaps from genesis through %d: %v", through, gaps)
-	}
-	if budget == nil {
-		return nil, nil, nil, fmt.Errorf("explicit Parcel block read/fetch allowance required")
 	}
 	store, err := indexStoreHead(a.dataDir, "tx-locator")
 	if err != nil || store.checkpoint == nil || store.checkpoint.From != 0 || store.checkpoint.Height < through {
@@ -58,7 +55,7 @@ func (a *app) newParcelLocatorRoute079(ctx context.Context, timeline indexTimeli
 		return nil, nil, nil, err
 	}
 	// Keep a small shared window of decoded blocks. A cache hit still consumes
-	// allowance, so reuse never manufactures unapproved coverage or work.
+	// as telemetry, so reuse never manufactures coverage.
 	var mu sync.Mutex
 	cache := map[string]*blockView{}
 	sizes := map[string]int{}
@@ -122,9 +119,10 @@ func (a *app) newParcelLocatorRoute079(ctx context.Context, timeline indexTimeli
 		if height < 0 || height > through {
 			return blockView{}, fmt.Errorf("Parcel block is outside the approved range")
 		}
-		if err := budget.take(); err != nil {
+		if err := callCtx.Err(); err != nil {
 			return blockView{}, err
 		}
+		_ = budget.take()
 		hash, err := selected(height)
 		if err != nil {
 			return blockView{}, err

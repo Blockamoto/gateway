@@ -30,42 +30,32 @@ old Parcel generations and their saved checkpoints remain read-only. A finite
 reviewed run publishes only validated coverage and selected winners. Missing
 proof stops Parcel processing without classifying unknown evidence as invalid.
 Experimental discovery data is preserved read-only and is not presented as
-Parcel results. Validation uses one explicitly configured proof route and a
-positive bounded work allowance, up to 10,000,000 units.
+Parcel results. Validation uses one explicitly configured proof route and the
+reviewed finite indexing scope. There is no per-run validation-operation quota.
 The plan reports prerequisite gaps without starting them. The retained Raw route
 requires complete local Raw inventory from genesis through the current validation
 phase and reads local blocks only. The TX ID Locator route requires complete
 committed selected-chain locator coverage through that phase. It uses locators
-for transaction positions, then reads or
-fetches verified selected blocks and may scan forward for spends. Choosing it
-with a positive allowance authorizes bounded provider fetches; Raw retention
-follows its own setting.
+for transaction positions, then reads or fetches verified selected blocks and
+may scan forward for spends. Raw retention follows its own setting.
 
-The IO Link route requires committed selected-chain IO Link
-coverage from genesis through the current Parcel block and an audit of each batch
-against its verified source block's complete input inventory and creation
-anchors. Extending the prefix may require repeating its audit from genesis and
-can exhaust the reviewed allowance. The audit can fetch missing source blocks; missing reverse links
-require an authorized bounded forward scan, and an index miss does not prove
-absence. Selecting this route with a positive allowance authorizes that work.
-Each batch or creation-catalogue visit and each source block read or fetch
-consumes one unit. A creation catalogue can require an additional batch visit
-and source block read or fetch. If an allowance cannot finish one block's audit,
-a later reviewed run may repeat that block. The current route availability is reported in the
-workspace; coverage alone does not establish readiness. Locators and links do
-not themselves prove transactions, values or parent relationships. Verified
-transaction bytes provide values; a separate Values history build is not
-required. The Parcel lane can progress alongside
-Districts and other consumers. District publication and validated Parcel completion share a
-fixed catch-up boundary and then advance together. Bitmap Districts must remain
-armed for Parcel work.
+The IO Link route requires committed selected-chain IO Link coverage from genesis
+through the current Parcel block and an audit of each batch against its verified
+source block's complete input inventory and creation anchors. Extending the
+prefix may require repeating its audit from genesis. The audit can fetch missing
+source blocks; missing reverse links require a forward scan of the selected
+history, and an index miss does not prove absence. Route selection and the
+reviewed scope authorize the required evidence work, not other index builds.
+Coverage alone does not establish readiness. Locators and links do not themselves
+prove transactions, values or parent relationships. Verified transaction bytes
+provide values; a separate Values history build is not required. District
+publication and validated Parcel completion share a fixed catch-up boundary and
+then advance together. Bitmap Districts must remain armed for Parcel work.
 Live Parcel following is not yet available.
 
-The allowance is shared across evidence work, persisted in reservations and
-never increased automatically on resume. Up to 64 unused reserved units can be
-lost after interruption. Checkpointed scan progress is reused when its selected
-chain remains valid; missing evidence and exhausted budgets remain pending.
-Positive parent proofs replay authenticated source blocks. A complete negative
+Pause, stop and cancellation remain available. Checkpointed scan progress is
+reused when its selected chain remains valid; unavailable or incomplete evidence
+stops validation without advancing coverage. Positive parent proofs replay authenticated source blocks. A complete negative
 scan produces a profile-authenticated local evaluation; independent replay
 requires the source interval; an independent audit action is not yet available.
 Deleting Raw can therefore make independent replay unavailable without changing

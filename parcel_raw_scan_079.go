@@ -2,33 +2,18 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 )
 
-var errParcelRawBudgetExhausted079 = errors.New("Parcel evidence work budget exhausted")
-
-// A single explicitly approved run shares this budget across every candidate
-// and hop. Exhaustion is unresolved, never proof that an output is unspent.
+// The admitted run shares a monotonic telemetry counter across candidates and
+// hops. It does not authorize, limit or stop proof work.
 type parcelRawScanBudget079 struct {
-	mu        sync.Mutex
-	remaining int64
-	held      int64
-	path      string
-	doc       parcelRawBudgetDocument079
-}
-
-type parcelRawBudgetDocument079 struct {
-	RunID     string `json:"run_id"`
-	Limit     int64  `json:"limit"`
-	Remaining int64  `json:"remaining"`
+	mu   sync.Mutex
+	used uint64
 }
 
 // A complete physical inventory is necessary before admitting this route. It
@@ -59,9 +44,7 @@ func (a *app) newParcelRawRoute079(ctx context.Context, t indexTimelineView, thr
 	if len(gaps) != 0 {
 		return nil, nil, nil, fmt.Errorf("retained Raw coverage gaps in genesis–%d: %v", through, gaps)
 	}
-	if budget == nil {
-		return nil, nil, nil, fmt.Errorf("explicit Parcel evidence work allowance is required")
-	}
+
 	authority := a.currentChainAuthority()
 	selected := func(height int64) (string, error) {
 		target, err := a.utxoSelectedTarget(ctx, authority, height)
@@ -71,7 +54,7 @@ func (a *app) newParcelRawRoute079(ctx context.Context, t indexTimelineView, thr
 		return target.HashDisplay, nil
 	}
 	// Share a small immutable decoded window across lookups in this run. The
-	// budget is still charged on each visit and cache hits never imply coverage.
+	// visits are counted as telemetry and cache hits never imply coverage.
 	var cacheMu sync.Mutex
 	cache := map[string]*blockView{}
 	sizes := map[string]int{}
@@ -152,9 +135,10 @@ func (a *app) newParcelRawRoute079(ctx context.Context, t indexTimelineView, thr
 		if height < 0 || height > through {
 			return blockView{}, fmt.Errorf("raw proof block is outside the approved range")
 		}
-		if err := budget.take(); err != nil {
+		if err := callCtx.Err(); err != nil {
 			return blockView{}, err
 		}
+		_ = budget.take()
 		hash, err := selected(height)
 		if err != nil {
 			return blockView{}, err
@@ -171,79 +155,40 @@ func (a *app) newParcelRawRoute079(ctx context.Context, t indexTimelineView, thr
 	return spender, transaction, blockAt, nil
 }
 
-// Resume opens the existing ledger and cannot recreate a missing allowance.
-// Reservations are persisted before reads; a crash may waste a reservation,
-// but cannot silently grant extra scan work.
-func openParcelRawBudget079(root, runID string, limit int64, create bool) (*parcelRawScanBudget079, error) {
-	if runID == "" || limit <= 0 || limit > 10000000 {
-		return nil, fmt.Errorf("invalid Parcel evidence work allowance")
+// Legacy on-disk quota ledgers remain untouched and are no longer used for
+// admission or proof execution. Missing, exhausted, or damaged old ledgers do
+// not prevent resume. Checkpoint and proof authentication remain independent.
+func openParcelRawBudget079(_ string, runID string, _ int64, _ bool) (*parcelRawScanBudget079, error) {
+	if runID == "" {
+		return nil, fmt.Errorf("Parcel run identity is unavailable")
 	}
-	sum := sha256.Sum256([]byte(runID))
-	path := filepath.Join(root, "indexes", "parcel-raw-budgets-v1", hex.EncodeToString(sum[:])+".json")
-	var doc parcelRawBudgetDocument079
-	raw, err := os.ReadFile(path)
-	if os.IsNotExist(err) && create {
-		doc = parcelRawBudgetDocument079{RunID: runID, Limit: limit, Remaining: limit}
-		if err = atomicWriteJSON(path, doc); err != nil {
-			return nil, err
-		}
-		if err = syncDirectory(filepath.Dir(path)); err != nil {
-			return nil, err
-		}
-	} else if err != nil {
-		return nil, fmt.Errorf("Parcel evidence work allowance unavailable: %w", err)
-	} else if err = json.Unmarshal(raw, &doc); err != nil {
-		return nil, fmt.Errorf("invalid Parcel evidence work allowance: %w", err)
-	}
-	if doc.RunID != runID || doc.Limit != limit || doc.Remaining < 0 || doc.Remaining > doc.Limit {
-		return nil, fmt.Errorf("Parcel evidence work allowance does not match this run")
-	}
-	return &parcelRawScanBudget079{path: path, doc: doc}, nil
+	return &parcelRawScanBudget079{}, nil
 }
 
+// take records one visit for progress telemetry only. It never limits work;
+// saturating the display counter avoids overflow without affecting execution.
 func (b *parcelRawScanBudget079) take() error {
 	if b == nil {
-		return fmt.Errorf("Parcel evidence work allowance unavailable")
+		return nil
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.path == "" {
-		if b.remaining <= 0 {
-			return errParcelRawBudgetExhausted079
-		}
-		b.remaining--
-		return nil
+	if b.used != ^uint64(0) {
+		b.used++
 	}
-	if b.held == 0 {
-		if b.doc.Remaining <= 0 {
-			return errParcelRawBudgetExhausted079
-		}
-		reserved := min(int64(64), b.doc.Remaining)
-		next := b.doc
-		next.Remaining -= reserved
-		if err := atomicWriteJSON(b.path, next); err != nil {
-			return fmt.Errorf("cannot reserve Parcel evidence work budget: %w", err)
-		}
-		if err := syncDirectory(filepath.Dir(b.path)); err != nil {
-			return fmt.Errorf("cannot commit Parcel evidence work reservation: %w", err)
-		}
-		b.doc, b.held = next, reserved
-	}
-	b.held--
 	return nil
 }
 
-func (b *parcelRawScanBudget079) exhausted() bool {
+func (b *parcelRawScanBudget079) count() uint64 {
 	if b == nil {
-		return true
+		return 0
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.path == "" {
-		return b.remaining <= 0
-	}
-	return b.held == 0 && b.doc.Remaining == 0
+	return b.used
 }
+
+func (b *parcelRawScanBudget079) exhausted() bool { return false }
 
 // The caller binds an explicitly approved range and local-only block reader.
 // No missing block is fetched and no scan goes outside that range. Every
@@ -253,7 +198,7 @@ func parcelRawSpender079(ctx context.Context, point satlinePoint, through, appro
 }
 
 func parcelRawSpenderObserved079(ctx context.Context, point satlinePoint, through, approvedFrom, approvedTo int64, budget *parcelRawScanBudget079, selected func(int64) (string, error), read func(context.Context, int64, string) (*blockView, error), observe parcelScanObserver079, cursors ...*parcelRawCursor079) (result spenderLookupView, err error) {
-	if point.Height < approvedFrom || through > approvedTo || through < point.Height || selected == nil || read == nil || budget == nil {
+	if point.Height < approvedFrom || through > approvedTo || through < point.Height || selected == nil || read == nil {
 		return spenderLookupView{}, fmt.Errorf("raw Parcel scan is outside its explicitly approved range")
 	}
 	start := point.Height
@@ -296,9 +241,7 @@ func parcelRawSpenderObserved079(ctx context.Context, point satlinePoint, throug
 		if err := ctx.Err(); err != nil {
 			return spenderLookupView{}, err
 		}
-		if err := budget.take(); err != nil {
-			return spenderLookupView{}, fmt.Errorf("%w at block %d; further approved work is needed", err, height)
-		}
+		_ = budget.take()
 		hash, err := selected(height)
 		if err != nil || !validHash(hash) {
 			return spenderLookupView{}, fmt.Errorf("selected chain unavailable at block %d", height)
@@ -366,7 +309,7 @@ func parcelRawSpenderObserved079(ctx context.Context, point satlinePoint, throug
 // The newest eligible incarnation is necessary for historical duplicate IDs.
 // The caller must also check same-block transaction order at the consumption.
 func parcelRawTransaction079(ctx context.Context, id string, before, approvedFrom, approvedTo int64, budget *parcelRawScanBudget079, selected func(int64) (string, error), read func(context.Context, int64, string) (*blockView, error), cursors ...*parcelRawCursor079) (result satlineTxEvidence, err error) {
-	if !validHash(id) || before < approvedFrom || before > approvedTo || selected == nil || read == nil || budget == nil {
+	if !validHash(id) || before < approvedFrom || before > approvedTo || selected == nil || read == nil {
 		return satlineTxEvidence{}, fmt.Errorf("raw transaction scan is outside its explicitly approved range")
 	}
 	start := before
@@ -384,9 +327,7 @@ func parcelRawTransaction079(ctx context.Context, id string, before, approvedFro
 		if err := ctx.Err(); err != nil {
 			return satlineTxEvidence{}, err
 		}
-		if err := budget.take(); err != nil {
-			return satlineTxEvidence{}, fmt.Errorf("%w at block %d; further approved work is needed", err, height)
-		}
+		_ = budget.take()
 		hash, err := selected(height)
 		if err != nil || !validHash(hash) {
 			return satlineTxEvidence{}, fmt.Errorf("selected chain unavailable at block %d", height)

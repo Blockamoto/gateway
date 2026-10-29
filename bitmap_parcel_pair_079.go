@@ -161,10 +161,10 @@ func (a *app) allowPairedDistrictPublication079(ctx context.Context, height int6
 }
 
 // Rebind only to a checked committed coverage horizon. The same persistent run
-// budget is shared across phases, so reconfiguration never grants more work.
+// Work accounting is shared across phases; it does not limit proof validation.
 func (a *app) configureParcelEvidence079(ctx context.Context, c *indexRunConsumer, through int64) error {
-	if c == nil || c.parcelBudget == nil {
-		return fmt.Errorf("Parcel evidence work allowance is unavailable")
+	if c == nil {
+		return fmt.Errorf("Parcel evidence consumer is unavailable")
 	}
 	if a.parcelEvidenceHooks079 != nil && a.parcelEvidenceHooks079.Configure != nil {
 		return a.parcelEvidenceHooks079.Configure(ctx, c, through)

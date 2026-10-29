@@ -116,19 +116,19 @@ func TestParcelPairHoldsDistrictUntilExactCompleteCatchup079(t *testing.T) {
 	}
 }
 
-func TestParcelEvidenceAdmissionRequiresExistingLedger079(t *testing.T) {
+func TestParcelEvidenceAdmissionDoesNotRequireLedger079(t *testing.T) {
 	ctx := context.Background()
 	a := runTestApp(t)
-	choice := indexRunSelection{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "tx-locators", ParcelRawScanBudget: 130}}
+	choice := indexRunSelection{Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "tx-locators"}}
 	doc, err := a.prepareIndexRun(indexRunRequest{Consumers: []indexRunSelection{choice, {Index: bitmapStandardDistrictID, Armed: true}, {Index: "tx-locator", Armed: true}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	progress := indexRunProgress{Index: bitmapReplayParcelID, State: "needs_prerequisite", AdmissionState: "blocked", ParcelEvidencePending: true, SavedCoverageState: "none"}
+	progress := indexRunProgress{Index: bitmapReplayParcelID, State: "needs_prerequisite", AdmissionState: "blocked", SavedCoverageState: "none"}
 	if _, err = bindIndexRunBitmapProgress(ctx, a.dataDir, &progress); err != nil {
 		t.Fatal(err)
 	}
-	doc.Run = &indexRunRecord{ID: "parcel-evidence-ledger", State: "running", Request: doc.Prepared, Consumers: []indexRunProgress{progress}}
+	doc.Run = &indexRunRecord{ID: "parcel-evidence-no-ledger", State: "running", Request: doc.Prepared, Consumers: []indexRunProgress{progress}}
 	a.indexRunMu.Lock()
 	a.indexRunState = doc
 	err = a.persistIndexRunLocked()
@@ -136,23 +136,12 @@ func TestParcelEvidenceAdmissionRequiresExistingLedger079(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = openParcelRawBudget079(a.dataDir, doc.Run.ID, choice.ParcelRawScanBudget, false); err == nil {
-		t.Fatal("missing ledger was recreated on recovery")
-	}
-	budget, err := openParcelRawBudget079(a.dataDir, doc.Run.ID, choice.ParcelRawScanBudget, true)
+	tracker, err := openParcelRawBudget079(a.dataDir, doc.Run.ID, 0, false)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("legacy run without ledger must resume: %v", err)
 	}
-	if err = budget.take(); err != nil {
-		t.Fatal(err)
-	}
-	before, err := openParcelRawBudget079(a.dataDir, doc.Run.ID, choice.ParcelRawScanBudget, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	after, err := openParcelRawBudget079(a.dataDir, doc.Run.ID, choice.ParcelRawScanBudget, false)
-	if err != nil || after.doc.Remaining != before.doc.Remaining || after.doc.Remaining >= choice.ParcelRawScanBudget {
-		t.Fatalf("recovery expanded allowance: before=%+v after=%+v err=%v", before.doc, after.doc, err)
+	if err = tracker.take(); err != nil || tracker.count() != 1 || tracker.exhausted() {
+		t.Fatalf("unlimited work tracking failed: count=%d err=%v", tracker.count(), err)
 	}
 }
 
@@ -247,9 +236,9 @@ func TestParcelPairCapsDistrictLiveWhenTipAdvances079(t *testing.T) {
 }
 
 // The private route hook substitutes a small committed-prefix fixture. It
-// exercises the actual coordinator, persistent allowance and wakeup rather
+// exercises the actual coordinator, proof accounting and wakeup rather
 // than constructing a synthetic 792,000-block locator index on disk.
-func TestParcelValidationWakesOnlyForRelevantPrefixAndRespectsBudget079(t *testing.T) {
+func TestParcelValidationWakesOnlyForRelevantPrefixWithoutQuota079(t *testing.T) {
 	ctx := context.Background()
 	a := runTestApp(t)
 	b0 := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "")
@@ -359,18 +348,44 @@ func TestParcelValidationWakesOnlyForRelevantPrefixAndRespectsBudget079(t *testi
 	notifyParcelIndexCommit079(a.dataDir, "tx-locator")
 	time.Sleep(250 * time.Millisecond)
 	if reads.Load() != 0 {
-		t.Fatal("unrelated evidence event consumed the allowance")
+		t.Fatal("unrelated evidence event started proof work")
 	}
 	mu.Lock()
 	through = b0.Height
 	mu.Unlock()
 	notifyParcelIndexCommit079(a.dataDir, "tx-locator")
+	deadline = time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		doc = a.indexRunSnapshot()
+		p, _ = indexRunProgressFor(doc.Run, bitmapReplayParcelID)
+		if p.ParcelValidatedHeight != nil && *p.ParcelValidatedHeight == b0.Height {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if p.ParcelValidatedHeight == nil || *p.ParcelValidatedHeight != b0.Height || reads.Load() != 1 {
+		t.Fatalf("first checked prefix did not publish: %+v reads=%d", p, reads.Load())
+	}
+	// A pause/resume does not require a ledger or regrant of work, and the
+	// counter is retained as telemetry while the validated checkpoint survives.
+	if _, err = a.controlIndexRun(ctx, record.ID, "pause"); err != nil {
+		t.Fatal(err)
+	}
+	paused := waitRunCondition(t, a, func(d indexRunDocument) bool { return d.Run != nil && d.Run.State == "paused" })
+	if paused.Run.Counts.ParcelEvidenceChecks != 1 {
+		t.Fatalf("pause lost work count: %+v", paused.Run.Counts)
+	}
+	if _, err = a.controlIndexRun(ctx, record.ID, "resume"); err != nil {
+		t.Fatalf("resume without allowance failed: %v", err)
+	}
+	mu.Lock()
+	through = b1.Height
+	mu.Unlock()
+	notifyParcelIndexCommit079(a.dataDir, "tx-locator")
 	done := waitRun(t, a)
 	p, _ = indexRunProgressFor(done.Run, bitmapReplayParcelID)
-	if done.Run.State != "complete_with_errors" || p.ParcelValidatedHeight == nil || *p.ParcelValidatedHeight != b0.Height || p.ParcelValidationState != "blocked" || reads.Load() != 1 {
-		t.Fatalf("evidence wakeup or budget handling failed: %+v reads=%d", p, reads.Load())
+	if done.Run.State != "complete" || p.ParcelValidatedHeight == nil || *p.ParcelValidatedHeight != b1.Height || reads.Load() != 2 || done.Run.Counts.ParcelEvidenceChecks != 2 {
+		t.Fatalf("legacy one-unit value stopped uncapped validation: %+v reads=%d work=%d", p, reads.Load(), done.Run.Counts.ParcelEvidenceChecks)
 	}
-	if _, err := openParcelRawBudget079(a.dataDir, done.Run.ID, 1, false); err != nil {
-		t.Fatal("admitted allowance ledger disappeared", err)
-	}
+
 }

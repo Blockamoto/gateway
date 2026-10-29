@@ -16,8 +16,9 @@ other independently selected tracks remain selected. The single footer changes
 from Disarm Parcels to Set In point to zero once both requirements are selected.
 Confirming commits Parcel selection and sets In and the navigation playhead to
 zero without starting work. Selection means configured, not built. The admitted
-proof route and bounded work allowance remain explicit, and the backend checks
-actual evidence, lineage, values, witness and parent proofs. A missing dependency
+proof route and finite indexing scope remain explicit, and the backend checks
+actual evidence, lineage, values, witness and parent proofs. There is no per-run
+validation-operation quota; pause, stop or missing evidence still stop work. A missing dependency
 or proof cannot become executable through a different API or publication path.
 
 Current Addresses uses the same single-footer setup when compatible, caught-up

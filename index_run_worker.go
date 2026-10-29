@@ -44,6 +44,7 @@ type indexRunConsumer struct {
 	pointAckCommit        string
 	parcelBusy            bool // coordinator-owned; external state is not read until the worker joins
 	parcelBudget          *parcelRawScanBudget079
+	parcelWorkBase        uint64
 	parcelCancel          context.CancelFunc
 	parcelPrepare         func(context.Context) error
 	parcelPrepared        bool
@@ -400,16 +401,17 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 			if p.State == "complete" {
 				break
 			}
-			if (c.ParcelEvidenceRoute != "retained-raw" && c.ParcelEvidenceRoute != "tx-locators" && c.ParcelEvidenceRoute != "txio-links") || c.ParcelRawScanBudget <= 0 {
+			if c.ParcelEvidenceRoute != "retained-raw" && c.ParcelEvidenceRoute != "tx-locators" && c.ParcelEvidenceRoute != "txio-links" {
 				v.progress.ParcelValidationState = "pending"
-				v.progress.ParcelValidationReason = "Select a proof route and explicit work allowance before Parcel processing."
+				v.progress.ParcelValidationReason = "Select a proof route before Parcel processing."
 				break
 			}
 			budget, budgetErr := openParcelRawBudget079(a.dataDir, r.ID, c.ParcelRawScanBudget, false)
 			if budgetErr != nil {
-				return v, fmt.Errorf("Parcel scan budget unavailable: %w", budgetErr)
+				return v, fmt.Errorf("Parcel evidence work counter unavailable: %w", budgetErr)
 			}
 			v.parcelBudget = budget
+			v.parcelWorkBase = r.Counts.ParcelEvidenceChecks
 			through := p.To
 			if r.ParcelDistrict != nil {
 				through = r.ParcelDistrict.EvidenceThrough
@@ -749,6 +751,16 @@ func (a *app) saveRunProgress(id, state, reason string, consumers []*indexRunCon
 	if r.State != "pausing" && r.State != "cancelled" {
 		r.State, r.Reason = state, reason
 	}
+	for _, c := range consumers {
+		if c.selection.Index == bitmapReplayParcelID && c.parcelBudget != nil {
+			work := c.parcelBudget.count()
+			if ^uint64(0)-c.parcelWorkBase < work {
+				counts.ParcelEvidenceChecks = ^uint64(0)
+			} else {
+				counts.ParcelEvidenceChecks = c.parcelWorkBase + work
+			}
+		}
+	}
 	r.Counts = counts
 	r.TargetHeight, r.TargetHash = target, hash
 	// A click may have durably admitted a new member while this cohort was
@@ -882,10 +894,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			return
 		}
 		c.progress.ParcelValidationState, c.progress.ParcelValidationReason = "pending", result.err.Error()
-		if errors.Is(result.err, errParcelRawBudgetExhausted079) || c.parcelBudget != nil && c.parcelBudget.exhausted() || strings.Contains(strings.ToLower(result.err.Error()), "evidence work budget exhausted") {
-			c.progress.ParcelValidationState = "blocked"
-			c.progress.ParcelValidationReason += " Review a new run with an additional scan allowance."
-		} else if errors.Is(result.err, context.Canceled) {
+		if errors.Is(result.err, context.Canceled) {
 			c.progress.ParcelValidationReason = "Validation paused at its last committed checkpoint."
 		}
 	}
@@ -899,12 +908,8 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			c.progress.ParcelValidationState, c.progress.ParcelValidationReason = "complete", "Validated coverage reached the selected boundary."
 			return false
 		}
-		if c.parcelBudget == nil || c.selection.ParcelEvidenceRoute == "" {
-			c.progress.ParcelValidationState, c.progress.ParcelValidationReason = "blocked", "A reviewed proof route and finite allowance are required."
-			return false
-		}
-		if c.parcelBudget.exhausted() {
-			c.progress.ParcelValidationState, c.progress.ParcelValidationReason = "blocked", "The reviewed evidence allowance is exhausted. Review a new run for further validation."
+		if c.selection.ParcelEvidenceRoute == "" {
+			c.progress.ParcelValidationState, c.progress.ParcelValidationReason = "blocked", "A selected proof route is required."
 			return false
 		}
 		if c.parcelAnchorHeight != next || c.parcelAnchorTip != authority.Hash || c.parcelAnchorHash == "" {
@@ -966,7 +971,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 		}
 		c.parcelBusy, parcelActive = true, true
-		c.progress.ParcelValidationState, c.progress.ParcelValidationReason = "validating", "Checking the next Parcel block using the reviewed allowance."
+		c.progress.ParcelValidationState, c.progress.ParcelValidationReason = "validating", "Checking the next Parcel block against the selected proof route."
 		progress, expectedHash := c.progress, c.parcelAnchorHash
 		retention := runRawRetention(record.Request)
 		workCtx, workCancel := context.WithCancel(parcelCtx)
@@ -1599,7 +1604,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			for _, c := range consumers {
 				if c.selection.Index == bitmapReplayParcelID && c.progress.ParcelValidationState == "blocked" {
 					failed = true
-				} else if c.selection.Index == bitmapReplayParcelID && c.parcelBudget != nil && c.progress.ParcelValidationState != "complete" && c.external != nil && (c.parcelBusy || c.external.NextHeight() <= record.InitialTargetHeight) {
+				} else if c.selection.Index == bitmapReplayParcelID && c.progress.ParcelValidationState != "complete" && c.external != nil && (c.parcelBusy || c.external.NextHeight() <= record.InitialTargetHeight) {
 					validationWaiting = true
 					waiting = true
 				} else if c.selection.Index != bitmapReplayParcelID && c.progress.State != "complete" && c.progress.State != "off" && c.progress.State != "failed" && c.progress.State != "rebuild_required" {

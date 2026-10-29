@@ -17,7 +17,8 @@ import (
 )
 
 type indexRunOptions struct {
-	ParcelEvidenceRoute string            `json:"parcel_evidence_route,omitempty"`
+	ParcelEvidenceRoute string `json:"parcel_evidence_route,omitempty"`
+	// Legacy compatibility only; Parcel validation no longer imposes a work quota.
 	ParcelRawScanBudget int64             `json:"parcel_raw_scan_budget,omitempty"`
 	Retention           string            `json:"retention,omitempty"`
 	Mode                string            `json:"mode,omitempty"`
@@ -99,31 +100,32 @@ type indexRunDependency struct {
 	Action string `json:"action,omitempty"`
 }
 type indexRunCounts struct {
-	SourceAcquireMilliseconds      int64 `json:"source_acquire_milliseconds,omitempty"`
-	SourceDecodeMilliseconds       int64 `json:"source_decode_milliseconds,omitempty"`
-	SourceRawRetentionMilliseconds int64 `json:"source_raw_retention_milliseconds,omitempty"`
-	SourceIncidentalMilliseconds   int64 `json:"source_incidental_milliseconds,omitempty"`
-	StorageFlushMilliseconds       int64 `json:"storage_flush_milliseconds,omitempty"`
-	LocatorBatchFlushes            int64 `json:"locator_batch_flushes,omitempty"`
-	LocatorShardAppends            int64 `json:"locator_shard_appends,omitempty"`
-	LocatorShardSyncs              int64 `json:"locator_shard_syncs,omitempty"`
-	LocatorReceiptWrites           int64 `json:"locator_receipt_writes,omitempty"`
-	LocatorActiveWrites            int64 `json:"locator_active_writes,omitempty"`
-	LocatorHeadWrites              int64 `json:"locator_head_writes,omitempty"`
-	LocatorCommitWrites            int64 `json:"locator_commit_writes,omitempty"`
-	LocatorRecordsWritten          int64 `json:"locator_records_written,omitempty"`
-	LocatorBytesWritten            int64 `json:"locator_bytes_written,omitempty"`
-	SourceMilliseconds             int64 `json:"source_milliseconds,omitempty"`
-	ExtractionMilliseconds         int64 `json:"extraction_milliseconds,omitempty"`
-	ApplyMilliseconds              int64 `json:"apply_milliseconds,omitempty"`
-	ProgressMilliseconds           int64 `json:"progress_milliseconds,omitempty"`
-	ReconcileMilliseconds          int64 `json:"reconcile_milliseconds,omitempty"`
-	OutcomeReads                   int64 `json:"outcome_reads,omitempty"`
-	ChainSteps                     int64 `json:"chain_steps,omitempty"`
-	SourceReads                    int64 `json:"source_reads"`
-	DecodedBlocks                  int64 `json:"decoded_blocks"`
-	InscriptionExtractions         int64 `json:"inscription_extractions"`
-	CacheHits                      int64 `json:"cache_hits"`
+	ParcelEvidenceChecks           uint64 `json:"parcel_evidence_checks,omitempty"`
+	SourceAcquireMilliseconds      int64  `json:"source_acquire_milliseconds,omitempty"`
+	SourceDecodeMilliseconds       int64  `json:"source_decode_milliseconds,omitempty"`
+	SourceRawRetentionMilliseconds int64  `json:"source_raw_retention_milliseconds,omitempty"`
+	SourceIncidentalMilliseconds   int64  `json:"source_incidental_milliseconds,omitempty"`
+	StorageFlushMilliseconds       int64  `json:"storage_flush_milliseconds,omitempty"`
+	LocatorBatchFlushes            int64  `json:"locator_batch_flushes,omitempty"`
+	LocatorShardAppends            int64  `json:"locator_shard_appends,omitempty"`
+	LocatorShardSyncs              int64  `json:"locator_shard_syncs,omitempty"`
+	LocatorReceiptWrites           int64  `json:"locator_receipt_writes,omitempty"`
+	LocatorActiveWrites            int64  `json:"locator_active_writes,omitempty"`
+	LocatorHeadWrites              int64  `json:"locator_head_writes,omitempty"`
+	LocatorCommitWrites            int64  `json:"locator_commit_writes,omitempty"`
+	LocatorRecordsWritten          int64  `json:"locator_records_written,omitempty"`
+	LocatorBytesWritten            int64  `json:"locator_bytes_written,omitempty"`
+	SourceMilliseconds             int64  `json:"source_milliseconds,omitempty"`
+	ExtractionMilliseconds         int64  `json:"extraction_milliseconds,omitempty"`
+	ApplyMilliseconds              int64  `json:"apply_milliseconds,omitempty"`
+	ProgressMilliseconds           int64  `json:"progress_milliseconds,omitempty"`
+	ReconcileMilliseconds          int64  `json:"reconcile_milliseconds,omitempty"`
+	OutcomeReads                   int64  `json:"outcome_reads,omitempty"`
+	ChainSteps                     int64  `json:"chain_steps,omitempty"`
+	SourceReads                    int64  `json:"source_reads"`
+	DecodedBlocks                  int64  `json:"decoded_blocks"`
+	InscriptionExtractions         int64  `json:"inscription_extractions"`
+	CacheHits                      int64  `json:"cache_hits"`
 }
 type indexRunSourceFactError struct {
 	Index     string `json:"index"`
@@ -297,7 +299,14 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 		}
 		seen[c.Index] = true
 		if c.Options != nil {
+			// Older requests can carry the retired value flattened alongside newer
+			// nested route options. Keep that inert value when no nested value is
+			// supplied so reconfiguration does not erase saved metadata.
+			legacyBudget := c.ParcelRawScanBudget
 			c.indexRunOptions = *c.Options
+			if c.Index == bitmapReplayParcelID && c.ParcelRawScanBudget == 0 {
+				c.ParcelRawScanBudget = legacyBudget
+			}
 			c.Options = nil
 		}
 		if c.Mode == "" {
@@ -331,7 +340,7 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 			return req, fmt.Errorf("related inscription locators belong to Inscriptions")
 		}
 		if c.Index != bitmapReplayParcelID && (c.ParcelEvidenceRoute != "" || c.ParcelRawScanBudget != 0) {
-			return req, fmt.Errorf("Parcel evidence route and scan budget belong to replay Parcels")
+			return req, fmt.Errorf("Parcel evidence options belong to Bitmap Parcels")
 		}
 		if c.Index == bitmapReplayParcelID {
 			if c.Live {
@@ -345,12 +354,6 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 			}
 			if execution && c.ParcelEvidenceRoute == "txio-links" && !parcelTXIOExecutionAvailable079 {
 				return req, fmt.Errorf("IO Links Parcel route is not available until full inventory verification and replay checks pass")
-			}
-			if c.ParcelRawScanBudget < 0 || c.ParcelRawScanBudget > 10000000 {
-				return req, fmt.Errorf("Parcel evidence work budget must be at most 10000000 block reads, fetches or index-batch visits")
-			}
-			if c.ParcelEvidenceRoute == "" && c.ParcelRawScanBudget != 0 {
-				return req, fmt.Errorf("Parcel scan budget requires an explicit evidence route")
 			}
 		}
 		if c.RebuildSnapshot != nil && c.Index != "address-state" {
@@ -397,8 +400,8 @@ func validateParcelSelection079(req indexRunRequest, parcel indexRunSelection) e
 		return fmt.Errorf("Bitmap Parcels requires Bitmap Districts to be armed")
 	}
 	producer := parcelEvidenceProducer079(parcel.ParcelEvidenceRoute)
-	if producer == "" || parcel.ParcelRawScanBudget <= 0 {
-		return fmt.Errorf("Bitmap Parcels requires one proof route and a positive reviewed work allowance")
+	if producer == "" {
+		return fmt.Errorf("Bitmap Parcels requires one selected proof route")
 	}
 	choice, ok := runSelection(req, producer)
 	if !ok || !indexRunSelectionEnabled(choice) {
@@ -845,8 +848,8 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 				q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "parent-evidence", Kind: "lookup", State: "conditional", Reason: "Each candidate needs selected-chain witness, satpoint movement and value evidence; unavailable proof remains pending and no whole-chain scan begins implicitly.", Action: "inspect"})
 				{
 					reason := ""
-					if c.ParcelEvidenceRoute == "" || c.ParcelRawScanBudget <= 0 {
-						reason = "Select an evidence route and approve a positive finite block-read/fetch budget."
+					if c.ParcelEvidenceRoute == "" {
+						reason = "Select an evidence route before Parcel processing."
 					} else {
 						var gaps []heightInterval
 						var gapErr error
@@ -872,7 +875,7 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: parcelEvidenceProducer079(c.ParcelEvidenceRoute), Kind: "evidence", State: "selected", Reason: reason, Action: "inspect"})
 					}
 					if reason == "" && c.ParcelEvidenceRoute == "txio-links" {
-						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "txo-spender", Kind: "evidence", State: "audit_required", Reason: "IO Links audits the committed prefix and source blocks under the fixed allowance. Extending the prefix may require another bounded audit.", Action: "inspect"})
+						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "txo-spender", Kind: "evidence", State: "audit_required", Reason: "IO Links audits the committed prefix and source blocks. Extending the prefix may require repeating the audit.", Action: "inspect"})
 					}
 				}
 			} else if c.Index != bitmapReplayParcelID {
@@ -1046,12 +1049,6 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 	}
 	prior := cloneIndexRunDocument(a.indexRunState)
 	record := &indexRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), AdmissionRevision: 1, State: "running", Phase: "boundary", Request: p.Request, TargetHeight: p.TargetHeight, InitialTargetHeight: p.TargetHeight, TargetHash: p.TargetHash, Consumers: p.Consumers, ParcelDistrict: p.ParcelDistrict, Updated: time.Now().UTC().Format(time.RFC3339)}
-	parcelProgress, parcelHasProgress := indexRunProgressFor(record, bitmapReplayParcelID)
-	if parcel, ok := runSelection(record.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.State != "complete" && parcel.ParcelEvidenceRoute != "" && parcel.ParcelRawScanBudget > 0 {
-		if _, err := openParcelRawBudget079(a.dataDir, record.ID, parcel.ParcelRawScanBudget, true); err != nil {
-			return indexRunDocument{}, err
-		}
-	}
 	record.FrontierHeight = initialIndexRunFrontier(record)
 	a.indexRunState.Configured = true
 	a.indexRunState.Prepared = p.Request
@@ -1169,12 +1166,6 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 	for _, consumer := range a.indexRunState.Run.Consumers {
 		if err := validateIndexRunBitmapProgress(ctx, a.dataDir, consumer); err != nil {
 			return indexRunDocument{}, err
-		}
-	}
-	parcelProgress, parcelHasProgress := indexRunProgressFor(r, bitmapReplayParcelID)
-	if parcel, ok := runSelection(r.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.State != "complete" && parcel.ParcelEvidenceRoute != "" && parcel.ParcelRawScanBudget > 0 {
-		if _, err := openParcelRawBudget079(a.dataDir, r.ID, parcel.ParcelRawScanBudget, false); err != nil {
-			return indexRunDocument{}, fmt.Errorf("Parcel scan budget unavailable on resume: %w", err)
 		}
 	}
 	prior := cloneIndexRunDocument(a.indexRunState)

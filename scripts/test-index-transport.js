@@ -70,10 +70,7 @@ console.log('Replay Parcel UI guard PASS: exact track visible, backend buildabil
 assert.throws(()=>executionRequest({consumers:[{index:replay.id,armed:true}]},'play',[]),/not available/,'Replay requires current buildable catalog evidence');
 
 const options=context.window.GatewayIndexTransport.parcelEvidenceOptions;
-assert.deepEqual(plain(options('',100)),{parcel_evidence_route:'',parcel_raw_scan_budget:0},'Default authorizes no scan');
-assert.deepEqual(plain(options('retained-raw','')), {parcel_evidence_route:'retained-raw',parcel_raw_scan_budget:0},'Choosing route does not supply a budget');
-for(const n of [-1,1.5,10000001,'bad'])assert.equal(options('retained-raw',n).parcel_raw_scan_budget,0);
-assert.equal(options('retained-raw',250).parcel_raw_scan_budget,250,'Explicit bounded read budget preserved');
-console.log('Parcel evidence consent PASS: no implicit route or scan budget, explicit positive bounded reads only.');
-
-for(const route of ['tx-locators','txio-links']){assert.deepEqual(plain(options(route,0)),{parcel_evidence_route:route,parcel_raw_scan_budget:0},'Route alone authorizes no block work');assert.deepEqual(plain(options(route,21)),{parcel_evidence_route:route,parcel_raw_scan_budget:21});}
+assert.deepEqual(plain(options('')),{parcel_evidence_route:''},'No route grants no proof producer');
+for(const route of ['retained-raw','tx-locators','txio-links'])assert.deepEqual(plain(options(route)),{parcel_evidence_route:route},'A selected route does not require a numeric allowance');
+assert.deepEqual(plain(options('unknown')),{parcel_evidence_route:''},'Unknown route remains unselected');
+console.log('Parcel evidence route PASS: explicit route without operation quota.');

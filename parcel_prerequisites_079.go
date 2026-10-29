@@ -29,7 +29,7 @@ func parcelPrerequisites079(t indexTimelineView) parcelPrerequisiteView079 {
 		Reason: "Parcel execution is disabled: a complete replayable parent-evidence route is not implemented. Coverage alone cannot establish readiness.", Routes: []parcelPrerequisiteRoute079{}}
 	if bitmapBuiltinExecutionAvailable(bitmapReplayParcelID) {
 		out.State = "requires_review"
-		out.Reason = "A finite Parcel run requires an explicitly selected evidence route and scan allowance. Retained Raw requires a complete local inventory from genesis through the requested end; coverage alone does not prove individual relationships."
+		out.Reason = "A finite Parcel run requires an explicitly selected evidence route and indexing scope. Retained Raw requires a complete local inventory from genesis through the requested end; coverage alone does not prove individual relationships."
 	}
 	out.District = parcelPrerequisiteRoute079{ID: "district", State: "unknown", From: bitmapDevelopmentStart, To: t.TipHeight, Coverage: []heightInterval{}, Note: "The selected District interpretation must have committed selected-chain evaluations through each Parcel reveal. A District winner and target-block transaction count are checked for each candidate."}
 	if t.TipKnown && t.TipHeight >= bitmapDevelopmentStart {
@@ -53,7 +53,7 @@ func parcelPrerequisites079(t indexTimelineView) parcelPrerequisiteView079 {
 		from      int64
 		note      string
 	}{
-		{"raw_blocks", "blocks", 0, "Durable Raw body inventory, not metadata or an external provider. Each body still requires integrity validation; finding predecessors requires bounded scanning. Input values and parent satpoint must be established."},
+		{"raw_blocks", "blocks", 0, "Durable Raw body inventory, not metadata or an external provider. Each body still requires integrity validation; finding predecessors can require scanning within the admitted scope. Input values and parent satpoint must be established."},
 		{"tx_locators", "tx-locator", 0, "Transaction positions alone do not provide bytes, values, spend links, or parent proof. Required verified transaction bodies must be available or explicitly fetched."},
 		{"txio_links", "txo-spender", 0, "Committed block coverage does not prove all input links are resolved. Creation and spending endpoints, verified block data and input values are still required; Values history is optional if verified bytes supply values."},
 	}

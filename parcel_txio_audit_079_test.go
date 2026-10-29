@@ -47,14 +47,22 @@ func TestParcelTXIOAuditResumesAndRejectsUnresolved079(t *testing.T) {
 			return blocks[h], nil
 		}
 	}
-	budget1 := &parcelRawScanBudget079{remaining: 2}
-	first, err := auditParcelTXIO079(context.Background(), s, 1, selected, budget1, reader(budget1))
-	if !errors.Is(err, errParcelRawBudgetExhausted079) || first.NextHeight != 0 || first.Complete {
-		t.Fatalf("bounded audit: %+v %v", first, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	budget1 := &parcelRawScanBudget079{used: 10000000}
+	interrupted := func(work context.Context, h int64) (blockView, error) {
+		if h == 0 {
+			cancel()
+			return blockView{}, context.Canceled
+		}
+		return reader(budget1)(work, h)
 	}
-	budget2 := &parcelRawScanBudget079{remaining: 2}
+	first, err := auditParcelTXIO079(ctx, s, 1, selected, budget1, interrupted)
+	if !errors.Is(err, context.Canceled) || first.NextHeight != 0 || first.Complete {
+		t.Fatalf("cancelled audit: %+v %v", first, err)
+	}
+	budget2 := &parcelRawScanBudget079{used: 10000000}
 	second, err := auditParcelTXIO079(context.Background(), s, 1, selected, budget2, reader(budget2))
-	if err != nil || !second.Complete {
+	if err != nil || !second.Complete || budget2.count() <= 10000000 {
 		t.Fatalf("audit restart: %+v %v", second, err)
 	}
 	reorg := func(h int64) (string, error) {
@@ -63,7 +71,7 @@ func TestParcelTXIOAuditResumesAndRejectsUnresolved079(t *testing.T) {
 		}
 		return selected(h)
 	}
-	budget3 := &parcelRawScanBudget079{remaining: 5}
+	budget3 := &parcelRawScanBudget079{}
 	if _, err = auditParcelTXIO079(context.Background(), s, 1, reorg, budget3, reader(budget3)); err == nil {
 		t.Fatal("reorg accepted completed audit")
 	}
@@ -79,7 +87,7 @@ func TestParcelTXIOAuditResumesAndRejectsUnresolved079(t *testing.T) {
 		}
 		return selected(h)
 	}
-	budget4 := &parcelRawScanBudget079{remaining: 4}
+	budget4 := &parcelRawScanBudget079{}
 	result, err := auditParcelTXIO079(context.Background(), s, 2, select2, budget4, reader(budget4))
 	if err == nil || !strings.Contains(err.Error(), "unresolved") || result.Complete {
 		t.Fatalf("unresolved input was admitted: %+v %v", result, err)
@@ -124,7 +132,7 @@ func TestParcelTXIORouteUsesBridgeAndCheckedBytes079(t *testing.T) {
 		}
 	}
 	timeline := indexTimelineView{TipKnown: true, TipHeight: 1, TipHash: hash1, Tracks: []indexTimelineTrack{{ID: "txo-spender", Sources: []indexTimelineSource{{ID: "gateway_committed_index", Kind: "committed_records", Complete: true, Ranges: []heightInterval{{0, 1}}}}}}}
-	budget := &parcelRawScanBudget079{remaining: 5}
+	budget := &parcelRawScanBudget079{}
 	prepare, _, transaction, _, err := a.newParcelTXIORoute079(ctx, timeline, 1, budget)
 	if err != nil {
 		t.Fatal(err)
@@ -136,15 +144,25 @@ func TestParcelTXIORouteUsesBridgeAndCheckedBytes079(t *testing.T) {
 	if err != nil || evidence.Tx.TxID != genesis.Transactions[0].TxID || evidence.Source != "approved_txio_translation_and_checked_block" {
 		t.Fatalf("TXIO bridge lookup: %+v %v", evidence, err)
 	}
-	if reads != 2 || !budget.exhausted() {
-		t.Fatalf("unexpected fetched-block reuse or budget: reads=%d exhausted=%v", reads, budget.exhausted())
+	if reads != 2 || budget.count() < 2 {
+		t.Fatalf("unexpected fetched-block reuse or count: reads=%d checks=%d", reads, budget.count())
+	}
+	prepareWithoutCounter, _, transactionWithoutCounter, _, err := a.newParcelTXIORoute079(ctx, timeline, 1, nil)
+	if err != nil {
+		t.Fatalf("nil telemetry blocked route: %v", err)
+	}
+	if err = prepareWithoutCounter(ctx); err != nil {
+		t.Fatalf("nil telemetry blocked audit: %v", err)
+	}
+	if _, err = transactionWithoutCounter(ctx, genesis.Transactions[0].TxID, 1); err != nil {
+		t.Fatalf("nil telemetry blocked checked lookup: %v", err)
 	}
 }
 
 // Synthetic block/receipts exercise the TXIO reverse-pointer fast path and
-// budgeted source acquisition; separate real-witness fixtures test Bitcoin
+// source acquisition; separate real-witness fixtures test Bitcoin
 // authentication, not this fabricated transaction chain.
-func TestParcelTXIOPositiveLinkUsesBudgetedFetchedBlock079(t *testing.T) {
+func TestParcelTXIOPositiveLinkUsesCheckedFetchedBlock079(t *testing.T) {
 	ctx := context.Background()
 	a, raw := testAppWithGenesis(t)
 	a.settings.CoreDisabled = true
@@ -169,7 +187,7 @@ func TestParcelTXIOPositiveLinkUsesBudgetedFetchedBlock079(t *testing.T) {
 	if err = s.appendBlock(b, 0, "ephemeral"); err != nil {
 		t.Fatal(err)
 	}
-	budget := &parcelRawScanBudget079{remaining: 1}
+	budget := &parcelRawScanBudget079{}
 	visits := 0
 	fallback := false
 	selected := func(h int64) (string, error) {
@@ -199,8 +217,8 @@ func TestParcelTXIOPositiveLinkUsesBudgetedFetchedBlock079(t *testing.T) {
 	}
 	point := satlinePoint{TxID: created, Vout: 0, Height: 1, TxIndex: 1, BlockHash: b.Hash}
 	result, err := backend.SpenderPoint(point)
-	if err != nil || result.ConfirmedState != "confirmed_spent" || result.SpendingTxID != spent || result.SpendingVin != 0 || visits != 1 || !budget.exhausted() || fallback {
-		t.Fatalf("TXIO link did not use one budgeted fetched block: %+v %v visits=%d fallback=%v", result, err, visits, fallback)
+	if err != nil || result.ConfirmedState != "confirmed_spent" || result.SpendingTxID != spent || result.SpendingVin != 0 || visits != 1 || budget.count() != 1 || fallback {
+		t.Fatalf("TXIO link did not use one checked fetched block: %+v %v visits=%d fallback=%v", result, err, visits, fallback)
 	}
 }
 

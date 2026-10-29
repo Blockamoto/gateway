@@ -40,9 +40,6 @@ func (a *app) newParcelTXIORoute079(ctx context.Context, t indexTimelineView, th
 	if len(gaps) > 0 {
 		return nil, nil, nil, nil, fmt.Errorf("IO Links coverage gaps from genesis through %d: %v", through, gaps)
 	}
-	if budget == nil {
-		return nil, nil, nil, nil, fmt.Errorf("explicit Parcel evidence work allowance required")
-	}
 	store, err := indexStoreHead(a.dataDir, "txo-spender")
 	if err != nil || store.checkpoint == nil || store.checkpoint.From != 0 || store.checkpoint.Height < through {
 		return nil, nil, nil, nil, fmt.Errorf("complete committed IO Links prefix unavailable")
@@ -108,9 +105,10 @@ func (a *app) newParcelTXIORoute079(ctx context.Context, t indexTimelineView, th
 		if height < 0 || height > through {
 			return blockView{}, fmt.Errorf("Parcel block outside approved range")
 		}
-		if err := budget.take(); err != nil {
+		if err := callCtx.Err(); err != nil {
 			return blockView{}, err
 		}
+		_ = budget.take()
 		hash, err := selected(height)
 		if err != nil {
 			return blockView{}, err

@@ -29,8 +29,8 @@ Raw corpus, full-chain Parcel build, installer, updater, or Live Parcel run was
 tested. Review the limits in [indexing](INDEXING.md) before interpreting
 coverage or replayability.
 
-The current Parcel workflow requires one reviewed proof route and bounded
-proof-work consent. Experimental discovery data is retained but is not used for
+The current Parcel workflow requires one reviewed proof route and finite
+indexing scope, without a per-run proof-operation quota. Experimental discovery data is retained but is not used for
 new processing or user-facing results. Raw, TX ID Locator and IO Link are
 alternative evidence routes; coverage alone does not establish a parent proof.
 The IO Link route has synthetic audit fixtures, but a full mainnet audit and its
@@ -50,3 +50,9 @@ The route-prefix fixtures are synthetic; they are not a full-chain Parcel run.
 A newly available missing source byte alone does not currently wake a failed
 proof attempt unless relevant committed coverage changes; a later reviewed run
 may be needed. Parcel Live remains unavailable.
+
+The quota removal was checked with synthetic operation counts beyond the former
+10,000,000 ceiling, coordinated validation past an old one-unit grant,
+pause/resume, retained legacy metadata, and missing or changed evidence. These
+checks do not establish full-chain throughput. Existing bounded proof-receipt
+size and movement-hop limits are separate from the removed per-run quota.

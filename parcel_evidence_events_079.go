@@ -3,7 +3,7 @@ package main
 import "sync"
 
 // Notifications carry no evidence. They only wake an already reviewed Parcel
-// validation; that worker still verifies the exact route, chain and budget.
+// validation; that worker still verifies the exact route and selected chain.
 type parcelEvidenceEvents079 struct {
 	mu            sync.Mutex
 	sequence      map[string]uint64

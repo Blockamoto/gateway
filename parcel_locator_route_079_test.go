@@ -27,7 +27,7 @@ func TestParcelLocatorRouteRequiresCommittedCompletePrefix079(t *testing.T) {
 	}
 }
 
-func TestParcelLocatorRouteChecksBytesBudgetRestartAndChain079(t *testing.T) {
+func TestParcelLocatorRouteChecksBytesRestartAndChain079(t *testing.T) {
 	ctx := context.Background()
 	a, raw := testAppWithGenesis(t)
 	a.settings.CoreDisabled, a.settings.CoreMountDisabled, a.settings.NetworkDisabled = true, true, true
@@ -52,7 +52,7 @@ func TestParcelLocatorRouteChecksBytesBudgetRestartAndChain079(t *testing.T) {
 		}
 		return block, nil
 	}
-	budget := &parcelRawScanBudget079{remaining: 3}
+	budget := &parcelRawScanBudget079{}
 	spender, transaction, blockAt, err := a.newParcelLocatorRoute079(ctx, timeline, 0, budget)
 	if err != nil {
 		t.Fatal(err)
@@ -69,18 +69,26 @@ func TestParcelLocatorRouteChecksBytesBudgetRestartAndChain079(t *testing.T) {
 	if err != nil || result.ConfirmedState != "unknown" {
 		t.Fatalf("locator cannot infer unspent: %+v %v", result, err)
 	}
-	if _, err = blockAt(ctx, 0); err == nil {
-		t.Fatal("approved read/fetch budget ignored")
+	budget.used = 10000000
+	if _, err = blockAt(ctx, 0); err != nil || budget.count() != 10000001 {
+		t.Fatalf("legacy limit interrupted checked source read: count=%d, err=%v", budget.count(), err)
 	}
 	if reads != 1 {
 		t.Fatalf("shared checked block cache not reused: %d", reads)
+	}
+	_, noCounterTransaction, _, err := a.newParcelLocatorRoute079(ctx, timeline, 0, nil)
+	if err != nil {
+		t.Fatalf("nil telemetry blocked route: %v", err)
+	}
+	if _, err = noCounterTransaction(ctx, block.Transactions[0].TxID, 0); err != nil {
+		t.Fatalf("nil telemetry blocked proof: %v", err)
 	}
 	// Restart against the same committed locator head, then remove bytes from
 	// the injected source. A locator remains only a location and cannot supply values.
 	a.blockBaseAcquire = func(context.Context, blockTarget, appSettings) (blockView, error) {
 		return blockView{}, fmt.Errorf("source bytes unavailable")
 	}
-	_, transaction, _, err = a.newParcelLocatorRoute079(ctx, timeline, 0, &parcelRawScanBudget079{remaining: 3})
+	_, transaction, _, err = a.newParcelLocatorRoute079(ctx, timeline, 0, &parcelRawScanBudget079{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +96,7 @@ func TestParcelLocatorRouteChecksBytesBudgetRestartAndChain079(t *testing.T) {
 		t.Fatal("locator alone supplied missing bytes")
 	}
 	// A changed selected tip invalidates the captured route authority.
-	_, _, blockAt, err = a.newParcelLocatorRoute079(ctx, timeline, 0, &parcelRawScanBudget079{remaining: 3})
+	_, _, blockAt, err = a.newParcelLocatorRoute079(ctx, timeline, 0, &parcelRawScanBudget079{})
 	if err != nil {
 		t.Fatal(err)
 	}

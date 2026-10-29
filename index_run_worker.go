@@ -1612,6 +1612,12 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				parcelDistrictAdmissionMu079.Unlock()
 				if pairErr != nil {
 					c.progress.State, c.progress.Reason = "waiting", pairErr.Error()
+					// Recheck the durable prefix at a bounded cadence instead of
+					// rebuilding the complete status view for every earlier block.
+					var prefixPending *parcelProofPrefixPending079
+					if errors.As(pairErr, &prefixPending) {
+						c.retryAfter = time.Now().Add(time.Second)
+					}
 					if parcel, ok := runSelection(record.Request, bitmapReplayParcelID); ok && parcelProducerCanAdvance079(record, consumers, parcel.ParcelEvidenceRoute) {
 						waiting = true
 					} else {

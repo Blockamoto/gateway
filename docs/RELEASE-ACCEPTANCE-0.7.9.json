@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "version": "0.7.9",
+  "title": "0.7.9 Parcels",
+  "repository": "Blockamoto/gateway",
+  "recorded_date_utc": "2026-10-29",
+  "status": "release-candidate-in-validation",
+  "published": false,
+  "release_kind": "prerelease",
+  "source_identity_note": "Final release source and artifacts have not yet been frozen and accepted. SOURCE-REVISION.txt, artifact-manifest.json, the release tag and subsequent acceptance evidence must identify the exact same committed source. The source record cannot contain its own future commit identity.",
+  "recorded_evidence": {
+    "development_verification": {
+      "result": "bounded-development-evidence",
+      "reference": "VERIFICATION-0.7.9.md",
+      "scope": "Focused synthetic and bounded real-block checks on development source; the document records an aggregate timeout, a subsequently rerun graph test, and untested areas. This does not establish final-source or final-artifact acceptance."
+    }
+  },
+  "pending_release_gates": [
+    "Commit the final source and record the required source, regression and platform checks against that exact revision.",
+    "Build using the reviewed update channel and completed validated header baseline in a neutral workspace; independently audit all release artifacts, hashes, package contents, installer payload and build path privacy.",
+    "Exercise the exact packaged artifacts for startup, restart, native browser, representative indexing and installation; record successes, failures and skips.",
+    "Publish the approved prerelease and verify its tag, source revision and every downloaded artifact identity.",
+    "Prepare and authenticate the initial signed application and header update bundle against the exact published release and current independently verified feed sequences; promote and verify hosted manifests, actual downloads and a previous-client upgrade."
+  ],
+  "limits": [
+    "Full-mainnet Parcel indexing and Live throughput, storage and resource requirements are not established by bounded fixtures.",
+    "Missing parent proof and unsupported proof cases remain pending; header-anchored processing is not full Bitcoin consensus or script validation.",
+    "Windows Authenticode, installation and SmartScreen acceptance require separate evidence."
+  ]
+}

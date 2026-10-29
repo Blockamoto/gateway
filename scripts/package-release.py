@@ -126,8 +126,8 @@ verification authority. Access credentials are configured only in Settings.
 No publisher signing secrets or GitHub credentials belong in a client package.
 
 This prerelease enables Headers, Bitcoin Blocks, Inscriptions, TX ID Locators,
-TXIO (Transaction Input/Output), the UTXO set index, Addresses, Sats and
-Bitmap Districts Standard V1. Unknown TXIO
+TXIO (Transaction Input/Output), the UTXO set index, Addresses, Sats,
+Bitmap Districts Standard V1 and validated Bitmap Parcels. Unknown TXIO
 results do not prove unspentness. UTXO processing starts at genesis, retains exact
 live output facts and 288 reversible transitions, and supports Pruned raw-body retention.
 Its state is header-anchored; full consensus validation remains a later release.
@@ -161,9 +161,11 @@ positional inscription viewport. The respective TX ID Locators and Inscriptions
 Arm choices govern sparse capture from browsed blocks. Gateway-to-Gateway peerhood and
 later index stages remain gated until separately promoted.
 Bitmap Districts starts at block 792435 and advances in order under its fixed
-standard rules. Parcels are disabled pending Ordinals and parent-provenance
-validation, and Bitmap chains are disabled. Earlier definitions and saved
-evidence remain available; old checkpoints are not silently migrated.
+standard rules. Standard Bitmap Parcels requires validated parent provenance,
+an explicitly selected proof route and complete District outcomes. The proof
+route may require a genesis prefix. Bitmap chains are disabled. Earlier
+definitions and saved evidence remain available; old checkpoints are not
+silently migrated.
 Ordinary Bitcoin peer header and block access remains available.
 Read TESTING-{version}.md for the QA checklist, including browser registration
 and typing .bitcoin resource addresses in your browser's address bar.

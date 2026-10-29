@@ -1,8 +1,18 @@
 # Gateway status
 
-## 0.7.8 local portable preview
+## 0.7.9 release candidate
 
-The `v0.7.8` branch starts from current Gateway `origin/main` at
+Gateway 0.7.9 adds validated Bitmap Parcels and revised dependency and indexing
+controls. Parcel coverage advances only with checked evidence; missing or
+unsupported proof remains pending. Existing experimental data is preserved.
+Full-chain Parcel and Live performance have not been established by bounded
+fixtures. Release and updater acceptance are tracked separately in the 0.7.9
+release acceptance record and testing guide. The sections below preserve
+historical source and release records, not current release state.
+
+## Historical: 0.7.8 local portable preview
+
+The `v0.7.8` branch started from Gateway `origin/main` at
 `7e1d1d9b731b689586309df8f287316a614e1934`. It adapts the existing timeline,
 shared acquisition, authenticated outcome history and retention machinery for
 the fixed Bitmap Districts Standard V1 identity. Fresh District processing
@@ -12,12 +22,11 @@ parent-provenance validation, and both Bitmap chains are disabled. Saved Parcel
 and chain evidence remains available. See [indexing](INDEXING.md) and
 [portable testing](TESTING-0.7.8.md).
 
-This is a local user-testing branch. No installation, main push/merge, release
-publication or updater promotion is performed. Application update actions are
-disabled only in the portable preview artifact. Earlier development and
-published-release records below describe their own frozen builds.
+This historical preview was a local user-testing branch. Application update
+actions were disabled in that portable preview artifact. The following
+development and release records describe their own frozen builds.
 
-## Current development pass: direct controls, origin rules and throughput
+## Historical development pass: direct controls, origin rules and throughput
 
 The user authorized the next development-only replacement: one-click Start with top-left status, current-boundary Arm/Live admission, required-origin enforcement, bounded block prefetch and better peer selection, plus exact multi-track/range deletion and always-accessible attached Chain management. No Gateway main, release, updater or existing preview profile is changed.
 
@@ -25,7 +34,7 @@ The [required-origin report](INDEX-DEPENDENCIES.md#required-origins-and-range-be
 
 The [development guide](TESTING-TIMELINE-BITMAP-DEVELOPMENT.md) describes single-action controls, explicit dependencies, sparse versus cumulative deletion limits and the controlled performance excerpt. The replacement runtime is frozen at `8592db50830eb56ad0716453550100685220d6b3`, client SHA-256 `1aec5e436ce924ae61623ee45df56e23cbeb138558c64c1fd689d826922f87a9`. All five exact Windows native suites, 13 compiled management API checks, source-browser checks and the independent 31-file portable archive audit pass. The complete Windows Go suite passes with **1,281 passing, zero failed and 46 skipped test/subtest events**, plus eight passing packages and two no-test packages counted separately; static analysis passes. All 357 Go files match the complete tested inventory. The final client separately passes cleanup/restart with its hash unchanged. Initial readiness verifies the bundled 969,480-header prefix, served source assets, enabled outbound peers and no automatically started index jobs. See the [final development acceptance record](DEVELOPMENT-ACCEPTANCE-BITMAP-WORKSPACE.json). Earlier interrupted/failed receipts remain distinguished, and no hosted CI, race, whole-mainnet or throughput result is inferred.
 
-## Development: timeline workspace and Bitmap
+## Historical development: timeline workspace and Bitmap
 
 The user authorized implementing the [timeline controls brief](TIMELINE-CONTROLS-BRIEF.md), [dependency review](INDEX-DEPENDENCIES.md) and [workspace design review](WORKSPACE-DESIGN-REVIEW.md), together with experimental District, Parcel and Bitmap Chain indexing. Work is on a separate local development branch. A locally served portable preview is the acceptance target; main, released packages, live updater delivery and existing user profiles remain unchanged.
 

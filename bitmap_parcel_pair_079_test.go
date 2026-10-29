@@ -25,6 +25,9 @@ func TestParcelPairHoldsDistrictUntilExactCompleteCatchup079(t *testing.T) {
 	installRunProtocolHeader(t, a, &b3)
 	b4 := bitmapDevelopmentFixtureBlock(b3.Height+1, b3.Hash)
 	installRunProtocolHeader(t, a, &b4)
+	a.parcelEvidenceHooks079 = &parcelEvidenceHooks079{Timeline: func() indexTimelineView {
+		return testParcelProofTimeline079("retained-raw", b4.Height, b4.Height)
+	}}
 	district := bitmapTestConsumer(t, a.dataDir, bitmapStandardDistrictID)
 	parcel := bitmapTestConsumer(t, a.dataDir, bitmapReplayParcelID)
 	if err := district.Apply(ctx, b0, nil); err != nil {
@@ -212,6 +215,9 @@ func TestParcelPairCapsDistrictLiveWhenTipAdvances079(t *testing.T) {
 	a := runTestApp(t)
 	b0 := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "")
 	installRunProtocolHeader(t, a, &b0)
+	a.parcelEvidenceHooks079 = &parcelEvidenceHooks079{Timeline: func() indexTimelineView {
+		return testParcelProofTimeline079("retained-raw", b0.Height, b0.Height+1)
+	}}
 	req := indexRunRequest{Consumers: []indexRunSelection{{Index: bitmapStandardDistrictID, Armed: true, Live: true}, {Index: "blocks", Armed: true}, {Index: bitmapReplayParcelID, Armed: true, indexRunOptions: indexRunOptions{ParcelEvidenceRoute: "retained-raw", ParcelRawScanBudget: 12}}}}
 	doc, err := a.prepareIndexRun(req)
 	if err != nil {

@@ -147,6 +147,11 @@ func (a *app) parcelDistrictAlignedCeiling079(ctx context.Context, pair *parcelD
 
 // Called at the common District publication boundary with the admission fence
 // held. It covers both the coordinated worker and incidental Explorer writes.
+type parcelProofPrefixPending079 struct{ reason string }
+
+func (e *parcelProofPrefixPending079) Error() string { return e.reason }
+func (e *parcelProofPrefixPending079) Unwrap() error { return ErrBitmapEvidenceRequired }
+
 func (a *app) allowPairedDistrictPublication079(ctx context.Context, height int64) error {
 	doc, err := readIndexRunDocument(a.dataDir)
 	if err != nil || doc.Run == nil {
@@ -191,6 +196,17 @@ func (a *app) allowPairedDistrictPublication079(ctx context.Context, height int6
 	}
 	if aligned < ceiling || height > aligned+1 {
 		return fmt.Errorf("%w: District waits for complete Parcel catch-up", ErrBitmapEvidenceRequired)
+	}
+	// A paired District block is useful only once Parcel can examine the same
+	// block. In particular, do not speculate at the Bitmap origin while the
+	// selected proof producer is still building its required genesis prefix.
+	// This shared publication fence also covers incidental Explorer writes.
+	gaps, evidenceErr := parcelEvidenceGaps079(parcel.ParcelEvidenceRoute, a.parcelEvidenceTimeline079(), height)
+	if evidenceErr != nil {
+		return &parcelProofPrefixPending079{reason: fmt.Sprintf("Bitmap Districts waits for the selected Parcel proof prefix through block %d: %v", height, evidenceErr)}
+	}
+	if len(gaps) != 0 {
+		return &parcelProofPrefixPending079{reason: fmt.Sprintf("Bitmap Districts waits for the selected Parcel proof prefix through block %d; missing blocks begin at %d", height, gaps[0].From)}
 	}
 	return nil
 }

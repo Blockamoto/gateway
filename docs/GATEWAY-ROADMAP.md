@@ -1,10 +1,10 @@
 # Gateway roadmap
 
-The [public v0.7.7 Sats prerelease](https://github.com/Blockamoto/gateway/releases/tag/v0.7.7) builds on Addresses and the UTXO/TXIO stages. The next development work combines timeline controls, coordinated indexing, dependency handling and experimental Bitmap consumers. This roadmap describes scope, not promised delivery dates or support for every related protocol draft. See [status](STATUS.md) for exact publication and validation evidence.
+The 0.7.9 prerelease candidate builds on the published [0.7.8 Districts release](https://github.com/Blockamoto/gateway/releases/tag/v0.7.8). It adds validated Bitmap Parcels, explicit evidence-route and dependency setup, coordinated indexing and Live following. Missing or unsupported Parcel proof remains pending; existing experimental records are preserved. Full-mainnet Parcel throughput and Live behavior have not been established by bounded tests. This roadmap describes scope, not promised delivery dates. See [status](STATUS.md) and the release acceptance record for publication and validation evidence.
 
-## In development: timeline workspace and Bitmap
+## Historical development: timeline workspace and Bitmap
 
-The user has brought timeline controls forward from the earlier after-Bitmap plan. The [timeline brief](TIMELINE-CONTROLS-BRIEF.md) and [index dependency review](INDEX-DEPENDENCIES.md) define the preparation on a separate development branch. The authorized development pass implements the reviewed controls and workspace together with distinct experimental Bitmap consumers. It does not change the published app, main or updater.
+The earlier timeline and Bitmap development plan is preserved below as historical context. Current 0.7.9 behavior and evidence requirements are described in [indexing](INDEXING.md); Bitmap Chains remain disabled. The earlier experimental consumer plan does not imply that every planned feature is enabled.
 
 - Arm available tracks, choose Live where supported, and use shared Start/Pause/Resume controls. Configuration alone must not start work.
 - Coordinate one fetch/decode of a required block for ready armed consumers in the same pass, sharing parser/output facts while preserving per-index checkpoints and dependency order.
@@ -95,6 +95,6 @@ These stages describe order, not promised dates. They do not establish wallet ow
 
 ## Future, currently locked
 
-Beyond the published inscription/transaction/TXIO/UTXO/Addresses/Sats stages, Bitmap and parcel capabilities remain locked. **Bitmap: Terrain Claim Chains** is the name of the existing locked Terrain Claim Chains feature; the proposed District/Parcel/audit consumers require their own later implementation brief and do not enable it. Fee receipts prepare future Satline traversal, which remains disabled; a separate fee-market explorer is not added. UTXO values/scripts alone do not identify individual sats; the Sats index supplies ordinal ranges and provenance with separate recovery/history coverage.
+Beyond the available inscription/transaction/TXIO/UTXO/Addresses/Sats stages and Bitmap Districts and Parcels, **Bitmap: Terrain Claim Chains** remains locked. The separate Bitmap Chains and future audit capabilities require their own scope and validation; District and Parcel availability does not enable them. Fee receipts prepare future Satline traversal, which remains disabled; a separate fee-market explorer is not added. UTXO values/scripts alone do not identify individual sats; the Sats index supplies ordinal ranges and provenance with separate recovery/history coverage.
 
 Gateway-to-Gateway peerhood and index sharing also remain locked. Their eventual scope and trust model require separate validation. Related schema and reference-project alignment can inform future work without implying conformance or a release commitment today.

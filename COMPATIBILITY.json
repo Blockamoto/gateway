@@ -38,7 +38,7 @@
     144
   ],
   "sat_savepoints_per_interval": 2,
-  "note": "Local portable development preview. Canonical Bitmap indexes use distinct identities; older experimental state remains inspectable and requires explicit rebuilding. Optional chains identify a replaceable development codec. No release or update promotion.",
+  "note": "Gateway 0.7.9 prerelease candidate. Bitmap Districts and validated Parcels use distinct identities; older experimental state remains inspectable and requires explicit rebuilding. Missing Parcel proof remains pending. Bitmap Chains remain disabled. Release publication and signed updater acceptance are tracked separately.",
   "satline_wire": 1,
   "satline_publication_schema": 1,
   "release_status": "prerelease"

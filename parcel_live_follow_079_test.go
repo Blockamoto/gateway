@@ -123,10 +123,13 @@ func TestParcelLiveFollowsEvidencePauseAndReorg079(t *testing.T) {
 		if d.Run == nil {
 			return false
 		}
-		p, ok := indexRunProgressFor(d.Run, bitmapReplayParcelID)
+		p, ok := indexRunProgressFor(d.Run, bitmapStandardDistrictID)
 		h, e := readBitmapDevelopmentHead(ctx, a.dataDir, bitmapStandardDistrictID)
-		return ok && p.ParcelValidationState == "pending" && h != nil && e == nil && h.Height == b1.Height
+		return ok && p.State == "waiting" && strings.Contains(p.Reason, "proof prefix") && h != nil && e == nil && h.Height == b0.Height
 	})
+	if h, _ := readBitmapDevelopmentHead(ctx, a.dataDir, bitmapStandardDistrictID); h == nil || h.Height != b0.Height {
+		t.Fatal("District advanced before the selected proof prefix", h)
+	}
 	if h, _ := readBitmapDevelopmentHead(ctx, a.dataDir, bitmapReplayParcelID); h == nil || h.Height != b0.Height {
 		t.Fatal("Parcel advanced without proof", h)
 	}
@@ -199,6 +202,9 @@ func TestParcelLiveHonorsFiniteOutFence079(t *testing.T) {
 	a := runTestApp(t)
 	b0 := bitmapDevelopmentFixtureBlock(bitmapDevelopmentStart, "")
 	installRunProtocolHeader(t, a, &b0)
+	a.parcelEvidenceHooks079 = &parcelEvidenceHooks079{Timeline: func() indexTimelineView {
+		return testParcelProofTimeline079("retained-raw", b0.Height, b0.Height+1)
+	}}
 	out := b0.Height
 	req := indexRunRequest{Out: &out, Consumers: []indexRunSelection{
 		{Index: bitmapStandardDistrictID, Armed: true, Live: true},

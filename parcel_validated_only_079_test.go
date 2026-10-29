@@ -53,6 +53,9 @@ func TestParcelPairIgnoresSavedDiscoveryUntilValidated079(t *testing.T) {
 	installRunProtocolHeader(t, a, &b1)
 	b2 := bitmapDevelopmentFixtureBlock(b1.Height+1, b1.Hash)
 	installRunProtocolHeader(t, a, &b2)
+	a.parcelEvidenceHooks079 = &parcelEvidenceHooks079{Timeline: func() indexTimelineView {
+		return testParcelProofTimeline079("retained-raw", b2.Height, b2.Height)
+	}}
 	district := bitmapTestConsumer(t, a.dataDir, bitmapStandardDistrictID)
 	parcel := bitmapTestConsumer(t, a.dataDir, bitmapReplayParcelID)
 	if err := district.Apply(ctx, b0, nil); err != nil {

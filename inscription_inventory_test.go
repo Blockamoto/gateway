@@ -43,6 +43,15 @@ func TestInscriptionInventoryRejectsPartialOrChangedPreparedExtraction(t *testin
 		}},
 		{"changed_identity", func(x *inscriptionBlockResult) { x.Occurrences[0].TxID = testID(991) }},
 		{"changed_coordinate", func(x *inscriptionBlockResult) { x.Occurrences[0].TxIndex = 2 }},
+		{"changed_body", func(x *inscriptionBlockResult) { x.Occurrences[0].Body = []byte("different.bitmap") }},
+		{"changed_parent_declaration", func(x *inscriptionBlockResult) {
+			x.Occurrences[0].Envelope.Parents = []string{strings.Repeat("a", 64) + "i0"}
+		}},
+		{"changed_payload", func(x *inscriptionBlockResult) { x.Occurrences[0].PayloadHex = []string{"00"} }},
+		{"changed_parser_flags", func(x *inscriptionBlockResult) { x.Occurrences[0].ParserFlags = []string{"changed"} }},
+		{"changed_verification", func(x *inscriptionBlockResult) { x.Occurrences[0].VerificationState = "changed" }},
+		{"changed_numbering", func(x *inscriptionBlockResult) { x.Occurrences[0].CanonicalNumberKnown = true }},
+		{"changed_block_numbering", func(x *inscriptionBlockResult) { x.CanonicalNumberKnown = true }},
 		{"reference", func(x *inscriptionBlockResult) { x.ReferenceCommit = strings.Repeat("0", 40) }},
 		{"dropped_diagnostic", func(x *inscriptionBlockResult) { x.Diagnostics = x.Diagnostics[:1] }},
 		{"changed_diagnostic", func(x *inscriptionBlockResult) { x.Diagnostics[0].Code = "different" }},

@@ -348,6 +348,13 @@ func (s *bitmapRunConsumer) publish(ctx context.Context, h bitmapDevelopmentHead
 	if bitmapConsumerKind(s.id) == "chain" {
 		return s.publishBitmapChain(ctx, h)
 	}
+	if s.id == bitmapStandardDistrictID && s.a != nil {
+		parcelDistrictAdmissionMu079.Lock()
+		defer parcelDistrictAdmissionMu079.Unlock()
+		if err := s.a.allowPairedDistrictPublication079(ctx, h.Height); err != nil {
+			return err
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -400,6 +407,9 @@ func (s *bitmapRunConsumer) publish(ctx context.Context, h bitmapDevelopmentHead
 		return err
 	}
 	s.head = &h
+	if s.id == bitmapStandardDistrictID {
+		notifyParcelDistrictEvidence079(s.root, h.Height)
+	}
 	return nil
 }
 func (s *bitmapRunConsumer) Reconcile(ctx context.Context, hashAt func(int64) (string, error)) error {
@@ -670,6 +680,9 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 	if prepared != nil {
 		if prepared.BlockHeight != block.Height || prepared.BlockHash != block.Hash || prepared.ParserProfile != inscriptionParserProfile || prepared.ReferenceCommit != inscriptionReferenceCommit {
 			return fmt.Errorf("Bitmap prepared extraction profile/source mismatch")
+		}
+		if err := validateCompleteInscriptionInventory(block, prepared); err != nil {
+			return fmt.Errorf("Bitmap prepared extraction is not a complete authenticated inventory: %w", err)
 		}
 		extraction = *prepared
 	} else {

@@ -695,6 +695,7 @@ func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash s
 	}
 	s.head = head
 	s.checkpoint = &c
+	notifyParcelIndexCommit079(s.profileRoot, s.definition.ID)
 	rememberInscriptionInventoryAppend(s, b)
 	for _, r := range b.Bitmap {
 		if r.Accepted && r.District != nil {

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -376,20 +375,15 @@ func TestBitmapV3MissingDelegateEvidenceRequiresReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A prior lean occurrence can identify its own body without retaining the
-	// field declaration evidence required by the new optional predicate.
+	// A partial prior occurrence cannot be substituted for a complete, freshly
+	// authenticated extraction; replay the original block instead.
 	extraction.Occurrences[0].PayloadHex = nil
-	if err := s.Apply(ctx, b, &extraction); !errors.Is(err, ErrBitmapEvidenceRequired) || s.head != nil {
-		t.Fatal("missing declaration evidence became complete/empty", err, s.head)
+	if err := s.Apply(ctx, b, &extraction); err == nil || s.head != nil {
+		t.Fatal("modified extraction became complete/empty", err, s.head)
 	}
 	p, err := readBitmapPending(ctx, root, i.ID, nil)
-	if err != nil || p == nil || len(p.Candidates) != 1 || p.Candidates[0].Reason != "delegate_field_evidence_required" || p.Candidates[0].Eligibility != "unresolved" {
-		t.Fatal(p, err)
-	}
-	for _, audit := range p.Candidates[0].RuleResults {
-		if audit.ID == "delegate_exclusion" && audit.Result != "unknown" {
-			t.Fatal(audit)
-		}
+	if err != nil || p != nil {
+		t.Fatal("partial extraction should not create pending evidence", p, err)
 	}
 	if err := bitmapTestConsumer(t, root, i.ID).Apply(ctx, b, nil); err != nil {
 		t.Fatal("authenticated replay failed", err)

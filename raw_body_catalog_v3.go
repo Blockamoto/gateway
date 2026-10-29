@@ -304,5 +304,6 @@ func retainVerifiedRawBlock(ctx context.Context, root string, v blockView, guard
 	if e = writeRawBodyCatalogLocked(ctx, root, v, record, guard); e != nil {
 		return nil, e
 	}
+	notifyParcelEvidence079(root, "retained-raw")
 	return record, nil
 }

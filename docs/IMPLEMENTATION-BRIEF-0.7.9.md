@@ -33,16 +33,15 @@ Preserve block-level Bitmap navigation and the existing inscription viewer.
 Keep legacy saved records readable and do not merge locator and TXIO stores.
 This work does not change the public updater, publish a release, or resume 0.8.
 
-Implementation scope: finite runs require a separately selected evidence route
-and a positive, bounded allowance. The retained Raw route requires a complete
-local inventory from genesis through the requested end and scans local blocks.
-The TX ID Locator route requires complete committed locator coverage over that
-interval; it authorizes bounded selected-block reads or provider fetches and
-forward scans for spends. The IO Link route requires complete committed
-coverage and an audit against selected source-block input inventories, with
-bounded reads, fetches, index visits and forward scans when a reverse link is
-missing. Consult route availability and the plan rather than treating coverage
-as readiness.
+Implementation scope: a finite reviewed run can discover provisional claims
+without a proof route. Their discovery and validated coverage are separate;
+provisional claims cannot reserve positions or become winners. Validation
+requires a separately selected route and a positive bounded allowance. Raw and
+TX ID Locator routes check complete selected coverage through the current
+validation phase; the locator route permits bounded verified block fetches and
+forward scans for spends. The IO Link route currently needs its full finite
+admitted horizon and a complete selected-source input audit before validation.
+Consult the plan rather than treating coverage alone as proof readiness.
 The plan reports gaps without starting the prerequisites. Positive
 detached receipts are limited to 128 blocks, 64 MiB and 128 movement hops;
 larger or ambiguous cases remain pending. Long negative checks are recorded as

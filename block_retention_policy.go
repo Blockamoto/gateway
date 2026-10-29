@@ -16,7 +16,7 @@ func timelineTrackArmed(root, id string) (bool, error) {
 	if !d.Configured {
 		return false, nil
 	}
-	choice, ok := runSelection(d.Prepared, id)
+	choice, ok := runSelection(indexRunEffectiveRequest(d), id)
 	return ok && choice.Armed, nil
 }
 

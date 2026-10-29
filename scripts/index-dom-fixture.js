@@ -4,6 +4,10 @@
 const assert = require('node:assert/strict');
 class Node {
  constructor(tag='div') {this.tagName=tag;this.children=[];this.dataset={};this.events={};this.value='';this.checked=false;this.hidden=false;this.disabled=false;this.attributes={};this.classList={add(){}};this.textContent='';}
+ get childNodes(){return this.children;}
+ cloneNode(){const n=new Node(this.tagName);n.dataset={...this.dataset};n.attributes={...this.attributes};return n;}
+ isEqualNode(){return false;}
+ contains(node){return node===this||this.children.some(child=>child.contains?.(node));}
  append(...nodes){for(const n of nodes){n.parent=this;this.children.push(n);}}
  replaceChildren(...nodes){this.children=[];this.append(...nodes);}
  addEventListener(name,fn){this.events[name]=fn;}

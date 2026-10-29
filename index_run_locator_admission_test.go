@@ -13,7 +13,7 @@ func locatorAdmissionFixture(t *testing.T, live bool) (*app, *indexStore, indexR
 	t.Helper()
 	a := runTestApp(t)
 	zero := int64(0)
-	request := indexRunRequest{In: &zero, Consumers: []indexRunSelection{{Index: "tx-locator", Armed: true, Live: live}, {Index: "inscriptions", Armed: true, Live: live}}}
+	request := indexRunRequest{In: &zero, Consumers: []indexRunSelection{{Index: "tx-locator", Armed: true, Live: live}, {Index: "txo-spender", Armed: true, Live: live}}}
 	doc, err := a.prepareIndexRun(request)
 	if err != nil {
 		t.Fatal(err)
@@ -72,10 +72,10 @@ func stageLocatorAdmissionBlock(t *testing.T, a *app, s *indexStore, doc indexRu
 func TestTimelineRunLocatorPendingFlushAcceptsLegalLiveAmendment(t *testing.T) {
 	for _, live := range []bool{false, true} {
 		for _, cap := range []string{"records", "bytes"} {
-			for _, member := range []string{"tx-locator", "inscriptions"} {
+			for _, member := range []string{"tx-locator", "txo-spender"} {
 				t.Run(fmt.Sprintf("live_%t_to_%t/%s/%s", live, !live, cap, member), func(t *testing.T) {
 					a, s, doc, blocks := locatorAdmissionFixture(t, live)
-					unrelated, err := openIndexStore(a.dataDir, "inscriptions")
+					unrelated, err := openIndexStore(a.dataDir, "txo-spender")
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -107,14 +107,14 @@ func TestTimelineRunLocatorPendingFlushAcceptsLegalLiveAmendment(t *testing.T) {
 					if err != nil || reopened.checkpoint == nil || reopened.checkpoint.Height != 1 {
 						t.Fatal("flushed locator prefix was not durable", reopened, err)
 					}
-					other, err := indexStoreHead(a.dataDir, "inscriptions")
+					other, err := indexStoreHead(a.dataDir, "txo-spender")
 					if err != nil || other.checkpoint == nil || other.checkpoint.Commitment != before {
 						t.Fatal("locator flush changed another consumer", other, err)
 					}
 					if err = unrelated.appendBlock(blocks[1], 0, "ephemeral"); err != nil {
 						t.Fatal("unrelated consumer stopped advancing", err)
 					}
-					other, err = indexStoreHead(a.dataDir, "inscriptions")
+					other, err = indexStoreHead(a.dataDir, "txo-spender")
 					if err != nil || other.checkpoint == nil || other.checkpoint.Height != 1 {
 						t.Fatal("unrelated consumer did not continue", other, err)
 					}
@@ -136,14 +136,14 @@ func TestTimelineRunLocatorPendingFlushRetainsAdmissionFences(t *testing.T) {
 					d.Prepared.Consumers[i].Armed = false
 				}
 			}
-		}, errIndexRunConsumerStopped},
+		}, nil},
 		{"requested Off", func(d *indexRunDocument) {
 			for i := range d.Run.Request.Consumers {
 				if d.Run.Request.Consumers[i].Index == "tx-locator" {
 					d.Run.Request.Consumers[i].Armed = false
 				}
 			}
-		}, errIndexRunAdmissionChanged},
+		}, errIndexRunConsumerStopped},
 		{"replacement run", func(d *indexRunDocument) { d.Run.ID = "replacement" }, errIndexRunConsumerStopped},
 		{"changed boundary", func(d *indexRunDocument) {
 			for i := range d.Run.Consumers {
@@ -153,13 +153,20 @@ func TestTimelineRunLocatorPendingFlushRetainsAdmissionFences(t *testing.T) {
 				}
 			}
 		}, errIndexRunAdmissionChanged},
+		{"changed admitted options", func(d *indexRunDocument) {
+			for i := range d.Run.Request.Consumers {
+				if d.Run.Request.Consumers[i].Index == "tx-locator" {
+					d.Run.Request.Consumers[i].Mode = "full"
+				}
+			}
+		}, errIndexRunAdmissionChanged},
 		{"changed options", func(d *indexRunDocument) {
 			for i := range d.Prepared.Consumers {
 				if d.Prepared.Consumers[i].Index == "tx-locator" {
 					d.Prepared.Consumers[i].Mode = "full"
 				}
 			}
-		}, errIndexRunAdmissionChanged},
+		}, nil},
 		{"clipped Out", func(d *indexRunDocument) { zero := int64(0); d.Run.Request.Out = &zero }, errIndexRunAdmissionChanged},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -169,6 +176,16 @@ func TestTimelineRunLocatorPendingFlushRetainsAdmissionFences(t *testing.T) {
 			test.change(&doc)
 			saveLocatorAdmissionFixture(t, a, doc)
 			err := s.FlushLocatorBatch(context.Background())
+			if test.want == nil {
+				if err != nil {
+					t.Fatal("staged choices changed the admitted run", err)
+				}
+				current, readErr := indexStoreHead(a.dataDir, "tx-locator")
+				if readErr != nil || current.checkpoint == nil || current.checkpoint.Height != 1 {
+					t.Fatal("admitted batch did not publish", current, readErr)
+				}
+				return
+			}
 			if !errors.Is(err, test.want) {
 				t.Fatal("changed intent published pending locator batch", err, test.want)
 			}

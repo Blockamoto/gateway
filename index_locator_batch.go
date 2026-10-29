@@ -201,6 +201,7 @@ func (s *indexStore) FlushLocatorBatch(ctx context.Context) (result error) {
 		session.durableHead, session.durableCheckpoint = cloneTXIOLayerCoverage(s.head), cloneLocatorCheckpoint(s.checkpoint)
 		session.commits, session.groups = nil, map[string][]byte{}
 		session.jsonBytes, session.records, session.retry, session.headWritten = 0, 0, false, false
+		notifyParcelIndexCommit079(s.profileRoot, s.definition.ID)
 	}
 	if session.headWritten {
 		current, err := indexStoreHead(s.profileRoot, s.definition.ID)

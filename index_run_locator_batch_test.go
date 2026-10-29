@@ -220,20 +220,32 @@ func TestTimelineRunLocatorStageGuardRechecksCompactFences(t *testing.T) {
 		name   string
 		mutate func(*indexRunDocument)
 		want   error
+		allow  bool
 	}{
-		{"replacement run", func(d *indexRunDocument) { d.Run.ID = "replacement" }, errIndexRunConsumerStopped},
-		{"prepared Off", func(d *indexRunDocument) { d.Prepared.Consumers[0].Armed = false }, errIndexRunAdmissionChanged},
-		{"changed options", func(d *indexRunDocument) { d.Prepared.Consumers[0].Mode = "full" }, errIndexRunAdmissionChanged},
-		{"changed admission", func(d *indexRunDocument) { one := int64(1); d.Run.Consumers[0].EffectiveFrom = &one }, errIndexRunAdmissionChanged},
-		{"Raw enabled", func(d *indexRunDocument) {
+		{"replacement run", func(d *indexRunDocument) { d.Run.ID = "replacement" }, errIndexRunConsumerStopped, false},
+		{"prepared Off", func(d *indexRunDocument) { d.Prepared.Consumers[0].Armed = false }, nil, true},
+		{"prepared options", func(d *indexRunDocument) { d.Prepared.Consumers[0].Mode = "full" }, nil, true},
+		{"requested Off", func(d *indexRunDocument) { d.Run.Request.Consumers[0].Armed = false }, errIndexRunAdmissionChanged, false},
+		{"requested options", func(d *indexRunDocument) { d.Run.Request.Consumers[0].Mode = "full" }, errIndexRunAdmissionChanged, false},
+		{"changed admission", func(d *indexRunDocument) { one := int64(1); d.Run.Consumers[0].EffectiveFrom = &one }, errIndexRunAdmissionChanged, false},
+		{"Raw staged", func(d *indexRunDocument) {
 			d.Prepared.Consumers = append(d.Prepared.Consumers, indexRunSelection{Index: "blocks", Armed: true, indexRunOptions: indexRunOptions{Mode: "lean"}})
-		}, nil},
+		}, nil, true},
+		{"Raw admitted", func(d *indexRunDocument) {
+			d.Run.Request.Consumers = append(d.Run.Request.Consumers, indexRunSelection{Index: "blocks", Armed: true, indexRunOptions: indexRunOptions{Mode: "lean"}})
+		}, nil, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			changed := cloneIndexRunDocument(base)
 			test.mutate(&changed)
 			save(changed)
 			err := checkIndexRunPublication(guard)
+			if test.allow {
+				if err != nil {
+					t.Fatal("staged choice changed admitted compact fence", err)
+				}
+				return
+			}
 			if err == nil || test.want != nil && !errors.Is(err, test.want) {
 				t.Fatal("stale compact fence published", err)
 			}
@@ -241,7 +253,7 @@ func TestTimelineRunLocatorStageGuardRechecksCompactFences(t *testing.T) {
 	}
 }
 
-func TestResolvedCoordinatorOwnershipPreservesOtherTracksAndDependencyBodies(t *testing.T) {
+func TestResolvedCoordinatorOwnershipPreservesAdmittedScopeAndDependencyBodies(t *testing.T) {
 	a := runTestApp(t)
 	loc := indexRunSelection{Index: "tx-locator", Armed: true}
 	ins := indexRunSelection{Index: "inscriptions", Armed: true}
@@ -266,8 +278,8 @@ func TestResolvedCoordinatorOwnershipPreservesOtherTracksAndDependencyBodies(t *
 		t.Fatal("scheduled locator body duplicated", locHead, err)
 	}
 	_, insHead, err := a.browseStore("inscriptions")
-	if err != nil || len(insHead.Blocks) != 1 {
-		t.Fatal("unselected armed track lost fanout", insHead, err)
+	if err != nil || len(insHead.Blocks) != 0 {
+		t.Fatal("staged unselected track wrote into the active run", insHead, err)
 	}
 	if _, err = a.fetchAndDecodeContext(ctx, "1"); err != nil {
 		t.Fatal(err)

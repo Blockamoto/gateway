@@ -191,8 +191,8 @@ func TestReplayParcelGapDoesNotBlockOtherTrack079(t *testing.T) {
 	}
 	for _, p := range plan.Consumers {
 		if p.Index == bitmapReplayParcelID {
-			if p.AdmissionState != "blocked" || p.State != "needs_prerequisite" {
-				t.Fatalf("missing consent was admitted: %+v", p)
+			if p.State != "complete" || p.From <= p.To {
+				t.Fatalf("an interval entirely before Parcel origin was not an empty no-op: %+v", p)
 			}
 			return
 		}

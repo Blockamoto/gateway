@@ -97,6 +97,9 @@ func (a *app) amendIndexRun(ctx context.Context, change indexRunAmendment) (inde
 	merged := r.Request
 	merged.Consumers = append([]indexRunSelection(nil), r.Request.Consumers...)
 	for _, c := range delta.Consumers {
+		if c.Index == bitmapStandardDistrictID && indexRunSelectionEnabled(c) && r.ParcelDistrict != nil && !r.ParcelDistrict.DistrictSelected {
+			return d, fmt.Errorf("stop this finite Parcel catch-up and review a new paired run to continue Districts beyond the saved boundary")
+		}
 		if c.Index == bitmapReplayParcelID && indexRunSelectionEnabled(c) {
 			old, exists := runSelection(r.Request, c.Index)
 			if !exists || !indexRunSelectionEnabled(old) {

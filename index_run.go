@@ -48,6 +48,16 @@ type indexRunRequest struct {
 	Consumers []indexRunSelection `json:"consumers"`
 }
 type indexRunProgress struct {
+	ParcelEvidencePending         bool                 `json:"parcel_evidence_pending,omitempty"`
+	ParcelDiscoveryHeight         *int64               `json:"parcel_discovery_height,omitempty"`
+	ParcelDiscoveryHash           string               `json:"parcel_discovery_hash,omitempty"`
+	ParcelDiscoveryBlocks         int64                `json:"parcel_discovery_blocks,omitempty"`
+	ParcelValidatedHeight         *int64               `json:"parcel_validated_height,omitempty"`
+	ParcelValidatedHash           string               `json:"parcel_validated_hash,omitempty"`
+	ParcelValidationState         string               `json:"parcel_validation_state,omitempty"`
+	ParcelValidationReason        string               `json:"parcel_validation_reason,omitempty"`
+	SavedCoverageState            string               `json:"saved_coverage_state,omitempty"`
+	MissingRanges                 []heightInterval     `json:"missing_ranges,omitempty"`
 	AdmissionState                string               `json:"admission_state,omitempty"`
 	EffectiveFrom                 *int64               `json:"effective_from,omitempty"`
 	RangeMode                     string               `json:"range_mode,omitempty"`
@@ -119,6 +129,7 @@ type indexRunSourceFactError struct {
 	Reason    string `json:"reason"`
 }
 type indexRunRecord struct {
+	ParcelDistrict      *parcelDistrictPair079    `json:"parcel_district,omitempty"`
 	SourceFactErrors    []indexRunSourceFactError `json:"source_fact_errors,omitempty"`
 	AdmissionRevision   uint64                    `json:"admission_revision,omitempty"`
 	FrontierHeight      int64                     `json:"frontier_height,omitempty"`
@@ -145,17 +156,18 @@ type indexRunDocument struct {
 	Checksum   string          `json:"checksum,omitempty"`
 }
 type indexRunPlan struct {
-	Reason       string             `json:"reason"`
-	PlanID       string             `json:"plan_id"`
-	Ready        bool               `json:"ready"`
-	In           *int64             `json:"in"`
-	Out          *int64             `json:"out"`
-	TargetHeight int64              `json:"target_height"`
-	TargetHash   string             `json:"target_hash"`
-	RawRetention string             `json:"raw_retention"`
-	Request      indexRunRequest    `json:"request"`
-	Consumers    []indexRunProgress `json:"consumers"`
-	Notes        []string           `json:"notes"`
+	ParcelDistrict *parcelDistrictPair079 `json:"parcel_district,omitempty"`
+	Reason         string                 `json:"reason"`
+	PlanID         string                 `json:"plan_id"`
+	Ready          bool                   `json:"ready"`
+	In             *int64                 `json:"in"`
+	Out            *int64                 `json:"out"`
+	TargetHeight   int64                  `json:"target_height"`
+	TargetHash     string                 `json:"target_hash"`
+	RawRetention   string                 `json:"raw_retention"`
+	Request        indexRunRequest        `json:"request"`
+	Consumers      []indexRunProgress     `json:"consumers"`
+	Notes          []string               `json:"notes"`
 }
 
 type indexRunPlanBlockedError struct{ Plan indexRunPlan }
@@ -345,6 +357,18 @@ func runSelection(req indexRunRequest, id string) (indexRunSelection, bool) {
 	}
 	return indexRunSelection{}, false
 }
+
+// Staged choices are for a future Start. Optional ingestion and publication
+// during an existing run must remain bound to its reviewed request.
+func indexRunEffectiveRequest(d indexRunDocument) indexRunRequest {
+	if d.Run != nil {
+		switch d.Run.State {
+		case "running", "waiting", "pausing", "paused", "queued":
+			return d.Run.Request
+		}
+	}
+	return d.Prepared
+}
 func runRawRetention(req indexRunRequest) string {
 	if c, ok := runSelection(req, "blocks"); ok && c.Armed {
 		return "retain"
@@ -366,7 +390,7 @@ func indexRunOptionalWorkAllowed(root, id string) bool {
 		live, e := readIndexLiveState(root)
 		return e == nil && !live.Policies[id].Stopped
 	}
-	c, ok := runSelection(d.Prepared, id)
+	c, ok := runSelection(indexRunEffectiveRequest(d), id)
 	return ok && c.Armed
 }
 func indexRunProjectionAllowed(root string, height int64) bool {
@@ -378,14 +402,13 @@ func indexRunProjectionAllowed(root string, height int64) bool {
 		p, e := readIndexLiveState(root)
 		return e == nil && !p.Policies["address-state"].Stopped
 	}
-	c, ok := runSelection(d.Prepared, "address-state")
-	if !ok || !c.Armed || d.Run == nil {
+	if d.Run == nil {
 		return false
 	}
 	if d.Run.State != "running" && d.Run.State != "waiting" {
 		return false
 	}
-	c, ok = runSelection(d.Run.Request, "address-state")
+	c, ok := runSelection(d.Run.Request, "address-state")
 	if p, exists := indexRunProgressFor(d.Run, "address-state"); exists && (p.AdmissionState == "blocked" || p.EffectiveFrom != nil && height < *p.EffectiveFrom) {
 		return false
 	}
@@ -405,24 +428,6 @@ func (a *app) prepareIndexRun(req indexRunRequest) (indexRunDocument, error) {
 	prior := cloneIndexRunDocument(a.indexRunState)
 	a.indexRunState.Configured = true
 	a.indexRunState.Prepared = req
-	if r := a.indexRunState.Run; r != nil && (r.State == "running" || r.State == "waiting" || r.State == "paused") {
-		changed := false
-		for i := range r.Request.Consumers {
-			active := &r.Request.Consumers[i]
-			next, ok := runSelection(req, active.Index)
-			if !ok || !next.Armed {
-				changed = changed || active.Armed
-				active.Armed = false
-			}
-			if !ok || !next.Live {
-				changed = changed || active.Live
-				active.Live = false
-			}
-		}
-		if changed {
-			r.AdmissionRevision = effectiveIndexRunAdmissionRevision(r) + 1
-		}
-	}
 	if err = a.persistIndexRunLocked(); err != nil {
 		a.indexRunState = prior
 		return indexRunDocument{}, err
@@ -453,6 +458,10 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			}
 			p.TargetHash = t.HashDisplay
 		}
+	}
+	p.ParcelDistrict, err = a.parcelDistrictSnapshot079(ctx, req, p.TargetHeight)
+	if err != nil {
+		return p, err
 	}
 	for _, mark := range []struct {
 		height *int64
@@ -485,6 +494,10 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			q.RangeMode = "complete_prefix"
 		}
 		d, _ := findIndexDefinition(c.Index)
+		if q.OriginHeight == nil && !bitmapConsumerID(c.Index) && c.Index != "address-state" {
+			origin := defaultIndexFrom(d)
+			q.OriginHeight = &origin
+		}
 		q.From = defaultIndexFrom(d)
 		if req.In != nil {
 			q.From = *req.In
@@ -656,6 +669,20 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			q.RequiresLeadIn = true
 			q.Reason = "Saved contiguous coverage ends before In. Review a global window including the missing prefix."
 		}
+		if c.Index == bitmapReplayParcelID && q.State != "complete" && q.From <= q.To && p.ParcelDistrict != nil && !p.ParcelDistrict.DistrictSelected {
+			if p.ParcelDistrict.CeilingCommit == "" {
+				q.State = "needs_prerequisite"
+				q.Reason = "No complete selected District coverage is saved. Arm Districts explicitly to build beyond its saved boundary."
+			} else {
+				q.To = min(q.To, p.ParcelDistrict.CeilingHeight)
+				if q.Height >= q.To {
+					q.State = "complete"
+					q.Reason = "Parcel coverage already reaches the reviewed saved District boundary. Arm Districts explicitly to continue beyond it."
+				} else {
+					q.Reason = "Finite catch-up is capped at the saved complete District boundary. Arm Districts explicitly to continue beyond it."
+				}
+			}
+		}
 		if c.Index != "address-state" && q.From > q.To && q.State == "ready" {
 			q.State = "complete"
 			q.Reason = "The consumer starts after this window; no work is required."
@@ -728,7 +755,8 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			}
 		}
 		if bitmapConsumerID(c.Index) && bitmapConsumerKind(c.Index) == "parcel" {
-			if c.Index == bitmapReplayParcelID {
+			if c.Index == bitmapReplayParcelID && q.State != "complete" {
+				priorParcelState := q.State
 				q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "parent-evidence", Kind: "lookup", State: "conditional", Reason: "Each candidate needs selected-chain witness, satpoint movement and value evidence; unavailable proof remains pending and no whole-chain scan begins implicitly.", Action: "inspect"})
 				{
 					reason := ""
@@ -737,12 +765,16 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 					} else {
 						var gaps []heightInterval
 						var gapErr error
+						evidenceThrough := q.To
+						if p.ParcelDistrict != nil {
+							evidenceThrough = p.ParcelDistrict.EvidenceThrough
+						}
 						if c.ParcelEvidenceRoute == "retained-raw" {
-							gaps, gapErr = parcelRawRouteGaps079(a.indexStatus().Timeline, p.TargetHeight)
+							gaps, gapErr = parcelRawRouteGaps079(a.parcelEvidenceTimeline079(), evidenceThrough)
 						} else if c.ParcelEvidenceRoute == "tx-locators" {
-							gaps, gapErr = parcelLocatorRouteGaps079(a.indexStatus().Timeline, p.TargetHeight)
+							gaps, gapErr = parcelLocatorRouteGaps079(a.parcelEvidenceTimeline079(), evidenceThrough)
 						} else {
-							gaps, gapErr = parcelTXIORouteGaps079(a.indexStatus().Timeline, p.TargetHeight)
+							gaps, gapErr = parcelTXIORouteGaps079(a.parcelEvidenceTimeline079(), evidenceThrough)
 						}
 						if gapErr != nil {
 							reason = gapErr.Error()
@@ -751,14 +783,21 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 						}
 					}
 					if reason != "" {
-						q.State, q.Reason = "needs_prerequisite", reason
+						q.ParcelEvidencePending = true
+						if c.ParcelEvidenceRoute == "txio-links" {
+							reason += " The current IO Links audit requires the complete finite admitted horizon; incremental prefix reuse is not yet supported."
+						}
+						q.ParcelValidationState, q.ParcelValidationReason = "pending", reason
+						if priorParcelState == "ready" {
+							q.Reason = "Parcel discovery may proceed; proof validation is pending. " + reason
+						}
 						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "blocks", Kind: "evidence", State: "missing", Reason: reason, Action: "inspect"})
 					}
 					if reason == "" && c.ParcelEvidenceRoute == "txio-links" {
-						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "txo-spender", Kind: "evidence", State: "audit_required", Reason: fmt.Sprintf("The reviewed run will verify at least %d committed batches and %d source blocks; additional creation-catalogue visits and candidate block fetches consume the same allowance. Missing reverse links require a bounded forward block scan.", p.TargetHeight+1, p.TargetHeight+1), Action: "inspect"})
+						q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "txo-spender", Kind: "evidence", State: "audit_required", Reason: "The current IO Links audit requires the complete finite admitted horizon before it begins; incremental prefix reuse is not yet supported. It verifies committed batches and source blocks under the fixed allowance. Missing reverse links require a bounded forward block scan.", Action: "inspect"})
 					}
 				}
-			} else {
+			} else if c.Index != bitmapReplayParcelID {
 				q.Dependencies = append(q.Dependencies, indexRunDependency{Index: "sat-state", Kind: "lookup", State: "conditional", Reason: "Parcel candidates need checked parent provenance; missing saved evidence waits without starting Satline.", Action: "inspect"})
 			}
 		}
@@ -784,6 +823,9 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 			}
 			q.NextRequiredHeight = &next
 		}
+		if err := a.refineRunCoverage079(ctx, &q, c, head, q.To); err != nil {
+			q.State, q.Reason = "blocked", err.Error()
+		}
 		if q.State == "needs_prerequisite" || q.State == "blocked" || q.State == "rebuild_required" {
 			if c.Index == bitmapReplayParcelID {
 				q.AdmissionState = "blocked"
@@ -805,6 +847,11 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 	}
 	if req.Out != nil {
 		p.Notes = append(p.Notes, "Out is a hard cap. Saved Live preferences cannot follow beyond it.")
+	}
+	if p.ParcelDistrict != nil && p.ParcelDistrict.DistrictSelected {
+		if district, ok := runSelection(req, bitmapStandardDistrictID); ok && district.Live && req.Out == nil {
+			p.Notes = append(p.Notes, "District Live is capped at this run's finite Parcel discovery boundary. Review a new run to continue beyond it; independently armed Live tracks can continue.")
+		}
 	}
 	p.Reason = "The prepared consumers are ready for review."
 	if !p.Ready {
@@ -861,7 +908,7 @@ func (a *app) handleIndexRun(w http.ResponseWriter, r *http.Request) {
 		if !indexRequestBody(w, r, &req) {
 			return
 		}
-		result, err = a.amendIndexRun(r.Context(), req)
+		err = fmt.Errorf("active-run revisions require review; stop the run and review a new Start")
 	case "/control":
 		var req struct {
 			Action string `json:"action"`
@@ -896,6 +943,14 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 	if err != nil {
 		return indexRunDocument{}, err
 	}
+	if p.ParcelDistrict != nil {
+		parcelDistrictAdmissionMu079.Lock()
+		defer parcelDistrictAdmissionMu079.Unlock()
+		current, checkErr := a.parcelDistrictSnapshot079(ctx, p.Request, p.TargetHeight)
+		if checkErr != nil || indexDigest(current) != indexDigest(p.ParcelDistrict) {
+			return indexRunDocument{}, fmt.Errorf("District catch-up boundary changed; review the updated plan")
+		}
+	}
 	if !p.Ready {
 		return indexRunDocument{}, indexRunPlanBlockedError{p}
 	}
@@ -916,9 +971,9 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 		return cloneIndexRunDocument(a.indexRunState), fmt.Errorf("stop the existing run before starting a different interval; Resume preserves its admitted choices")
 	}
 	prior := cloneIndexRunDocument(a.indexRunState)
-	record := &indexRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), AdmissionRevision: 1, State: "running", Phase: "boundary", Request: p.Request, TargetHeight: p.TargetHeight, InitialTargetHeight: p.TargetHeight, TargetHash: p.TargetHash, Consumers: p.Consumers, Updated: time.Now().UTC().Format(time.RFC3339)}
+	record := &indexRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), AdmissionRevision: 1, State: "running", Phase: "boundary", Request: p.Request, TargetHeight: p.TargetHeight, InitialTargetHeight: p.TargetHeight, TargetHash: p.TargetHash, Consumers: p.Consumers, ParcelDistrict: p.ParcelDistrict, Updated: time.Now().UTC().Format(time.RFC3339)}
 	parcelProgress, parcelHasProgress := indexRunProgressFor(record, bitmapReplayParcelID)
-	if parcel, ok := runSelection(record.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.AdmissionState != "blocked" && parcel.ParcelEvidenceRoute != "" {
+	if parcel, ok := runSelection(record.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.State != "complete" && parcel.ParcelEvidenceRoute != "" && parcel.ParcelRawScanBudget > 0 {
 		if _, err := openParcelRawBudget079(a.dataDir, record.ID, parcel.ParcelRawScanBudget, true); err != nil {
 			return indexRunDocument{}, err
 		}
@@ -1042,15 +1097,8 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 			return indexRunDocument{}, err
 		}
 	}
-	for _, c := range r.Request.Consumers {
-		if indexRunSelectionEnabled(c) {
-			if p, ok := runSelection(a.indexRunState.Prepared, c.Index); !ok || !indexRunSelectionEnabled(p) {
-				return indexRunDocument{}, fmt.Errorf("%s is Off; arm it before resuming the admitted run", c.Index)
-			}
-		}
-	}
 	parcelProgress, parcelHasProgress := indexRunProgressFor(r, bitmapReplayParcelID)
-	if parcel, ok := runSelection(r.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.AdmissionState != "blocked" && parcel.ParcelEvidenceRoute != "" {
+	if parcel, ok := runSelection(r.Request, bitmapReplayParcelID); ok && indexRunSelectionEnabled(parcel) && parcelHasProgress && parcelProgress.State != "complete" && parcel.ParcelEvidenceRoute != "" && parcel.ParcelRawScanBudget > 0 {
 		if _, err := openParcelRawBudget079(a.dataDir, r.ID, parcel.ParcelRawScanBudget, false); err != nil {
 			return indexRunDocument{}, fmt.Errorf("Parcel scan budget unavailable on resume: %w", err)
 		}

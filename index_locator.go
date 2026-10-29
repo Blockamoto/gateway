@@ -875,7 +875,7 @@ func (s *indexStore) checkIndexLocatorRepair(ctx context.Context) error {
 		return err
 	}
 	if d.Configured {
-		choice, ok := runSelection(d.Prepared, owner)
+		choice, ok := runSelection(indexRunEffectiveRequest(d), owner)
 		if !ok || !choice.Armed || s.definition.ID == inscriptionLocatorIndex && !inscriptionIDsEnabled(choice.ConventionalIDs) {
 			return errIndexLocatorsReadOnly
 		}

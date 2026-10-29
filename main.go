@@ -21,23 +21,24 @@ import (
 )
 
 type app struct {
-	updater               *desktopUpdater
-	updateAPIWork         sync.WaitGroup
-	updateBackgroundWork  sync.WaitGroup
-	indexMu               sync.Mutex
-	indexRunMu            sync.Mutex
-	indexStatusPoll       indexStatusPollCache
-	indexRunLoaded        bool
-	indexRunState         indexRunDocument
-	indexRunError         error
-	indexRunActiveID      string             // guarded by indexMu
-	indexRunSourceBlock   indexRunSourceFunc // optional injected source; fixed before a run starts
-	indexLiveMu           sync.Mutex
-	indexLiveControlMu    sync.Mutex // policy changes, pause and supervisor decisions
-	indexLiveLast         string
-	indexLiveRuntime      map[string]indexLiveRuntime
-	timelineMu            sync.Mutex
-	timelineSourceHeights map[string]timelineHeaderHint
+	updater                *desktopUpdater
+	updateAPIWork          sync.WaitGroup
+	updateBackgroundWork   sync.WaitGroup
+	indexMu                sync.Mutex
+	indexRunMu             sync.Mutex
+	indexStatusPoll        indexStatusPollCache
+	indexRunLoaded         bool
+	indexRunState          indexRunDocument
+	indexRunError          error
+	indexRunActiveID       string                  // guarded by indexMu
+	indexRunSourceBlock    indexRunSourceFunc      // optional injected source; fixed before a run starts
+	parcelEvidenceHooks079 *parcelEvidenceHooks079 // optional injected fixture; fixed before a run starts
+	indexLiveMu            sync.Mutex
+	indexLiveControlMu     sync.Mutex // policy changes, pause and supervisor decisions
+	indexLiveLast          string
+	indexLiveRuntime       map[string]indexLiveRuntime
+	timelineMu             sync.Mutex
+	timelineSourceHeights  map[string]timelineHeaderHint
 
 	indexJob           indexJob
 	indexCancel        func()
@@ -472,8 +473,17 @@ func main() {
 	fatalIf(server.Serve(ln))
 }
 
-func (a *app) setStatus(fn func(*appStatus)) { a.mu.Lock(); defer a.mu.Unlock(); fn(&a.status) }
-func (a *app) getStatus() appStatus          { a.mu.RLock(); defer a.mu.RUnlock(); return a.status }
+func (a *app) setStatus(fn func(*appStatus)) {
+	a.mu.Lock()
+	priorHeight, priorHash := a.status.HeaderHeight, a.status.TipHash
+	fn(&a.status)
+	changed := priorHeight != a.status.HeaderHeight || priorHash != a.status.TipHash
+	a.mu.Unlock()
+	if changed {
+		notifyParcelAuthorityChange079(a.dataDir)
+	}
+}
+func (a *app) getStatus() appStatus { a.mu.RLock(); defer a.mu.RUnlock(); return a.status }
 
 // primeHeaderStatus exposes the already-persisted header coverage immediately.
 // It does no network I/O. This is what lets both the CLI and the UI answer

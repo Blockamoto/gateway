@@ -117,7 +117,7 @@ func sharedProtocolHeader(t *testing.T, a *app, b *blockView) {
 	})
 }
 
-func TestSharedBlockWorkerDifferentFrontiersSharesCompleteFactsAndPromotesFutureTX(t *testing.T) {
+func TestSharedBlockWorkerDifferentFrontiersSweepAndShareCompleteFacts(t *testing.T) {
 	a := runTestApp(t)
 	var blocks []blockView
 	previous := ""
@@ -159,9 +159,11 @@ func TestSharedBlockWorkerDifferentFrontiersSharesCompleteFactsAndPromotesFuture
 	}
 	var mu sync.Mutex
 	calls := map[int64]int{}
+	var acquired []int64
 	a.indexRunSourceBlock = func(ctx context.Context, target blockTarget, _ string) (blockView, error) {
 		mu.Lock()
 		calls[target.Height]++
+		acquired = append(acquired, target.Height)
 		mu.Unlock()
 		for _, b := range blocks {
 			if b.Height == target.Height && b.Hash == target.HashDisplay {
@@ -194,13 +196,14 @@ func TestSharedBlockWorkerDifferentFrontiersSharesCompleteFactsAndPromotesFuture
 			t.Fatal("source reacquired", b.Height, calls)
 		}
 	}
-	// The future body was offered to TX while Inscriptions/District
-	// owned it. Its durable point survives native staged catch-up and remains
-	// readable; the normal contiguous native prefix is independently complete.
-	if _, have, err := a.browsedBatchContext(context.Background(), "tx-locator", last, blocks[2].Hash); err != nil || !have {
-		t.Fatal("future point was suppressed/lost", have, err)
+	for i, h := range acquired {
+		if i > 0 && h < acquired[i-1] {
+			t.Fatal("ready source heights were not swept in order", acquired)
+		}
 	}
-	for _, b := range blocks[:2] {
+	// The TX prefix catches up before the final shared height; the aligned
+	// native cohort owns that block without creating a redundant future point.
+	for _, b := range blocks {
 		if _, have, err := readBrowseTXPoint(context.Background(), a.dataDir, b.Height); err != nil || have {
 			t.Fatal("cohort/staged native owner also captured point", b.Height, have, err)
 		}

@@ -90,7 +90,7 @@ func (s *browseTXPointSession) guard(ctx context.Context, e browseTXPendingPoint
 	default:
 		return errIndexRunConsumerStopped
 	}
-	choice, on := runSelection(d.Prepared, "tx-locator")
+	choice, on := runSelection(indexRunEffectiveRequest(d), "tx-locator")
 	if !on || !choice.Armed {
 		return errIndexRunConsumerStopped
 	}
@@ -110,7 +110,7 @@ func (s *browseTXPointSession) guard(ctx context.Context, e browseTXPendingPoint
 			return errIndexRunAdmissionChanged
 		}
 	}
-	if raw, on := runSelection(d.Prepared, "blocks"); on && raw.Armed && !e.rawProduced {
+	if raw, on := runSelection(indexRunEffectiveRequest(d), "blocks"); on && raw.Armed && !e.rawProduced {
 		return blockUnavailableError{fmt.Errorf("Raw was turned On while TX point facts were staged")}
 	}
 	target, err := s.a.utxoSelectedTarget(ctx, s.a.currentChainAuthority(), e.point.Height)
@@ -163,7 +163,7 @@ func (s *browseTXPointSession) Stage(ctx context.Context, batch indexBatch, rawP
 	if err != nil {
 		return false, err
 	}
-	choice, on := runSelection(d.Prepared, "tx-locator")
+	choice, on := runSelection(indexRunEffectiveRequest(d), "tx-locator")
 	if !on || !choice.Armed {
 		return false, errIndexRunConsumerStopped
 	}
@@ -189,7 +189,7 @@ func (s *browseTXPointSession) Stage(ctx context.Context, batch indexBatch, rawP
 		}
 		break
 	}
-	if raw, on := runSelection(d.Prepared, "blocks"); on && raw.Armed && !s.allRawProduced {
+	if raw, on := runSelection(indexRunEffectiveRequest(d), "blocks"); on && raw.Armed && !s.allRawProduced {
 		s.clearLocked()
 	}
 	if prior, have := s.entries[e.point.Height]; have && prior.point.BlockHash != e.point.BlockHash {

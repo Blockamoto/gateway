@@ -90,6 +90,11 @@ func inscriptionInventoryDigest(result inscriptionBlockResult) string {
 	putText(result.BlockHash)
 	putText(result.ParserProfile)
 	putText(result.ReferenceCommit)
+	if result.CanonicalNumberKnown {
+		putNumber(1)
+	} else {
+		putNumber(0)
+	}
 	putNumber(uint64(len(result.Occurrences)))
 	for _, occurrence := range result.Occurrences {
 		putText(occurrence.ID)
@@ -107,6 +112,10 @@ func inscriptionInventoryDigest(result inscriptionBlockResult) string {
 		putText(occurrence.ParserProfile)
 		putText(occurrence.ScriptSHA256)
 		putText(occurrence.ContentSHA256)
+		// Bind every exported occurrence field, including the actual body,
+		// declarations and optional numbering or verification attributes. This
+		// receipt is process-local and never changes a stored index identity.
+		putText(indexDigest(occurrence))
 	}
 	putNumber(uint64(len(result.Diagnostics)))
 	for _, diagnostic := range result.Diagnostics {

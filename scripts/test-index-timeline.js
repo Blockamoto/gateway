@@ -10,7 +10,7 @@ const sandbox = {window:{}};
 for (const file of ['index-cards.js','index-timeline.js']) {
   vm.runInNewContext(fs.readFileSync(path.join(root,'ui/shell',file),'utf8'),sandbox,{filename:file});
 }
-const {normalizeRanges,subtractRanges,coveragePartitionRows,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,indexBounds,established,rulerMarks,rulerNotch} = sandbox.window.GatewayIndexTimeline;
+const {normalizeRanges,subtractRanges,coveragePartitionRows,provisionalDiscoveryRanges,toggleBlock,selectBlock,selectionMarkers,nearestMarker,clampView,coverageBins,trackModel,indexBounds,established,rulerMarks,rulerNotch} = sandbox.window.GatewayIndexTimeline;
 const plain = value => JSON.parse(JSON.stringify(value));
 const valid = range => range && Number.isSafeInteger(range.from) && Number.isSafeInteger(range.to) && range.from >= 0 && range.to >= range.from;
 function asSet(ranges) {
@@ -30,6 +30,8 @@ assert.deepEqual(plain(normalizeRanges([null,{}, {from:-1,to:4},{from:2,to:1},{f
 assert.deepEqual(plain(subtractRanges([{from:0,to:10}], [{from:0,to:0},{from:3,to:5},{from:10,to:10}])),[{from:1,to:2},{from:6,to:9}]);
 assert.deepEqual(plain(subtractRanges([{from:5,to:5}], [{from:5,to:5}])),[],'A one-block gap removes that exact block');
 assert.deepEqual(plain(subtractRanges([{from:4,to:8}], [{from:0,to:20}])),[]);
+assert.deepEqual(plain(provisionalDiscoveryRanges({coverage:[{from:10,to:12}],projection:{discovery_state:'not_yet_validated',discovery_coverage:[{from:10,to:15}]}})),[{from:13,to:15}],'Validated coverage is never coloured as provisional');
+assert.deepEqual(plain(provisionalDiscoveryRanges({coverage:[],projection:{discovery_state:'stale',discovery_coverage:[{from:10,to:15}]}})),[],'Stale discovery is not presented as authenticated provisional coverage');
 assert.deepEqual(plain(toggleBlock([{from:10,to:20}],15)),[{from:10,to:14},{from:16,to:20}],'Ctrl deselection of an interior block creates a true one-block hole');
 assert.deepEqual(plain(toggleBlock(toggleBlock([{from:10,to:20}],15),15)),[{from:10,to:20}],'Adding the excluded block rejoins adjacent ranges');
 assert.deepEqual(plain(toggleBlock([{from:10,to:20}],30)),[{from:10,to:20},{from:30,to:30}],'Ctrl adding a distant block never fills the intervening gap');

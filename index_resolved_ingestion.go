@@ -28,7 +28,7 @@ func prepareResolvedBlockExtraction(ctx context.Context, root string, b *blockVi
 	if err != nil || !d.Configured {
 		return
 	}
-	for _, c := range d.Prepared.Consumers {
+	for _, c := range indexRunEffectiveRequest(d).Consumers {
 		if c.Armed && (c.Index == "inscriptions" || c.Index == "sat-state" || bitmapConsumerID(c.Index)) && resolvedAdmissionAllowedForRoot(root, d, c.Index, b.Height) == nil {
 			if x, err := extractInscriptionOccurrences(*b); err == nil {
 				b.inscriptionExtraction = &x
@@ -184,10 +184,6 @@ func resolvedOwnedByCoordinator(ctx context.Context, d indexRunDocument, id stri
 	if !ok || !resolvedSelectionEnabled(selection, id) {
 		return false
 	}
-	prepared, ok := runSelection(d.Prepared, resolvedSelectionOwner(id))
-	if !ok || indexDigest(selection) != indexDigest(prepared) {
-		return false
-	}
 	p, ok := indexRunProgressFor(d.Run, resolvedSelectionOwner(id))
 	if !ok || (p.AdmissionState != "" && p.AdmissionState != "admitted" && p.AdmissionState != "pending") || p.State == "failed" || p.State == "rebuild_required" {
 		return false
@@ -224,7 +220,7 @@ func resolvedSelectionContext(ctx context.Context, root, id string, captured ind
 		if err != nil {
 			return err
 		}
-		current, ok := runSelection(d.Prepared, resolvedSelectionOwner(id))
+		current, ok := runSelection(indexRunEffectiveRequest(d), resolvedSelectionOwner(id))
 		if !d.Configured || !ok || !resolvedSelectionEnabled(current, id) {
 			return errIndexRunConsumerStopped
 		}
@@ -258,7 +254,7 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 		return []indexBrowseResult{{Index: "resolved", State: "unavailable", Error: "selected source anchor unavailable"}}
 	}
 	choices := map[string]indexRunSelection{}
-	for _, c := range d.Prepared.Consumers {
+	for _, c := range indexRunEffectiveRequest(d).Consumers {
 		choices[c.Index] = c
 	}
 	native, _ := ctx.Value(indexRunBlockConsumersKey{}).(map[string]indexRunBlockConsumer)
@@ -478,7 +474,7 @@ func prepareSharedBlockInventory(root string, p *indexRunPrepared, d indexRunDoc
 		return
 	}
 	needed := false
-	for _, c := range d.Prepared.Consumers {
+	for _, c := range indexRunEffectiveRequest(d).Consumers {
 		if c.Armed && resolvedNeedsInventory(c.Index) && resolvedAdmissionAllowedForRoot(root, d, c.Index, p.block.Height) == nil {
 			needed = true
 			break

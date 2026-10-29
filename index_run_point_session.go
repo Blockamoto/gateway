@@ -30,7 +30,7 @@ func (p *indexRunPointSession) reset() {
 	p.session = newBrowseTXPointSession(p.a, p.global, p.runID)
 }
 func (p *indexRunPointSession) refresh(doc indexRunDocument) {
-	selection, have := runSelection(doc.Prepared, "tx-locator")
+	selection, have := runSelection(indexRunEffectiveRequest(doc), "tx-locator")
 	selection.Live = false // scheduling changes do not reinterpret pending facts
 	var boundary *int64
 	blocked := false
@@ -40,7 +40,7 @@ func (p *indexRunPointSession) refresh(doc indexRunDocument) {
 			blocked = progress.AdmissionState == "off" || progress.AdmissionState == "blocked"
 		}
 	}
-	raw, on := runSelection(doc.Prepared, "blocks")
+	raw, on := runSelection(indexRunEffectiveRequest(doc), "blocks")
 	intent := indexDigest(struct {
 		Have         bool
 		Selection    indexRunSelection

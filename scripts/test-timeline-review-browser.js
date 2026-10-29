@@ -78,21 +78,23 @@ async function main() {
     await pull.click(); assert.equal(await pull.getAttribute('aria-expanded'), 'true');
     assert.equal(await pull.evaluate((node, original) => node === original, pullIdentity), true, 'The same control expands and collapses');
     const txio=page.locator('.timeline-group[data-group=txio]'),txToggle=page.locator('#timeline-group-txio'),locatorRow=page.locator('.timeline-track[data-index=tx-locator]');
-    assert.equal(await txToggle.getAttribute('aria-expanded'),'false');assert.equal(await txio.locator('.timeline-track:visible').count(),0,'Closed category hides all children');await txToggle.click();assert.equal(await txio.locator('.timeline-track:visible').count(),6);assert.equal(await page.locator('.timeline-track-expand').count(),0,'There is no individual expansion action');
-    await locatorRow.locator('.timeline-track-select').click();assert.equal(await txio.locator('.timeline-child-minis>.timeline-track').count(),6);assert.equal(await page.locator('.timeline-tracks>.timeline-track[data-group=txio]').count(),0,'Label selection retains the one mini presentation');assert.deepEqual(await txio.locator('.timeline-child-minis>.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['tx-locator','txio-links','txio-values','txio-scripts','utxo-state','txio-sat-ranges']);await txToggle.click();assert.equal(await txio.locator('.timeline-track:visible').count(),0);await txToggle.click();await capture('desktop-categories');
+    assert.equal(await txToggle.getAttribute('aria-expanded'),'false');assert.equal(await txio.locator('.timeline-track:visible').count(),0,'Closed category hides all children');await txToggle.click();assert.equal(await txio.locator('.timeline-track:visible').count(),5);assert.equal(await page.locator('.timeline-track-expand').count(),0,'There is no individual expansion action');
+    await locatorRow.locator('.timeline-track-select').click();assert.equal(await txio.locator('.timeline-child-minis>.timeline-track').count(),5);assert.equal(await page.locator('.timeline-tracks>.timeline-track[data-group=txio]').count(),0,'Label selection retains the one mini presentation');assert.deepEqual(await txio.locator('.timeline-child-minis>.timeline-track').evaluateAll(nodes=>nodes.map(n=>n.dataset.index)),['tx-locator','txio-links','txio-values','txio-scripts','utxo-state']);await txToggle.click();assert.equal(await txio.locator('.timeline-track:visible').count(),0);await txToggle.click();await capture('desktop-categories');
     await page.locator('#timeline-group-blocks').click();await page.locator('.timeline-track[data-index=blocks] .timeline-track-select').click();await page.locator('.timeline-track[data-index=blocks] button[data-switch=arm]').click();await locatorRow.locator('.timeline-track-select').click();await locatorRow.locator('button[data-switch=arm]').click();
     await pull.click(); assert.equal(await pull.getAttribute('aria-expanded'), 'false');
     await page.evaluate(()=>timeline.setGlobalRange(20,80));
     await page.getByRole('button',{name:'Start indexing',exact:true}).click();
+    await page.getByRole('dialog',{name:'Review where indexing starts'}).getByRole('button',{name:'Start the reviewed indexing run'}).click();
     await page.getByRole('button',{name:'Stop indexing',exact:true}).waitFor();
     const finite = await page.evaluate(() => fixtureCalls.filter(c=>c.action==='run/start').at(-1).body.request);
-    assert.deepEqual(finite.consumers.filter(c=>c.armed).map(c=>[c.index,c.live]), [['blocks',false],['tx-locator',false]], 'One Play starts a finite pass for the selected consumers');
-    assert.equal((await page.evaluate(() => fixtureCalls)).some(c=>c.action==='run/plan'),false,'No separate review call or second approval is required');
+    assert.deepEqual(finite.consumers.filter(c=>c.armed).map(c=>[c.index,c.live]), [['blocks',false],['tx-locator',false]], 'Reviewed Start admits a finite pass for the selected consumers');
+    assert.equal((await page.evaluate(() => fixtureCalls)).some(c=>c.action==='run/plan'),true,'Reviewed Start obtains current planner facts before admission');
     assert.equal(await page.locator('#timeline-run-review').count(),0,'Status is an inline panel, never an indexing overlay');
     assert.equal(await page.locator('#timeline-run-record').count(),0,'Live is controlled per track, with one shared Play');
     await page.getByRole('button',{name:'Stop indexing',exact:true}).click();
     await pull.click();await page.locator('.timeline-track[data-index=blocks] [data-control=live]').click();await pull.click();
     await page.getByRole('button',{name:'Start indexing',exact:true}).click();
+    await page.getByRole('dialog',{name:'Review where indexing starts'}).getByRole('button',{name:'Start the reviewed indexing run'}).click();
     await page.getByRole('button',{name:'Stop indexing',exact:true}).waitFor();
     const mixed = await page.evaluate(() => fixtureCalls.filter(c=>c.action==='run/start').at(-1).body.request);
     assert.deepEqual(mixed.consumers.filter(c=>c.armed).map(c=>[c.index,c.live]), [['blocks',true],['tx-locator',false]], 'Play preserves mixed Live and finite choices');
@@ -156,8 +158,8 @@ async function main() {
 
     // Contextual Skip is one command: index boundaries outside a selected
     // range, visible ruler notches inside it, with actual block context at depth.
-    const district='bitmap-districts-'+'4'.repeat(32),parcel='bitmap-parcels-'+'5'.repeat(32),future='bitmap-districts-'+'6'.repeat(32);
-    await page.evaluate(({district,parcel,future})=>{const base={buildable:true,start_height:10,dependencies:[],rules:[],version:1,network:'bitcoin-mainnet'};fixtureState.definitions.push({...base,id:district,name:'Saved District'},{...base,id:parcel,name:'Sparse Parcel',district_instance:district},{...base,id:future,name:'Future District',start_height:1000005});fixtureState.instances.push({definition:district,checkpoint:{from:120,height:160},coverage:[{from:120,to:125},{from:150,to:160}],verification:'selected_chain',queryable:true});fixtureState.timeline.tracks.push({id:parcel,coverage:[{from:215,to:220},{from:300,to:310}]});timeline.render(fixtureState);timeline.select(district);}, {district,parcel,future});
+    const district='bitmap-districts-'+'4'.repeat(32),parcel='bitmap-parcels-standard-v1-replay',future='bitmap-districts-'+'6'.repeat(32);
+    await page.evaluate(({district,parcel,future})=>{const base={buildable:true,start_height:10,dependencies:[],rules:[],version:1,network:'bitcoin-mainnet'};fixtureState.definitions.push({...base,id:district,name:'Saved District'},{...base,id:parcel,name:'Sparse Parcel',kind:'parcel',district_instance:district},{...base,id:future,name:'Future District',start_height:1000005});fixtureState.instances.push({definition:district,checkpoint:{from:120,height:160},coverage:[{from:120,to:125},{from:150,to:160}],verification:'selected_chain',queryable:true});fixtureState.timeline.tracks.push({id:parcel,coverage:[{from:215,to:220},{from:300,to:310}]});timeline.render(fixtureState);timeline.select(district);}, {district,parcel,future});
     const beforeBoundary=await page.evaluate(()=>({marks:timeline.getGlobalMarks(),draft:timeline.getRunDraft(),writes:fixtureCalls.length}));
     const toStart=page.getByRole('button',{name:'Go to index start at block 120',exact:true});
     assert.match(await toStart.getAttribute('title'),/Saved District.*block 120/);

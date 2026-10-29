@@ -23,36 +23,45 @@ type bitmapDevelopmentSnapshot struct {
 	ConsensusValidated bool   `json:"consensus_validated"`
 }
 type bitmapDevelopmentView struct {
-	ConfigurationRevision uint64                       `json:"configuration_revision"`
-	InstanceID            string                       `json:"instance"`
-	Label                 string                       `json:"label"`
-	DistrictInstance      string                       `json:"district_instance,omitempty"`
-	DistrictProfileHash   string                       `json:"district_profile_hash,omitempty"`
-	EvaluatedCoverage     []heightInterval             `json:"evaluated_coverage"`
-	Retention             *bitmapChainRetentionView    `json:"retention,omitempty"`
-	ChainState            *bitmapChainState            `json:"chain_state,omitempty"`
-	State                 string                       `json:"state"`
-	Kind                  string                       `json:"kind"`
-	Snapshot              *bitmapDevelopmentSnapshot   `json:"snapshot"`
-	Profile               bitmapDevelopmentProfile     `json:"profile"`
-	ProfileHash           string                       `json:"profile_hash"`
-	Coverage              []heightInterval             `json:"coverage"`
-	Gaps                  []heightInterval             `json:"gaps"`
-	Result                any                          `json:"result"`
-	Candidates            []bitmapDevelopmentCandidate `json:"candidates"`
-	Rows                  []any                        `json:"rows"`
-	PendingCandidates     []bitmapDevelopmentCandidate `json:"pending_candidates,omitempty"`
-	NextCursor            string                       `json:"next_cursor"`
-	HasMore               bool                         `json:"has_more"`
-	BlockEvaluated        bool                         `json:"block_evaluated"`
-	OrderedWinnerIDs      []string                     `json:"ordered_winner_ids,omitempty"`
-	WinnerBlocators       []string                     `json:"winner_blocators,omitempty"`
-	IsolatedHash          string                       `json:"isolated_outcome_hash,omitempty"`
-	ChainHash             string                       `json:"outcome_chain_hash,omitempty"`
-	ScopedCommitment      *string                      `json:"bitmap_chain_commitment"`
-	CompleteScope         bool                         `json:"complete_scope"`
-	Ownership             string                       `json:"ownership"`
-	Note                  string                       `json:"note"`
+	DiscoverySnapshot          *parcelDiscoverySnapshotView079 `json:"discovery_snapshot,omitempty"`
+	DiscoveryState             string                          `json:"discovery_state,omitempty"`
+	DiscoveryCoverage          []heightInterval                `json:"discovery_coverage,omitempty"`
+	ValidationCoverage         []heightInterval                `json:"validation_coverage,omitempty"`
+	ProvisionalCandidates      []parcelDiscoveryCandidate079   `json:"provisional_candidates,omitempty"`
+	ProvisionalNextCursor      string                          `json:"provisional_next_cursor,omitempty"`
+	ProvisionalDiscoveredCount uint64                          `json:"provisional_discovered_count,omitempty"`
+	InvalidSyntaxCount         uint64                          `json:"invalid_syntax_count,omitempty"`
+	DiscoveryNote              string                          `json:"discovery_note,omitempty"`
+	ConfigurationRevision      uint64                          `json:"configuration_revision"`
+	InstanceID                 string                          `json:"instance"`
+	Label                      string                          `json:"label"`
+	DistrictInstance           string                          `json:"district_instance,omitempty"`
+	DistrictProfileHash        string                          `json:"district_profile_hash,omitempty"`
+	EvaluatedCoverage          []heightInterval                `json:"evaluated_coverage"`
+	Retention                  *bitmapChainRetentionView       `json:"retention,omitempty"`
+	ChainState                 *bitmapChainState               `json:"chain_state,omitempty"`
+	State                      string                          `json:"state"`
+	Kind                       string                          `json:"kind"`
+	Snapshot                   *bitmapDevelopmentSnapshot      `json:"snapshot"`
+	Profile                    bitmapDevelopmentProfile        `json:"profile"`
+	ProfileHash                string                          `json:"profile_hash"`
+	Coverage                   []heightInterval                `json:"coverage"`
+	Gaps                       []heightInterval                `json:"gaps"`
+	Result                     any                             `json:"result"`
+	Candidates                 []bitmapDevelopmentCandidate    `json:"candidates"`
+	Rows                       []any                           `json:"rows"`
+	PendingCandidates          []bitmapDevelopmentCandidate    `json:"pending_candidates,omitempty"`
+	NextCursor                 string                          `json:"next_cursor"`
+	HasMore                    bool                            `json:"has_more"`
+	BlockEvaluated             bool                            `json:"block_evaluated"`
+	OrderedWinnerIDs           []string                        `json:"ordered_winner_ids,omitempty"`
+	WinnerBlocators            []string                        `json:"winner_blocators,omitempty"`
+	IsolatedHash               string                          `json:"isolated_outcome_hash,omitempty"`
+	ChainHash                  string                          `json:"outcome_chain_hash,omitempty"`
+	ScopedCommitment           *string                         `json:"bitmap_chain_commitment"`
+	CompleteScope              bool                            `json:"complete_scope"`
+	Ownership                  string                          `json:"ownership"`
+	Note                       string                          `json:"note"`
 }
 type bitmapDevelopmentCursor struct {
 	Index       string `json:"index"`
@@ -115,7 +124,7 @@ func bitmapNewView(kind string) bitmapDevelopmentView {
 func (a *app) bitmapDevelopmentViewContext(ctx context.Context, kind string, district, transaction, height *uint64, cursor string, limit int, records bool) (bitmapDevelopmentView, error) {
 	return a.bitmapInstanceViewContext(ctx, kind, "", "", "", district, transaction, height, cursor, limit, records)
 }
-func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedProfile, snapshot string, district, transaction, height *uint64, cursor string, limit int, records bool) (bitmapDevelopmentView, error) {
+func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedProfile, snapshot string, district, transaction, height *uint64, cursor string, limit int, records bool, provisionalCursor ...string) (bitmapDevelopmentView, error) {
 	out := bitmapNewView(kind)
 	if id == "" {
 		id = map[string]string{"district": bitmapStandardDistrictID, "parcel": bitmapReplayParcelID, "chain": "bitmap-district-chain-dev-v1"}[kind]
@@ -196,6 +205,15 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 		out.EvaluatedCoverage = append([]heightInterval(nil), out.Coverage...)
 		out.CompleteScope = true
 		out.Result = map[string]any{"winner_count": h.WinnerCount, "candidate_count": h.CandidateCount}
+	}
+	if id == bitmapReplayParcelID && snapshot == "" {
+		pc := ""
+		if len(provisionalCursor) > 0 {
+			pc = provisionalCursor[0]
+		}
+		if err := a.populateParcelDiscoveryView079(ctx, &out, h, district, transaction, height, pc, limit); err != nil {
+			return out, err
+		}
 	}
 	if pending != nil {
 		target, e := a.utxoSelectedTarget(ctx, authority, pending.Height)
@@ -289,6 +307,14 @@ func (a *app) bitmapInstanceViewContext(ctx context.Context, kind, id, expectedP
 		} else if pending != nil {
 			for _, row := range out.PendingCandidates {
 				if row.District == nil || *row.District == *district && (transaction == nil || row.Transaction != nil && *row.Transaction == *transaction) {
+					out.State = "unresolved"
+					break
+				}
+			}
+		}
+		if !have && out.State == "unclaimed_at_snapshot" {
+			for _, row := range out.ProvisionalCandidates {
+				if row.Status == "not_yet_validated" {
 					out.State = "unresolved"
 					break
 				}
@@ -453,7 +479,7 @@ func (a *app) handleBitmapDevelopmentView(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	result, err := a.bitmapInstanceViewContext(r.Context(), kind, r.URL.Query().Get("instance"), r.URL.Query().Get("expected_profile"), r.URL.Query().Get("snapshot"), district, transaction, height, r.URL.Query().Get("cursor"), limit, strings.HasSuffix(r.URL.Path, "/records"))
+	result, err := a.bitmapInstanceViewContext(r.Context(), kind, r.URL.Query().Get("instance"), r.URL.Query().Get("expected_profile"), r.URL.Query().Get("snapshot"), district, transaction, height, r.URL.Query().Get("cursor"), limit, strings.HasSuffix(r.URL.Path, "/records"), r.URL.Query().Get("provisional_cursor"))
 	if err != nil {
 		jsonError(w, 400, err)
 		return

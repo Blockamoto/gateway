@@ -5,6 +5,7 @@ package main
 // request must never fetch blocks or start an index build.
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -36,18 +37,23 @@ type indexTimelineView struct {
 }
 
 type indexTimelineTrack struct {
-	RetainedCoverage *rawCoverageView      `json:"retained_coverage,omitempty"`
-	Backfill         *rawBackfillView      `json:"backfill,omitempty"`
-	PotentialFrom    int64                 `json:"potential_from"`
-	ID               string                `json:"id"`
-	Locked           bool                  `json:"locked"`
-	Coverage         []heightInterval      `json:"coverage"`
-	Gaps             []heightInterval      `json:"gaps"`
-	CoverageComplete bool                  `json:"coverage_complete"`
-	RecordedCoverage []heightInterval      `json:"recorded_coverage"`
-	ReportedCoverage []heightInterval      `json:"reported_coverage"`
-	Sources          []indexTimelineSource `json:"sources"`
-	Note             string                `json:"note"`
+	DiscoveryCoverage          []heightInterval      `json:"discovery_coverage,omitempty"`
+	DiscoveryState             string                `json:"discovery_state,omitempty"`
+	DiscoveryThrough           *int64                `json:"discovery_through,omitempty"`
+	ProvisionalDiscoveredCount uint64                `json:"provisional_discovered_count,omitempty"`
+	InvalidSyntaxCount         uint64                `json:"invalid_syntax_count,omitempty"`
+	RetainedCoverage           *rawCoverageView      `json:"retained_coverage,omitempty"`
+	Backfill                   *rawBackfillView      `json:"backfill,omitempty"`
+	PotentialFrom              int64                 `json:"potential_from"`
+	ID                         string                `json:"id"`
+	Locked                     bool                  `json:"locked"`
+	Coverage                   []heightInterval      `json:"coverage"`
+	Gaps                       []heightInterval      `json:"gaps"`
+	CoverageComplete           bool                  `json:"coverage_complete"`
+	RecordedCoverage           []heightInterval      `json:"recorded_coverage"`
+	ReportedCoverage           []heightInterval      `json:"reported_coverage"`
+	Sources                    []indexTimelineSource `json:"sources"`
+	Note                       string                `json:"note"`
 }
 
 type indexTimelineSource struct {
@@ -206,6 +212,28 @@ func (a *app) indexTimelineWithBrowseSources(defs []indexDefinition, providers [
 			track.Sources = append(track.Sources, indexTimelineSource{ID: "gateway_committed_index", Kind: "committed_records", Ranges: recorded, Complete: true, Verification: instance.Verification, Note: "Committed decoded records; the checkpoint is anchored, explicit gaps are excluded, and history is rechecked on resume. This is not a raw-block inventory."})
 			if def.ID != "blocks" && def.ID != "headers" {
 				track.Coverage = append(track.Coverage, recorded...)
+			}
+		}
+		if def.ID == bitmapReplayParcelID {
+			discovery, e := readParcelDiscoveryHead079(context.Background(), a.dataDir)
+			if e != nil {
+				track.DiscoveryState = "unavailable"
+				out.Errors = append(out.Errors, def.ID+": Parcel discovery unavailable: "+e.Error())
+			} else if discovery != nil {
+				valid := h.matches(discovery.Height, discovery.BlockHash)
+				if valid && discovery.DistrictState == "complete" {
+					d, de := bitmapHeadAt(context.Background(), a.dataDir, bitmapStandardDistrictID, discovery.Height)
+					valid = de == nil && d != nil && d.Commitment == discovery.DistrictCommitment && d.BlockHash == discovery.BlockHash && d.ProfileHash == discovery.DistrictProfile
+				}
+				if !valid {
+					track.DiscoveryState = "stale"
+				} else {
+					track.DiscoveryState = "not_yet_validated"
+					track.DiscoveryCoverage = []heightInterval{{From: discovery.BaseHeight + 1, To: discovery.Height}}
+					height := discovery.Height
+					track.DiscoveryThrough = &height
+					track.ProvisionalDiscoveredCount, track.InvalidSyntaxCount = discovery.ProvisionalCount, discovery.InvalidCount
+				}
 			}
 		}
 		for _, provider := range providers {

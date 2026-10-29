@@ -7,7 +7,7 @@ const browserPath=[process.env.GATEWAY_TEST_BROWSER,pw.chromium.executablePath()
 const transactions=(from,to)=>Array.from({length:to-from},(_,n)=>({index:from+n,txid:(''+(from+n)).padStart(64,'0'),output_sats:50,coinbase:from+n===0}));
 const block=height=>({height,hash:String(height).padStart(64,'a'),transaction_count:45,transactions:transactions(0,40),serialized_bytes:2000,time_iso:'2026-10-08',verification_state:'header_anchored',total_output_sats:2250,verification:{verifier_version:1},source_network:'cache',evidence:{bytes:'cache'}});
 (async()=>{
-  let reorg=false;
+  let reorg=false,bitmapValue={state:'not_built',note:'No saved canonical mapping.'};
   const server=http.createServer((q,r)=>{r.end();});await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const origin='http://127.0.0.1:'+server.address().port,browser=await pw.chromium.launch({headless:true,executablePath:browserPath});
   try{
@@ -16,13 +16,14 @@ const block=height=>({height,hash:String(height).padStart(64,'a'),transaction_co
     await page.route('**/*',async route=>{
       const url=new URL(route.request().url()),body=route.request().postDataJSON();
       const reply=(value,type='application/json')=>route.fulfill({contentType:type,body:type==='application/json'?JSON.stringify(value):value});
-      if(url.pathname==='/test')return reply('<!doctype html><html><head><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/timeline.css"></head><body class="indexes-workspace"><section id="timeline-inspector" class="timeline-inspector"><h2 id="retained-title">Inspector content</h2><input id="retained-input" value="kept"></section><script src="/address-view.js"></script><script src="/helper.js"></script><script>window.helper=GatewayTimelineExplorer.mount({root:document.querySelector("#timeline-inspector"),document});</script></body></html>','text/html');
+      if(url.pathname==='/test')return reply('<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/timeline.css"></head><body class="indexes-workspace"><section id="timeline-inspector" class="timeline-inspector"><h2 id="retained-title">Inspector content</h2><input id="retained-input" value="kept"></section><script src="/address-view.js"></script><script src="/bitmap-view.js"></script><script src="/helper.js"></script><script>window.helper=GatewayTimelineExplorer.mount({root:document.querySelector("#timeline-inspector"),document});</script></body></html>','text/html');
       if(url.pathname==='/address-view.js')return reply(fs.readFileSync(path.join(root,'ui/shell/address-view.js'),'utf8'),'application/javascript');
+      if(url.pathname==='/bitmap-view.js')return reply(fs.readFileSync(path.join(root,'ui/shell/bitmap-view.js'),'utf8'),'application/javascript');
       if(url.pathname==='/helper.js')return reply(fs.readFileSync(path.join(root,'ui/shell/timeline-explorer.js'),'utf8'),'application/javascript');
       if(url.pathname==='/style.css')return reply(fs.readFileSync(path.join(root,'ui/shell/style.css'),'utf8'),'text/css');
       if(url.pathname==='/timeline.css')return reply(fs.readFileSync(path.join(root,'ui/shell/index-timeline.css'),'utf8'),'text/css');
       if(url.pathname==='/favicon.ico')return reply('','image/x-icon');
-      if(url.pathname==='/api/v1/bitmap/view')return reply({state:'not_built',note:'No saved canonical mapping.'});
+      if(url.pathname==='/api/v1/bitmap/view')return reply(bitmapValue);
       if(url.pathname==='/api/v1/txio/readiness')return reply({inputs:[],outputs:[],sources_checked:[]});
       calls.push({path:url.pathname,body,query:url.search});
       if(url.pathname==='/api/v1/navigate'){
@@ -82,6 +83,9 @@ const block=height=>({height,hash:String(height).padStart(64,'a'),transaction_co
     await page.evaluate(()=>{window.savedSetTimeout=window.setTimeout;window.setTimeout=(callback,delay,...args)=>savedSetTimeout(callback,delay===90000?50:delay,...args);helper.focus({height:70,immediate:true});});
     await page.waitForFunction(()=>helper.state().loading==='error');assert.match(await page.locator('#timeline-explorer-panel').innerText(),/took too long/);assert.equal(await page.locator('#timeline-explorer-retry').count(),1);
     await page.evaluate(()=>window.setTimeout=window.savedSetTimeout);
+    bitmapValue={state:'provisional',kind:'parcel',instance:'bitmap-parcels-standard-v1-replay',discovery_snapshot:{height:792440,block_hash:'a'.repeat(64),commitment:'b'.repeat(64),profile_hash:'c'.repeat(64)},provisional_candidates:[{status:'not_yet_validated',blocator:'0i0.792440',reason:'Parent proof pending'},{status:'invalid_syntax',blocator:'0i1.792440',reason:'Malformed'}],pending_candidates:[{eligibility:'unresolved',reason:'Pending values'},{eligibility:'ineligible',reason:'Rejected by rule'}]};
+    await page.evaluate(()=>helper.openBitmapResource({kind:'parcel',instance:'bitmap-parcels-standard-v1-replay',district:170,transaction:3},'3.170.bitmap'));await page.getByText('⚠ Not yet validated · Parent proof pending · 0i0.792440',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:/Open Bitmap inscription/}).count(),0,'Discovery cannot be displayed as a canonical winner');assert.match(await page.locator('.bitmap-invalid').first().innerText(),/Rejected/);assert.equal(await page.getByText('⚠ Not yet validated',{exact:true}).count(),1,'Legacy pending candidate is explicit');assert.equal(await page.getByText('✕ Rejected',{exact:true}).count(),1,'Legacy ineligible candidate stays rejected');
+    bitmapValue={...bitmapValue,state:'selected',result:{winner_blocator:'0i0.792440'}};await page.evaluate(()=>{helper.registerView('inscriptions',{open:async()=>{}});return helper.openBitmapResource({kind:'parcel',instance:'bitmap-parcels-standard-v1-replay',district:170,transaction:3},'3.170.bitmap')});await page.getByText('Canonical inscription at 0i0.792440',{exact:true}).waitFor();assert.equal(await page.getByText('⚠ Not yet validated',{exact:true}).count(),1,'Legacy pending remains separate alongside a winner');assert.equal(await page.getByText('⚠ Not yet validated · Parent proof pending · 0i0.792440',{exact:true}).count(),1,'Discovery remains separate alongside a winner');
     await page.evaluate(()=>{helper.focus({height:63,immediate:false});helper.teardown();});await page.waitForTimeout(1100);
     assert.equal(calls.some(c=>c.body?.address==='63.bitcoin'),false,'Teardown cancels settling requests');
     assert.equal(await page.locator('#retained-input').inputValue(),'kept');assert.equal(await page.locator('#timeline-explorer-panel').count(),0);assert.deepEqual(errors,[]);

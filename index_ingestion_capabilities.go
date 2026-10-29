@@ -10,7 +10,7 @@ func resolvedIngestionCapabilities(d indexRunDocument) []indexBrowsePolicy {
 		if id == "txio-sat-ranges" {
 			owner = "sat-state"
 		}
-		c, ok := runSelection(d.Prepared, owner)
+		c, ok := runSelection(indexRunEffectiveRequest(d), owner)
 		enabled := d.Configured && ok && resolvedSelectionEnabled(c, id)
 		if id == "txio-sat-ranges" {
 			enabled = enabled && c.RetainSatHistory

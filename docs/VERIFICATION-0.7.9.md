@@ -13,9 +13,10 @@ and invalid candidates, receipt reopening, explicit consent and concurrent
 worker scheduling. The real Ord handbook Rug Me parent and child were checked
 using verified mainnet blocks 818117, 818174 and 818182, obtained from
 `mempool.space`; these local optional fixtures are not committed to the source
-tree. The Parcel selection wrapped around those blocks is synthetic, not a
-claim that the Rug Me child is a Bitmap Parcel. Other movement, scheduling and
-selection fixtures are synthetic. Browser checks exercise the actual UI assets
+tree. A modified synthetic claim on the real block is rejected because it does
+not have an authenticated complete extraction; the Rug Me child is not claimed
+to be a Bitmap Parcel. Other movement, scheduling and selection fixtures are
+synthetic. Browser checks exercise the actual UI assets
 against isolated fixture APIs, including the Bitmap tab, address badges and
 relationship states.
 
@@ -28,8 +29,9 @@ Raw corpus, full-chain Parcel build, installer, updater, or Live Parcel run was
 tested. Review the limits in [indexing](INDEXING.md) before interpreting
 coverage or replayability.
 
-The route controls distinguish complete retained Raw, committed TX ID Locators
-and committed IO Links and require explicit finite work consent. The locator
+Discovery can run provisionally without a proof route. The validation controls
+distinguish retained Raw, committed TX ID Locators and committed IO Links and
+require explicit finite proof-work consent. The locator
 route reads or fetches selected blocks and may scan for spends; its locator
 coverage is not itself proof. The IO Link route has synthetic audit and route
 fixtures; a full mainnet IO Link audit and its throughput have not been tested.
@@ -37,3 +39,9 @@ Do not infer full-chain validation from the existing focused checks; inspect
 current route availability and the reviewed plan. A locally authenticated negative
 evaluation is not an independently replayable proof, and an independent audit
 action is not yet available.
+
+The coordinated sweep, fixed District catch-up boundary, provisional journal,
+selected-chain checks and ordered wakeup tests use synthetic selected-header
+fixtures. The small injected evidence-prefix fixture exercises worker behavior
+without building a full mainnet locator history. See the [workflow proposal](INDEXING-WORKFLOW-PROPOSAL-0.7.9.md)
+for current IO Link, source-byte wakeup and sparse-review limits.

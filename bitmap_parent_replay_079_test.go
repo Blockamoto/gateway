@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -175,8 +174,9 @@ func TestParcelReplayMainnetReference079(t *testing.T) {
 		t.Fatalf("captured receipt: %v", err)
 	}
 
-	// The following District and Parcel claim strings are synthetic. They test
-	// candidate selection with a real Ord relationship, not a real Bitmap claim.
+	// The following District binding is synthetic. The reference child is not
+	// a Bitmap claim, so fabricated claim bodies must never be accepted as an
+	// authenticated extraction from its real Bitcoin block.
 	district := uint64(0)
 	genesisRaw := testGenesisBlockPayload(t)
 	genesis, err := parseBlockDetailed(0, genesisHashDisplay, genesisRaw[:80], genesisRaw, "reference fixture", false)
@@ -215,52 +215,32 @@ func TestParcelReplayMainnetReference079(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claims := []inscriptionOccurrence{}
-	for _, o := range all.Occurrences {
-		if o.TxID == childOccurrence.TxID && (o.Index == 40 || o.Index == 41 || o.Index == 42) {
-			o.Body = []byte("0.0.bitmap")
-			o.Envelope.ContentType = "text/plain"
-			if o.Index == 40 {
-				o.Envelope.Parents = nil
-			}
-			claims = append(claims, o)
+	forged := all
+	forged.Occurrences = append([]inscriptionOccurrence(nil), all.Occurrences...)
+	childIndex := -1
+	for i := range forged.Occurrences {
+		if forged.Occurrences[i].ID == childID {
+			childIndex = i
+			forged.Occurrences[i].Body = []byte("0.0.bitmap")
+			forged.Occurrences[i].Envelope.ContentType = "text/plain"
+			break
 		}
 	}
-	if len(claims) != 3 {
-		t.Fatalf("synthetic candidate fixture missing occurrences: %d", len(claims))
+	if childIndex < 0 {
+		t.Fatal("real child occurrence unavailable for tamper check")
 	}
-	prepared := inscriptionBlockResult{BlockHeight: childBlock.Height, BlockHash: childBlock.Hash, ParserProfile: inscriptionParserProfile, ReferenceCommit: inscriptionReferenceCommit, Occurrences: claims}
-	actualSpender := parcel.parcelRawSpender
-	parcel.parcelRawSpender = func(context.Context, satlinePoint, int64, parcelScanObserver079) (spenderLookupView, error) {
-		return spenderLookupView{ConfirmedState: "unknown", Note: "fixture evidence missing"}, nil
+	before := parcel.head.Commitment
+	if err := parcel.Apply(ctx, childBlock, &forged); err == nil || !strings.Contains(err.Error(), "complete authenticated inventory") {
+		t.Fatalf("modified real occurrence accepted as a Bitmap claim: %v", err)
 	}
-	if err := parcel.Apply(ctx, childBlock, &prepared); !errors.Is(err, ErrBitmapEvidenceRequired) {
-		t.Fatalf("missing movement must remain pending: %v", err)
-	}
-	if parcel.head.Height != childBlock.Height-1 || parcel.head.WinnerCount != 0 {
-		t.Fatal("pending declaration advanced coverage or reserved a winner")
-	}
-	parcel.parcelRawSpender = actualSpender
-	if err := parcel.Apply(ctx, childBlock, &prepared); err != nil {
-		t.Fatalf("synthetic candidate processing: %v", err)
-	}
-	if parcel.head.WinnerCount != 1 || parcel.head.CandidateCount != 3 {
-		t.Fatalf("first winner selection: %+v", parcel.head)
+	subset := all
+	subset.Occurrences = []inscriptionOccurrence{all.Occurrences[childIndex]}
+	if err := parcel.Apply(ctx, childBlock, &subset); err == nil || !strings.Contains(err.Error(), "complete authenticated inventory") {
+		t.Fatalf("subset of real occurrences accepted as a complete inventory: %v", err)
 	}
 	reopened, err := readBitmapDevelopmentHead(ctx, root, bitmapReplayParcelID)
-	if err != nil || reopened == nil || reopened.Commitment != parcel.head.Commitment {
-		t.Fatalf("candidate restart: %+v %v", reopened, err)
-	}
-	var selectedWinner bitmapDevelopmentCandidate
-	have, err := newOrdinalTree(filepath.Join(parcel.dir, "pages"), reopened.WinnerRoot).withContext(ctx).get(bitmapTargetKey(0, &district), &selectedWinner)
-	if err != nil || !have || selectedWinner.Blocator != childPos {
-		t.Fatalf("candidate winner: %+v %v", selectedWinner, err)
-	}
-	if err := verifyBitmapCandidateEvidence079(ctx, app, bitmapReplayParcelID, selectedWinner, hashAt); err != nil {
-		t.Fatalf("candidate replay binding: %v", err)
-	}
-	if err := verifyBitmapCandidateEvidence079(ctx, app, bitmapReplayParcelID, selectedWinner, reorg); err == nil {
-		t.Fatal("candidate accepted replaced movement block")
+	if err != nil || reopened == nil || reopened.Commitment != before || reopened.Height != childBlock.Height-1 || reopened.WinnerCount != 0 {
+		t.Fatalf("rejected fabricated claims changed Parcel coverage or winners: %+v %v", reopened, err)
 	}
 }
 

@@ -134,7 +134,8 @@ func (a *app) setIndexBrowsePolicy(ctx context.Context, req indexBrowseRequest) 
 	defer indexBrowseMu.Unlock()
 	// Compatibility API: an explicit old browse choice now changes the same
 	// timeline Arm control. No second policy file or hidden prefix build exists.
-	// Serialize with Start while choosing idle preparation versus active admission.
+	// Serialize with Start. During an active run this choice is staged for the
+	// next reviewed Start and does not change its admitted scope.
 	a.indexLiveControlMu.Lock()
 	doc := a.indexRunSnapshot()
 	if doc.Error != "" {
@@ -146,20 +147,19 @@ func (a *app) setIndexBrowsePolicy(ctx context.Context, req indexBrowseRequest) 
 		choice = indexRunSelection{Index: req.Index}
 	}
 	choice.Armed = *req.Enabled
+	active := doc.Run != nil && (doc.Run.State == "running" || doc.Run.State == "waiting" || doc.Run.State == "pausing" || doc.Run.State == "paused")
 	var err error
-	if r := doc.Run; r != nil && (r.State == "running" || r.State == "waiting" || r.State == "paused") {
-		// The amendment carries its own admission fence and acquires this lock.
-		a.indexLiveControlMu.Unlock()
-		_, err = a.amendIndexRun(ctx, indexRunAmendment{RunID: r.ID, AdmissionRevision: effectiveIndexRunAdmissionRevision(r), Consumers: []indexRunSelection{choice}})
-	} else {
-		replaceIndexRunSelection(&doc.Prepared, choice)
-		if err = ctx.Err(); err == nil {
-			_, err = a.prepareIndexRun(doc.Prepared)
-		}
-		a.indexLiveControlMu.Unlock()
+	replaceIndexRunSelection(&doc.Prepared, choice)
+	if err = ctx.Err(); err == nil {
+		_, err = a.prepareIndexRun(doc.Prepared)
 	}
+	a.indexLiveControlMu.Unlock()
 	if err != nil {
 		return indexBrowsePolicy{}, err
+	}
+	if active {
+		current, _ := runSelection(doc.Run.Request, req.Index)
+		return indexBrowsePolicy{Index: req.Index, Enabled: current.Armed, Available: true, Capability: "sparse", Reason: "The choice is staged for a later reviewed Start; the admitted run is unchanged."}, nil
 	}
 	return indexBrowsePolicy{Index: req.Index, Enabled: *req.Enabled, Available: true, Capability: "sparse", Reason: "Verified observed blocks only; no predecessor scan."}, nil
 }
@@ -324,7 +324,7 @@ func (a *app) persistBrowseBatch(ctx context.Context, id string, b indexBatch) (
 		}
 		current, e := readIndexRunDocument(a.dataDir)
 		if e == nil {
-			choice, ok := runSelection(current.Prepared, id)
+			choice, ok := runSelection(indexRunEffectiveRequest(current), id)
 			if !current.Configured || !ok || !choice.Armed {
 				e = errIndexRunConsumerStopped
 			} else {

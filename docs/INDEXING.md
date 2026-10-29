@@ -27,12 +27,16 @@ Bodies come from the claimant's own inscription envelope. Parsed `text/plain` ma
 
 The new **Bitmap Parcels Standard V1 replay** track has a distinct identity;
 old Parcel generations and their saved checkpoints remain read-only. A finite
-run requires an explicitly selected evidence route and a positive work
-allowance, up to 10,000,000 units. The plan reports prerequisite gaps without
-starting them. The retained Raw route requires complete local Raw inventory
-from genesis through the selected end and reads local blocks only. The TX ID
-Locator route requires complete committed selected-chain locator coverage over
-that interval. It uses locators for transaction positions, then reads or
+reviewed run can discover provisional claims without a proof route. Discovery
+coverage and its cumulative claim counts are separate from validated coverage,
+verified children and selected winners. Claims awaiting proof are explicitly
+labelled not yet validated and cannot reserve positions. Validation requires an
+explicitly selected route and a positive work allowance, up to 10,000,000 units.
+The plan reports prerequisite gaps without starting them. The retained Raw route
+requires complete local Raw inventory from genesis through the current validation
+phase and reads local blocks only. The TX ID Locator route requires complete
+committed selected-chain locator coverage through that phase. It uses locators
+for transaction positions, then reads or
 fetches verified selected blocks and may scan forward for spends. Choosing it
 with a positive allowance authorizes bounded provider fetches; Raw retention
 follows its own setting.
@@ -51,8 +55,10 @@ workspace; coverage alone does not establish readiness. Locators and links do
 not themselves prove transactions, values or parent relationships. Verified
 transaction bytes provide values; a separate Values history build is not
 required. The Parcel lane can progress alongside
-Districts and other consumers, waiting for the exact District outcome. Live
-Parcel following is not yet available.
+Districts and other consumers. District publication and Parcel discovery share a
+fixed catch-up boundary and then advance together; validation can lag. When
+Districts are Off, finite catch-up is capped at saved complete District coverage.
+Live Parcel following is not yet available.
 
 The allowance is shared across evidence work, persisted in reservations and
 never increased automatically on resume. Up to 64 unused reserved units can be
@@ -68,9 +74,9 @@ Bitcoin consensus validation. Both Bitmap chains remain disabled.
 Positive detached receipts are bounded to 128 source blocks, 64 MiB and 128
 movement hops; larger proofs remain pending. Same-transaction relationships are
 resolved when pointerless envelopes share an input and their stable order is
-known; other cases remain pending. A pending earlier candidate can hold up its
-reveal-block checkpoint until the evidence is resolved, so later candidates in
-that block are not presented as final winners prematurely.
+known; other cases remain pending. A pending earlier candidate can hold up the
+validated checkpoint while discovery advances, so later candidates are not
+presented as final winners prematurely. See the [workflow proposal](INDEXING-WORKFLOW-PROPOSAL-0.7.9.md) for current review and retry limits.
 
 Custom creation, rule editing, comparisons and legacy execution are unavailable. Legacy definitions and results remain available for inspection and explicit data management. District coverage and timeline Start/Pause/Resume and Live remain available. Opening a view starts no indexing. See [portable testing](TESTING-0.7.8.md) and [verified-block ingestion](SPARSE-INDEXING-0.7.8.md).
 

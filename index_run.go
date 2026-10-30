@@ -732,7 +732,7 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 				if e = a.planOrderedRecipeState(ctx, resolved, c, &q); e != nil {
 					return p, e
 				}
-				p.RequiresGenesis = true
+				p.RequiresGenesis = p.RequiresGenesis || q.RequiresGenesis
 			} else if resolved.Source == recipeUTXOProjectionSource {
 				if e = a.planProjectionRecipeState(ctx, resolved, c, req, &q); e != nil {
 					return p, e

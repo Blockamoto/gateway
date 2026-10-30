@@ -874,7 +874,7 @@ func (a *app) applyRunConsumer(ctx context.Context, c *indexRunConsumer, prepare
 	return nil
 }
 func runTerminal(err error) bool {
-	return satTerminalError077(err) || errors.Is(err, ErrUTXORebuildRequired) || errors.Is(err, ErrUTXOStateCorrupt) || errors.Is(err, ErrAddressStateCorrupt)
+	return satTerminalError077(err) || errors.Is(err, ErrUTXORebuildRequired) || errors.Is(err, ErrUTXOStateCorrupt) || errors.Is(err, ErrAddressStateCorrupt) || errors.Is(err, ErrRecipeTablesCorrupt) || errors.Is(err, ErrRecipeTablesRebuild)
 }
 
 // Preserve genuine failures, but do not mislabel a publication interrupted by

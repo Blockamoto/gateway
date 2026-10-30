@@ -557,3 +557,42 @@ This is headless fixture evidence, not visible Chrome acceptance. Browser contro
 still fails before initialization. `080-PARITY-MATRIX.md` records the remaining
 families and prevents these increments from being mistaken for full-preview
 completion.
+
+### General typed tables through the public prefix executor
+
+Saved `bitcoin.ordered` documents can now select `tables.cow.v1` and compose
+read/put/delete operations over arbitrary declared keyed tables. This uses the
+shipping native immutable COW codec, small inline values, independently checked
+large blobs, compact first-before/final-after journal roots and reference-counted
+blob-pin roots. The slow staged-state/page-pack experiments remain excluded.
+Owned receipt publication, retained-root recovery, reviewed whole-generation
+archive and corruption-aware collection share the public prefix executor's
+existing admission, registry, selected-chain and generation fences.
+
+The declared empty origin can be later than genesis. Public checks prove a
+block-1 output counter fetches only block 1 and creates no native Coin/Sat state;
+prefix reuse fetches nothing. Future origins remain pure no-work until a Live
+target reaches them. A retained first transition permits recovery to its empty
+seed without claiming preceding block coverage. Missing lead-in, lost committed
+heads and expired recovery points remain explicit errors.
+
+Committed table queries bind exact revisions, semantic fingerprints, retained
+points and physical-key cursors. Empty and unbuilt states remain distinct.
+Consecutive rows above the response budget receive individual authenticated JSON
+downloads and continuation; damage fails before attachment exposure. The editor
+has an executable output-count starter, origin/table declarations, reference-
+preserving rename and typed nested controls. State counts and staged-rebuild
+copy describe the declared origin. `080-TYPED-TABLES.md` records the contract,
+storage limits, evidence and remaining dependency boundary.
+
+The general storage/public checks passed in 9.034 seconds. General plus existing
+ordered/native-Coin/saved-Sat integration passed in 37.178 seconds; final public
+query/empty-seed planning checks passed in 12.428 seconds. The broader recipe,
+saved-recipe, IndexRun and TimelineRun regression passed in 338.392 seconds
+(`gateway-080-typed-tables-regression.jsonl` in the local temporary directory).
+The production build and JavaScript editor/track/transport/workspace checks
+passed. Source-identical headless table and FIFO DOM checks and the broader
+workspace browser fixture passed. Wide/narrow table captures were inspected and
+the declaration layout corrected. This is headless QA, not visible Chrome
+acceptance. Wider typed dependencies, remaining built-ins and the complete
+isolated preview remain open in `080-PARITY-MATRIX.md`.

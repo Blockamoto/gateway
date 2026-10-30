@@ -16,10 +16,13 @@ func (a *app) planOrderedRecipeState(ctx context.Context, resolved resolvedSaved
 	if err != nil {
 		return err
 	}
-	q.RangeMode, q.RequiresGenesis = "complete_prefix", true
+	q.RangeMode, q.RequiresGenesis = "complete_prefix", program.definition.Origin == 0
+	if program.definition.Origin > 0 {
+		q.RangeMode = "continuous_prefix"
+	}
 	recipeOrderedGenerationMu.Lock()
 	token, err := g.reviewToken(ctx)
-	s := recipePrefixPoint{Height: -1}
+	s := recipePrefixPoint{Height: program.definition.Origin - 1}
 	if err == nil && !choice.Rebuild {
 		s, _, err = g.prefixSnapshot(ctx)
 	}
@@ -30,10 +33,10 @@ func (a *app) planOrderedRecipeState(ctx context.Context, resolved resolvedSaved
 		q.Reason = "Saved ordered generation is unavailable; review an explicit rebuild: " + err.Error()
 		return ctx.Err()
 	}
-	next := int64(0)
+	next := program.definition.Origin
 	if choice.Rebuild {
-		q.Reason = "Rebuild preserves the prior generation and its facts in an archive; the new state begins at genesis."
-	} else if s.Height >= 0 {
+		q.Reason = "Rebuild preserves the prior generation and its facts in an archive; the new state begins at its declared origin."
+	} else if s.Commitment != "" {
 		cp := s
 		q.Height, q.BlockHash, q.Commitment = cp.Height, cp.BlockHash, cp.Commitment
 		next = cp.Height + 1
@@ -50,18 +53,23 @@ func (a *app) planOrderedRecipeState(ctx context.Context, resolved resolvedSaved
 				return ctx.Err()
 			}
 			ancestor := int64(-1)
+			found := false
 			for _, candidate := range retained {
+				if candidate.Commitment == "" && candidate.BlockHash == "" && candidate.Height == program.definition.Origin-1 {
+					ancestor, found = candidate.Height, true
+					break
+				}
 				header, err := a.readSelectedHeader(candidate.Height)
 				if err != nil {
 					continue
 				}
 				digest := hash256(header)
 				if reverseHex(digest[:]) == candidate.BlockHash {
-					ancestor = candidate.Height
+					ancestor, found = candidate.Height, true
 					break
 				}
 			}
-			if ancestor < 0 {
+			if !found {
 				q.State, q.AdmissionState = "rebuild_required", "blocked"
 				q.Reason = "The selected chain has no saved ancestor in the retained recovery window; review an explicit rebuild."
 				return nil

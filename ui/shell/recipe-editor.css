@@ -12,3 +12,4 @@
 .ordered-editor-body label,.ordered-editor-fields label{display:grid;gap:5px;font-size:13px}
 .ordered-editor-body input,.ordered-editor-body select{min-width:140px;max-width:100%}
 .recipe-editor [data-recipe="ordered"]>div{margin-top:12px}
+.ordered-editor-table{align-items:end;margin-bottom:12px}

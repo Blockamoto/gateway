@@ -1,0 +1,110 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "my-output-count",
+  "name": "Output count from block 1",
+  "source": "bitcoin.ordered",
+  "origin": 1,
+  "history": "ordered",
+  "storage": "tables.cow.v1",
+  "dependencies": [],
+  "tables": [
+    {
+      "name": "counts",
+      "key": "name"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "output"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "read",
+                "name": "old",
+                "table": "counts",
+                "key": {
+                  "literal": {
+                    "kind": "text",
+                    "text": "total"
+                  }
+                }
+              },
+              {
+                "op": "let",
+                "name": "count",
+                "expr": {
+                  "literal": {
+                    "kind": "uint",
+                    "uint": "0"
+                  }
+                }
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "call": "present",
+                  "args": [
+                    {
+                      "var": "old"
+                    }
+                  ]
+                },
+                "body": [
+                  {
+                    "op": "let",
+                    "name": "count",
+                    "expr": {
+                      "var": "old"
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "put",
+                "table": "counts",
+                "key": {
+                  "literal": {
+                    "kind": "text",
+                    "text": "total"
+                  }
+                },
+                "expr": {
+                  "call": "add_money",
+                  "args": [
+                    {
+                      "var": "count"
+                    },
+                    {
+                      "literal": {
+                        "kind": "uint",
+                        "uint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

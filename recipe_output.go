@@ -77,13 +77,21 @@ func (a *app) handleRecipeOutput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if kind := values.Get("download"); kind != "" {
-		if cursor != "" {
-			jsonError(w, 400, fmt.Errorf("sparse download uses a row offset"))
-			return
-		}
 		prepared, err := a.ResolveSavedRecipe(r.Context(), id, revision, fingerprint)
 		if err != nil {
 			jsonError(w, 409, err)
+			return
+		}
+		if prepared.Definition.Storage == recipeTablesStorage {
+			if offset != 0 {
+				jsonError(w, 400, fmt.Errorf("table download uses a row cursor"))
+				return
+			}
+			a.downloadTablesRecipeOutput(w, r, prepared, height, token, cursor, kind)
+			return
+		}
+		if cursor != "" {
+			jsonError(w, 400, fmt.Errorf("sparse download uses a row offset"))
 			return
 		}
 		a.downloadRecipeSparseOutput(w, r, prepared, height, offset, token, kind)
@@ -110,6 +118,12 @@ func (a *app) readRecipeOutputPage(ctx context.Context, id, revision, fingerprin
 	prepared, err := a.ResolveSavedRecipe(ctx, id, revision, fingerprint)
 	if err != nil {
 		return nil, 409, err
+	}
+	if prepared.Definition.Storage == recipeTablesStorage {
+		if offset != 0 {
+			return nil, 400, fmt.Errorf("table state output uses a cursor")
+		}
+		return a.readTablesRecipeOutput(ctx, prepared, height, limit, token, cursor)
 	}
 	if prepared.Source == recipeSatSource {
 		if offset != 0 {

@@ -26,6 +26,9 @@ func recipePrefixSource(source string) bool {
 }
 
 func openRecipePrefixBackend(root string, program *recipeProgram) (recipePrefixBackend, error) {
+	if program != nil && program.definition.Storage == recipeTablesStorage {
+		return openRecipeTablesGeneration(root, program)
+	}
 	if program != nil && program.definition.Source == recipeSatSource {
 		return openRecipeSatGeneration(root, program)
 	}

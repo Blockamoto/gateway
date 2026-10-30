@@ -1,8 +1,9 @@
 # Ordered UTXO integration decisions
 
-Status: native integration under validation. Ordinary UTXO processing now
-executes the embedded JSON program. Public custom ordered authoring, scheduler
-and generation-owned fact retention remain unfinished release work.
+Status: native and saved Coin execution, public authoring/scheduling, queries
+and generation-owned fact retention are integrated. Ordinary UTXO processing
+executes the embedded JSON program. Remaining full-release work is recorded in
+`080-PARITY-MATRIX.md`; this document records the Coin adapter decisions.
 
 The physical backend is the existing UTXO COW trees, mandatory output facts,
 first-before journal, 288-transition recovery policy and atomic head. The

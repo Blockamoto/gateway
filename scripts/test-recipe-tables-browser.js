@@ -1,0 +1,40 @@
+'use strict';
+// Source-identical controls in a network-free DOM; this is headless code QA.
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const root=path.resolve(__dirname,'..');
+const pw=(()=>{try{return require('playwright')}catch{return require(path.join(os.homedir(),'.cache','codex-runtimes','codex-primary-runtime','dependencies','node','node_modules','playwright'))}})();
+const executablePath=[process.env.GATEWAY_TEST_BROWSER,pw.chromium.executablePath(),...['ProgramFiles(x86)','ProgramFiles','LOCALAPPDATA'].flatMap(key=>process.env[key]?[path.join(process.env[key],'Microsoft','Edge','Application','msedge.exe'),path.join(process.env[key],'Google','Chrome','Application','chrome.exe')]:[])].find(value=>value&&fs.existsSync(value));
+const outArg=process.argv.indexOf('--out'),out=outArg<0?null:path.resolve(process.argv[outArg+1]);if(out)fs.mkdirSync(out,{recursive:true});
+async function main(){
+ const browser=await pw.chromium.launch({headless:true,executablePath});
+ try{
+  const page=await browser.newPage({viewport:{width:1100,height:900},reducedMotion:'reduce'}),errors=[],requests=[];
+  page.on('pageerror',error=>errors.push(error.message));await page.route('**/*',route=>{requests.push(route.request().url());return route.abort();});
+  await page.setContent('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main class="recipe-editor"><fieldset data-recipe="ordered" id="tables"></fieldset></main></body></html>');
+  for(const name of ['theme.css','style.css','recipe-editor.css'])await page.addStyleTag({content:fs.readFileSync(path.join(root,'ui','shell',name),'utf8')});
+  await page.addScriptTag({path:path.join(root,'ui','shell','recipe-ordered-editor.js')});
+  const actual=JSON.parse(fs.readFileSync(path.join(root,'recipes','output-count-state.json'),'utf8'));
+  await page.evaluate(definition=>{window.applied=0;window.editor=GatewayOrderedRecipeEditor.mount(document.getElementById('tables'),{onApply(){applied++}});if(!editor.load(definition))throw Error('Table starter unavailable')},actual);
+  assert.deepEqual(await page.evaluate(()=>editor.definition()),actual);
+  await page.getByLabel('Origin height',{exact:true}).fill('1');
+  await page.getByLabel('State table name',{exact:true}).fill('totals');await page.getByLabel('State table name',{exact:true}).press('Tab');
+  let definition=await page.evaluate(()=>editor.definition());assert.equal(definition.tables[0].name,'totals');assert.equal(definition.ordered.steps[0].body[0].body[0].table,'totals');
+  assert.equal(await page.getByRole('button',{name:'Remove state table',exact:true}).isDisabled(),true);
+  await page.getByRole('button',{name:'Add state table',exact:true}).click();assert.equal((await page.evaluate(()=>editor.definition())).tables.length,2);
+  const operations=await page.getByLabel('Add instruction type',{exact:true}).locator('option').evaluateAll(options=>options.map(option=>option.value));assert(operations.includes('read')&&operations.includes('put')&&operations.includes('delete'));assert(!operations.includes('emit'));
+  await page.getByLabel('Add instruction type',{exact:true}).selectOption('put');await page.getByRole('button',{name:'Add instruction',exact:true}).click();
+  const summary=page.locator('summary').filter({hasText:/^2\. put$/});await summary.click();const step=summary.locator('..');
+  await step.getByLabel('Table',{exact:true}).selectOption('state');await step.locator('summary').filter({hasText:/^State or emitted key$/}).click();
+  const key=step.locator('summary').filter({hasText:/^State or emitted key$/}).locator('..');
+  assert(!(await key.getByLabel('Source field',{exact:true}).locator('option').evaluateAll(options=>options.map(option=>option.value))).includes('fact_page'));
+  await step.locator('summary').filter({hasText:/^Value$/}).click();await step.getByLabel('Value type',{exact:true}).selectOption('uint');await step.getByLabel('Unsigned integer (exact decimal)',{exact:true}).fill('9007199254740993');
+  definition=await page.evaluate(()=>editor.definition());assert.equal(definition.ordered.steps[0].body.at(-1).table,'state');assert.equal(definition.ordered.steps[0].body.at(-1).expr.literal.uint,'9007199254740993');
+  await page.getByRole('button',{name:'Apply ordered changes',exact:true}).click();assert.equal(await page.evaluate(()=>applied),1);
+  if(out)await page.screenshot({path:path.join(out,'tables-guided-wide.png'),fullPage:true});
+  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'table controls fit a narrow viewport');
+  if(out)await page.screenshot({path:path.join(out,'tables-guided-narrow.png'),fullPage:true});
+  assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
+  console.log('Table browser PASS: actual starter, origin, reference-preserving rename, declarations, keyed writes, exact uints, Apply, narrow layout and no network work.');
+ }finally{await browser.close()}
+}
+main().catch(error=>{console.error(error);process.exitCode=1});

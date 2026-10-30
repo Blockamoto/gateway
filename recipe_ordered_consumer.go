@@ -51,12 +51,24 @@ func (a *app) openRecipeOrderedRunConsumer(ctx context.Context, plan recipeAdmis
 	if err != nil {
 		return nil, err
 	}
+	originHash := func() (string, error) {
+		header, err := a.readSelectedHeader(owned.Origin)
+		if err != nil {
+			return "", err
+		}
+		digest := hash256(header)
+		return reverseHex(digest[:]), nil
+	}
 	selection, _ := runSelection(owned.Request, owned.Index)
 	if selection.Rebuild {
-		if owned.EffectiveFrom != 0 || owned.NoWork || len(reviewed) != 1 {
-			return nil, fmt.Errorf("ordered rebuild requires a reviewed generation and an explicit genesis range")
+		if owned.EffectiveFrom != owned.Origin || owned.NoWork || len(reviewed) != 1 {
+			return nil, fmt.Errorf("ordered rebuild requires a reviewed generation and an explicit range from its origin")
 		}
-		if err = generation.resetForRebuild(ctx, binding.RunID+":"+binding.Index, reviewed[0], a.recipeLocalPublicationGuard(ctx, binding, 0, genesisHashDisplay)); err != nil {
+		hash, err := originHash()
+		if err != nil {
+			return nil, err
+		}
+		if err = generation.resetForRebuild(ctx, binding.RunID+":"+binding.Index, reviewed[0], a.recipeLocalPublicationGuard(ctx, binding, owned.Origin, hash)); err != nil {
 			return nil, err
 		}
 	}
@@ -74,10 +86,14 @@ func (a *app) openRecipeOrderedRunConsumer(ctx context.Context, plan recipeAdmis
 		if progress.Height >= 0 {
 			return nil, fmt.Errorf("%w: committed ordered generation is missing", ErrUTXOStateCorrupt)
 		}
-		if owned.EffectiveFrom > 0 {
-			return nil, fmt.Errorf("ordered state needs an explicitly admitted genesis prefix before height %d", owned.EffectiveFrom)
+		if owned.EffectiveFrom > owned.Origin {
+			return nil, fmt.Errorf("ordered state needs an explicitly admitted prefix from its declared origin before height %d", owned.EffectiveFrom)
 		}
-		if err = a.recipeLocalPublicationGuard(ctx, binding, 0, genesisHashDisplay)(func() error { return generation.create(ctx) }); err != nil {
+		hash, err := originHash()
+		if err != nil {
+			return nil, err
+		}
+		if err = a.recipeLocalPublicationGuard(ctx, binding, owned.Origin, hash)(func() error { return generation.create(ctx) }); err != nil {
 			return nil, err
 		}
 	}
@@ -241,9 +257,31 @@ func (c *recipeOrderedRunConsumer) Next(ctx context.Context) (recipeConsumerProg
 			out.State = "no_work"
 			return out, nil
 		}
-		return out, fmt.Errorf("ordered state is not initialized")
+		// A Live run can be admitted before its declared origin exists. Its
+		// first nonempty target creates the generation under the same origin,
+		// registry and run fences as initial admission, without fetching lead-in.
+		c.a.indexRunMu.Lock()
+		_, progress, bindingErr := recipeCheckRunIdentity(c.a.indexRunState.Run, c.binding)
+		c.a.indexRunMu.Unlock()
+		if bindingErr != nil {
+			return out, bindingErr
+		}
+		if progress.Height >= 0 || c.plan.EffectiveFrom > c.plan.Origin {
+			return out, fmt.Errorf("%w: committed ordered generation is missing", ErrRecipeTablesCorrupt)
+		}
+		hash, err := c.selectedAt(ctx, c.plan.Origin, tip, tipHash)
+		if err != nil {
+			return out, err
+		}
+		if err = c.a.recipeLocalPublicationGuard(ctx, c.binding, c.plan.Origin, hash)(func() error { return c.generation.create(ctx) }); err != nil {
+			return out, err
+		}
+		state, initialized, err = c.generation.prefixSnapshot(ctx)
+		if err != nil || !initialized {
+			return out, fmt.Errorf("ordered state is not initialized: %v", err)
+		}
 	}
-	if state.Height >= 0 {
+	if state.Commitment != "" {
 		err = c.generation.reconcile(ctx, tip, func(work context.Context, height int64) (string, error) {
 			return c.selectedAt(work, height, tip, tipHash)
 		}, c.recoveryGuard(ctx, tip, tipHash))
@@ -255,9 +293,9 @@ func (c *recipeOrderedRunConsumer) Next(ctx context.Context) (recipeConsumerProg
 			return out, err
 		}
 	}
-	height := int64(-1)
+	height := state.Height
 	token := state.Token
-	if state.Height >= 0 {
+	if state.Commitment != "" {
 		height = state.Height
 		token = state.Token
 		hash, err := c.selectedAt(ctx, height, tip, tipHash)

@@ -201,6 +201,7 @@
     raw.addEventListener('input',()=>{ cancelImport(); revision++; pendingGuided=false; try { const d=JSON.parse(raw.value); if (!d || typeof d!=='object' || Array.isArray(d)) throw new Error('A recipe must be an object.'); model=d; showGuided(); } catch(e) { guided.disabled=true;orderedEditor?.load(null);status.textContent='JSON: '+e.message; } });
     q('apply').addEventListener('click',()=>{ cancelImport(); revision++; try { const g={}; for (const name of names) g[name]=q(name).value;g.extraFilters=extraFilters.map(f=>({...f}));g.extraColumns=extraColumns.map(c=>({...c}));model=fromGuided(g); showModel(); status.textContent='Guided changes applied to the JSON draft.'; } catch(e) { status.textContent=e.message; } });
     q('reset').addEventListener('click',()=>{ cancelImport(); revision++; base=null; model=initial(); showModel(); });
+    q('newTables')?.addEventListener('click',()=>{cancelImport();revision++;base=null;model=global.GatewayOrderedRecipeEditor.initialTables();showModel();});
     q('import').addEventListener('change',async event=>{
       const file=event.target.files?.[0]; if (!file) return; const started=++revision, epoch=++importEpoch;
       if (file.size>1024*1024) { importing=false; paintBusy(); status.textContent='Import is limited to 1 MiB.'; event.target.value=''; return; }

@@ -50,6 +50,18 @@ button('Add output table').events.click();assert.equal(mounted.definition().tabl
 const sparseAdd=control('Add instruction type');assert(!sparseAdd.children.some(option=>['read','put','delete'].includes(option.value)),'stateless controls offer output instructions only');
 sparseAdd.value='emit';sparseAdd.events.change();button('Add instruction').events.click();let added=expand('2. emit');assert.equal(control('Table',added).value,'outputs');
 mounted.load({...original,storage:'unsupported'});assert.equal(root.hidden,true);assert.throws(()=>mounted.definition(),/unsupported shape/);
+const stateful=JSON.parse(fs.readFileSync('recipes/output-count-state.json','utf8'));
+assert.deepEqual(editor.initialTables(),stateful,'the guided starter is the actual executable example');
+assert.deepEqual(editor.fromGuided(editor.toGuided(stateful)),stateful);assert(mounted.load(stateful));
+origin=control('Origin height');origin.value='10';origin.events.input();assert.equal(mounted.definition().origin,10);
+let tableName=control('State table name');tableName.value='totals';tableName.events.change();
+assert.equal(mounted.definition().tables[0].name,'totals');assert.equal(mounted.definition().ordered.steps[0].body[0].body[0].table,'totals','renaming preserves instruction references');
+assert.equal(button('Remove state table').disabled,true,'a referenced state table cannot disappear');
+button('Add state table').events.click();assert.equal(mounted.definition().tables.length,2);
+const genericAdd=control('Add instruction type');assert(genericAdd.children.some(option=>option.value==='read'));assert(!genericAdd.children.some(option=>option.value==='emit'));
+genericAdd.value='put';genericAdd.events.change();button('Add instruction').events.click();let statePut=expand('2. put');assert.deepEqual(control('Table',statePut).children.map(option=>option.value),['totals','state']);
+const genericKey=expand('State or emitted key',statePut);assert(!control('Source field',genericKey).children.some(option=>['fact_page','fact_row'].includes(option.value)));
+for(const mutate of [d=>d.tables[0].name='__gateway_reserved',d=>d.tables.push({name:'counts',key:'id'}),d=>d.tables[0].on_conflict='identical',d=>d.ordered.steps[0].body.push({op:'emit',table:'counts',key:{field:'txid'},expr:{field:'value'}}),d=>d.ordered.steps[0].body.push({op:'let',name:'physical',expr:{field:'fact_page'}})]){const d=structuredClone(stateful);mutate(d);assert.equal(editor.toGuided(d),null);}
 for(const file of ['sat-state.json','sat-ranges.json']){const actual=JSON.parse(fs.readFileSync('recipes/builtins/'+file,'utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(actual)),actual,'actual FIFO current/history programs round-trip');assert(mounted.load(actual));const eventLoop=actual.ordered.steps[0].body;assert(eventLoop.some(step=>step.expr?.args?.[1]?.literal?.text==='inscription'));}
 mounted.load(JSON.parse(fs.readFileSync('recipes/builtins/sat-state.json','utf8')));button('Add retained-history table').events.click();assert(mounted.definition().tables.some(table=>table.name==='history'));button('Remove retained-history table').events.click();assert.equal(mounted.definition().tables.length,1);
 assert(editor.valueSupported({kind:'ranges',ranges:[{start:'900719925474099',end:'900719925474100'}]}));

@@ -16,7 +16,7 @@ func TestRecipeBitcoinRetentionAgainstLegacyUTXO(t *testing.T) {
 	}
 	genesisTx := utxoFixtureCoinbase(51001, 7)
 	genesis := utxoFixtureBlock(0, "", genesisTx)
-	utxoApply(t, s, genesis)
+	recipeLegacyUTXOApply(t, s, genesis)
 	expected, err := recipeBitcoinRetainsOutput(0, []byte{0x51})
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +31,7 @@ func TestRecipeBitcoinRetentionAgainstLegacyUTXO(t *testing.T) {
 		cb.Outputs[i].ScriptPubKey = hex.EncodeToString(script)
 	}
 	block := utxoFixtureBlock(1, genesis.Hash, cb)
-	utxoApply(t, s, block)
+	recipeLegacyUTXOApply(t, s, block)
 	for i, script := range scripts {
 		want, e := recipeBitcoinRetainsOutput(1, script)
 		if e != nil {
@@ -98,7 +98,7 @@ func TestRecipeBitcoinMoneyAgainstLegacyUTXO(t *testing.T) {
 				t.Fatal(err)
 			}
 			genesis := utxoFixtureBlock(0, "", utxoFixtureCoinbase(uint64(52000+n*2), 1))
-			utxoApply(t, s, genesis)
+			recipeLegacyUTXOApply(t, s, genesis)
 			var total uint64
 			valid := true
 			for _, v := range values {
@@ -110,7 +110,7 @@ func TestRecipeBitcoinMoneyAgainstLegacyUTXO(t *testing.T) {
 			}
 			cb := utxoFixtureCoinbase(uint64(52001+n*2), values...)
 			block := utxoFixtureBlock(1, genesis.Hash, cb)
-			err = s.ApplyBlock(ctx, block)
+			err = s.applyBlockLegacyOracle(ctx, block)
 			if (err == nil) != valid {
 				t.Fatalf("legacy accepted=%v helper accepted=%v error=%v", err == nil, valid, err)
 			}
@@ -138,15 +138,15 @@ func TestRecipeBitcoinMoneySpendAgainstLegacyUTXO(t *testing.T) {
 		t.Fatal(err)
 	}
 	genesis := utxoFixtureBlock(0, "", utxoFixtureCoinbase(53001, 1))
-	utxoApply(t, s, genesis)
+	recipeLegacyUTXOApply(t, s, genesis)
 	coinbase := utxoFixtureCoinbase(53002, 10, 20)
 	b1 := utxoFixtureBlock(1, genesis.Hash, coinbase)
-	utxoApply(t, s, b1)
+	recipeLegacyUTXOApply(t, s, b1)
 	base := s.Head().TotalValueSats
 	spend := utxoFixtureSpend(53003, []inputView{{PrevTxID: coinbase.TxID}}, 6)
 	cb := utxoFixtureCoinbase(53004, 8)
 	b2 := utxoFixtureBlock(2, b1.Hash, cb, spend)
-	utxoApply(t, s, b2)
+	recipeLegacyUTXOApply(t, s, b2)
 	want, err := recipeBitcoinMoneySubtract(base, 10)
 	if err != nil {
 		t.Fatal(err)

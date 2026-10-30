@@ -85,8 +85,9 @@ func recipeVerifiedParse(ctx context.Context, height int64, hash string, raw []b
 }
 
 // Stream events in the exact order expected by the experimental UTXO program.
-// The input is the private result of recipeVerifiedParse, not a caller-mutated
-// decoded view. A sink observes one event at a time.
+// The host owns and validates the decoded inventory. The verified-source
+// builder supplies its private parser result; native ingestion retains its
+// existing source-admission contract. A sink observes one event at a time.
 func recipeVerifiedWalk(ctx context.Context, b blockView, sink func(map[string]recipeOrderedValue) error) error {
 	if ctx == nil || sink == nil || b.Height < 0 || len(b.Transactions) == 0 || b.TransactionCount != uint64(len(b.Transactions)) || !b.Transactions[0].Coinbase {
 		return fmt.Errorf("invalid verified event input")

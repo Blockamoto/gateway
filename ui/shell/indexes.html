@@ -263,6 +263,7 @@ function showRules() {
   $('rule-json').textContent = pretty(d);
   $('executable-recipe').hidden=!d.executable_recipe;
   $('executable-recipe-json').textContent=d.executable_recipe?pretty(d.executable_recipe):'';
+  $('executable-recipe-copy').hidden=d.executable_recipe?.format!=='gateway-recipe';
   $('executable-recipe-copy').onclick=()=>{try{recipeEditor?.useDefinition(d.executable_recipe);selectView('recipe');}catch(e){message(e.message,true);}};
   const rangePolicy=window.GatewayIndexTransport.rangePolicy(d,(status?.run?.run?.consumers||[]).find(c=>c.index===d.id));$('from').disabled=['complete_prefix','snapshot_projection'].includes(rangePolicy?.mode);$('from').title=$('from').disabled?rangePolicy.text:'Global In/Out in the timeline own the shared scope.';
   $('from').placeholder = String(d.start_height);

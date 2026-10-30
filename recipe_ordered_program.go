@@ -13,6 +13,7 @@ import (
 )
 
 const recipeOrderedProfile = "gateway-ordered-experimental-v2"
+const recipeOrderedStreamProfile = "gateway-ordered-typed-stream-v1"
 const recipeOrderedMaxEvents = 50000
 const recipeOrderedMaxWork = 1000000
 const recipeOrderedMaxDepth = 32
@@ -92,12 +93,16 @@ type recipeOrderedInstruction struct {
 }
 type recipeOrderedProgram struct{ Steps []recipeOrderedInstruction }
 type recipeOrderedMachine struct {
-	ctx    context.Context
-	state  *recipeStateTxn
-	events []map[string]recipeOrderedValue
-	event  map[string]recipeOrderedValue
-	vars   map[string]recipeOrderedValue
-	work   int
+	ctx          context.Context
+	state        *recipeStateTxn
+	orderedState recipeOrderedState
+	events       []map[string]recipeOrderedValue
+	event        map[string]recipeOrderedValue
+	vars         map[string]recipeOrderedValue
+	work         int
+	source       func(func(map[string]recipeOrderedValue) error) error
+	emit         func(string, string, recipeOrderedValue) error
+	streaming    bool
 }
 
 func rovText(v string) recipeOrderedValue { return recipeOrderedValue{Kind: "text", Text: v} }
@@ -212,7 +217,14 @@ func (m *recipeOrderedMachine) eval(e recipeOrderedExpr, depth int) (recipeOrder
 		}
 		return recipeOrderedValue{Kind: "object", Object: obj}, nil
 	}
-	args := make([]recipeOrderedValue, 0, len(e.Args))
+	// Current narrow operators take at most three arguments. Keep their
+	// temporary values on this evaluation frame rather than allocating for
+	// every arithmetic or field-access expression in a large block.
+	var localArgs [3]recipeOrderedValue
+	args := localArgs[:0]
+	if len(e.Args) > len(localArgs) {
+		args = make([]recipeOrderedValue, 0, len(e.Args))
+	}
 	for _, x := range e.Args {
 		v, err := m.eval(x, depth+1)
 		if err != nil {
@@ -314,6 +326,28 @@ func (m *recipeOrderedMachine) exec(steps []recipeOrderedInstruction, depth int)
 		switch s.Op {
 		case "for_events":
 			prior := m.event
+			if m.source != nil {
+				if m.streaming {
+					return fmt.Errorf("nested iteration over a streaming source is not supported")
+				}
+				m.streaming = true
+				err := m.source(func(event map[string]recipeOrderedValue) error {
+					// A complete block is not limited to a fixed event count. Each
+					// event retains bounded expression work and cancellation checks.
+					m.work = 0
+					m.event = event
+					if err := m.tick(depth + 1); err != nil {
+						return err
+					}
+					return m.exec(s.Body, depth+1)
+				})
+				m.streaming = false
+				m.event = prior
+				if err != nil {
+					return err
+				}
+				continue
+			}
 			for _, event := range m.events {
 				if err := m.tick(depth + 1); err != nil {
 					return err
@@ -381,6 +415,34 @@ func (m *recipeOrderedMachine) exec(steps []recipeOrderedInstruction, depth int)
 			} else if err = m.exec(s.Else, depth+1); err != nil {
 				return err
 			}
+		case "emit":
+			if m.emit == nil || s.Table == "" || strings.HasPrefix(s.Table, "__gateway_") {
+				return fmt.Errorf("ordered output sink is unavailable")
+			}
+			key, err := m.eval(s.Key, depth+1)
+			if err != nil {
+				return err
+			}
+			value, err := m.eval(s.Expr, depth+1)
+			if err != nil {
+				return err
+			}
+			if key.Kind != "text" || key.Text == "" || value.Kind == "missing" {
+				return fmt.Errorf("invalid ordered output row")
+			}
+			if err = recipeStateCheckKey(recipeStateKey{Table: s.Table, Key: key.Text}); err != nil {
+				return err
+			}
+			if err = recipeOrderedCheck(value, 0); err != nil {
+				return err
+			}
+			remaining := recipeStateHardValueBytes
+			if err = recipeResumeValueBudget(value, 0, &remaining); err != nil {
+				return err
+			}
+			if err = m.emit(s.Table, key.Text, value); err != nil {
+				return err
+			}
 		case "read", "put", "delete":
 			key, err := m.eval(s.Key, depth+1)
 			if err != nil {
@@ -390,30 +452,26 @@ func (m *recipeOrderedMachine) exec(steps []recipeOrderedInstruction, depth int)
 				return fmt.Errorf("invalid ordered state key")
 			}
 			k := recipeStateKey{Table: s.Table, Key: key.Text}
+			if err := recipeStateCheckKey(k); err != nil {
+				return err
+			}
+			state := m.orderedState
+			if state == nil {
+				state = recipeOrderedJSONState{m.state}
+			}
 			switch s.Op {
 			case "read":
 				if s.Name == "" {
 					return fmt.Errorf("missing read variable")
 				}
-				v, e := m.state.Get(m.ctx, k)
+				v, e := state.ReadOrdered(m.ctx, k)
 				if e != nil {
 					return e
 				}
-				if !v.Present {
-					m.vars[s.Name] = recipeOrderedValue{Kind: "missing"}
-				} else {
-					var x recipeOrderedValue
-					if e = recipeValidateJSON(v.Bytes); e != nil {
-						return e
-					}
-					if e = json.Unmarshal(v.Bytes, &x); e != nil {
-						return e
-					}
-					if e = recipeOrderedCheck(x, 0); e != nil || x.Kind == "missing" {
-						return fmt.Errorf("invalid stored ordered value")
-					}
-					m.vars[s.Name] = x
+				if e = recipeOrderedCheck(v, 0); e != nil {
+					return e
 				}
+				m.vars[s.Name] = v
 			case "put":
 				v, e := m.eval(s.Expr, depth+1)
 				if e != nil {
@@ -422,15 +480,14 @@ func (m *recipeOrderedMachine) exec(steps []recipeOrderedInstruction, depth int)
 				if v.Kind == "missing" {
 					return fmt.Errorf("cannot store missing ordered value")
 				}
-				data, e := json.Marshal(v)
-				if e != nil {
+				if e = recipeOrderedCheck(v, 0); e != nil {
 					return e
 				}
-				if e = m.state.Put(m.ctx, k, data); e != nil {
+				if e = state.PutOrdered(m.ctx, k, v); e != nil {
 					return e
 				}
 			case "delete":
-				if e := m.state.Delete(m.ctx, k); e != nil {
+				if e := state.DeleteOrdered(m.ctx, k); e != nil {
 					return e
 				}
 			}
@@ -452,6 +509,34 @@ func recipeOrderedExecute(ctx context.Context, p recipeOrderedProgram, tx *recip
 		return errRecipeStateBudget
 	}
 	m := recipeOrderedMachine{ctx: ctx, state: tx, events: events, vars: map[string]recipeOrderedValue{}}
+	return m.exec(p.Steps, 0)
+}
+
+// A streaming host authenticates and bounds its complete source before any
+// publication. Outputs are private proposals; an error aborts the state stage.
+// The sink borrows immutable values and must copy anything it retains.
+func recipeOrderedExecuteStream(ctx context.Context, p recipeOrderedProgram, tx *recipeStateTxn, source func(func(map[string]recipeOrderedValue) error) error, emit func(string, string, recipeOrderedValue) error) (err error) {
+	if tx == nil {
+		return fmt.Errorf("ordered state transaction required")
+	}
+	return recipeOrderedExecuteStateStream(ctx, p, recipeOrderedJSONState{tx}, source, emit)
+}
+
+func recipeOrderedExecuteStateStream(ctx context.Context, p recipeOrderedProgram, state recipeOrderedState, source func(func(map[string]recipeOrderedValue) error) error, emit func(string, string, recipeOrderedValue) error) (err error) {
+	if state != nil {
+		defer func() {
+			if err != nil {
+				state.AbortOrdered()
+			}
+		}()
+	}
+	if ctx == nil || state == nil || source == nil {
+		return fmt.Errorf("ordered stream context, transaction and source required")
+	}
+	if err := recipeOrderedProgramValidate(p, true); err != nil {
+		return err
+	}
+	m := recipeOrderedMachine{ctx: ctx, orderedState: state, vars: map[string]recipeOrderedValue{}, source: source, emit: emit}
 	return m.exec(p.Steps, 0)
 }
 

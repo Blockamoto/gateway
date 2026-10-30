@@ -252,7 +252,7 @@ func TestRecipeResumeComposedUTXOAgainstLegacy(t *testing.T) {
 			}
 		}
 		stageTestComplete(t, staged, stage)
-		utxoApply(t, legacy, block)
+		recipeLegacyUTXOApply(t, legacy, block)
 	}
 	for i := uint32(0); i < 3; i++ {
 		key, e := recipeBitcoinOutpoint(cb.TxID, i)

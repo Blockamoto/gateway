@@ -184,6 +184,12 @@ func indexDefinitions() []indexDefinition {
 				d.ExecutableRecipeHash = builtinTransactionRecipeSemantic
 			}
 		}
+		if d.ID == "utxo-state" {
+			d.ExecutableRecipe = append(json.RawMessage(nil), builtinUTXOProgramJSON...)
+			if _, err := loadBuiltinUTXOProgram(); err == nil {
+				d.ExecutableRecipeHash = builtinUTXOSemantic
+			}
+		}
 		if d.ID == "sat-state" {
 			// The authenticated recipe above is frozen. Display terminology can
 			// change without rewriting existing checkpoints or its profile ID.

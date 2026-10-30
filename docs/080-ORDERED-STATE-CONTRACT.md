@@ -181,3 +181,12 @@ continuation checkpoints at 256 KiB, and staged state writes are chunk bounded.
 Resumable streaming, control-state separation, recovery, and publication under
 the selected-chain fence require further integration before full-block support
 or public execution can be claimed.
+
+The native UTXO integration now uses the same AST evaluator over a typed keyed
+state interface, streaming complete admitted events with per-event expression
+bounds. Its adapter reuses native COW roots, fact references and physical undo,
+without the experimental event/global-work quota or a second JSON state batch.
+This path has native atomic publication and recovery; it does not promote the
+experimental staged store, continuation state or private event pages into a
+public ordered execution capability. See `080-UTXO-ADAPTER-DECISIONS.md` for the
+semantic binding, compatibility checks and remaining custom authoring work.

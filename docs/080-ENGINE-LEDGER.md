@@ -86,6 +86,10 @@ Reading an existing schema-1 or schema-2 layout leaves its bytes unchanged. The 
 
 UTXO processing needs ordered keyed state with read-after-write behavior within a block and a first-write before image for every touched key. Its exported input is an authenticated complete UTXO snapshot plus net before/after deltas bound to the exact source commitment; amounts and exact scripts remain mandatory shared facts. Current Addresses projects that snapshot and its deltas without implicitly starting a UTXO build. A missing or stale projection cannot imply a zero balance, and unsupported destination totals must be retained separately. Preserve historical BIP30 destruction handling, the 288-transition recovery window, and an explicit rebuild boundary beyond available undo. These are design requirements, not completed recipe parity.
 
+**Physical adapter decision:** reuse the existing UTXO COW/fact/journal/atomic-head machinery behind generic ordered operations. A new page-pack or staged-store format is not a release requirement. Keep large historical scripts in authenticated mandatory facts and stage model mutations in program order; avoid duplicating the physical undo batch in memory. `080-UTXO-ADAPTER-DECISIONS.md` records the native integration and measured adapter choice. Public custom ordered execution remains in progress.
+
+**Final handoff requirement:** deliver a plain-English debrief with the completed preview, including changes and reasons, decisions/tradeoffs and storage paths actually shipped, recipe/GUI usage, guided recreation, built-in parity and migration status, test/performance evidence and limits, preview/start instructions, defaults and any genuine unanswered questions. Experimental options are implementation decisions; the user need not select them. This document is not that final acceptance handoff.
+
 ### Independent transaction recipe increment
 
 The ordinary coordinator accepts reviewed independent `bitcoin.transaction` recipes for finite and Live runs. A private per-block transaction snapshot copies ordered IDs only after checking the authenticated raw-header Merkle root and parser receipt transaction count; multiple recipe tracks reuse it without another block decode when the private parser receipt is present. Legacy decoded views without that receipt must be reconstructed and verified. Outputs use the generic block-scoped recipe store and selected-header query fence. Filtered blocks produce explicit empty outcomes. This does not migrate compact TX ID Locators, its native reverse lookup, historical stores, or complete native locator migration.
@@ -109,3 +113,32 @@ A reusable row-proposal sink removes the block-wide row map and repeated JSON en
 ### Historical dependency pagination still open
 
 Per-block output tokens bind immutable unit bytes and recheck their complete same-height lineage; unrelated appends do not change that unit identity. Multi-height dependency coverage enumeration currently pins complete ancestor head vectors and conservatively rejects a continuation after any ancestor append. It closes the changed-prior-page race but still needs an immutable historical-range view that survives unrelated Live progress and rejects changed referenced receipts or chain anchors. General custom range export and that snapshot-reuse case remain unfinished acceptance work.
+
+### Native UTXO composition
+
+Ordinary UTXO `ApplyBlock` executes `recipes/builtins/utxo-state.program.json`
+through the common ordered interpreter. Its typed state interface also has a
+JSON adapter for the existing generic state transactions. The native adapter
+performs individual keyed coin mutations and checks logical counters against
+derived physical counters; it does not execute a whole index operation. The
+old loop is test-only. Physical checkpoint, fact, pin, undo and recovery formats
+are preserved, and an explicit semantic-equivalence guard binds the actual
+program and profiles to schema 2 before any native read/write.
+
+The native path streams complete admitted blocks without the experimental
+50,000-event/global-work quota. Scripts remain in authenticated shared facts.
+Failed programs, cancellation and interruptions before the head leave the old
+checkpoint intact. Differential vectors cover exact checkpoints and journals,
+intra-block spends, money rejection, restart/reorg, real genesis/block 1, both
+BIP30 exceptions, partially spent originals, invalid replacements and undo.
+Historical-height substitutions are synthetic state vectors, not chain replay.
+
+The native UTXO, address, coordinator, generic ordered/state/resume suite passed
+in 133.875 seconds after switching `ApplyBlock`. Editor and workspace JavaScript
+checks passed. The actual program appears read-only in Settings; custom ordered
+document/registry/GUI execution and namespaced fact ownership remain open.
+The typed adapter cut a 2,048-output synthetic fixture's allocations from about
+97 MB to 42 MB; measured apply times were approximately 1.065 s and 0.950 s in
+separate noisy paired runs. Native baseline was approximately 0.84–0.88 s and
+11 MB. See the adapter decisions document for commands, exact counts and limits.
+This is one native conversion, not full 0.8.0 acceptance.

@@ -149,20 +149,20 @@ func TestRecipeOrderedUTXOAgainstLegacy(t *testing.T) {
 	}
 	m := &recipeStateMemoryTest{version: recipeStateVersion{Checkpoint: "origin"}, values: map[recipeStateKey]recipeStateValue{}}
 	genesis := utxoFixtureBlock(0, "", utxoFixtureCoinbase(64001, 50))
-	utxoApply(t, legacy, genesis)
+	recipeLegacyUTXOApply(t, legacy, genesis)
 	recipeOrderedTestApply(t, m, genesis)
 	recipeOrderedTestCompare(t, m, legacy, []blockView{genesis})
 	cb := utxoFixtureCoinbase(64002, 10, 20, 3, 4)
 	cb.Outputs[2].ScriptPubKey = "6a"
 	cb.Outputs[3].ScriptPubKey = strings.Repeat("51", 10001)
 	b1 := utxoFixtureBlock(1, genesis.Hash, cb)
-	utxoApply(t, legacy, b1)
+	recipeLegacyUTXOApply(t, legacy, b1)
 	recipeOrderedTestApply(t, m, b1)
 	a := utxoFixtureSpend(64003, []inputView{{PrevTxID: cb.TxID}}, 6)
 	b := utxoFixtureSpend(64004, []inputView{{PrevTxID: a.TxID}}, 5)
 	c := utxoFixtureSpend(64005, []inputView{{PrevTxID: cb.TxID, PrevVout: 1}}, 19)
 	b2 := utxoFixtureBlock(2, b1.Hash, utxoFixtureCoinbase(64006, 10), a, b, c)
-	utxoApply(t, legacy, b2)
+	recipeLegacyUTXOApply(t, legacy, b2)
 	receipt := recipeOrderedTestApply(t, m, b2)
 	recipeOrderedTestCompare(t, m, legacy, []blockView{genesis, b1, b2})
 	if _, err = recipeStateUndo(ctx, m, receipt, m.version, recipeStateTestLimits()); err != nil {
@@ -186,11 +186,11 @@ func TestRecipeOrderedRejectsAndAborts(t *testing.T) {
 	}
 	m := &recipeStateMemoryTest{version: recipeStateVersion{Checkpoint: "origin"}, values: map[recipeStateKey]recipeStateValue{}}
 	g := utxoFixtureBlock(0, "", utxoFixtureCoinbase(64100, 1))
-	utxoApply(t, legacy, g)
+	recipeLegacyUTXOApply(t, legacy, g)
 	recipeOrderedTestApply(t, m, g)
 	cb := utxoFixtureCoinbase(64101, 10)
 	b1 := utxoFixtureBlock(1, g.Hash, cb)
-	utxoApply(t, legacy, b1)
+	recipeLegacyUTXOApply(t, legacy, b1)
 	recipeOrderedTestApply(t, m, b1)
 	cases := []blockView{utxoFixtureBlock(2, b1.Hash, utxoFixtureCoinbase(64102, 1), utxoFixtureSpend(64103, []inputView{{PrevTxID: cb.TxID}}, 11)), utxoFixtureBlock(2, b1.Hash, utxoFixtureCoinbase(64101, 1)), utxoFixtureBlock(2, b1.Hash, utxoFixtureCoinbase(64104, 1), utxoFixtureSpend(64105, []inputView{{PrevTxID: testID(777)}}, 1))}
 	for _, block := range cases {
@@ -212,7 +212,7 @@ func TestRecipeOrderedRejectsAndAborts(t *testing.T) {
 		if m.version != before {
 			t.Fatal("failed transition mutated state")
 		}
-		if err = legacy.ApplyBlock(ctx, block); err == nil {
+		if err = legacy.applyBlockLegacyOracle(ctx, block); err == nil {
 			t.Fatal("legacy accepted invalid block")
 		}
 	}
@@ -242,15 +242,15 @@ func TestRecipeOrderedBIP30AgainstLegacyAndUndo(t *testing.T) {
 				}
 				m := &recipeStateMemoryTest{version: recipeStateVersion{Checkpoint: "origin"}, values: map[recipeStateKey]recipeStateValue{}}
 				genesis := utxoFixtureBlock(0, "", utxoFixtureCoinbase(65000, 50))
-				utxoApply(t, legacy, genesis)
+				recipeLegacyUTXOApply(t, legacy, genesis)
 				recipeOrderedTestApply(t, m, genesis)
 				old := utxoFixtureCoinbase(65001, 7, 9)
 				first := utxoFixtureBlock(1, genesis.Hash, old)
-				utxoApply(t, legacy, first)
+				recipeLegacyUTXOApply(t, legacy, first)
 				recipeOrderedTestApply(t, m, first)
 				fund := utxoFixtureCoinbase(65002, 11)
 				second := utxoFixtureBlock(2, first.Hash, fund)
-				utxoApply(t, legacy, second)
+				recipeLegacyUTXOApply(t, legacy, second)
 				recipeOrderedTestApply(t, m, second)
 				blockHeight := exception.height
 				if scenario == "wrong_height" {
@@ -296,7 +296,7 @@ func TestRecipeOrderedBIP30AgainstLegacyAndUndo(t *testing.T) {
 				}
 				before := m.version
 				runErr := recipeOrderedExecute(ctx, recipeOrderedUTXOExample(), tx, events)
-				legacyErr := legacy.ApplyBlock(ctx, block)
+				legacyErr := legacy.applyBlockLegacyOracle(ctx, block)
 				if scenario != "replacement" {
 					if runErr == nil || legacyErr == nil {
 						t.Fatalf("invalid replacement accepted: ordered=%v legacy=%v", runErr, legacyErr)

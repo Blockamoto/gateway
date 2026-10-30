@@ -150,6 +150,10 @@ func recipeResumeExprEmpty(e recipeOrderedExpr) bool {
 	return e.Literal == nil && e.Var == "" && e.Field == "" && e.Call == "" && len(e.Args) == 0 && e.Object == nil
 }
 func recipeResumeProgramValidate(p recipeOrderedProgram) error {
+	return recipeOrderedProgramValidate(p, false)
+}
+
+func recipeOrderedProgramValidate(p recipeOrderedProgram, allowEmit bool) error {
 	if len(p.Steps) != 1 || p.Steps[0].Op != "for_events" {
 		return fmt.Errorf("resumable program requires one outer event loop")
 	}
@@ -203,7 +207,7 @@ func recipeResumeProgramValidate(p recipeOrderedProgram) error {
 			return fmt.Errorf("invalid resumable expression")
 		}
 		if e.Call != "" {
-			arity := map[string]int{"eq": 2, "not": 1, "present": 1, "add_money": 2, "sub_money": 2, "less_equal": 2, "outpoint": 2, "retains": 2, "bip30_exception": 3, "get": 2}
+			arity := map[string]int{"eq": 2, "not": 1, "present": 1, "add_money": 2, "sub_money": 2, "less_equal": 2, "outpoint": 2, "retains": 2, "bip30_exception": 3, "get": 2, "destination": 1}
 			want, ok := arity[e.Call]
 			if !ok || len(e.Args) != want {
 				return fmt.Errorf("unsupported resumable function: %s", e.Call)
@@ -247,6 +251,10 @@ func recipeResumeProgramValidate(p recipeOrderedProgram) error {
 			}
 			switch s.Op {
 			case "let", "require", "read", "put", "delete", "if", "for_range":
+			case "emit":
+				if !allowEmit {
+					return fmt.Errorf("resumable output sink unavailable")
+				}
 			default:
 				return fmt.Errorf("unsupported resumable instruction: %s", s.Op)
 			}
@@ -258,8 +266,8 @@ func recipeResumeProgramValidate(p recipeOrderedProgram) error {
 			if (s.Op == "let" || s.Op == "read" || s.Op == "for_range") && s.Name == "" {
 				return fmt.Errorf("resumable variable name required")
 			}
-			usesKey := s.Op == "read" || s.Op == "put" || s.Op == "delete"
-			usesExpr := s.Op == "let" || s.Op == "require" || s.Op == "if" || s.Op == "for_range" || s.Op == "put"
+			usesKey := s.Op == "read" || s.Op == "put" || s.Op == "delete" || s.Op == "emit"
+			usesExpr := s.Op == "let" || s.Op == "require" || s.Op == "if" || s.Op == "for_range" || s.Op == "put" || s.Op == "emit"
 			if usesKey {
 				if s.Table == "" {
 					return fmt.Errorf("resumable table required")
@@ -277,7 +285,7 @@ func recipeResumeProgramValidate(p recipeOrderedProgram) error {
 			} else if !recipeResumeExprEmpty(s.Expr) {
 				return fmt.Errorf("unexpected instruction expression")
 			}
-			if (s.Op == "read" || s.Op == "put" || s.Op == "delete") && recipeStageReservedTable(s.Table) {
+			if usesKey && recipeStageReservedTable(s.Table) {
 				return fmt.Errorf("reserved continuation table")
 			}
 			if s.Op == "if" {

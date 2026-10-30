@@ -47,7 +47,7 @@ func TestRecipeOrderedDestinationNetDeltaComposition(t *testing.T) {
 		{"script": rovBytes(script), "amount": rovUint(12), "spend": rovBool(false)},
 		{"script": rovBytes(other), "amount": rovUint(7), "spend": rovBool(false)},
 		{"script": rovBytes(script), "amount": rovUint(5), "spend": rovBool(true)},
-		{"script": rovBytes([]byte{0x6a}), "amount": rovUint(2), "spend": rovBool(false)},
+		{"script": rovBytes([]byte{0x51}), "amount": rovUint(2), "spend": rovBool(false)},
 	}
 	get := func(field string) recipeOrderedExpr { return roCall("get", roVar("dest"), roLit(rovText(field))) }
 	adjust := func(table string, key recipeOrderedExpr) []recipeOrderedInstruction {
@@ -78,5 +78,23 @@ func TestRecipeOrderedDestinationNetDeltaComposition(t *testing.T) {
 		if !ok || json.Unmarshal(v.Bytes, &got) != nil || got.Kind != "uint" || got.Uint != want {
 			t.Fatalf("%+v: %+v", key, v)
 		}
+	}
+
+	// Inconsistent net changes fail the transaction rather than silently
+	// publishing a wrapped balance or a partial projection.
+	bad, err := recipeStateBegin(store, store.version, "bad", recipeStateTestLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = recipeOrderedExecute(ctx, program, bad, []map[string]recipeOrderedValue{{"script": rovBytes(script), "amount": rovUint(8), "spend": rovBool(true)}}); err == nil {
+		t.Fatal("accepted a spend larger than the projected balance")
+	}
+	if _, err = bad.Commit(ctx); err == nil {
+		t.Fatal("failed projection was committed")
+	}
+	key := recipeStateKey{Table: "destinations", Key: "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH"}
+	var got recipeOrderedValue
+	if err = json.Unmarshal(store.values[key].Bytes, &got); err != nil || got.Uint != 7 {
+		t.Fatalf("failed projection changed saved balance: %+v %v", got, err)
 	}
 }

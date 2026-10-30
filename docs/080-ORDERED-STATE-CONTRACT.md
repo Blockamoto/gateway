@@ -94,6 +94,8 @@ source events and allows at most 1,000,000 instruction/expression work units.
 These are safety limits, not consensus limits; valid blocks can exceed either.
 Full-block support requires streaming events and resumable bounded execution
 with backpressure into the staged transaction described above. A budget failure
-must abort the entire staged block. The sample UTXO program deliberately rejects
-live duplicate transaction IDs, including the historical BIP30 exceptions;
-generic displacement and its undo must be implemented before parity is claimed.
+must abort the entire staged block. The sample UTXO program composes a bounded
+range loop and temporary state for the exact two mainnet BIP30 exception
+coinbases; it requires every live displaced output to be replaced and records
+first-touch images for undo. That loop is capped at 4,096 original output slots,
+so it is an experimental slice rather than full-block parity.

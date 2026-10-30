@@ -16,6 +16,7 @@ const recipeOrderedProfile = "gateway-ordered-experimental-v1"
 const recipeOrderedMaxEvents = 50000
 const recipeOrderedMaxWork = 1000000
 const recipeOrderedMaxDepth = 32
+const recipeOrderedMaxRange = 4096
 
 type recipeOrderedValue struct {
 	Kind   string                        `json:"kind"`
@@ -276,6 +277,12 @@ func (m *recipeOrderedMachine) eval(e recipeOrderedExpr, depth int) (recipeOrder
 		}
 		b, err := recipeBitcoinRetainsOutput(int64(args[0].Uint), args[1].Bytes)
 		return rovBool(b), err
+	case "bip30_exception":
+		if len(args) != 3 || args[0].Kind != "uint" || args[0].Uint > uint64(^uint64(0)>>1) || args[1].Kind != "text" || args[2].Kind != "bool" {
+			return fail()
+		}
+		allowed, err := recipeBitcoinBIP30Exception(recipeBitcoinMainnet, int64(args[0].Uint), args[1].Text, args[2].Bool)
+		return rovBool(allowed), err
 	case "get":
 		if len(args) != 2 || args[0].Kind != "object" || args[1].Kind != "text" {
 			return fail()
@@ -306,6 +313,35 @@ func (m *recipeOrderedMachine) exec(steps []recipeOrderedInstruction, depth int)
 				}
 			}
 			m.event = prior
+		case "for_range":
+			if s.Name == "" {
+				return fmt.Errorf("ordered range variable required")
+			}
+			count, err := m.eval(s.Expr, depth+1)
+			if err != nil {
+				return err
+			}
+			if count.Kind != "uint" {
+				return fmt.Errorf("ordered range requires unsigned count")
+			}
+			if count.Uint > recipeOrderedMaxRange {
+				return errRecipeStateBudget
+			}
+			prior, existed := m.vars[s.Name]
+			for i := uint64(0); i < count.Uint; i++ {
+				if err = m.tick(depth + 1); err != nil {
+					return err
+				}
+				m.vars[s.Name] = rovUint(i)
+				if err = m.exec(s.Body, depth+1); err != nil {
+					return err
+				}
+			}
+			if existed {
+				m.vars[s.Name] = prior
+			} else {
+				delete(m.vars, s.Name)
+			}
 		case "let":
 			if s.Name == "" {
 				return fmt.Errorf("missing ordered variable")
@@ -444,7 +480,7 @@ func recipeOrderedBitcoinEvents(ctx context.Context, b blockView) ([]map[string]
 			return nil, fmt.Errorf("invalid ordered coinbase")
 		}
 		common := func(kind string) map[string]recipeOrderedValue {
-			return map[string]recipeOrderedValue{"kind": rovText(kind), "height": rovUint(uint64(b.Height)), "block": rovText(b.Hash), "txid": rovText(tx.TxID), "tx_index": rovUint(uint64(ti)), "coinbase": rovBool(ti == 0)}
+			return map[string]recipeOrderedValue{"kind": rovText(kind), "height": rovUint(uint64(b.Height)), "block": rovText(b.Hash), "txid": rovText(tx.TxID), "tx_index": rovUint(uint64(ti)), "coinbase": rovBool(ti == 0), "output_count": rovUint(uint64(len(tx.Outputs)))}
 		}
 		if err := emit(common("tx_begin")); err != nil {
 			return nil, err
@@ -492,9 +528,9 @@ func recipeOrderedBitcoinEvents(ctx context.Context, b blockView) ([]map[string]
 	return events, nil
 }
 
-// The example is a composition of generic instructions and small domain
-// functions. It deliberately refuses a duplicate live transaction ID, even at
-// the two BIP30 exception blocks; correct displacement is a future capability.
+// This composes generic state and bounded iteration operations. A mainnet
+// BIP30 exception stages old live outputs, consumes only retained replacements
+// at matching vouts, and refuses a block leaving any displaced member unresolved.
 func recipeOrderedUTXOExample() recipeOrderedProgram {
 	event := func(k string) recipeOrderedExpr { return roCall("eq", roField("kind"), roLit(rovText(k))) }
 	let := func(name string, x recipeOrderedExpr) recipeOrderedInstruction {
@@ -515,28 +551,48 @@ func recipeOrderedUTXOExample() recipeOrderedProgram {
 	cond := func(x recipeOrderedExpr, body, otherwise []recipeOrderedInstruction) recipeOrderedInstruction {
 		return recipeOrderedInstruction{Op: "if", Expr: x, Body: body, Else: otherwise}
 	}
-	get := func(name string) recipeOrderedExpr { return roCall("get", roVar("coin"), roLit(rovText(name))) }
+	get := func(variable, name string) recipeOrderedExpr {
+		return roCall("get", roVar(variable), roLit(rovText(name)))
+	}
+	info := func(count, outputs recipeOrderedExpr) recipeOrderedExpr {
+		return recipeOrderedExpr{Object: map[string]recipeOrderedExpr{"live": count, "outputs": outputs}}
+	}
 	zero, one := roLit(rovUint(0)), roLit(rovUint(1))
 	input := []recipeOrderedInstruction{
 		let("key", roCall("outpoint", roField("prev_txid"), roField("prev_vout"))),
 		read("coin", "coins", roVar("key")), require("spend requires an existing coin", roCall("present", roVar("coin"))),
-		require("coin txid matches outpoint", roCall("eq", get("txid"), roField("prev_txid"))), require("coin vout matches outpoint", roCall("eq", get("vout"), roField("prev_vout"))),
-		let("inputs", roCall("add_money", roVar("inputs"), get("value"))), del("coins", roVar("key")),
-		read("count", "counts", roField("prev_txid")), require("transaction count is present", roCall("present", roVar("count"))),
-		let("count", roCall("sub_money", roVar("count"), one)),
-		cond(roCall("eq", roVar("count"), zero), []recipeOrderedInstruction{del("counts", roField("prev_txid"))}, []recipeOrderedInstruction{put("counts", roField("prev_txid"), roVar("count"))}),
+		require("coin txid matches outpoint", roCall("eq", get("coin", "txid"), roField("prev_txid"))), require("coin vout matches outpoint", roCall("eq", get("coin", "vout"), roField("prev_vout"))),
+		let("inputs", roCall("add_money", roVar("inputs"), get("coin", "value"))), del("coins", roVar("key")),
+		read("info", "counts", roField("prev_txid")), require("transaction count is present", roCall("present", roVar("info"))),
+		let("count", roCall("sub_money", get("info", "live"), one)),
+		cond(roCall("eq", roVar("count"), zero), []recipeOrderedInstruction{del("counts", roField("prev_txid"))}, []recipeOrderedInstruction{put("counts", roField("prev_txid"), info(roVar("count"), get("info", "outputs")))}),
+	}
+	displacement := []recipeOrderedInstruction{
+		let("key", roCall("outpoint", roField("txid"), roVar("old_vout"))), read("old_coin", "coins", roVar("key")),
+		cond(roCall("present", roVar("old_coin")), []recipeOrderedInstruction{
+			require("old coin matches transaction", roCall("eq", get("old_coin", "txid"), roField("txid"))), require("old coin matches output index", roCall("eq", get("old_coin", "vout"), roVar("old_vout"))),
+			read("slot", "displaced", roVar("key")), require("displacement slot empty", roCall("not", roCall("present", roVar("slot")))), put("displaced", roVar("key"), roVar("old_coin")), del("coins", roVar("key")),
+		}, nil),
+	}
+	duplicate := []recipeOrderedInstruction{
+		require("duplicate requires exact BIP30 exception coinbase", roCall("bip30_exception", roField("height"), roField("block"), roField("coinbase"))),
+		let("remaining", get("info", "live")),
+		{Op: "for_range", Name: "old_vout", Expr: get("info", "outputs"), Body: displacement},
+		del("counts", roField("txid")),
 	}
 	coin := recipeOrderedExpr{Object: map[string]recipeOrderedExpr{"txid": roField("txid"), "vout": roField("vout"), "height": roField("height"), "block": roField("block"), "tx_index": roField("tx_index"), "coinbase": roField("coinbase"), "value": roField("value"), "script": roField("script")}}
 	retained := []recipeOrderedInstruction{
-		let("key", roCall("outpoint", roField("txid"), roField("vout"))), read("existing", "coins", roVar("key")), require("new outpoint absent", roCall("not", roCall("present", roVar("existing")))), put("coins", roVar("key"), coin),
-		read("count", "counts", roField("txid")), cond(roCall("present", roVar("count")), nil, []recipeOrderedInstruction{let("count", zero)}), let("count", roCall("add_money", roVar("count"), one)), put("counts", roField("txid"), roVar("count")),
+		let("key", roCall("outpoint", roField("txid"), roField("vout"))),
+		read("old_coin", "displaced", roVar("key")), cond(roCall("present", roVar("old_coin")), []recipeOrderedInstruction{del("displaced", roVar("key")), let("remaining", roCall("sub_money", roVar("remaining"), one))}, nil),
+		read("existing", "coins", roVar("key")), require("new outpoint absent", roCall("not", roCall("present", roVar("existing")))), put("coins", roVar("key"), coin),
+		read("info", "counts", roField("txid")), cond(roCall("present", roVar("info")), []recipeOrderedInstruction{let("count", get("info", "live"))}, []recipeOrderedInstruction{let("count", zero)}), let("count", roCall("add_money", roVar("count"), one)), put("counts", roField("txid"), info(roVar("count"), roField("output_count"))),
 	}
 	steps := []recipeOrderedInstruction{
-		cond(event("tx_begin"), []recipeOrderedInstruction{let("inputs", zero), let("outputs", zero)}, nil),
+		cond(event("tx_begin"), []recipeOrderedInstruction{let("inputs", zero), let("outputs", zero), let("remaining", zero)}, nil),
 		cond(event("input"), input, nil),
-		cond(event("outputs_begin"), []recipeOrderedInstruction{read("count", "counts", roField("txid")), require("duplicate live txid requires unsupported displacement", roCall("not", roCall("present", roVar("count"))))}, nil),
+		cond(event("outputs_begin"), []recipeOrderedInstruction{read("info", "counts", roField("txid")), cond(roCall("present", roVar("info")), duplicate, nil)}, nil),
 		cond(event("output"), []recipeOrderedInstruction{let("outputs", roCall("add_money", roVar("outputs"), roField("value"))), cond(roCall("retains", roField("height"), roField("script")), retained, nil)}, nil),
-		cond(event("tx_end"), []recipeOrderedInstruction{cond(roField("coinbase"), nil, []recipeOrderedInstruction{require("outputs cannot exceed inputs", roCall("less_equal", roVar("outputs"), roVar("inputs")))})}, nil),
+		cond(event("tx_end"), []recipeOrderedInstruction{require("all displaced outputs must be replaced", roCall("eq", roVar("remaining"), zero)), cond(roField("coinbase"), nil, []recipeOrderedInstruction{require("outputs cannot exceed inputs", roCall("less_equal", roVar("outputs"), roVar("inputs")))})}, nil),
 	}
 	return recipeOrderedProgram{Steps: []recipeOrderedInstruction{{Op: "for_events", Body: steps}}}
 }

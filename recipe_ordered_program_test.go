@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -223,5 +224,167 @@ func TestRecipeOrderedRejectsAndAborts(t *testing.T) {
 	}
 	if _, err = tx.Commit(ctx); err == nil {
 		t.Fatal("cancelled program could commit")
+	}
+}
+
+func TestRecipeOrderedBIP30AgainstLegacyAndUndo(t *testing.T) {
+	exceptions := []struct {
+		height int64
+		hash   string
+	}{{91842, "00000000000a4d0a398161ffc163c503763b1f4360639393e0e4c8e300e0caec"}, {91880, "00000000000743f190a18c5577a3c2d2a1f610ae9601ac046a38084ccb7cd721"}}
+	for _, exception := range exceptions {
+		for _, scenario := range []string{"replacement", "unspendable", "absent", "wrong_hash", "wrong_height", "non_coinbase"} {
+			t.Run(fmt.Sprintf("%d_%s", exception.height, scenario), func(t *testing.T) {
+				ctx := context.Background()
+				legacy, err := openUTXOStoreContext(ctx, t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				m := &recipeStateMemoryTest{version: recipeStateVersion{Checkpoint: "origin"}, values: map[recipeStateKey]recipeStateValue{}}
+				genesis := utxoFixtureBlock(0, "", utxoFixtureCoinbase(65000, 50))
+				utxoApply(t, legacy, genesis)
+				recipeOrderedTestApply(t, m, genesis)
+				old := utxoFixtureCoinbase(65001, 7, 9)
+				first := utxoFixtureBlock(1, genesis.Hash, old)
+				utxoApply(t, legacy, first)
+				recipeOrderedTestApply(t, m, first)
+				fund := utxoFixtureCoinbase(65002, 11)
+				second := utxoFixtureBlock(2, first.Hash, fund)
+				utxoApply(t, legacy, second)
+				recipeOrderedTestApply(t, m, second)
+				blockHeight := exception.height
+				if scenario == "wrong_height" {
+					blockHeight++
+				}
+				parent := legacy.head.Checkpoint
+				parent.Height = blockHeight - 1
+				parent.BlockHash = testID(uint64(910000 + exception.height))
+				parent.PreviousBlockHash = testID(uint64(900000 + exception.height))
+				parent.RecoveryBoundaryHeight = parent.Height
+				parent.RecoveryBoundaryHash = parent.BlockHash
+				parent.Commitment = utxoCheckpointDigest(parent)
+				if err = legacy.writeRecord("commits", parent.Commitment, parent); err != nil {
+					t.Fatal(err)
+				}
+				if err = legacy.publish(parent, parent.Height, parent.BlockHash); err != nil {
+					t.Fatal(err)
+				}
+				replacementTx := old
+				switch scenario {
+				case "unspendable":
+					replacementTx.Outputs = append([]outputView(nil), old.Outputs...)
+					replacementTx.Outputs[1].ScriptPubKey = "6a"
+				case "absent":
+					replacementTx.Outputs = append([]outputView(nil), old.Outputs[:1]...)
+				}
+				block := utxoFixtureBlock(blockHeight, parent.BlockHash, replacementTx)
+				if scenario == "non_coinbase" {
+					duplicate := utxoFixtureSpend(65001, []inputView{{PrevTxID: fund.TxID}}, 5)
+					block = utxoFixtureBlock(blockHeight, parent.BlockHash, utxoFixtureCoinbase(65003, 1), duplicate)
+				}
+				block.Hash = exception.hash
+				if scenario == "wrong_hash" {
+					block.Hash = testID(uint64(exception.height))
+				}
+				events, err := recipeOrderedBitcoinEvents(ctx, block)
+				if err != nil {
+					t.Fatal(err)
+				}
+				tx, err := recipeStateBegin(m, m.version, block.Hash, recipeStateLimits{MaxTouched: 1000, MaxOperations: 50000, MaxValueBytes: 20000, MaxBytes: 200000})
+				if err != nil {
+					t.Fatal(err)
+				}
+				before := m.version
+				runErr := recipeOrderedExecute(ctx, recipeOrderedUTXOExample(), tx, events)
+				legacyErr := legacy.ApplyBlock(ctx, block)
+				if scenario != "replacement" {
+					if runErr == nil || legacyErr == nil {
+						t.Fatalf("invalid replacement accepted: ordered=%v legacy=%v", runErr, legacyErr)
+					}
+					if _, err = tx.Commit(ctx); err == nil || m.version != before {
+						t.Fatal("failed replacement published", err)
+					}
+					for i := uint32(0); i < 2; i++ {
+						coin, found, e := legacy.LookupOutpoint(ctx, old.TxID, i)
+						if e != nil || !found || coin.Height != 1 {
+							t.Fatal("legacy damaged old coin", coin, found, e)
+						}
+					}
+					return
+				}
+				if runErr != nil || legacyErr != nil {
+					t.Fatalf("replacement failed: ordered=%v legacy=%v", runErr, legacyErr)
+				}
+				receipt, err := tx.Commit(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, change := range receipt.Changes {
+					if change.Key.Table == "displaced" {
+						t.Fatal("temporary displacement escaped net state")
+					}
+				}
+				for i := uint32(0); i < 2; i++ {
+					key, _ := recipeBitcoinOutpoint(old.TxID, i)
+					var beforeCoin, afterCoin recipeOrderedValue
+					matched := false
+					for _, change := range receipt.Changes {
+						if change.Key == (recipeStateKey{Table: "coins", Key: key}) {
+							matched = true
+							if !change.Before.Present || !change.After.Present {
+								t.Fatal("replacement missing before/after")
+							}
+							if e := json.Unmarshal(change.Before.Bytes, &beforeCoin); e != nil {
+								t.Fatal(e)
+							}
+							if e := json.Unmarshal(change.After.Bytes, &afterCoin); e != nil {
+								t.Fatal(e)
+							}
+						}
+					}
+					legacyCoin, found, e := legacy.LookupOutpoint(ctx, old.TxID, i)
+					if !matched || e != nil || !found || beforeCoin.Object["height"].Uint != 1 || afterCoin.Object["height"].Uint != uint64(exception.height) || legacyCoin.Height != exception.height || afterCoin.Object["value"].Uint != legacyCoin.ValueSats {
+						t.Fatal("replacement mismatch", beforeCoin, afterCoin, legacyCoin, e)
+					}
+				}
+				if _, err = recipeStateUndo(ctx, m, receipt, m.version, recipeStateLimits{MaxTouched: 1000, MaxOperations: 50000, MaxValueBytes: 20000, MaxBytes: 200000}); err != nil {
+					t.Fatal(err)
+				}
+				if err = legacy.Reconcile(ctx, func(_ context.Context, h int64) (string, error) {
+					if h == exception.height {
+						return testID(999999), nil
+					}
+					return parent.BlockHash, nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				for i := uint32(0); i < 2; i++ {
+					key, _ := recipeBitcoinOutpoint(old.TxID, i)
+					raw := m.values[recipeStateKey{Table: "coins", Key: key}]
+					var coin recipeOrderedValue
+					if e := json.Unmarshal(raw.Bytes, &coin); e != nil {
+						t.Fatal(e)
+					}
+					legacyCoin, found, e := legacy.LookupOutpoint(ctx, old.TxID, i)
+					if e != nil || !found || coin.Object["height"].Uint != 1 || legacyCoin.Height != 1 || coin.Object["value"].Uint != legacyCoin.ValueSats {
+						t.Fatal("undo mismatch", coin, legacyCoin, e)
+					}
+				}
+			})
+		}
+	}
+}
+func TestRecipeOrderedRangeBudgetAborts(t *testing.T) {
+	m := &recipeStateMemoryTest{version: recipeStateVersion{Checkpoint: "origin"}, values: map[recipeStateKey]recipeStateValue{}}
+	tx, err := recipeStateBegin(m, m.version, "next", recipeStateTestLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	program := recipeOrderedProgram{Steps: []recipeOrderedInstruction{{Op: "for_range", Name: "i", Expr: roLit(rovUint(recipeOrderedMaxRange + 1))}}}
+	if err = recipeOrderedExecute(context.Background(), program, tx, nil); !errors.Is(err, errRecipeStateBudget) {
+		t.Fatal("range cap failed", err)
+	}
+	if _, err = tx.Commit(context.Background()); err == nil {
+		t.Fatal("budget failure committed")
 	}
 }

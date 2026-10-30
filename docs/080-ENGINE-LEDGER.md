@@ -63,7 +63,7 @@ Validation must include synthetic adversarial cases and bounded authenticated re
 
 ## Decisions, defaults and open questions
 
-- **Usage guard (pending clarification):** the previous 70%-used weekly pause guard remains the working default until the user clarifies whether it applies to this overnight build. The earlier 50%-used one-time pause was lifted and does not apply. Continue normal work below the guard; flag around 65% used and prepare a tested, synced checkpoint if needed. This does not narrow acceptance scope.
+- **Usage guard (lifted):** the human explicitly instructed “Continue until the working preview is ready” on 2026-10-30. This overrides the prior 70%-used weekly pause guard. Continue the complete accepted scope without another go-ahead question; use the remaining account budget efficiently and keep tested progress synced. The earlier 50%-used one-time pause also remains lifted.
 - **Scope (decided):** all enabled 0.7.9 behavior above is required, plus user-authored custom indexes. Built-ins and custom definitions share the actual executor. Maintain existing explorer/timeline UX; avoid broad restyling.
 - **Representation (default):** keep definition, run state and presentation separate. A recipe ID and title identify an instance for users, but do not change execution meaning; predicate or other semantic changes change results and semantic identity. Define canonical encoding and versioned behavior before sharing checkpoints.
 - **Dependencies (decided):** a visual parent/category is only layout. Explicit execution dependencies describe exported inputs, coverage, provenance and lineage. An unavailable dependency cannot be inferred from a display relationship or silently built.

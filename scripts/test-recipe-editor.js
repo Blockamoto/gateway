@@ -3,12 +3,13 @@ const assert=require('node:assert/strict');
 require('../ui/shell/recipe-editor.js');
 const editor=globalThis.GatewayRecipeEditor;
 const initial=editor.initial(), guided=editor.toGuided(initial);
-for(const file of ['inscriptions-lean.json','inscriptions-full.json']){
+for(const file of ['inscriptions-lean.json','inscriptions-full.json','inscriptions-saved-conventional-ids.json']){
  const source=JSON.parse(require('node:fs').readFileSync('recipes/builtins/'+file,'utf8'));
  const draft=editor.toGuided(source);assert(draft,file+' has a guided representation');
  assert.deepEqual(JSON.parse(JSON.stringify(editor.fromGuided(draft))),source,file+' survives guided editing without dropping source content');
 }
 assert.equal(guided.keyPath,'ref');
+const dedupGuided={...guided,conflict:'identical'};assert.deepEqual(editor.toGuided(editor.fromGuided(dedupGuided)),dedupGuided);assert.equal(editor.fromGuided(dedupGuided).tables[0].on_conflict,'identical');assert.throws(()=>editor.fromGuided({...guided,conflict:'overwrite'}),/duplicate-key policy/);
 assert.deepEqual(JSON.parse(JSON.stringify(editor.fromGuided(guided))),initial);
 const transactionGuided={...guided,source:'bitcoin.transaction',id:'txs',name:'Transactions',table:'transactions',key:'txid',keyPath:'txid',valueColumn:'ref',valuePath:'ref'};
 const transactionRecipe=JSON.parse(JSON.stringify(editor.fromGuided(transactionGuided)));
@@ -72,7 +73,7 @@ assert.throws(()=>editor.fromGuided({...g,keyPath:'x..y'}),/field path/);
 const strange=editor.fromGuided({...guided,key:'__proto__'}); assert.equal(Object.hasOwn(strange.steps[0].row,'__proto__'),true);
 (async()=>{
  class FakeNode {constructor(){this.value='';this.textContent='';this.disabled=false;this.events={};this.children=[];}addEventListener(type,fn){this.events[type]=fn;}replaceChildren(...children){this.children=children;}append(...children){this.children.push(...children);}setAttribute() {}}
- const names=['raw','status','guided','source','id','name','origin','table','key','keyPath','filterMode','filterPath','filterKey','filterValue','valueColumn','valuePath','exportName','exportColumn','exportType','dependencyName','dependencyInstance','dependencyRevision','dependencySemanticHash','dependencyExport','dependencyType','lookupColumn','parentChoice','parentExportChoice','parentRefresh','parentUse','parentStatus','extraFilters','extraColumns','addFilter','addColumn','apply','reset','import','export','validate','save','refresh','load','saved','save-note','field-list'];
+ const names=['raw','status','guided','source','id','name','origin','table','key','keyPath','conflict','filterMode','filterPath','filterKey','filterValue','valueColumn','valuePath','exportName','exportColumn','exportType','dependencyName','dependencyInstance','dependencyRevision','dependencySemanticHash','dependencyExport','dependencyType','lookupColumn','parentChoice','parentExportChoice','parentRefresh','parentUse','parentStatus','extraFilters','extraColumns','addFilter','addColumn','apply','reset','import','export','validate','save','refresh','load','saved','save-note','field-list'];
  const nodes=Object.fromEntries(names.map(name=>[name,new FakeNode()]));
  const calls=[];let handler=async()=>({});
  const root={ownerDocument:{createElement(){return new FakeNode();}},querySelector(selector){return nodes[selector.match(/"([^"]+)"/)[1]];}};

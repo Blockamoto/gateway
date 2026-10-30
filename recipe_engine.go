@@ -33,8 +33,9 @@ type recipeDefinition struct {
 }
 
 type recipeTable struct {
-	Name string `json:"name"`
-	Key  string `json:"key"`
+	Name       string `json:"name"`
+	Key        string `json:"key"`
+	OnConflict string `json:"on_conflict,omitempty"`
 }
 
 // An expression has exactly one of literal, field, variable or call. Raw JSON
@@ -181,6 +182,9 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 	}
 	tables := map[string]recipeTable{}
 	for _, t := range d.Tables {
+		if t.OnConflict != "" && t.OnConflict != "identical" {
+			return nil, fmt.Errorf("unsupported table conflict policy %q", t.OnConflict)
+		}
 		if t.Name == "" || t.Key == "" || len(t.Name) > 256 || len(t.Key) > 256 || tables[t.Name].Name != "" {
 			return nil, fmt.Errorf("table names and keys must be non-empty and unique")
 		}
@@ -630,15 +634,16 @@ func (p *recipeProgram) evaluateRowProposals(event map[string]any, lookup func(s
 	rows := []recipeRowProposal{}
 	budget := &recipeEvalBudget{lookup: lookup}
 	outputBytes := 0
+	var duplicateExportError error
 	outputLimit := recipeMaxEventOutputBytes
 	if p.definition.Source == "bitcoin.reveal" && recipeUsesSourceRoot(p.definition, "record") {
 		outputLimit = recipeMaxBlockOutputBytes
 	}
 	tables := map[string]recipeTable{}
-	keys := map[string]map[string]bool{}
+	keys := map[string]map[string][]byte{}
 	for _, t := range p.definition.Tables {
 		tables[t.Name] = t
-		keys[t.Name] = map[string]bool{}
+		keys[t.Name] = map[string][]byte{}
 	}
 	vars := map[string]any{}
 	for _, s := range p.definition.Steps {
@@ -680,20 +685,35 @@ func (p *recipeProgram) evaluateRowProposals(event map[string]any, lookup func(s
 			if !ok || key == "" {
 				return nil, false, fmt.Errorf("table key must be non-empty text")
 			}
-			if keys[s.Table][key] {
-				return nil, false, fmt.Errorf("duplicate key in %q", s.Table)
-			}
 			encoded, err := json.Marshal(row)
 			if err != nil {
 				return nil, false, fmt.Errorf("encode recipe row: %w", err)
+			}
+			if prior, found := keys[s.Table][key]; found {
+				if tables[s.Table].OnConflict == "identical" && bytes.Equal(prior, encoded) {
+					// Equal wire bytes can have different in-memory scalar
+					// representations. Every duplicate still owes export checks,
+					// deferred until late filters have accepted the event.
+					if err := recipeValidateExportRow(p.definition, s.Table, row); err != nil && duplicateExportError == nil {
+						duplicateExportError = err
+					}
+					continue
+				}
+				return nil, false, fmt.Errorf("duplicate or conflicting key in %q", s.Table)
 			}
 			if len(encoded) > outputLimit-outputBytes {
 				return nil, false, fmt.Errorf("recipe event output exceeds limit")
 			}
 			outputBytes += len(encoded)
-			keys[s.Table][key] = true
+			keys[s.Table][key] = nil
+			if tables[s.Table].OnConflict == "identical" {
+				keys[s.Table][key] = encoded
+			}
 			rows = append(rows, recipeRowProposal{Table: s.Table, Key: key, Value: row, Encoded: encoded})
 		}
+	}
+	if duplicateExportError != nil {
+		return nil, false, duplicateExportError
 	}
 	for _, row := range rows {
 		if err := recipeValidateExportRow(p.definition, row.Table, row.Value); err != nil {

@@ -19,7 +19,7 @@
   function toGuided(d) {
     if (!keys(d,['format','version','id','name','source','origin','history','dependencies','exports','tables','steps']) || d.format!=='gateway-recipe' || d.version!==1 || !['bitcoin.reveal','bitcoin.transaction'].includes(d.source) || d.history!=='sparse' || !Array.isArray(d.dependencies) || d.dependencies.length>1 || (Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length!==1)) || (d.dependencies.length&&d.exports?.length) || !Array.isArray(d.tables) || d.tables.length!==1 || !Array.isArray(d.steps)) return null;
     const table=d.tables[0];
-    if (!keys(table,['name','key']) || typeof table.name!=='string' || typeof table.key!=='string' || !table.name || !table.key) return null;
+    if (!keys(table,['name','key','on_conflict']) || typeof table.name!=='string' || typeof table.key!=='string' || !table.name || !table.key || table.on_conflict!==undefined && table.on_conflict!=='identical') return null;
     const dep=d.dependencies[0], exp=d.exports?.[0];
     const supportedType=t=>['text','bool','integer','null'].includes(t);
     if (dep&&(!keys(dep,['name','instance','revision','semantic_hash','export','coverage','type'])||dep.coverage!=='same_block'||![dep.name,dep.instance,dep.revision,dep.semantic_hash,dep.export].every(x=>typeof x==='string'&&x)||!supportedType(dep.type))) return null;
@@ -60,7 +60,7 @@
     if(typeof d.id!=='string'||typeof d.name!=='string'||!Number.isSafeInteger(d.origin)||d.origin<0)return null;
     const first=filters[0]||{mode:'field',path:'',key:'',value:''},column=columns[0]||{name:'',path:''};
     if(d.source==='bitcoin.transaction'&&filters.some(f=>f.mode!=='field'))return null;
-    return {source:d.source,id:d.id,name:d.name,origin:String(d.origin),table:table.name,key:table.key,keyPath,filterMode:first.mode,filterPath:first.path,filterKey:first.key,filterValue:first.value,extraFilters:filters.slice(1),valueColumn:column.name,valuePath:column.path,extraColumns:columns.slice(1),exportName:exp?.name||'',exportColumn:exp?.column||'',exportType:exp?.type||'',dependencyName:dep?.name||'',dependencyInstance:dep?.instance||'',dependencyRevision:dep?.revision||'',dependencySemanticHash:dep?.semantic_hash||'',dependencyExport:dep?.export||'',dependencyType:dep?.type||'',lookupColumn};
+    return {source:d.source,id:d.id,name:d.name,origin:String(d.origin),table:table.name,key:table.key,keyPath,filterMode:first.mode,filterPath:first.path,filterKey:first.key,filterValue:first.value,extraFilters:filters.slice(1),valueColumn:column.name,valuePath:column.path,extraColumns:columns.slice(1),exportName:exp?.name||'',exportColumn:exp?.column||'',exportType:exp?.type||'',dependencyName:dep?.name||'',dependencyInstance:dep?.instance||'',dependencyRevision:dep?.revision||'',dependencySemanticHash:dep?.semantic_hash||'',dependencyExport:dep?.export||'',dependencyType:dep?.type||'',lookupColumn,...(table.on_conflict?{conflict:table.on_conflict}:{})};
   }
   function fromGuided(g) {
     const source=g.source||'bitcoin.reveal';
@@ -69,6 +69,7 @@
     if (!g.id.trim() || !g.name.trim()) throw new Error('ID and name are required.');
     if (!/^\d+$/.test(g.origin) || !Number.isSafeInteger(origin)) throw new Error('Origin must be a non-negative whole block height.');
     if (!g.table.trim() || !g.key.trim()) throw new Error('Table and key column are required.');
+    if(!['','identical'].includes(g.conflict||''))throw new Error('Choose a supported duplicate-key policy.');
     if (!['field','metadata','trait'].includes(mode)) throw new Error('Choose a supported filter type.');
     if (!Array.isArray(extras)||extras.length>31||!Array.isArray(extraColumns)||extraColumns.length>126) throw new Error('Too many filters or output columns.');
     const firstFilter={mode,path:g.filterPath||'',key:g.filterKey||'',value:g.filterValue||''},subject=f=>f.mode==='field'?f.path:f.key;
@@ -110,6 +111,7 @@
     steps.push({op:'write',table:g.table,row});
     const dependencies=hasDep?[{name:g.dependencyName,instance:g.dependencyInstance,revision:g.dependencyRevision,semantic_hash:g.dependencySemanticHash,export:g.dependencyExport,coverage:'same_block',type:g.dependencyType}]:[];
     const result={format:'gateway-recipe',version:1,id:g.id,name:g.name,source,origin,history:'sparse',dependencies,tables:[{name:g.table,key:g.key}],steps};
+    if(g.conflict)result.tables[0].on_conflict=g.conflict;
     if(hasExport)result.exports=[{name:g.exportName,kind:'same_block',table:g.table,column:g.exportColumn,type:g.exportType}];return result;
   }
 
@@ -146,7 +148,7 @@
   }
   function mount(root, {request=defaultRequest}={}) {
     if (!root) return;
-    const q=id=>root.querySelector('[data-recipe="'+id+'"]'), names=['source','id','name','origin','table','key','keyPath','filterMode','filterPath','filterKey','filterValue','valueColumn','valuePath','exportName','exportColumn','exportType','dependencyName','dependencyInstance','dependencyRevision','dependencySemanticHash','dependencyExport','dependencyType','lookupColumn'];
+    const q=id=>root.querySelector('[data-recipe="'+id+'"]'), names=['source','id','name','origin','table','key','keyPath','conflict','filterMode','filterPath','filterKey','filterValue','valueColumn','valuePath','exportName','exportColumn','exportType','dependencyName','dependencyInstance','dependencyRevision','dependencySemanticHash','dependencyExport','dependencyType','lookupColumn'];
     const raw=q('raw'), status=q('status'), guided=q('guided'), saveNote=q('save-note');
     let model=initial(), revision=0, base=null, pendingGuided=false, busy=false, importing=false, importEpoch=0, requestEpoch=0, parentEpoch=0, parentSnapshot=null, extraFilters=[], extraColumns=[], catalogue=null;
     function sourceFields(){const paths=cataloguePaths(catalogue,q('source').value);if(!paths.length)return;const doc=root.ownerDocument;q('field-list').replaceChildren(...paths.map(path=>{const option=doc.createElement('option');option.value=path;return option;}));}

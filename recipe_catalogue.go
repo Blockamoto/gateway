@@ -15,16 +15,17 @@ type recipeSourceCapability struct {
 }
 
 type recipeCapabilityCatalogue struct {
-	Version   int                        `json:"version"`
-	Sources   []recipeSourceCapability   `json:"sources"`
-	Functions []recipeFunctionCapability `json:"functions"`
-	Steps     []string                   `json:"steps"`
+	TableConflicts []string                   `json:"table_conflicts"`
+	Version        int                        `json:"version"`
+	Sources        []recipeSourceCapability   `json:"sources"`
+	Functions      []recipeFunctionCapability `json:"functions"`
+	Steps          []string                   `json:"steps"`
 }
 
 // recipeCatalogue is also the source of truth used by compiler checking. A
 // GUI may expose this value, but cannot infer support for anything absent.
 func recipeCatalogue() recipeCapabilityCatalogue {
-	return recipeCapabilityCatalogue{Version: 1, Sources: []recipeSourceCapability{{ID: "bitcoin.reveal", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.reveal")}, {ID: "bitcoin.transaction", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.transaction")}}, Functions: recipeFunctions(), Steps: []string{"let", "require", "write"}}
+	return recipeCapabilityCatalogue{TableConflicts: []string{"", "identical"}, Version: 1, Sources: []recipeSourceCapability{{ID: "bitcoin.reveal", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.reveal")}, {ID: "bitcoin.transaction", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.transaction")}}, Functions: recipeFunctions(), Steps: []string{"let", "require", "write"}}
 }
 
 type recipeDiagnostic struct {

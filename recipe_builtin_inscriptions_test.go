@@ -95,7 +95,7 @@ func TestRecipeBuiltinInscriptionsIdentityAndCustomRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacy := legacyIndexDefinition(d)
-	if d.RuleHash != builtinInscriptionLegacyV2Rule || legacy.RuleHash != builtinInscriptionLegacyV1Rule || len(d.ExecutableRecipeVariants) != 3 || recipeInscriptionCheckStoreDefinition(d) != nil {
+	if d.RuleHash != builtinInscriptionLegacyV2Rule || legacy.RuleHash != builtinInscriptionLegacyV1Rule || len(d.ExecutableRecipeVariants) != 4 || recipeInscriptionCheckStoreDefinition(d) != nil {
 		t.Fatal("native identity or recipe variants changed")
 	}
 	if recipeInscriptionCheckEquivalence(d.RuleHash, "changed") == nil || recipeInscriptionCheckEquivalence("changed", builtinInscriptionSemantic) == nil {

@@ -5,8 +5,11 @@ row interpreter. `inscriptions-lean.json` writes admitted positional references;
 `inscriptions-full.json` additionally writes each exact source record;
 `inscriptions-conventional-ids.json` selects reveal index zero and projects
 its transaction position/ID. Browse retention may include that optional layer.
-The separate retroactive saved-inscription locator derivation is still pending
-conversion; this increment does not claim every retained layer is complete.
+The retroactive saved-inscription locator derivation also executes its own
+`inscriptions-saved-conventional-ids.json` composition. That table explicitly
+retains identical encoded rows once and rejects conflicting values at the same
+transaction key. This is a generic table operation available in guided controls,
+not hidden deduplication in the physical adapter.
 
 The source adapter admits a complete parser-owned extraction receipt tied to
 the host's verified block. A synchronous host operation may share that admitted
@@ -50,6 +53,26 @@ Settings lists Lean, Full and optional conventional-ID JSON documents. Viewing
 or switching documents performs no write/run and polling preserves the choice.
 Lean and Full copies round-trip through the guided editor. A copied draft has
 its own instance identity and must be validated/saved/selected explicitly.
+
+Settings also lists the saved conventional-ID composition. Its native source
+adapter validates the saved inscription checkpoint and exact record commitment;
+Full supplies saved reveal IDs without fetching, while Lean needs the matching
+verified block when positions are nonempty. Empty evaluated blocks remain
+source-free. Saved coordinates do not become a raw extraction receipt. The
+same row interpreter projects each admitted position; its declared identical-row
+policy performs deduplication. Existing sparse coverage, source commitment and
+native reverse-query layouts are retained. Cancellation propagates from the
+native operation before publication.
+
+The saved projection plus source profile is bound to semantic
+`66d52fd73611644c1decb8df7bf03bfadc83a3f9966190ceee66bb271fae4741`,
+native rule `bb1e9cf30432ef9ec5aa5c7e2e68771bef10a736c604021ade52409a810d5521`
+and legacy rule `db7b4bfc92b82c311dbed0ff322a33c1fa63daf4704771bb05cc43f51ef7ef91`.
+The optional table declaration `"on_conflict":"identical"` binds a separate
+interpreter profile; absent policy keeps strict duplicate rejection and existing
+semantic hashes. Equality is exact deterministic encoded row bytes, without
+numeric normalization or overwrite. Native compact-backend choice and saved
+native-source imports for arbitrary custom tracks remain open release work.
 
 Differential fixtures compare exact payload objects and serialized hashes for
 empty verified genesis, synthetic multi-envelope reveals, real block 792435,

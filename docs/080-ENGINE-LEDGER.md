@@ -159,8 +159,8 @@ three-program bundle. Differential fixtures match exact native payloads for
 empty genesis, synthetic multi-envelope reveals and real blocks 792435/908657.
 The original retained projection is test-only. The internal inscription-locator
 hash now excludes inherited executable display metadata, preserving the
-pre-display definition rule. This does not complete the separate retroactive
-saved-inscription locator or legacy explicit numbering conversions.
+pre-display definition rule. Legacy explicit numbering conversion remains open;
+the subsequent retained-ID increment below covers retroactive sparse locators.
 
 The broad recipe/saved-recipe/sparse/positional/inscription suite, including the
 optional pinned metadata fixture, passed in 188.404 seconds after routing native
@@ -171,3 +171,31 @@ also passed. See `080-NATIVE-INSCRIPTIONS.md` for source
 authority, physical compatibility, authoring and engineering bounds. Large
 generic Full records still face the experimental 16 MiB durable-unit bound;
 that remains open release work, not an accepted scope reduction.
+
+### Saved inscription IDs and explicit table distinctness
+
+The retroactive saved-inscription locator now executes
+`inscriptions-saved-conventional-ids.json`. Its source adapter retains the old
+saved-checkpoint/record-commitment checks, Full-without-fetch behavior, verified
+block requirement for nonempty Lean data and explicit empty outcomes. Every
+saved position becomes an admitted logical event. The interpreter's declared
+`on_conflict: identical` table operation retains a transaction row once and
+rejects different values at the same key. Deduplication is no longer hidden in
+the source/physical derivation loop. The old projection is a test-only oracle.
+
+Identical means exact deterministic encoded row bytes. Default tables continue
+rejecting duplicates, with unchanged hashes. New policy semantics have their
+own profile, participate in immutable recipe identity, validate duplicate export
+types and preserve late-filter event atomicity. A shared row stream applies
+the operation to both reveal and transaction sources with exact unique-byte
+accounting. Comparison buffers are owned independently of the sink. The guided
+editor exposes the policy, and Settings includes the saved projection document.
+Native current/legacy locator generations have an explicit program/source
+equivalence map. Arbitrary custom native-source imports and compact-backend
+selection remain open release work.
+
+Focused parity/identity/sparse/catalogue checks passed in 14.422 seconds; the
+broader recipe/saved/sparse/positional/coordinator-recipe set passed in 163.427
+seconds after the generic table operation. Final duplicate-export, real saved
+source, custom durable row and four-variant presentation checks passed in
+14.957 seconds. Guided-editor/workspace checks and the production build passed.

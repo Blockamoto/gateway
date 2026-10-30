@@ -53,6 +53,9 @@ func recipeNativeCheckStoreDefinition(d indexDefinition) error {
 	if err := recipeLocatorCheckStoreDefinition(d); err != nil {
 		return err
 	}
+	if err := recipeSavedInscriptionIDsCheckStore(d); err != nil {
+		return err
+	}
 	return recipeInscriptionCheckStoreDefinition(d)
 }
 

@@ -103,11 +103,7 @@ func (p *recipeProgram) evaluateTransactionSourceInto(ctx context.Context, block
 	if source == nil || source.height != block.Height || source.hash != block.Hash || len(source.ids) == 0 || uint64(len(source.ids)) != block.TransactionCount {
 		return fmt.Errorf("transaction source differs from block identity")
 	}
-	seen := map[string]map[string]bool{}
-	for _, table := range p.definition.Tables {
-		seen[table.Name] = map[string]bool{}
-	}
-	outputBytes := 0
+	stream := newRecipeRowStream(p.definition, sink)
 	height := json.Number(strconv.FormatInt(source.height, 10))
 	for i, id := range source.ids {
 		if err := ctx.Err(); err != nil {
@@ -119,15 +115,7 @@ func (p *recipeProgram) evaluateTransactionSourceInto(ctx context.Context, block
 			return err
 		}
 		for _, row := range rows {
-			if seen[row.Table][row.Key] {
-				return fmt.Errorf("duplicate key %q in table %q", row.Key, row.Table)
-			}
-			if len(row.Encoded) > recipeMaxBlockOutputBytes-outputBytes {
-				return fmt.Errorf("recipe block output exceeds limit")
-			}
-			outputBytes += len(row.Encoded)
-			seen[row.Table][row.Key] = true
-			if err = sink(row); err != nil {
+			if err = stream.add(row); err != nil {
 				return err
 			}
 		}

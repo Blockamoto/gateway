@@ -1,0 +1,6 @@
+{
+  "format":"gateway-recipe","version":1,"id":"inscriptions-saved-conventional-ids","name":"Retained reveal transaction IDs",
+  "source":"bitcoin.reveal","origin":0,"history":"sparse","dependencies":[],
+  "tables":[{"name":"transactions","key":"ref","on_conflict":"identical"}],
+  "steps":[{"op":"write","table":"transactions","row":{"ref":{"field":["tx_ref"]},"tx_index":{"field":["tx_index"]},"txid":{"field":["txid"]}}}]
+}

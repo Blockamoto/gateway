@@ -191,6 +191,9 @@ func indexDefinitions() []indexDefinition {
 				}{{"Lean positions", builtinInscriptionLeanJSON}, {"Full reveal content", builtinInscriptionFullJSON}, {"Optional conventional IDs", builtinInscriptionIDsJSON}} {
 					d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: variant.name, Definition: append(json.RawMessage(nil), variant.raw...), SemanticHash: programs[i].semanticHash()})
 				}
+				if saved, err := builtinSavedInscriptionIDsRecipe(); err == nil {
+					d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: "Saved conventional IDs", Definition: append(json.RawMessage(nil), builtinSavedInscriptionIDsJSON...), SemanticHash: saved.semanticHash()})
+				}
 			}
 		}
 		if d.ID == "tx-locator" {
@@ -326,6 +329,10 @@ func findIndexDefinition(id string) (indexDefinition, error) {
 		semantic := d
 		semantic.Locked, semantic.LockReason, semantic.RuleHash = false, "", ""
 		d.RuleHash = indexDigest(semantic)
+		d.ExecutableRecipe = append(json.RawMessage(nil), builtinSavedInscriptionIDsJSON...)
+		if program, err := builtinSavedInscriptionIDsRecipe(); err == nil {
+			d.ExecutableRecipeHash = program.semanticHash()
+		}
 		return d, nil
 	}
 	if id == "inscription-numbering" {

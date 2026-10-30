@@ -171,6 +171,12 @@ func (p *recipeProgram) semanticHash() string {
 			recordProfile = recipeRevealRecordProfile
 		}
 	}
+	conflictProfile := ""
+	for _, table := range d.Tables {
+		if table.OnConflict == "identical" {
+			conflictProfile = "gateway-recipe-identical-row-v1"
+		}
+	}
 	return indexDigest(struct {
 		Engine          string           `json:"engine"`
 		Parser          string           `json:"parser"`
@@ -182,7 +188,8 @@ func (p *recipeProgram) semanticHash() string {
 		Definition      recipeDefinition `json:"definition"`
 		Transaction     string           `json:"transaction,omitempty"`
 		RevealRecord    string           `json:"reveal_record,omitempty"`
-	}{recipeInterpreterProfile, inscriptionParserProfile, inscriptionReferenceCommit, ordInterpretationProfile, recipeCBORProfile, propertiesProfile, lookupProfile, d, transactionProfile, recordProfile})
+		Conflict        string           `json:"conflict,omitempty"`
+	}{recipeInterpreterProfile, inscriptionParserProfile, inscriptionReferenceCommit, ordInterpretationProfile, recipeCBORProfile, propertiesProfile, lookupProfile, d, transactionProfile, recordProfile, conflictProfile})
 }
 
 // commitInscriptionBlock links the interpreter to its independent sparse store.
@@ -339,11 +346,7 @@ func (p *recipeProgram) evaluateAdmittedInscriptionSourceInto(ctx context.Contex
 		return fmt.Errorf("admitted inscription source differs from block")
 	}
 	result := source.inventory
-	seen := map[string]map[string]bool{}
-	for _, table := range p.definition.Tables {
-		seen[table.Name] = map[string]bool{}
-	}
-	outputBytes := 0
+	stream := newRecipeRowStream(p.definition, sink)
 	minimal := true
 	var needs func(recipeExpr)
 	needs = func(e recipeExpr) {
@@ -390,15 +393,7 @@ func (p *recipeProgram) evaluateAdmittedInscriptionSourceInto(ctx context.Contex
 			return err
 		}
 		for _, row := range rows {
-			if seen[row.Table][row.Key] {
-				return fmt.Errorf("duplicate key %q in table %q", row.Key, row.Table)
-			}
-			if len(row.Encoded) > recipeMaxBlockOutputBytes-outputBytes {
-				return fmt.Errorf("recipe block output exceeds limit")
-			}
-			outputBytes += len(row.Encoded)
-			seen[row.Table][row.Key] = true
-			if err = sink(row); err != nil {
+			if err = stream.add(row); err != nil {
 				return err
 			}
 		}

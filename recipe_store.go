@@ -37,11 +37,12 @@ type recipeStoreRow struct {
 	Value json.RawMessage `json:"value"`
 }
 type recipeStoreUnit struct {
-	Schema      int              `json:"schema"`
-	Fingerprint string           `json:"fingerprint"`
-	Height      int64            `json:"height"`
-	BlockHash   string           `json:"block_hash"`
-	Rows        []recipeStoreRow `json:"rows"`
+	Schema      int                       `json:"schema"`
+	Fingerprint string                    `json:"fingerprint"`
+	Height      int64                     `json:"height"`
+	BlockHash   string                    `json:"block_hash"`
+	Rows        []recipeStoreRow          `json:"rows"`
+	Lineage     []recipeDependencyReceipt `json:"lineage,omitempty"`
 }
 type recipeStoreRef struct {
 	BlockHash string `json:"block_hash"`
@@ -187,6 +188,13 @@ func recipeStoreValidateUnit(u recipeStoreUnit, fingerprint string) error {
 		}
 		keys[row.Key] = true
 	}
+	lineages := map[string]bool{}
+	for _, lineage := range u.Lineage {
+		if !recipeRegistryID.MatchString(lineage.Name) || lineages[lineage.Name] || !recipeRegistryID.MatchString(lineage.Instance) || !recipeStoreHashValid(lineage.SemanticHash) || lineage.Height != u.Height || lineage.BlockHash != u.BlockHash || !recipeStoreHashValid(lineage.Unit) {
+			return fmt.Errorf("invalid recipe dependency lineage")
+		}
+		lineages[lineage.Name] = true
+	}
 	return nil
 }
 func (s *recipeStore) readUnit(ref recipeStoreRef, height int64) (recipeStoreUnit, error) {
@@ -322,21 +330,24 @@ func (s *recipeStore) publishHead(h recipeStoreHead, root string) error {
 // is idempotent only for byte-identical units. An existing different unit at
 // the same height requires an explicit reconciliation before replacement.
 func (s *recipeStore) Publish(ctx context.Context, u recipeStoreUnit, guard recipeStoreGuard) error {
-	return s.publish(ctx, u, nil, guard)
+	return s.publish(ctx, u, nil, guard, nil)
 }
 
 // PublishAtRevision rejects any coverage change since the caller inspected it.
 // Revision zero is a valid fence for a not-yet-initialized generation.
 func (s *recipeStore) PublishAtRevision(ctx context.Context, u recipeStoreUnit, revision uint64, guard recipeStoreGuard) error {
-	return s.publish(ctx, u, &revision, guard)
+	return s.publish(ctx, u, &revision, guard, nil)
 }
 
-func (s *recipeStore) publish(ctx context.Context, u recipeStoreUnit, expectedRevision *uint64, guard recipeStoreGuard) error {
+func (s *recipeStore) publish(ctx context.Context, u recipeStoreUnit, expectedRevision *uint64, guard recipeStoreGuard, check func() error) error {
 	if ctx == nil {
 		return fmt.Errorf("missing context")
 	}
 	if err := recipeStoreValidateUnit(u, s.fingerprint); err != nil {
 		return err
+	}
+	if len(u.Lineage) > 0 && check == nil {
+		return fmt.Errorf("dependency lineage requires a guarded store transaction")
 	}
 	b, err := json.Marshal(u)
 	if err != nil {
@@ -351,6 +362,11 @@ func (s *recipeStore) publish(ctx context.Context, u recipeStoreUnit, expectedRe
 		defer recipeStoreMutex.Unlock()
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if check != nil {
+			if err := check(); err != nil {
+				return err
+			}
 		}
 		h, err := s.head()
 		if err != nil {
@@ -425,6 +441,9 @@ func (s *recipeStore) Read(ctx context.Context, height int64) (recipeStoreUnit, 
 		return u, false, err
 	}
 	u, err = s.readUnit(ref, height)
+	if err == nil && len(u.Lineage) != 0 {
+		return recipeStoreUnit{}, false, fmt.Errorf("dependency lineage requires a verified read")
+	}
 	return u, err == nil, err
 }
 
@@ -603,8 +622,12 @@ func (s *recipeStore) Coverage(ctx context.Context, from, to int64, after *int64
 			if err = json.Unmarshal(kv.Value, &ref); err != nil {
 				return fmt.Errorf("invalid recipe coverage reference: %w", err)
 			}
-			if _, err = s.readUnit(ref, int64(n)); err != nil {
-				return err
+			unit, readErr := s.readUnit(ref, int64(n))
+			if readErr != nil {
+				return readErr
+			}
+			if len(unit.Lineage) != 0 {
+				return fmt.Errorf("dependency lineage requires verified coverage")
 			}
 			result.Anchors = append(result.Anchors, recipeCoverageAnchor{Height: int64(n), BlockHash: ref.BlockHash})
 			if len(result.Anchors) > limit {

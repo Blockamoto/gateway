@@ -1,0 +1,18 @@
+'use strict';
+const assert=require('node:assert/strict');
+require('../ui/shell/index-recipe-tracks.js');
+class Node {constructor(tag){this.tagName=tag;this.children=[];this.value='';this.disabled=false;this.textContent='';this.style={};this.attributes={};this.events={};}append(...v){this.children.push(...v);}replaceChildren(...v){this.children=v;}setAttribute(k,v){this.attributes[k]=v;}addEventListener(k,v){this.events[k]=v;}}
+const controls=new Node('div'),doc={createElement:t=>new Node(t),defaultView:{fetch(){}}};
+(async()=>{
+ const selection=new Map(),transport={getRecipeSelection:id=>!!selection.get(id),setRecipeSelection:(id,v)=>selection.set(id,v)};
+ const item={recipe:{id:'sample',name:'Sample'},revision:'rev',semantic_hash:'hash',validated:true,runnable:true};let requests=[],wait;
+ const fetcher=async(url)=>{requests.push(url);if(wait)await wait;const p=new URL(url,'http://localhost').searchParams;const result={state:'covered',height:3,revision:p.get('revision'),semantic_hash:p.get('semantic_hash'),unit:'unit1',row_count:2,rows:[{key:'x',value:9007199254740993}]};if(!p.has('offset'))result.next_offset=1;return {ok:true,text:async()=>JSON.stringify(result).replace('9007199254740992','9007199254740993')};};
+ const app=globalThis.GatewayRecipeTracks.mount({document:doc,controls,api:async()=>[item],transport,fetcher});await Promise.resolve();await Promise.resolve();
+ const d=controls.children[0],select=d.children[2],actions=d.children[3],revision=d.children[5],semantic=d.children[6],output=d.children[7],status=d.children[8],result=d.children[9],height=output.children[0];
+ select.value='sample';select.events.change();assert.equal(revision.value,'rev');assert.equal(semantic.value,'hash');actions.children[1].events.click();assert.equal(selection.get('sample'),true);assert.match(status.textContent,/no indexing has started/i);assert.match(d.children[1].textContent,/Live and recipes with dependencies are unavailable/);
+ height.value='3';await output.children[1].events.click();assert.match(result.textContent,/9007199254740993/);assert.equal(output.children[2].disabled,false);assert.match(status.textContent,/Covered block/);
+ await output.children[2].events.click();assert.match(requests.at(-1),/offset=1/);assert.match(requests.at(-1),/unit=unit1/);assert.equal(output.children[2].disabled,true);
+ let finish;wait=new Promise(resolve=>finish=resolve);const pending=output.children[1].events.click();height.value='4';height.events.input();finish();await pending;assert.equal(result.textContent,'','stale response cannot replace newer selection');assert.equal(output.children[1].disabled,false);
+ wait=null;revision.value='historical';semantic.value='oldhash';height.value='3';await output.children[1].events.click();assert.match(requests.at(-1),/revision=historical/);assert.match(requests.at(-1),/semantic_hash=oldhash/);
+ console.log('Recipe tracks PASS: explicit arm, finite scope copy, exact output text, pinned paging, historical identities, stale response fencing.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

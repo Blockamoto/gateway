@@ -38,6 +38,9 @@ type indexRunSelection struct {
 	Index string `json:"index"`
 	Armed bool   `json:"armed"`
 	Live  bool   `json:"live"`
+	// Persisted discriminator allows old run intent to remain inspectable if
+	// its profile-scoped recipe is later unavailable. It never grants execution.
+	Recipe bool `json:"recipe,omitempty"`
 	indexRunOptions
 	Options *indexRunOptions `json:"options,omitempty"`
 }
@@ -48,49 +51,79 @@ type indexRunRequest struct {
 	OutHash   string              `json:"out_hash,omitempty"`
 	Consumers []indexRunSelection `json:"consumers"`
 }
+
+// A compact recipe binding references the single run request rather than
+// duplicating it for every track. PlanID binds the relevant selection and
+// global bounds to these immutable fields under the admission contract.
+type indexRunRecipeBinding struct {
+	Schema        int    `json:"schema"`
+	Index         string `json:"index"`
+	Revision      string `json:"recipe_revision"`
+	SemanticHash  string `json:"semantic_hash"`
+	Source        string `json:"source"`
+	Origin        int64  `json:"origin"`
+	History       string `json:"history"`
+	TargetHeight  int64  `json:"target_height"`
+	TargetHash    string `json:"target_hash"`
+	EffectiveFrom int64  `json:"effective_from"`
+	NoWork        bool   `json:"no_work"`
+	PlanID        string `json:"plan_id"`
+}
+
+func compactIndexRunRecipeBinding(p recipeAdmissionPlan) indexRunRecipeBinding {
+	return indexRunRecipeBinding{Schema: p.Schema, Index: p.Index, Revision: p.Revision, SemanticHash: p.SemanticHash, Source: p.Source, Origin: p.Origin, History: p.History, TargetHeight: p.TargetHeight, TargetHash: p.TargetHash, EffectiveFrom: p.EffectiveFrom, NoWork: p.NoWork, PlanID: p.PlanID}
+}
+
+func (b indexRunRecipeBinding) expand(req indexRunRequest) recipeAdmissionPlan {
+	return recipeAdmissionPlan{Schema: b.Schema, Index: b.Index, Revision: b.Revision, SemanticHash: b.SemanticHash, Source: b.Source, Origin: b.Origin, History: b.History, Request: req, TargetHeight: b.TargetHeight, TargetHash: b.TargetHash, EffectiveFrom: b.EffectiveFrom, NoWork: b.NoWork, PlanID: b.PlanID}
+}
+
 type indexRunProgress struct {
-	RequiresGenesis               bool                 `json:"requires_genesis,omitempty"`
-	ParcelEvidencePending         bool                 `json:"parcel_evidence_pending,omitempty"`
-	ParcelDiscoveryHeight         *int64               `json:"parcel_discovery_height,omitempty"`
-	ParcelDiscoveryHash           string               `json:"parcel_discovery_hash,omitempty"`
-	ParcelDiscoveryBlocks         int64                `json:"parcel_discovery_blocks,omitempty"`
-	ParcelValidatedHeight         *int64               `json:"parcel_validated_height,omitempty"`
-	ParcelValidatedHash           string               `json:"parcel_validated_hash,omitempty"`
-	ParcelValidationState         string               `json:"parcel_validation_state,omitempty"`
-	ParcelValidationReason        string               `json:"parcel_validation_reason,omitempty"`
-	SavedCoverageState            string               `json:"saved_coverage_state,omitempty"`
-	MissingRanges                 []heightInterval     `json:"missing_ranges,omitempty"`
-	AdmissionState                string               `json:"admission_state,omitempty"`
-	EffectiveFrom                 *int64               `json:"effective_from,omitempty"`
-	RangeMode                     string               `json:"range_mode,omitempty"`
-	OriginHeight                  *int64               `json:"origin_height,omitempty"`
-	NextRequiredHeight            *int64               `json:"next_required_height,omitempty"`
-	ProfileHash                   string               `json:"profile_hash,omitempty"`
-	ConfigurationRevision         uint64               `json:"configuration_revision,omitempty"`
-	DistrictInstance              string               `json:"district_instance,omitempty"`
-	DistrictProfileHash           string               `json:"district_profile_hash,omitempty"`
-	DistrictConfigurationRevision uint64               `json:"district_configuration_revision,omitempty"`
-	Source                        *indexRunSnapshot    `json:"source,omitempty"`
-	SourceChainState              string               `json:"source_chain_state,omitempty"`
-	SourceCaughtUp                bool                 `json:"source_caught_up,omitempty"`
-	Dependencies                  []indexRunDependency `json:"dependencies"`
-	Index                         string               `json:"index"`
-	State                         string               `json:"state"`
-	Reason                        string               `json:"reason,omitempty"`
-	From                          int64                `json:"from"`
-	To                            int64                `json:"to"`
-	Height                        int64                `json:"height"`
-	BlockHash                     string               `json:"block_hash,omitempty"`
-	Commitment                    string               `json:"commitment,omitempty"`
-	RequiresLeadIn                bool                 `json:"requires_lead_in,omitempty"`
-	ReusedBlocks                  int64                `json:"reused_blocks"`
-	AddedBlocks                   int64                `json:"added_blocks"`
-	StagedHeight                  *int64               `json:"staged_height,omitempty"`
-	StagedBlocks                  int                  `json:"staged_blocks,omitempty"`
-	StagedBytes                   int64                `json:"staged_bytes,omitempty"`
-	StagedRecords                 int                  `json:"staged_records,omitempty"`
-	LogicalBatchFrom              *int64               `json:"logical_batch_from,omitempty"`
-	LogicalBatchTo                *int64               `json:"logical_batch_to,omitempty"`
+	Recipe                        *indexRunRecipeBinding `json:"recipe_binding,omitempty"`
+	RecipeRevision                string                 `json:"recipe_revision,omitempty"`
+	RecipeSemanticHash            string                 `json:"recipe_semantic_hash,omitempty"`
+	RequiresGenesis               bool                   `json:"requires_genesis,omitempty"`
+	ParcelEvidencePending         bool                   `json:"parcel_evidence_pending,omitempty"`
+	ParcelDiscoveryHeight         *int64                 `json:"parcel_discovery_height,omitempty"`
+	ParcelDiscoveryHash           string                 `json:"parcel_discovery_hash,omitempty"`
+	ParcelDiscoveryBlocks         int64                  `json:"parcel_discovery_blocks,omitempty"`
+	ParcelValidatedHeight         *int64                 `json:"parcel_validated_height,omitempty"`
+	ParcelValidatedHash           string                 `json:"parcel_validated_hash,omitempty"`
+	ParcelValidationState         string                 `json:"parcel_validation_state,omitempty"`
+	ParcelValidationReason        string                 `json:"parcel_validation_reason,omitempty"`
+	SavedCoverageState            string                 `json:"saved_coverage_state,omitempty"`
+	MissingRanges                 []heightInterval       `json:"missing_ranges,omitempty"`
+	AdmissionState                string                 `json:"admission_state,omitempty"`
+	EffectiveFrom                 *int64                 `json:"effective_from,omitempty"`
+	RangeMode                     string                 `json:"range_mode,omitempty"`
+	OriginHeight                  *int64                 `json:"origin_height,omitempty"`
+	NextRequiredHeight            *int64                 `json:"next_required_height,omitempty"`
+	ProfileHash                   string                 `json:"profile_hash,omitempty"`
+	ConfigurationRevision         uint64                 `json:"configuration_revision,omitempty"`
+	DistrictInstance              string                 `json:"district_instance,omitempty"`
+	DistrictProfileHash           string                 `json:"district_profile_hash,omitempty"`
+	DistrictConfigurationRevision uint64                 `json:"district_configuration_revision,omitempty"`
+	Source                        *indexRunSnapshot      `json:"source,omitempty"`
+	SourceChainState              string                 `json:"source_chain_state,omitempty"`
+	SourceCaughtUp                bool                   `json:"source_caught_up,omitempty"`
+	Dependencies                  []indexRunDependency   `json:"dependencies"`
+	Index                         string                 `json:"index"`
+	State                         string                 `json:"state"`
+	Reason                        string                 `json:"reason,omitempty"`
+	From                          int64                  `json:"from"`
+	To                            int64                  `json:"to"`
+	Height                        int64                  `json:"height"`
+	BlockHash                     string                 `json:"block_hash,omitempty"`
+	Commitment                    string                 `json:"commitment,omitempty"`
+	RequiresLeadIn                bool                   `json:"requires_lead_in,omitempty"`
+	ReusedBlocks                  int64                  `json:"reused_blocks"`
+	AddedBlocks                   int64                  `json:"added_blocks"`
+	StagedHeight                  *int64                 `json:"staged_height,omitempty"`
+	StagedBlocks                  int                    `json:"staged_blocks,omitempty"`
+	StagedBytes                   int64                  `json:"staged_bytes,omitempty"`
+	StagedRecords                 int                    `json:"staged_records,omitempty"`
+	LogicalBatchFrom              *int64                 `json:"logical_batch_from,omitempty"`
+	LogicalBatchTo                *int64                 `json:"logical_batch_to,omitempty"`
 }
 type indexRunDependency struct {
 	Index  string `json:"index"`
@@ -203,11 +236,14 @@ func cloneIndexRunDocument(d indexRunDocument) indexRunDocument {
 	_ = json.Unmarshal(b, &c)
 	return c
 }
+
+const indexRunMaxDocumentBytes = 1 << 20
+
 func readIndexRunDocument(root string) (indexRunDocument, error) {
 	indexRunFileMu.RLock()
 	defer indexRunFileMu.RUnlock()
 	d := indexRunDocument{Schema: 1, Prepared: indexRunRequest{Consumers: []indexRunSelection{}}}
-	err := utxoReadJSON(context.Background(), indexRunPath(root), 1<<20, &d)
+	err := utxoReadJSON(context.Background(), indexRunPath(root), indexRunMaxDocumentBytes, &d)
 	if os.IsNotExist(err) {
 		return d, nil
 	}
@@ -227,8 +263,44 @@ func readIndexRunDocument(root string) (indexRunDocument, error) {
 		if _, err = normalizeStoredIndexRunRequest(d.Run.Request); err != nil {
 			return d, err
 		}
+		if err = validateStoredRecipeRunBindings(d.Run); err != nil {
+			return d, err
+		}
 	}
 	return d, nil
+}
+
+// Inspect persisted custom-run identity without consulting the mutable
+// registry. Execution remains gated and must independently resolve and fence
+// the exact immutable revision before it can ever be enabled.
+func validateStoredRecipeRunBindings(run *indexRunRecord) error {
+	for _, selection := range run.Request.Consumers {
+		if !selection.Recipe || !selection.Armed {
+			continue
+		}
+		var progress *indexRunProgress
+		for i := range run.Consumers {
+			if run.Consumers[i].Index == selection.Index {
+				if progress != nil {
+					return fmt.Errorf("duplicate saved recipe progress")
+				}
+				progress = &run.Consumers[i]
+			}
+		}
+		if progress == nil || progress.Recipe == nil {
+			return fmt.Errorf("saved recipe run lacks its immutable binding")
+		}
+		binding := progress.Recipe.expand(run.Request)
+		if binding.Schema != recipeAdmissionSchema || binding.Index != selection.Index || binding.Revision != progress.RecipeRevision || binding.SemanticHash != progress.RecipeSemanticHash || binding.PlanID != recipeAdmissionDigest(binding) || progress.ProfileHash != recipeAdmissionProfile(selection.Index, binding.SemanticHash, binding.Revision) || binding.TargetHeight != run.InitialTargetHeight {
+			return fmt.Errorf("saved recipe run binding is inconsistent")
+		}
+		resolved := resolvedSavedRecipe{ID: binding.Index, Revision: binding.Revision, SemanticHash: binding.SemanticHash, Source: binding.Source, Origin: binding.Origin, History: binding.History}
+		rebuilt, err := recipeAdmissionBuild(resolved, binding.Request, binding.TargetHeight, binding.TargetHash)
+		if err != nil || rebuilt.PlanID != binding.PlanID || progress.From != binding.EffectiveFrom {
+			return fmt.Errorf("saved recipe run binding is invalid")
+		}
+	}
+	return nil
 }
 func (a *app) loadIndexRunLocked() error {
 	if a.indexRunLoaded {
@@ -254,12 +326,24 @@ func (a *app) loadIndexRunLocked() error {
 func (a *app) persistIndexRunLocked() error {
 	indexRunFileMu.Lock()
 	defer indexRunFileMu.Unlock()
-	a.indexRunState.Revision++
-	a.indexRunState.Checksum = indexRunDigest(a.indexRunState)
-	if err := atomicWriteJSON(indexRunPath(a.dataDir), a.indexRunState); err != nil {
+	staged := a.indexRunState
+	staged.Revision++
+	staged.Checksum = indexRunDigest(staged)
+	b, err := json.MarshalIndent(staged, "", "  ")
+	if err != nil {
 		return err
 	}
-	return syncDirectory(filepath.Join(a.dataDir, "indexes"))
+	if len(b) > indexRunMaxDocumentBytes {
+		return fmt.Errorf("coordinated indexing settings exceed the durable document limit")
+	}
+	if err := atomicWriteBytes(indexRunPath(a.dataDir), b); err != nil {
+		return err
+	}
+	if err := syncDirectory(filepath.Join(a.dataDir, "indexes")); err != nil {
+		return err
+	}
+	a.indexRunState.Revision, a.indexRunState.Checksum = staged.Revision, staged.Checksum
+	return nil
 }
 func (a *app) indexRunSnapshot() indexRunDocument {
 	a.indexRunMu.Lock()
@@ -280,6 +364,13 @@ func normalizeStoredIndexRunRequest(req indexRunRequest) (indexRunRequest, error
 }
 
 func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (indexRunRequest, error) {
+	return normalizeIndexRunRequestWithRecipes(req, execution, nil)
+}
+
+// Existing global callers keep their fixed built-in catalogue. App-scoped
+// callers may resolve a saved recipe; only durable documents bearing the
+// explicit discriminator can be read without a live registry.
+func normalizeIndexRunRequestWithRecipes(req indexRunRequest, execution bool, resolve func(string) (resolvedSavedRecipe, error)) (indexRunRequest, error) {
 	req.Consumers = append([]indexRunSelection(nil), req.Consumers...)
 	if len(req.Consumers) > 256 {
 		return req, fmt.Errorf("too many run consumers")
@@ -319,6 +410,26 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 			return req, fmt.Errorf("retention must be full or pruned and belongs to an attached Bitmap Chain")
 		}
 		d, err := findIndexDefinition(c.Index)
+		if err == nil && c.Recipe {
+			return req, fmt.Errorf("built-in consumer cannot be a saved recipe")
+		}
+		if err != nil && resolve != nil {
+			resolved, lookupErr := resolve(c.Index)
+			if lookupErr == nil {
+				c.Recipe = true
+				d = indexDefinition{ID: resolved.ID, Buildable: true, StartHeight: resolved.Origin}
+				err = nil
+			} else if indexRunSelectionEnabled(*c) {
+				return req, fmt.Errorf("saved recipe %q unavailable: %w", c.Index, lookupErr)
+			}
+		}
+		if err != nil && !execution && c.Recipe {
+			if !recipeRegistryID.MatchString(c.Index) {
+				return req, fmt.Errorf("invalid saved recipe identity")
+			}
+			d = indexDefinition{ID: c.Index, Buildable: true}
+			err = nil
+		}
 		if err != nil || execution && (!d.Buildable || d.Locked) {
 			if indexRunSelectionEnabled(*c) {
 				if err == nil && d.LockReason != "" {
@@ -327,6 +438,9 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 				return req, fmt.Errorf("%s is not an available indexing consumer", c.Index)
 			}
 			continue
+		}
+		if c.Recipe && c.Mode != "lean" {
+			return req, fmt.Errorf("saved recipes do not support native index modes")
 		}
 		if c.RetainOutputValues != nil || c.RetainOutputScripts != nil {
 			if c.Index != "txo-spender" {
@@ -374,6 +488,12 @@ func normalizeIndexRunRequestAvailability(req indexRunRequest, execution bool) (
 	}
 	sort.Slice(req.Consumers, func(i, j int) bool { return req.Consumers[i].Index < req.Consumers[j].Index })
 	return req, nil
+}
+
+func (a *app) normalizeIndexRunRequestScoped(ctx context.Context, req indexRunRequest, execution bool) (indexRunRequest, error) {
+	return normalizeIndexRunRequestWithRecipes(req, execution, func(id string) (resolvedSavedRecipe, error) {
+		return a.ResolveSavedRecipe(ctx, id, "", "")
+	})
 }
 
 func validateCurrentSelection079(req indexRunRequest) error {
@@ -482,7 +602,7 @@ func indexRunProjectionAllowed(root string, height int64) bool {
 func (a *app) prepareIndexRun(req indexRunRequest) (indexRunDocument, error) {
 	// A dependency switched Off also switches Parcels Off in the staged intent.
 	// Old saved documents are still readable; no data or active admission changes.
-	req, err := normalizeStoredIndexRunRequest(req)
+	req, err := a.normalizeIndexRunRequestScoped(context.Background(), req, false)
 	if err != nil {
 		return indexRunDocument{}, err
 	}
@@ -494,7 +614,7 @@ func (a *app) prepareIndexRun(req indexRunRequest) (indexRunDocument, error) {
 			req.Consumers[i].Armed, req.Consumers[i].Live = false, false
 		}
 	}
-	req, err = normalizeIndexRunRequest(req)
+	req, err = a.normalizeIndexRunRequestScoped(context.Background(), req, true)
 	if err != nil {
 		return indexRunDocument{}, err
 	}
@@ -514,7 +634,14 @@ func (a *app) prepareIndexRun(req indexRunRequest) (indexRunDocument, error) {
 }
 
 func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPlan, error) {
-	req, err := normalizeIndexRunRequest(req)
+	return a.planIndexRunResolved(ctx, req, func(id string) (resolvedSavedRecipe, error) {
+		return a.ResolveSavedRecipe(ctx, id, "", "")
+	})
+}
+
+// Resume may resolve an admitted historical revision without adopting a new registry head.
+func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, resolve func(string) (resolvedSavedRecipe, error)) (indexRunPlan, error) {
+	req, err := normalizeIndexRunRequestWithRecipes(req, true, resolve)
 	if err != nil {
 		return indexRunPlan{}, err
 	}
@@ -563,6 +690,45 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 		}
 		armed++
 		q := indexRunProgress{Index: c.Index, State: "ready", Height: -1, To: p.TargetHeight}
+		if c.Recipe {
+			resolved, e := resolve(c.Index)
+			if e != nil {
+				return p, fmt.Errorf("saved recipe %q unavailable: %w", c.Index, e)
+			}
+			q.RecipeRevision, q.RecipeSemanticHash = resolved.Revision, resolved.SemanticHash
+			q.ProfileHash = recipeAdmissionProfile(c.Index, resolved.SemanticHash, resolved.Revision)
+			q.ConfigurationRevision = 1
+			q.RangeMode = "sparse"
+			origin := resolved.Origin
+			q.OriginHeight = &origin
+			q.From = origin
+			if req.In != nil && *req.In > q.From {
+				q.From = *req.In
+			}
+			q.State, q.AdmissionState = "ready", "admitted"
+			if req.Out == nil || c.Live {
+				q.State, q.AdmissionState = "blocked", "blocked"
+				q.Reason = "Saved recipes currently require a finite Out with Live Off."
+			} else if len(resolved.Definition.Dependencies) != 0 {
+				q.State, q.AdmissionState = "blocked", "blocked"
+				q.Reason = "Dependency-backed recipe execution is not integrated with the index scheduler."
+			}
+			if p.TargetHeight >= 0 && recipeStoreHashValid(p.TargetHash) {
+				binding, e := recipeAdmissionBuild(resolved, req, p.TargetHeight, p.TargetHash)
+				if e != nil {
+					return p, e
+				}
+				compact := compactIndexRunRecipeBinding(binding)
+				q.Recipe = &compact
+			}
+			if q.AdmissionState == "blocked" || q.Recipe == nil {
+				p.Ready = false
+			} else {
+				runnable++
+			}
+			p.Consumers = append(p.Consumers, q)
+			continue
+		}
 		q.RequiresGenesis = c.Index == "utxo-state" || c.Index == "sat-state" || c.Index == "address-state" || c.Index == bitmapReplayParcelID
 		p.RequiresGenesis = p.RequiresGenesis || q.RequiresGenesis
 		q.RangeMode = "contiguous_append"
@@ -962,7 +1128,7 @@ func (a *app) handleIndexRun(w http.ResponseWriter, r *http.Request) {
 		if !indexRequestBody(w, r, &req) {
 			return
 		}
-		normalized, e := normalizeIndexRunRequest(req)
+		normalized, e := a.normalizeIndexRunRequestScoped(r.Context(), req, true)
 		if e != nil {
 			jsonError(w, http.StatusBadRequest, e)
 			return
@@ -1033,6 +1199,11 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 	if !p.Ready {
 		return indexRunDocument{}, indexRunPlanBlockedError{p}
 	}
+	for _, c := range p.Request.Consumers {
+		if c.Recipe && c.Armed && planID == "" {
+			return indexRunDocument{}, fmt.Errorf("saved recipes require a reviewed plan")
+		}
+	}
 	if planID != "" && planID != p.PlanID {
 		return indexRunDocument{}, fmt.Errorf("the reviewed run changed; review its current plan again")
 	}
@@ -1048,6 +1219,25 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 	}
 	if previous := a.indexRunState.Run; previous != nil && previous.State != "complete" && previous.State != "cancelled" {
 		return cloneIndexRunDocument(a.indexRunState), fmt.Errorf("stop the existing run before starting a different interval; Resume preserves its admitted choices")
+	}
+	// Freeze the reviewed registry heads until the admitted record is durable.
+	// This follows the publication order run -> registry.
+	hasRecipe := false
+	for _, progress := range p.Consumers {
+		hasRecipe = hasRecipe || progress.Recipe != nil
+	}
+	if hasRecipe {
+		recipeRegistryMu.Lock()
+		defer recipeRegistryMu.Unlock()
+		for _, progress := range p.Consumers {
+			if progress.Recipe == nil {
+				continue
+			}
+			view, readErr := recipeRegistryRead(a.dataDir, progress.Index, "")
+			if readErr != nil || !view.Validated || view.Revision != progress.Recipe.Revision || view.SemanticHash != progress.Recipe.SemanticHash {
+				return indexRunDocument{}, fmt.Errorf("saved recipe changed since review; review the plan again")
+			}
+		}
 	}
 	prior := cloneIndexRunDocument(a.indexRunState)
 	record := &indexRunRecord{ID: fmt.Sprintf("run-%d", time.Now().UnixNano()), AdmissionRevision: 1, State: "running", Phase: "boundary", Request: p.Request, TargetHeight: p.TargetHeight, InitialTargetHeight: p.TargetHeight, TargetHash: p.TargetHash, Consumers: p.Consumers, ParcelDistrict: p.ParcelDistrict, Updated: time.Now().UTC().Format(time.RFC3339)}
@@ -1139,9 +1329,19 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 			resumeRequest.Consumers[i].Armed = false
 		}
 	}
-	plan, err := a.planIndexRun(ctx, resumeRequest)
+	plan, err := a.planIndexRunResolved(ctx, resumeRequest, func(id string) (resolvedSavedRecipe, error) {
+		if progress, ok := indexRunProgressFor(r, id); ok && progress.Recipe != nil {
+			return a.ResolveSavedRecipe(ctx, id, progress.Recipe.Revision, progress.Recipe.SemanticHash)
+		}
+		return a.ResolveSavedRecipe(ctx, id, "", "")
+	})
 	if err != nil {
 		return indexRunDocument{}, err
+	}
+	for _, selection := range resumeRequest.Consumers {
+		if selection.Recipe && selection.Armed && r.Request.Out != nil && (plan.TargetHeight != r.InitialTargetHeight || plan.TargetHash != r.TargetHash) {
+			return indexRunDocument{}, fmt.Errorf("the admitted finite target changed; review the selected chain before resuming")
+		}
 	}
 	if !plan.Ready {
 		return indexRunDocument{}, indexRunPlanBlockedError{plan}
@@ -1158,8 +1358,8 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 	if err := a.loadIndexRunLocked(); err != nil {
 		return indexRunDocument{}, err
 	}
-	if a.indexRunState.Run == nil || a.indexRunState.Run.ID != r.ID {
-		return indexRunDocument{}, fmt.Errorf("run changed")
+	if a.indexRunState.Run == nil || a.indexRunState.Run.ID != r.ID || effectiveIndexRunAdmissionRevision(a.indexRunState.Run) != effectiveIndexRunAdmissionRevision(r) || indexDigest(a.indexRunState.Run.Request) != indexDigest(r.Request) {
+		return indexRunDocument{}, fmt.Errorf("run choices changed while preparing Resume")
 	}
 	state := a.indexRunState.Run.State
 	if state != "paused" && state != "failed" && state != "complete_with_errors" {

@@ -132,9 +132,19 @@ func recipeRegistryCompile(raw []byte) (recipeRegistryView, []byte, error) {
 	if len(canonical) > recipeRegistryMaxRequest {
 		return out, nil, fmt.Errorf("recipe exceeds size limit")
 	}
-	out = recipeRegistryView{Recipe: p.definition, RecipeJSON: string(canonical), SemanticHash: p.semanticHash(), Revision: recipeRegistryRevisionHash(p.semanticHash(), canonical), Validated: true, Runnable: false, Note: "Definition validated; recipe execution is not integrated with the index scheduler."}
+	out = recipeRegistryView{Recipe: p.definition, RecipeJSON: string(canonical), SemanticHash: p.semanticHash(), Revision: recipeRegistryRevisionHash(p.semanticHash(), canonical), Validated: true, Runnable: len(p.definition.Dependencies) == 0, Note: recipeRegistryCapabilityNote(p.definition)}
 	return out, canonical, nil
 }
+
+// Runnable indicates the currently supported execution shape, not readiness or coverage.
+// Actual runs always require admission and a reviewed finite plan.
+func recipeRegistryCapabilityNote(d recipeDefinition) string {
+	if len(d.Dependencies) != 0 {
+		return "Definition validated. Recipe dependencies are not available for execution."
+	}
+	return "Definition validated. Finite execution requires a reviewed plan and an explicit Out; Live is unavailable."
+}
+
 func recipeRegistryRead(root, id, revision string) (recipeRegistryView, error) {
 	var out recipeRegistryView
 	dir, err := recipeRegistryDir(root, id)
@@ -252,7 +262,8 @@ func recipeRegistryRead(root, id, revision string) (recipeRegistryView, error) {
 		out.Note = "Saved recipe belongs to a different interpreter profile; compatibility with the current interpreter is not established."
 	default:
 		out.Validated = true
-		out.Note = "Definition validated; recipe execution is not integrated with the index scheduler."
+		out.Runnable = len(d.Dependencies) == 0
+		out.Note = recipeRegistryCapabilityNote(d)
 	}
 	return out, nil
 }

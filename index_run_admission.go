@@ -61,6 +61,11 @@ func (a *app) amendIndexRun(ctx context.Context, change indexRunAmendment) (inde
 	if len(delta.Consumers) == 0 {
 		return indexRunDocument{}, fmt.Errorf("select at least one track to update")
 	}
+	for _, c := range delta.Consumers {
+		if c.Recipe && indexRunSelectionEnabled(c) {
+			return indexRunDocument{}, fmt.Errorf("stop this run and review a new finite run to admit a saved recipe")
+		}
+	}
 	a.indexLiveControlMu.Lock()
 	defer a.indexLiveControlMu.Unlock()
 	a.indexMu.Lock()
@@ -135,7 +140,12 @@ func (a *app) amendIndexRun(ctx context.Context, change indexRunAmendment) (inde
 		// A Live member will wait for future arrivals within the accepted cap.
 		projection.In = &cap
 	}
-	plan, err := a.planIndexRun(ctx, projection)
+	plan, err := a.planIndexRunResolved(ctx, projection, func(id string) (resolvedSavedRecipe, error) {
+		if progress, ok := indexRunProgressFor(r, id); ok && progress.Recipe != nil {
+			return a.ResolveSavedRecipe(ctx, id, progress.Recipe.Revision, progress.Recipe.SemanticHash)
+		}
+		return a.ResolveSavedRecipe(ctx, id, "", "")
+	})
 	if err != nil {
 		return d, err
 	}

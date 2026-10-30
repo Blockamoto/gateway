@@ -26,7 +26,7 @@ func TestSavedRecipeResolutionIsProfileScopedAndReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Revision != saved.Revision || got.SemanticHash != saved.SemanticHash || got.Source != "bitcoin.reveal" || got.Origin != 0 || got.History != "sparse" || got.SourceCapability.ID != got.Source || len(got.SourceCapability.Fields) == 0 || len(got.Functions) == 0 || len(got.Steps) == 0 || got.Execution != "not_integrated" || got.LegacyCompatibility != "unverified" {
+	if got.Revision != saved.Revision || got.SemanticHash != saved.SemanticHash || got.Source != "bitcoin.reveal" || got.Origin != 0 || got.History != "sparse" || got.SourceCapability.ID != got.Source || len(got.SourceCapability.Fields) == 0 || len(got.Functions) == 0 || len(got.Steps) == 0 || got.Execution != "finite_independent" || got.LegacyCompatibility != "unverified" {
 		t.Fatalf("bad resolved definition: %+v", got)
 	}
 	list, err := a.ListSavedRecipes(ctx)

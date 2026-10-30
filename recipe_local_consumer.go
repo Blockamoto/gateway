@@ -148,7 +148,7 @@ func (a *app) recipeLocalNextObserved(ctx context.Context, consumer *recipeSpars
 // header/run/registry fence used for the store's coverage-revision CAS.
 func (a *app) recipeLocalConsumerGuard(ctx context.Context, binding recipeRunBinding) recipeConsumerGuard {
 	return func(plan recipeAdmissionPlan, work recipeConsumerWork, block blockView, publish func() error) error {
-		if plan.Schema != 1 || plan.PlanID != recipeAdmissionDigest(plan) || work.PlanID != plan.PlanID || plan.Index != binding.Index || plan.SemanticHash != binding.Fingerprint || plan.Revision != binding.Revision || work.Height != block.Height || plan.NoWork || block.Height < plan.EffectiveFrom || block.Height > plan.TargetHeight {
+		if plan.Schema != recipeAdmissionSchema || plan.PlanID != recipeAdmissionDigest(plan) || work.PlanID != plan.PlanID || plan.Index != binding.Index || plan.SemanticHash != binding.Fingerprint || plan.Revision != binding.Revision || work.Height != block.Height || plan.NoWork || block.Height < plan.EffectiveFrom || block.Height > plan.TargetHeight {
 			return fmt.Errorf("recipe plan or work differs from its admitted binding")
 		}
 		return a.recipeLocalPublicationGuard(ctx, binding, block.Height, block.Hash)(func() error {
@@ -160,7 +160,12 @@ func (a *app) recipeLocalConsumerGuard(ctx context.Context, binding recipeRunBin
 				return fmt.Errorf("recipe work uses a different local header snapshot")
 			}
 			run := a.indexRunState.Run // held by the publication guard
-			if run == nil || indexDigest(plan.Request) != indexDigest(run.Request) {
+			if run == nil {
+				return fmt.Errorf("recipe run unavailable")
+			}
+			currentPlan := plan
+			currentPlan.Request = run.Request
+			if recipeAdmissionDigest(currentPlan) != plan.PlanID {
 				return fmt.Errorf("recipe plan differs from admitted run request")
 			}
 			selection, progress, err := recipeRunMember(run, binding.Index)

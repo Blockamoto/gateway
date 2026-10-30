@@ -176,7 +176,7 @@ func TestRecipeRejectsUnsupportedAndDoesNotLeakWrites(t *testing.T) {
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("rejected event published rows: %#v %v", rows, err)
 	}
-	d.Dependencies = []string{"parent"}
+	d.Dependencies = []recipeDependency{{Name: "parent"}}
 	if _, err = compileRecipe(d); err == nil || !strings.Contains(err.Error(), "dependency") {
 		t.Fatalf("expected explicit unsupported dependency: %v", err)
 	}

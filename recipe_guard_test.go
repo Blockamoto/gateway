@@ -25,7 +25,7 @@ func recipeGuardFixture(t *testing.T) (*app, *recipeStore, recipeRunBinding, rec
 	}
 	zero, one := int64(0), int64(1)
 	selection := indexRunSelection{Index: view.Recipe.ID, Armed: true}
-	progress := indexRunProgress{Index: view.Recipe.ID, AdmissionState: "admitted", From: 0, ProfileHash: recipeAdmissionProfile(view.Recipe.ID, view.SemanticHash, view.Revision)}
+	progress := indexRunProgress{Index: view.Recipe.ID, AdmissionState: "admitted", From: 0, ConfigurationRevision: 1, ProfileHash: recipeAdmissionProfile(view.Recipe.ID, view.SemanticHash, view.Revision)}
 	run := &indexRunRecord{ID: "recipe-guard-run", State: "running", AdmissionRevision: 1, InitialTargetHeight: 1, TargetHeight: 1, Request: indexRunRequest{In: &zero, Out: &one, Consumers: []indexRunSelection{selection}}, Consumers: []indexRunProgress{progress}}
 	a.indexRunMu.Lock()
 	a.indexRunLoaded = true
@@ -85,8 +85,8 @@ func TestRecipeGuardRejectsStaleAdmissionAndSources(t *testing.T) {
 		{"pending", func(a *app, _ *recipeStore, _ *recipeRunBinding, _ *recipeStoreUnit) {
 			a.indexRunState.Run.Consumers[0].AdmissionState = "pending"
 		}},
-		{"changed admission revision", func(a *app, _ *recipeStore, _ *recipeRunBinding, _ *recipeStoreUnit) {
-			a.indexRunState.Run.AdmissionRevision++
+		{"changed track generation", func(a *app, _ *recipeStore, _ *recipeRunBinding, _ *recipeStoreUnit) {
+			a.indexRunState.Run.Consumers[0].ConfigurationRevision++
 		}},
 		{"changed binding", func(a *app, _ *recipeStore, _ *recipeRunBinding, _ *recipeStoreUnit) {
 			a.indexRunState.Run.Consumers[0].ProfileHash = recipeTestHash("f")

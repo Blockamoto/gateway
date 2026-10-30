@@ -63,7 +63,7 @@ window.GatewayIndexTransport = (() => {
   function visibleSnapshot(value={}) {
     const hidden=new Set((value.definitions||[]).filter(parcelDefinition).map(d=>d.id));for(const id of hidden)knownParcelIDs.add(id);
     const text=value=>value;
-    const blocked=row=>parcelDefinition(row)||hidden.has(row?.index||row?.definition||row?.id)||hidden.has(row?.district_instance);
+    const blocked=row=>row?.recipe===true?false:parcelDefinition(row)||hidden.has(row?.index||row?.definition||row?.id)||hidden.has(row?.district_instance);
     const rows=list=>(list||[]).filter(row=>!blocked(row));
     const details=list=>rows(list).map(row=>{const clean={...row,dependencies:details(row.dependencies)};for(const key of ['reason','error','note'])if(Object.prototype.hasOwnProperty.call(row,key))clean[key]=text(row[key]);return clean;});
     const cleanJob=job=>!job||blocked(job)?null:{...job,reason:text(job.reason),error:text(job.error),waiting_reason:text(job.waiting_reason),outputs:(job.outputs||[]).filter(id=>!blocked({id})),progress:details(job.progress),consumers:details(job.consumers)};
@@ -71,9 +71,10 @@ window.GatewayIndexTransport = (() => {
     const run=value.run?{...value.run,error:text(value.run.error),prepared:request(value.run.prepared),run:value.run.run?{...cleanJob(value.run.run),hidden_processing_unavailable:!!value.run.run.hidden_processing_unavailable||(value.run.run.request?.consumers||[]).some(c=>c.armed&&blocked(c)),request:request(value.run.run.request)}:value.run.run}:value.run;
     return {...value,bitmap_capabilities:value.bitmap_capabilities?{...value.bitmap_capabilities,reason:text(value.bitmap_capabilities.reason)}:value.bitmap_capabilities,definitions:rows(value.definitions),instances:rows(value.instances),providers:rows(value.providers),live:rows(value.live),browse:rows(value.browse),jobs:rows(value.jobs).map(cleanJob),job:cleanJob(value.job),run,timeline:value.timeline?{...value.timeline,tracks:rows(value.timeline.tracks)}:value.timeline,errors:value.errors||[]};
   }
+  function includeConsumer(c,definitions,deferred){return c.recipe===true||(definitions||[]).some(d=>d.id===c.index&&processingAvailable(d)&&!deferred(c.index));}
   function executionRequest(request,intent,definitions) {
     if(intent&&intent!=='play')throw Error('Use Play to start the selected Arm and Live choices.');
-    if((request?.consumers||[]).some(c=>c.armed&&parcelDefinition((definitions||[]).find(d=>d.id===c.index)||{id:c.index})))throw Error(parcelReason);
+    if((request?.consumers||[]).some(c=>c.armed&&!c.recipe&&parcelDefinition((definitions||[]).find(d=>d.id===c.index)||{id:c.index})))throw Error(parcelReason);
     if((request?.consumers||[]).some(c=>c.armed&&c.index==='bitmap-parcels-standard-v1-replay'&&!processingAvailable((definitions||[]).find(d=>d.id===c.index))))throw Error('Parcel replay is not available in the current index catalog.');
     return copy(request);
   }
@@ -167,7 +168,7 @@ window.GatewayIndexTransport = (() => {
     const bitmapReason=()=>win.GatewayBitmapWorkspace?.capabilities(snapshot).reason||'Custom and legacy Bitmap indexing is unavailable. Saved data remains available for inspection.';
     function name(id){id=owner(id);if(id==='bitmap-districts-standard-v1')return 'Bitmap Districts';if(id==='bitmap-parcels-standard-v1-replay')return 'Bitmap Parcels';const d=(snapshot.definitions||[]).find(d=>d.id===id);return d?.name||({'sat-state':'Sat ranges','txo-spender':'TXIO','bitmap-districts':'Districts','bitmap-parcels':'Parcels','bitmap-chain':'Bitmap Chain'})[id]||id;}
     function draftConsumer(id){id=owner(id);if(!consumers.has(id)){const instance=(snapshot.instances||[]).find(i=>i.definition===id),policy=(snapshot.live||[]).find(p=>p.index===id),c={index:id,armed:false,live:false};if(instance?.mode||policy?.mode)c.mode=instance?.mode||policy.mode;for(const key of (id==='txo-spender'?['retain_output_values','retain_output_scripts']:id==='sat-state'?['retain_sat_history']:id==='inscriptions'?['conventional_ids']:[])){const value=policy?.[key]??instance?.[key]??(id==='sat-state'&&key==='retain_sat_history'?snapshot.sats?.retain_sat_history:undefined);if(value!==undefined)c[key]=value;}if(/^bitmap-(?:district|parcel)-chain-dev-v1$|^bitmap-chain(?:-|$)/.test(id)){const retention=instance?.chain_retention||instance?.retention_mode||instance?.retention||policy?.options?.retention;if(['full','pruned'].includes(retention))c.retention=retention;}consumers.set(id,c);}return consumers.get(id);}
-    function request(){const range=project(marks);if(!range.valid)throw Error(range.reason);const {valid,...bounds}=range;return {...bounds,consumers:[...consumers.values()].filter(c=>(snapshot.definitions||[]).some(d=>d.id===c.index&&processingAvailable(d)&&!deferredBitmap(c.index))).map(c=>{const row=copy(c);if(/^bitmap-(?:district|parcel)-chain-dev-v1$|^bitmap-chain(?:-|$)/.test(c.index)&&['full','pruned'].includes(c.retention))row.options={...row.options,retention:c.retention};delete row.retention;return row;})};}
+    function request(){const range=project(marks);if(!range.valid)throw Error(range.reason);const {valid,...bounds}=range;return {...bounds,consumers:[...consumers.values()].filter(c=>includeConsumer(c,snapshot.definitions,deferredBitmap)).map(c=>{const row=copy(c);if(/^bitmap-(?:district|parcel)-chain-dev-v1$|^bitmap-chain(?:-|$)/.test(c.index)&&['full','pruned'].includes(c.retention))row.options={...row.options,retention:c.retention};delete row.retention;return row;})};}
     function persistMarks(){try{win.localStorage.setItem('gateway.timeline.global-range.v1',JSON.stringify(marks));}catch{}}
     try {const saved=JSON.parse(win.localStorage.getItem('gateway.timeline.global-range.v1')||'null');if(saved)marks={in:point(saved.in),out:point(saved.out)};}catch{}
     lastMarksSignature=JSON.stringify(marks);
@@ -191,6 +192,12 @@ window.GatewayIndexTransport = (() => {
       if(id==='utxo-state'&&(!c.armed||!c.live)&&draftConsumer('address-state').armed){draftConsumer('address-state').armed=false;notify?.('Current Addresses disarmed because UTXO Arm and Live are required.');}
       changed(Object.hasOwn(patch,'armed')||Object.hasOwn(patch,'live')||Object.hasOwn(patch,'parcel_evidence_route')?[id]:[]);
       if(!wasArmed&&c.armed&&Object.hasOwn(patch,'armed'))offerLocatorCompanion([id],trigger);return copy(c);
+    }
+    function setRecipeSelection(id,armed){
+      if(!initialized) throw Error('Run controls are still loading. Refresh recipes and try again.');
+      if(!id || (armed&&deferredBitmap(id)) || (snapshot.definitions||[]).some(d=>d.id===id)) throw Error('This recipe ID conflicts with an existing index.');
+      const existing=consumers.get(id);if(existing && existing.recipe!==true) throw Error('This ID already belongs to an index selection.');
+      consumers.set(id,{...(existing||{}),index:id,recipe:true,armed:!!armed,mode:'lean',live:false});changed([id]);
     }
     function currentPoint(){return hasResource?lastPoint:point(timeline.getNavigationPoint());}
     function setMark(edge,value=currentPoint()){const p=point(value);if(!p){notify?.('This resource has no established timeline position. Select a known block or output location first.',true);return false;}const candidate={...marks,[edge]:p},range=project(candidate);if(!range.valid){notify?.(range.reason,true);return false;}marks=candidate;changed();return true;}
@@ -344,7 +351,7 @@ window.GatewayIndexTransport = (() => {
     function update(value=getSnapshot?.()||snapshot){
       const previous=snapshot.run;snapshot=value||{};if(integer(previous?.revision)&&integer(snapshot.run?.revision)&&previous.revision>snapshot.run.revision)snapshot={...snapshot,run:previous};const signature=JSON.stringify((snapshot.definitions||[]).filter(d=>/^bitmap-/.test(d.id)).map(d=>[d.id,d.profile_hash,d.configuration_revision]));if(bindingSignature&&signature!==bindingSignature)lastPlan=null;bindingSignature=signature;const transport=snapshot.run;runState=transport?.run||null;
       if(!initialized&&transport?.prepared){for(const c of transport.prepared.consumers||[])consumers.set(c.index,{...c});if(!marks.in&&integer(transport.prepared.in))marks.in=point({height:transport.prepared.in,kind:'block'});if(!marks.out&&integer(transport.prepared.out))marks.out=point({height:transport.prepared.out,kind:'block'});initialized=true;}
-      for(const c of consumers.values())if(isParcel(c.index)){c.armed=false;c.live=false;}
+      for(const c of consumers.values())if(!c.recipe&&isParcel(c.index)){c.armed=false;c.live=false;}
       for(const d of snapshot.definitions||[])if(d.buildable&&!d.locked)draftConsumer(d.id);
       const running=['running','waiting','pausing','queued'].includes(runState?.state),paused=runState?.state==='paused';
       const unavailable=transport?.error?' Unavailable: '+transport.error:'';
@@ -379,8 +386,8 @@ window.GatewayIndexTransport = (() => {
     function shortcut(event){if(event.defaultPrevented||event.isComposing||event.repeat||event.ctrlKey||event.metaKey||event.altKey)return;const target=event.target;if(target?.closest?.('.index-help-trigger,.index-help-popover,input,textarea,select,[contenteditable]:not([contenteditable="false"]),dialog,[role="dialog"],[role="menu"]'))return;if(!root.contains(target)&&target!==doc.body)return;const key=String(event.key).toLowerCase();if(key!=='i'&&key!=='o')return;event.preventDefault();event.stopPropagation();setMark(key==='i'?'in':'out');}
     doc.addEventListener('keydown',shortcut,true);
     doc.addEventListener('gateway:timeline-options',event=>{if(event.detail?.index)setConsumerOptions(event.detail.index,event.detail.options||{});});
-    const result={update,paint,getRunDraft:()=>copy(request()),showRunStatus:showStatus,setConsumerOptions,acceptGlobalResource,setGlobalRange,setMark,getGlobalMarks:()=>copy(marks),getGlobalRanges:()=>{const r=project(marks);return r.valid&&integer(r.in)&&integer(r.out)?[{from:r.in,to:r.out}]:[];},inspectIndex:(id,options)=>inspect?.(id,options),teardown(){dead=true;closeLocatorPrompt();closeUTXOPrompt();closeStartReview();win.clearTimeout(headerExpiryTimer);headerHost.removeEventListener('gateway:network-status',repaintHeaders);doc.removeEventListener('keydown',shortcut,true);toolbar.remove();for(const layer of layers.values())layer.remove();}};
+    const result={update,paint,setRecipeSelection,getRecipeSelection:id=>!!consumers.get(id)?.recipe&&!!consumers.get(id)?.armed,getRunDraft:()=>copy(request()),showRunStatus:showStatus,setConsumerOptions,acceptGlobalResource,setGlobalRange,setMark,getGlobalMarks:()=>copy(marks),getGlobalRanges:()=>{const r=project(marks);return r.valid&&integer(r.in)&&integer(r.out)?[{from:r.in,to:r.out}]:[];},inspectIndex:(id,options)=>inspect?.(id,options),teardown(){dead=true;closeLocatorPrompt();closeUTXOPrompt();closeStartReview();win.clearTimeout(headerExpiryTimer);headerHost.removeEventListener('gateway:network-status',repaintHeaders);doc.removeEventListener('keydown',shortcut,true);toolbar.remove();for(const layer of layers.values())layer.remove();}};
     update(getSnapshot?.()||{});return result;
   }
-  return {point,compare,project,owner,parcelDefinition,parcelEvidenceOptions,processingAvailable,visibleSnapshot,executionRequest,rangePolicy,utxoLeadIn,startReviewChoices,startReviewOutcome,stagedProgressText,headerControlState,mount};
+  return {point,compare,project,owner,parcelDefinition,parcelEvidenceOptions,processingAvailable,visibleSnapshot,includeConsumer,executionRequest,rangePolicy,utxoLeadIn,startReviewChoices,startReviewOutcome,stagedProgressText,headerControlState,mount};
 })();

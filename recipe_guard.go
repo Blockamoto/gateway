@@ -9,13 +9,13 @@ import (
 // scheduler must persist recipeAdmissionProfile in the selected progress row
 // when it admits this exact saved revision. Old runs without it fail closed.
 type recipeRunBinding struct {
-	RunID             string
-	Index             string
-	Fingerprint       string
-	Revision          string
-	AdmissionRevision uint64
-	SelectionHash     string
-	RangeHash         string
+	RunID         string
+	Index         string
+	Fingerprint   string
+	Revision      string
+	TrackRevision uint64
+	SelectionHash string
+	RangeHash     string
 }
 
 func recipeAdmissionProfile(id, fingerprint, revision string) string {
@@ -71,24 +71,21 @@ func recipeBindRun(run *indexRunRecord, id, fingerprint, revision string) (recip
 	if err != nil {
 		return b, err
 	}
-	if progress.ProfileHash != recipeAdmissionProfile(id, fingerprint, revision) {
+	if progress.ProfileHash != recipeAdmissionProfile(id, fingerprint, revision) || progress.ConfigurationRevision == 0 {
 		return b, fmt.Errorf("recipe revision is not bound to admitted track")
 	}
-	return recipeRunBinding{RunID: run.ID, Index: id, Fingerprint: fingerprint, Revision: revision, AdmissionRevision: effectiveIndexRunAdmissionRevision(run), SelectionHash: indexDigest(selection), RangeHash: recipeRunRangeHash(run, progress)}, nil
+	return recipeRunBinding{RunID: run.ID, Index: id, Fingerprint: fingerprint, Revision: revision, TrackRevision: progress.ConfigurationRevision, SelectionHash: indexDigest(selection), RangeHash: recipeRunRangeHash(run, progress)}, nil
 }
 
 func recipeCheckRunBinding(run *indexRunRecord, b recipeRunBinding, height, origin int64) error {
 	if run == nil || run.ID != b.RunID || (run.State != "running" && run.State != "waiting") {
 		return errIndexRunConsumerStopped
 	}
-	if effectiveIndexRunAdmissionRevision(run) != b.AdmissionRevision {
-		return errIndexRunAdmissionChanged
-	}
 	selection, progress, err := recipeRunMember(run, b.Index)
 	if err != nil {
 		return errIndexRunConsumerStopped
 	}
-	if indexDigest(selection) != b.SelectionHash || recipeRunRangeHash(run, progress) != b.RangeHash || progress.ProfileHash != recipeAdmissionProfile(b.Index, b.Fingerprint, b.Revision) {
+	if b.TrackRevision == 0 || progress.ConfigurationRevision != b.TrackRevision || indexDigest(selection) != b.SelectionHash || recipeRunRangeHash(run, progress) != b.RangeHash || progress.ProfileHash != recipeAdmissionProfile(b.Index, b.Fingerprint, b.Revision) {
 		return errIndexRunAdmissionChanged
 	}
 	if height < 0 || height < origin || height < progress.From || progress.EffectiveFrom != nil && height < *progress.EffectiveFrom || run.Request.In != nil && height < *run.Request.In {

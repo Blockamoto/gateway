@@ -42,7 +42,7 @@ func TestRecipeRegistryAPIAndRevisions(t *testing.T) {
 	a := &app{dataDir: root}
 	h := indexInterfaceHandler(a)
 	validated := registryView(t, indexInterfaceCall(h, "POST", "/api/v1/index/recipes/validate", registryPayload(registryRecipe, "")))
-	if validated.Runnable || validated.SemanticHash == "" || validated.Revision == "" {
+	if !validated.Runnable || validated.SemanticHash == "" || validated.Revision == "" {
 		t.Fatalf("bad validation: %+v", validated)
 	}
 	if _, err := os.Stat(filepath.Join(root, "indexes")); !os.IsNotExist(err) {

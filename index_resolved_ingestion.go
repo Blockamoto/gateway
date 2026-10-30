@@ -282,7 +282,7 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 	var resultsMu sync.Mutex
 	appendResult := func(row indexBrowseResult) { resultsMu.Lock(); out = append(out, row); resultsMu.Unlock() }
 	apply := func(id string, fn func(context.Context, indexRunSelection) error) {
-		if !releaseIndexExecutionAvailable(resolvedSelectionOwner(id)) {
+		if !releaseIndexExecutionAvailable(resolvedSelectionOwner(id)) && !(native[id] != nil && choices[id].Recipe) {
 			return
 		}
 		// Native cohort callbacks and sparse fallback share the same range
@@ -389,6 +389,13 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 		}
 	}
 	sparse("inscriptions")
+	// Recipe execution is coordinated only: there is no incidental browse
+	// writer. The native callback exists only for an explicitly admitted run.
+	for _, choice := range indexRunEffectiveRequest(d).Consumers {
+		if choice.Recipe && native[choice.Index] != nil {
+			apply(choice.Index, nil)
+		}
+	}
 	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID, bitmapReplayParcelID} {
 		id := id
 		if id == bitmapReplayParcelID && native[id] == nil {
@@ -475,7 +482,12 @@ func prepareSharedBlockInventory(root string, p *indexRunPrepared, d indexRunDoc
 	}
 	needed := false
 	for _, c := range indexRunEffectiveRequest(d).Consumers {
-		if c.Armed && resolvedNeedsInventory(c.Index) && resolvedAdmissionAllowedForRoot(root, d, c.Index, p.block.Height) == nil {
+		recipeAdmitted := false
+		if c.Recipe && d.Run != nil && (d.Run.State == "running" || d.Run.State == "waiting") {
+			progress, ok := indexRunProgressFor(d.Run, c.Index)
+			recipeAdmitted = ok && progress.AdmissionState == "admitted"
+		}
+		if c.Armed && (resolvedNeedsInventory(c.Index) || recipeAdmitted) && resolvedAdmissionAllowedForRoot(root, d, c.Index, p.block.Height) == nil {
 			needed = true
 			break
 		}

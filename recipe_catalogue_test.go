@@ -72,10 +72,10 @@ func TestRecipeCompilerTypedDiagnostics(t *testing.T) {
 		})
 	}
 	d := recipeTypeTestDefinition(`{"op":"write","table":"items","row":{"ref":{"field":["ref"]}}}`)
-	d.Dependencies = []string{"other"}
+	d.Dependencies = []recipeDependency{{Name: "other"}}
 	_, err := compileRecipe(d)
 	var diagnostic *recipeDiagnostic
-	if !errors.As(err, &diagnostic) || diagnostic.Code != "RECIPE_UNSUPPORTED_DEPENDENCY" || diagnostic.Pointer != "/dependencies" {
+	if !errors.As(err, &diagnostic) || diagnostic.Code != "RECIPE_INVALID_DEPENDENCY" || diagnostic.Pointer != "/dependencies/0" {
 		t.Fatalf("unsupported dependency diagnostic: %v", err)
 	}
 }

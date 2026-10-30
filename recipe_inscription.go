@@ -88,6 +88,10 @@ const recipePropertiesProfile = "gateway-ord-properties-b7ccfcf6-uncompressed-v1
 func (p *recipeProgram) semanticHash() string {
 	d := p.definition
 	d.ID, d.Name = "", ""
+	lookupProfile := ""
+	if len(d.Dependencies) != 0 || len(d.Exports) != 0 {
+		lookupProfile = "gateway-sparse-same-anchor-lookup-v1"
+	}
 	return indexDigest(struct {
 		Engine          string           `json:"engine"`
 		Parser          string           `json:"parser"`
@@ -95,8 +99,9 @@ func (p *recipeProgram) semanticHash() string {
 		Envelope        string           `json:"envelope"`
 		CBOR            string           `json:"cbor"`
 		Properties      string           `json:"properties"`
+		Lookup          string           `json:"lookup,omitempty"`
 		Definition      recipeDefinition `json:"definition"`
-	}{recipeInterpreterProfile, inscriptionParserProfile, inscriptionReferenceCommit, ordInterpretationProfile, recipeCBORProfile, recipePropertiesProfile, d})
+	}{recipeInterpreterProfile, inscriptionParserProfile, inscriptionReferenceCommit, ordInterpretationProfile, recipeCBORProfile, recipePropertiesProfile, lookupProfile, d})
 }
 
 // commitInscriptionBlock links the interpreter to its independent sparse store.
@@ -178,6 +183,13 @@ func recipeRevealEvent(o inscriptionOccurrence) (map[string]any, error) {
 // verified block. The returned rows are staged; no coverage is asserted until
 // a storage adapter commits the whole block and its current chain anchor.
 func (p *recipeProgram) evaluateInscriptionBlock(ctx context.Context, block blockView, result *inscriptionBlockResult) (recipeRows, error) {
+	if len(p.definition.Dependencies) != 0 {
+		return nil, errRecipeDependencyUnavailable
+	}
+	return p.evaluateInscriptionBlockWithLookup(ctx, block, result, nil)
+}
+
+func (p *recipeProgram) evaluateInscriptionBlockWithLookup(ctx context.Context, block blockView, result *inscriptionBlockResult, lookup func(string, string) (any, error)) (recipeRows, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("missing recipe context")
 	}
@@ -203,7 +215,7 @@ func (p *recipeProgram) evaluateInscriptionBlock(ctx context.Context, block bloc
 		if err != nil {
 			return nil, err
 		}
-		rows, err := p.evaluate(event)
+		rows, err := p.evaluateWithLookup(event, lookup)
 		if err != nil {
 			return nil, err
 		}

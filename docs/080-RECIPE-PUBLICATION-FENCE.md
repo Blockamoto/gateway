@@ -51,10 +51,11 @@ effective start; finite Out or the admitted Live rule; the immutable recipe
 fingerprint; and the selected block hash at the intended height. Validate all
 other explicit evidence and consent required by that track. Ordinary progress
 updates change the document revision, so they must not by themselves revoke a
-valid admission. The initial guard conservatively fences the global admission
-revision, so even an unrelated track amendment requires a fresh binding. The
-scheduler must durably record the recipe ID, fingerprint and revision binding
-in the progress profile before this guard can admit publication. Keep the locks until the callback completes, so a stop,
+valid admission. The guard fences a nonzero, monotonic per-track admission
+generation, so unrelated track amendments do not invalidate it and an Off/On
+cycle cannot reuse stale work. The scheduler must durably record both that
+generation and the recipe ID, fingerprint and revision binding before this
+guard can admit publication. Keep the locks until the callback completes, so a stop,
 amendment or local header replacement linearizes wholly before or after the
 durable head swap. A pause waiting for an already-entered commit can only be
 acknowledged after that commit finishes.

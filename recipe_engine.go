@@ -19,16 +19,17 @@ import (
 // recipeDefinition is an executable document, not a selector for a built-in
 // index. Presentation and dependency identities do not choose an algorithm.
 type recipeDefinition struct {
-	Format       string        `json:"format"`
-	Version      int           `json:"version"`
-	ID           string        `json:"id"`
-	Name         string        `json:"name"`
-	Source       string        `json:"source"`
-	Origin       int64         `json:"origin"`
-	History      string        `json:"history"`
-	Dependencies []string      `json:"dependencies"`
-	Tables       []recipeTable `json:"tables"`
-	Steps        []recipeStep  `json:"steps"`
+	Format       string             `json:"format"`
+	Version      int                `json:"version"`
+	ID           string             `json:"id"`
+	Name         string             `json:"name"`
+	Source       string             `json:"source"`
+	Origin       int64              `json:"origin"`
+	History      string             `json:"history"`
+	Dependencies []recipeDependency `json:"dependencies"`
+	Exports      []recipeExport     `json:"exports,omitempty"`
+	Tables       []recipeTable      `json:"tables"`
+	Steps        []recipeStep       `json:"steps"`
 }
 
 type recipeTable struct {
@@ -172,8 +173,8 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 	if d.History != "sparse" {
 		return nil, recipeDiagnosticAt("RECIPE_UNSUPPORTED_HISTORY", "/history", "unsupported history mode")
 	}
-	if len(d.Dependencies) != 0 {
-		return nil, recipeDiagnosticAt("RECIPE_UNSUPPORTED_DEPENDENCY", "/dependencies", "dependency execution is not implemented")
+	if err := recipeValidateDependencyDeclarations(d); err != nil {
+		return nil, err
 	}
 	if len(d.Tables) > recipeMaxTables || len(d.Steps) > recipeMaxSteps {
 		return nil, fmt.Errorf("recipe exceeds table or step limit")
@@ -203,7 +204,7 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 				err = fmt.Errorf("unexpected let fields")
 				break
 			}
-			if s.As == "" || len(s.As) > 256 || vars[s.As] {
+			if s.As == "" || len(s.As) > 256 || vars[s.As] || strings.HasPrefix(s.As, "$dependency:") {
 				err = fmt.Errorf("invalid or duplicate variable")
 			} else {
 				err = check(s.Value, fmt.Sprintf("/steps/%d/value", i))
@@ -331,7 +332,10 @@ func recipeEvaluateExpr(e recipeExpr, event map[string]any, vars map[string]any)
 	return recipeEvaluateExprBudget(e, event, vars, &recipeEvalBudget{})
 }
 
-type recipeEvalBudget struct{ work, decodedBytes int }
+type recipeEvalBudget struct {
+	work, decodedBytes int
+	lookup             func(string, string) (any, error)
+}
 
 func recipeEvaluateExprBudget(e recipeExpr, event map[string]any, vars map[string]any, budget *recipeEvalBudget) (any, error) {
 	budget.work++
@@ -405,6 +409,17 @@ func recipeEvaluateExprBudget(e recipeExpr, event map[string]any, vars map[strin
 		_, missing := args[0].(recipeMissing)
 		_, invalid := args[0].(recipeInvalid)
 		return !missing && !invalid, nil
+	}
+	if e.Call == "dependency.lookup" {
+		name, nameOK := args[0].(string)
+		key, keyOK := args[1].(string)
+		if !nameOK || !keyOK {
+			return nil, fmt.Errorf("dependency.lookup requires text name and key")
+		}
+		if budget.lookup == nil {
+			return nil, errRecipeDependencyUnavailable
+		}
+		return budget.lookup(name, key)
 	}
 	if e.Call == "cbor.decode" {
 		if _, missing := args[0].(recipeMissing); missing {
@@ -581,8 +596,12 @@ func recipeCBORJSONKey(value any) (recipeCBORValue, error) {
 // a failed expression cannot publish partial work. The adapter must check the
 // block's origin, source receipt, chain anchor and run admission before commit.
 func (p *recipeProgram) evaluate(event map[string]any) (recipeRows, error) {
+	return p.evaluateWithLookup(event, nil)
+}
+
+func (p *recipeProgram) evaluateWithLookup(event map[string]any, lookup func(string, string) (any, error)) (recipeRows, error) {
 	rows := recipeRows{}
-	budget := &recipeEvalBudget{}
+	budget := &recipeEvalBudget{lookup: lookup}
 	outputBytes := 0
 	tables := map[string]recipeTable{}
 	for _, t := range p.definition.Tables {
@@ -642,6 +661,9 @@ func (p *recipeProgram) evaluate(event map[string]any) (recipeRows, error) {
 			outputBytes += len(encoded)
 			rows[s.Table][key] = row
 		}
+	}
+	if err := recipeValidateExportRows(p.definition, rows); err != nil {
+		return nil, err
 	}
 	return rows, nil
 }

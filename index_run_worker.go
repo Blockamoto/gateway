@@ -35,6 +35,8 @@ type indexRunConsumer struct {
 	utxo                     *utxoStore
 	history                  *addressHistoryStore
 	external                 indexRunExternalConsumer
+	recipe                   *recipeLocalConsumer
+	recipeWork               *recipeConsumerWork
 	enrich                   bool
 	retryAfter               time.Time
 	reconciled               bool
@@ -399,6 +401,28 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 	c, _ := runSelection(r.Request, p.Index)
 	v := &indexRunConsumer{selection: c, progress: p}
 	var err error
+	if c.Recipe {
+		if p.Recipe == nil || p.RecipeRevision != p.Recipe.Revision || p.RecipeSemanticHash != p.Recipe.SemanticHash {
+			return v, fmt.Errorf("recipe track lacks its admitted binding")
+		}
+		if c.Live && r.Request.Out == nil {
+			return v, fmt.Errorf("recipe Live target rebinding is not integrated")
+		}
+		plan := p.Recipe.expand(r.Request)
+		resolved, err := a.ResolveSavedRecipe(ctx, c.Index, plan.Revision, plan.SemanticHash)
+		if err != nil {
+			return v, err
+		}
+		if len(resolved.Definition.Dependencies) != 0 {
+			return v, fmt.Errorf("dependency-backed recipe scheduling is not integrated")
+		}
+		binding, err := recipeBindRun(r, c.Index, plan.SemanticHash, plan.Revision)
+		if err != nil {
+			return v, err
+		}
+		v.recipe, err = a.openRecipeLocalConsumer(ctx, plan, binding)
+		return v, err
+	}
 	if indexRunFactsOnly(c) {
 		consumer := &sparseFactsRunConsumer{a: a, choice: c, from: p.From, next: p.From}
 		if p.Height >= p.From && validHash(p.BlockHash) {
@@ -698,6 +722,12 @@ func (a *app) applyRunConsumer(ctx context.Context, c *indexRunConsumer, prepare
 	ctx, drain := a.withDeferredBlockIngestion(ctx)
 	defer drain()
 	b := prepared.block
+	if c.recipe != nil {
+		if c.recipeWork == nil {
+			return fmt.Errorf("recipe consumer has no admitted work")
+		}
+		return c.recipe.Apply(ctx, *c.recipeWork, b, prepared.extraction)
+	}
 	hashAt := a.addressSelectedHashes(ctx, authority)
 	if c.external != nil {
 		if refresh, ok := c.external.(interface {
@@ -1623,7 +1653,35 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				}
 				continue
 			}
-			h := c.next(consumerTarget)
+			var h int64
+			if c.recipe != nil {
+				observation, e := c.recipe.Next(consumerCtx)
+				if e != nil {
+					c.recipeWork = nil
+					c.progress.State, c.progress.Reason = "waiting", e.Error()
+					c.retryAfter = time.Now().Add(time.Second)
+					if !indexRunMarkInterrupted(ctx, e, &c.progress) {
+						waiting = true
+					}
+					continue
+				}
+				if observation.State == "range_complete" || observation.State == "no_work" {
+					c.recipeWork = nil
+					c.progress.State = "complete"
+					c.progress.NextRequiredHeight = nil
+					c.progress.Reason = "Sparse coverage was checked against the selected local header snapshot."
+					continue
+				}
+				if observation.State != "ready" || observation.Work == nil {
+					c.progress.State, c.progress.Reason = "failed", "Recipe consumer returned an invalid work observation."
+					failed = true
+					continue
+				}
+				c.recipeWork = observation.Work
+				h = observation.Work.Height
+			} else {
+				h = c.next(consumerTarget)
+			}
 			c.progress.NextRequiredHeight = &h
 			if c.progress.EffectiveFrom != nil && h < *c.progress.EffectiveFrom {
 				c.progress.State, c.progress.AdmissionState = "blocked", "blocked"
@@ -2102,7 +2160,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					result.err = rawErr
 					return result.err
 				}
-				if p.extractionErr != nil && resolvedNeedsInventory(c.selection.Index) {
+				if p.extractionErr != nil && (resolvedNeedsInventory(c.selection.Index) || c.selection.Recipe) {
 					result.err = p.extractionErr
 					return result.err
 				}
@@ -2221,6 +2279,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			} else {
 				c.progress.AddedBlocks++
 				c.progress.Height = h
+				if c.recipe != nil {
+					c.progress.BlockHash = p.block.Hash
+				}
 				next := h + 1
 				c.progress.NextRequiredHeight = &next
 				c.progress.Reason = ""

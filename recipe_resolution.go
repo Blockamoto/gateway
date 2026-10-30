@@ -62,7 +62,11 @@ func recipeResolveView(view recipeRegistryView) (resolvedSavedRecipe, error) {
 	if !supported || !recipeStoreHashValid(view.Revision) || !recipeStoreHashValid(view.SemanticHash) {
 		return resolvedSavedRecipe{}, fmt.Errorf("saved recipe capability or identity is invalid")
 	}
-	return resolvedSavedRecipe{ID: view.Recipe.ID, Revision: view.Revision, SemanticHash: view.SemanticHash, Source: view.Recipe.Source, Origin: view.Recipe.Origin, History: view.Recipe.History, Definition: view.Recipe, DefinitionJSON: view.RecipeJSON, SourceCapability: source, Functions: catalogue.Functions, Steps: catalogue.Steps, CatalogueVersion: catalogue.Version, Execution: "not_integrated", LegacyCompatibility: "unverified"}, nil
+	execution := "finite_independent"
+	if len(view.Recipe.Dependencies) != 0 {
+		execution = "dependency_scheduling_unavailable"
+	}
+	return resolvedSavedRecipe{ID: view.Recipe.ID, Revision: view.Revision, SemanticHash: view.SemanticHash, Source: view.Recipe.Source, Origin: view.Recipe.Origin, History: view.Recipe.History, Definition: view.Recipe, DefinitionJSON: view.RecipeJSON, SourceCapability: source, Functions: catalogue.Functions, Steps: catalogue.Steps, CatalogueVersion: catalogue.Version, Execution: execution, LegacyCompatibility: "unverified"}, nil
 }
 
 // ResolveSavedRecipe reads current head when revision is empty. For an older

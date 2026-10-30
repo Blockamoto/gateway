@@ -127,6 +127,44 @@ func TestRecipeLocalConsumerChecksWorkAndPlan(t *testing.T) {
 	if err = guard(plan, *p.Work, block, func() error { called = true; return nil }); err == nil || called {
 		t.Fatal("modified plan accepted")
 	}
+	plan = consumer.consumer.plan
+	plan.Schema = 1
+	plan.PlanID = recipeAdmissionDigest(plan)
+	old := *p.Work
+	old.PlanID = plan.PlanID
+	if err = guard(plan, old, block, func() error { called = true; return nil }); err == nil || called {
+		t.Fatal("unsupported admission schema accepted")
+	}
+}
+
+func TestRecipeLocalConsumerAdmissionIsPerTrack(t *testing.T) {
+	a, consumer, _, block, result := recipeLocalConsumerFixture(t)
+	work, err := consumer.Next(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.indexRunMu.Lock()
+	a.indexRunState.Run.AdmissionRevision++
+	a.indexRunState.Run.Request.Consumers = append(a.indexRunState.Run.Request.Consumers, indexRunSelection{Index: "tx-locator", Armed: true})
+	a.indexRunMu.Unlock()
+	if err = consumer.Apply(context.Background(), *work.Work, block, result); err != nil {
+		t.Fatalf("unrelated amendment revoked track: %v", err)
+	}
+
+	a, consumer, _, block, result = recipeLocalConsumerFixture(t)
+	work, err = consumer.Next(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.indexRunMu.Lock()
+	// Simulate an Off -> On cycle that returns to the same visible selection.
+	a.indexRunState.Run.AdmissionRevision += 2
+	a.indexRunState.Run.Consumers[0].ConfigurationRevision++
+	a.indexRunMu.Unlock()
+	if err = consumer.Apply(context.Background(), *work.Work, block, result); err == nil {
+		t.Fatal("re-admitted track reused stale staged work")
+	}
+	recipeGuardUncovered(t, consumer.consumer.store, 0)
 }
 
 func TestRecipeLocalConsumerDoesNotAdoptUntrustedCoverageCache(t *testing.T) {

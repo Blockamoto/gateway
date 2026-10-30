@@ -74,3 +74,8 @@ assert.deepEqual(plain(options('')),{parcel_evidence_route:''},'No route grants 
 for(const route of ['retained-raw','tx-locators','txio-links'])assert.deepEqual(plain(options(route)),{parcel_evidence_route:route},'A selected route does not require a numeric allowance');
 assert.deepEqual(plain(options('unknown')),{parcel_evidence_route:''},'Unknown route remains unselected');
 console.log('Parcel evidence route PASS: explicit route without operation quota.');
+
+assert.equal(context.window.GatewayIndexTransport.includeConsumer({index:'saved-recipe',recipe:true,armed:true},[],()=>false),true,'saved recipe remains in the reviewed transport request');
+assert.equal(context.window.GatewayIndexTransport.includeConsumer({index:'missing'},[],()=>false),false,'unknown native selections stay excluded');
+const recipeScope={in:0,out:10,consumers:[{index:'saved-recipe',recipe:true,armed:true,mode:'lean',live:false}]};
+assert.deepEqual(plain(context.window.GatewayIndexTransport.executionRequest(recipeScope,'play',[])),recipeScope,'recipe selection reaches existing reviewed run path unchanged');

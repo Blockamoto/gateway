@@ -111,3 +111,25 @@ func TestRecipeAdmissionRejectsInvalidIntentAndTracksNoWork(t *testing.T) {
 		t.Fatal("duplicate selection accepted")
 	}
 }
+
+func TestRecipeAdmissionBindsOnlyOwnTrackAndGlobalBounds(t *testing.T) {
+	ctx := context.Background()
+	a := &app{dataDir: t.TempDir()}
+	h := indexInterfaceHandler(a)
+	registryView(t, indexInterfaceCall(h, "POST", "/api/v1/index/recipes", registryPayload(registryRecipe, "")))
+	req := recipeAdmissionTestRequest()
+	plan, err := a.PlanSavedRecipeAdmission(ctx, "custom-one", req, 20, recipeTestHash("b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := req
+	other.Consumers = append([]indexRunSelection{}, req.Consumers...)
+	other.Consumers[0].Live = true
+	if err = a.CheckSavedRecipePlan(ctx, plan, other, 20, recipeTestHash("b")); err != nil {
+		t.Fatalf("unrelated track changed binding: %v", err)
+	}
+	other.Consumers[1].Live = false
+	if err = a.CheckSavedRecipePlan(ctx, plan, other, 20, recipeTestHash("b")); err == nil {
+		t.Fatal("own selection change did not invalidate binding")
+	}
+}

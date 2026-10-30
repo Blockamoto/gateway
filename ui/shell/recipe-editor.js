@@ -152,7 +152,7 @@
     q('validate').addEventListener('click',async()=>{
       if (busy || importing) return; let value; try { value=draft(); } catch(e) { status.textContent=e.message; return; }
       const started=revision; ++requestEpoch; setBusy(true);
-      try { await request('/validate',{recipe_json:raw.value}); if (started===revision) status.textContent='Validated by the recipe compiler. Execution is not integrated.'; }
+      try { await request('/validate',{recipe_json:raw.value}); if (started===revision) status.textContent='Validated by the recipe compiler. Finite runs require a reviewed plan and an explicit Out; Live and dependencies are unavailable.'; }
       catch(e) { if (started===revision) status.textContent='Validation: '+e.message; }
       finally { setBusy(false); }
     });
@@ -163,7 +163,7 @@
       setBusy(true);
       try {
         const result=await request('',body);
-        if (started===revision) { base={id:value.id,revision:result.revision,semanticHash:result.semantic_hash}; status.textContent='Draft saved and validated. Execution is not integrated.'; }
+        if (started===revision) { base={id:value.id,revision:result.revision,semanticHash:result.semantic_hash}; status.textContent='Draft saved and validated. Finite runs require a reviewed plan and an explicit Out; Live and dependencies are unavailable.'; }
         else { if (base?.id===value.id) base=null; saveNote.textContent='An earlier version of '+value.id+' was saved. Export newer edits, then reload the saved draft before saving this ID again.'; }
       } catch(e) { if (started===revision) status.textContent='Save: '+e.message; }
       finally { setBusy(false); }
@@ -187,7 +187,7 @@
         if (started!==revision) return;
         if (typeof result.recipe_json!=='string') throw new Error('Saved recipe text is unavailable.');
         const loaded=JSON.parse(result.recipe_json); model=loaded; base={id:loaded.id,revision:result.revision,semanticHash:result.semantic_hash}; revision++; pendingGuided=false; raw.value=result.recipe_json; showGuided(); saveNote.textContent='';
-        status.textContent=result.validated===false ? (result.note||'Saved draft is not validated by the current interpreter.') : 'Saved draft loaded. Execution is not integrated.';
+        status.textContent=result.validated===false ? (result.note||'Saved draft is not validated by the current interpreter.') : 'Saved draft loaded. Finite runs require a reviewed plan and an explicit Out; Live and dependencies are unavailable.';
       } catch(e) { if (started===revision) status.textContent='Load: '+e.message; }
       finally { setBusy(false); }
     });

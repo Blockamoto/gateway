@@ -66,6 +66,9 @@ func (a *app) openRecipeSparseConsumer(ctx context.Context, admitted recipeAdmis
 	if err != nil {
 		return nil, err
 	}
+	if len(program.definition.Dependencies) != 0 {
+		return nil, fmt.Errorf("dependency-aware scheduling and coverage reuse are not integrated")
+	}
 	if program.semanticHash() != owned.SemanticHash {
 		return nil, fmt.Errorf("admitted recipe semantic identity changed")
 	}

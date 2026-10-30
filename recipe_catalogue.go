@@ -134,6 +134,9 @@ func recipeLiteralType(raw json.RawMessage) (recipeStaticType, any, error) {
 // metadata; it rejects invalid operation signatures and non-boolean filters.
 func recipeValidateTypes(d recipeDefinition) error {
 	vars := map[string]recipeStaticType{}
+	for _, dep := range d.Dependencies {
+		vars["$dependency:"+dep.Name] = recipeStaticType{mask: recipeTypeNames([]string{dep.Type}), optional: true}
+	}
 	tables := map[string]recipeTable{}
 	for _, table := range d.Tables {
 		tables[table.Name] = table
@@ -217,6 +220,21 @@ func recipeInferType(e recipeExpr, vars map[string]recipeStaticType, source, pat
 	}
 	if e.Call == "eq" && argTypes[0].mask&argTypes[1].mask == 0 {
 		return recipeStaticType{}, recipeDiagnosticAt("RECIPE_TYPE_MISMATCH", path+"/args/1", "equality operands have disjoint types")
+	}
+	if e.Call == "dependency.lookup" {
+		if e.Args[0].Literal == nil {
+			return recipeStaticType{}, recipeDiagnosticAt("RECIPE_INVALID_ARGUMENT", path+"/args/0", "dependency must be a declared literal name")
+		}
+		_, name, err := recipeLiteralType(e.Args[0].Literal)
+		alias, ok := name.(string)
+		if err != nil || !ok {
+			return recipeStaticType{}, recipeDiagnosticAt("RECIPE_INVALID_ARGUMENT", path+"/args/0", "dependency must be a declared literal name")
+		}
+		t, ok := vars["$dependency:"+alias]
+		if !ok {
+			return recipeStaticType{}, recipeDiagnosticAt("RECIPE_UNKNOWN_DEPENDENCY", path+"/args/0", "dependency is not declared")
+		}
+		return t, nil
 	}
 	// Check constants that the runtime requires to be exact and bounded before
 	// admitting a definition. Dynamic values remain checked at evaluation.

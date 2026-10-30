@@ -138,6 +138,9 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 	case "recipes":
 		a.handleRecipeRegistry(w, r, false)
 		return
+	case "recipes/output":
+		a.handleRecipeOutput(w, r)
+		return
 	case "recipes/validate":
 		a.handleRecipeRegistry(w, r, true)
 		return

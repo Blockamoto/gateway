@@ -102,6 +102,7 @@ func recipeFunctions() []recipeFunctionCapability {
 		{Name: "or", Arguments: []recipeArgumentCapability{arg("left", "bool"), arg("right", "bool")}, Result: result("bool")},
 		{Name: "present", Arguments: []recipeArgumentCapability{arg("value", "any")}, Result: result("bool")},
 		{Name: "valid", Arguments: []recipeArgumentCapability{arg("value", "any")}, Result: result("bool")},
+		{Name: "dependency.lookup", Arguments: []recipeArgumentCapability{arg("dependency", "text"), arg("key", "text")}, Result: recipeTypeSpec{Types: []string{"text", "bool", "integer", "null"}, Optional: true}},
 		{Name: "cbor.decode", Arguments: []recipeArgumentCapability{arg("hex", "text")}, Result: recipeTypeSpec{Types: []string{"cbor"}, Optional: true, Invalid: true}},
 		{Name: "cbor.key", Arguments: []recipeArgumentCapability{arg("value", "cbor"), arg("key", "text", "bool", "null", "integer")}, Result: recipeTypeSpec{Types: []string{"cbor"}, Optional: true, Invalid: true}},
 		{Name: "cbor.index", Arguments: []recipeArgumentCapability{arg("value", "cbor"), arg("index", "integer")}, Result: recipeTypeSpec{Types: []string{"cbor"}, Optional: true, Invalid: true}},

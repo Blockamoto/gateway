@@ -27,9 +27,24 @@ type recipeAdmissionPlan struct {
 	PlanID        string          `json:"plan_id"`
 }
 
+const recipeAdmissionSchema = 2
+
 func recipeAdmissionDigest(plan recipeAdmissionPlan) string {
 	plan.PlanID = ""
-	return indexDigest(plan)
+	// The run plan binds the whole cohort. This per-track binding is stable
+	// across unrelated amendments and binds only its own selection and the
+	// global range/marks in addition to recipe identity and target.
+	selected := make([]indexRunSelection, 0, 1)
+	for _, choice := range plan.Request.Consumers {
+		if choice.Index == plan.Index {
+			selected = append(selected, choice)
+		}
+	}
+	plan.Request.Consumers = selected
+	return indexDigest(struct {
+		Domain string              `json:"domain"`
+		Plan   recipeAdmissionPlan `json:"plan"`
+	}{"gateway-recipe-admission-v2", plan})
 }
 func recipeAdmissionCloneRequest(req indexRunRequest) (indexRunRequest, error) {
 	var out indexRunRequest
@@ -95,7 +110,7 @@ func recipeAdmissionBuild(resolved resolvedSavedRecipe, req indexRunRequest, tar
 	if req.In != nil && *req.In > from {
 		from = *req.In
 	}
-	p = recipeAdmissionPlan{Schema: 1, Index: resolved.ID, Revision: resolved.Revision, SemanticHash: resolved.SemanticHash, Source: resolved.Source, Origin: resolved.Origin, History: resolved.History, Request: req, TargetHeight: targetHeight, TargetHash: targetHash, EffectiveFrom: from, NoWork: from > targetHeight}
+	p = recipeAdmissionPlan{Schema: recipeAdmissionSchema, Index: resolved.ID, Revision: resolved.Revision, SemanticHash: resolved.SemanticHash, Source: resolved.Source, Origin: resolved.Origin, History: resolved.History, Request: req, TargetHeight: targetHeight, TargetHash: targetHash, EffectiveFrom: from, NoWork: from > targetHeight}
 	p.PlanID = recipeAdmissionDigest(p)
 	return p, nil
 }
@@ -111,9 +126,10 @@ func (a *app) PlanSavedRecipeAdmission(ctx context.Context, id string, req index
 }
 
 // CheckSavedRecipePlan re-resolves the current head and rejects any edit,
-// changed request, target or corrupted reviewed plan. It makes no writes.
+// changed own selection, global range, target or corrupted reviewed plan. The
+// enclosing run plan separately binds the entire cohort. This makes no writes.
 func (a *app) CheckSavedRecipePlan(ctx context.Context, reviewed recipeAdmissionPlan, req indexRunRequest, targetHeight int64, targetHash string) error {
-	if reviewed.Schema != 1 || !recipeStoreHashValid(reviewed.PlanID) || reviewed.PlanID != recipeAdmissionDigest(reviewed) {
+	if reviewed.Schema != recipeAdmissionSchema || !recipeStoreHashValid(reviewed.PlanID) || reviewed.PlanID != recipeAdmissionDigest(reviewed) {
 		return fmt.Errorf("invalid recipe admission plan")
 	}
 	current, err := a.PlanSavedRecipeAdmission(ctx, reviewed.Index, req, targetHeight, targetHash)
@@ -131,7 +147,7 @@ func (a *app) CheckSavedRecipePlan(ctx context.Context, reviewed recipeAdmission
 // assert that the run is still enabled, its chain anchor is current, or a
 // dependency is available; those checks belong to the future publication gate.
 func (a *app) CheckAdmittedRecipeBinding(ctx context.Context, admitted recipeAdmissionPlan) error {
-	if admitted.Schema != 1 || !recipeStoreHashValid(admitted.PlanID) || admitted.PlanID != recipeAdmissionDigest(admitted) {
+	if admitted.Schema != recipeAdmissionSchema || !recipeStoreHashValid(admitted.PlanID) || admitted.PlanID != recipeAdmissionDigest(admitted) {
 		return fmt.Errorf("invalid admitted recipe binding")
 	}
 	resolved, err := a.ResolveSavedRecipe(ctx, admitted.Index, admitted.Revision, admitted.SemanticHash)

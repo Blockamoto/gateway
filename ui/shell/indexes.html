@@ -61,7 +61,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <section class="panel index-section" data-pane="results" aria-labelledby="instances-heading" hidden><h2 id="instances-heading">Your local knowledge</h2><details><summary>Coverage and sharing explained</summary><p class="small muted">Each index reports its own retained instance and coverage. Coverage records completed work within the stated range. A retained result and its checkpoint are distinct from keeping its original source blocks. Checkpoints are rechecked against the selected chain before resume.</p><p class="small muted">Publishing freezes the displayed checkpoint and its records for peer sharing. Later work stays private until you publish again. Network service also requires the separate Serve data setting. Withdraw publication to stop sharing without deleting local records.</p></details><div id="instances" class="index-list"></div></section>
 <section class="panel index-section recipe-editor" id="recipe-editor" data-pane="recipe" aria-labelledby="recipe-heading" hidden>
 <h2 id="recipe-heading">Recipe draft</h2>
-<p class="small muted">Create and validate a separate recipe draft, or load a saved draft. This is not the selected index's recipe. Recipe execution is not integrated yet; saving a draft does not start indexing.</p>
+<p class="small muted">Create and validate a separate recipe draft, or load a saved draft. This is not the selected index's recipe. Finite runs require a reviewed plan and an explicit Out. Live and recipe dependencies are unavailable; saving a draft does not start indexing.</p>
 <fieldset data-recipe="guided"><legend>Guided draft</legend><p class="small muted">One reveal source, one optional equality filter and one table. Choose a field, metadata key, or Ord property trait. More complex documents remain editable in JSON.</p>
 <datalist id="recipe-fields" data-recipe="field-list"><option value="ref"><option value="txid"><option value="block_hash"><option value="height"><option value="content_type"><option value="body_hex"><option value="has_body"><option value="metaprotocol"><option value="metaprotocol_hex"><option value="metadata_hex"><option value="properties_hex"></datalist>
 <div class="recipe-fields">
@@ -84,6 +84,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 </div></main>
 <script src="/shell/index-cards.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-transport.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/index-recipe-tracks.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-help-content.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-help.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-scrollbar-geometry.js" nonce="__INDEX_NONCE__"></script>

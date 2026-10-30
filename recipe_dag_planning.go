@@ -34,7 +34,13 @@ func (a *app) recipePlanDependencies(ctx context.Context, root resolvedSavedReci
 	if len(graph.Edges) > recipePlanMaxDependencies {
 		return nil, fmt.Errorf("recipe dependency review exceeds the bounded edge limit")
 	}
-	if from <= to {
+	checkOrigin := from <= to
+	if choice, ok := runSelection(req, root.ID); ok && choice.Live && req.Out == nil {
+		// Even when the selected tip is currently below In/origin, unbounded
+		// Live will eventually attempt the first admitted height.
+		checkOrigin = true
+	}
+	if checkOrigin {
 		for _, node := range graph.Nodes {
 			if node.Identity != graph.Root && node.Origin > from {
 				return nil, fmt.Errorf("same-block parent %q begins at %d, after requested start %d", node.Identity.Instance, node.Origin, from)
@@ -48,8 +54,11 @@ func (a *app) recipePlanDependencies(ctx context.Context, root resolvedSavedReci
 		if edge.ParentSelected {
 			state = "selected_coverage_unknown"
 			reason = fmt.Sprintf("%s requires same-block export %s from the selected exact revision of %s; missing evidence waits.", edge.Child.Instance, edge.Export, edge.Parent.Instance)
+		} else if edge.SelectedSameGeneration {
+			state = "selected_coverage_unknown"
+			reason = fmt.Sprintf("%s requires same-block export %s from %s revision %s. The selected revision shares its semantic generation; coverage can be reused, while the pinned historical definition remains required. Missing evidence waits.", edge.Child.Instance, edge.Export, edge.Parent.Instance, edge.Parent.Revision)
 		} else if edge.SelectedOtherRevision {
-			reason += " The selected instance is a different revision and does not substitute for this parent."
+			reason += " The selected instance has a different semantic fingerprint and cannot supply this generation."
 		}
 		dependencies = append(dependencies, indexRunDependency{Index: edge.Parent.Instance, Kind: "same_block", State: state, Reason: reason})
 	}

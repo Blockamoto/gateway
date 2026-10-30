@@ -1,8 +1,8 @@
 package main
 
-// A bounded, read-only graph of exact saved definitions. This is planning
-// groundwork only: a saved definition does not establish any block coverage,
-// and a selected parent does not authorize hidden writes outside its run.
+// A bounded, read-only graph of exact saved definitions. A saved definition
+// does not establish block coverage, and a selected parent does not authorize
+// hidden writes outside its run.
 import (
 	"context"
 	"fmt"
@@ -24,15 +24,16 @@ type recipeGraphNode struct {
 	Origin   int64               `json:"origin"`
 }
 type recipeGraphEdge struct {
-	Child                 recipeGraphIdentity `json:"child"`
-	Parent                recipeGraphIdentity `json:"parent"`
-	Name                  string              `json:"name"`
-	Export                string              `json:"export"`
-	Type                  string              `json:"type"`
-	Coverage              string              `json:"coverage"`
-	ParentSelected        bool                `json:"parent_selected"`
-	SelectedOtherRevision bool                `json:"selected_other_revision"`
-	CoverageState         string              `json:"coverage_state"`
+	Child                  recipeGraphIdentity `json:"child"`
+	Parent                 recipeGraphIdentity `json:"parent"`
+	Name                   string              `json:"name"`
+	Export                 string              `json:"export"`
+	Type                   string              `json:"type"`
+	Coverage               string              `json:"coverage"`
+	ParentSelected         bool                `json:"parent_selected"`
+	SelectedOtherRevision  bool                `json:"selected_other_revision"`
+	SelectedSameGeneration bool                `json:"selected_same_generation"`
+	CoverageState          string              `json:"coverage_state"`
 }
 type recipeDependencyGraph struct {
 	Root  recipeGraphIdentity `json:"root"`
@@ -111,7 +112,7 @@ func recipeBuildDependencyGraph(ctx context.Context, root resolvedSavedRecipe, s
 			}
 			choice, selectedID := selected[parent.ID]
 			exact := selectedID && recipeGraphID(choice) == parentID
-			graph.Edges = append(graph.Edges, recipeGraphEdge{Child: id, Parent: parentID, Name: dep.Name, Export: dep.Export, Type: dep.Type, Coverage: dep.Coverage, ParentSelected: exact, SelectedOtherRevision: selectedID && !exact, CoverageState: "unknown"})
+			graph.Edges = append(graph.Edges, recipeGraphEdge{Child: id, Parent: parentID, Name: dep.Name, Export: dep.Export, Type: dep.Type, Coverage: dep.Coverage, ParentSelected: exact, SelectedOtherRevision: selectedID && !exact, SelectedSameGeneration: selectedID && choice.SemanticHash == parentID.SemanticHash, CoverageState: "unknown"})
 			if err := visit(parent, depth+1); err != nil {
 				return err
 			}

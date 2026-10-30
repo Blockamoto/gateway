@@ -7,14 +7,15 @@ import (
 
 // recipeOrderSelectedDAG orders only explicitly selected definitions. Saved
 // ancestors are traversed for dependency reachability but are never silently
-// added as writers. Exact revision and semantic identities must match.
+// added as writers. Revisions with the same instance and complete semantic
+// fingerprint share a store generation; the pinned definition still resolves.
 func recipeOrderSelectedDAG(ctx context.Context, selected []resolvedSavedRecipe, resolve recipeGraphResolver) ([]recipeGraphIdentity, error) {
 	if ctx == nil || resolve == nil || len(selected) > recipeGraphMaxNodes {
 		return nil, fmt.Errorf("invalid selected recipe graph")
 	}
 	selected = append([]resolvedSavedRecipe(nil), selected...)
 	byInstance := make(map[string]resolvedSavedRecipe, len(selected))
-	positions := make(map[recipeGraphIdentity]int, len(selected))
+	positions := make(map[string]int, len(selected))
 	cache := make(map[recipeGraphIdentity]resolvedSavedRecipe)
 	memoResolve := func(ctx context.Context, id, revision, semantic string) (resolvedSavedRecipe, error) {
 		key := recipeGraphIdentity{id, revision, semantic}
@@ -38,7 +39,7 @@ func recipeOrderSelectedDAG(ctx context.Context, selected []resolvedSavedRecipe,
 		}
 		selected[i] = canonical
 		byInstance[id.Instance] = canonical
-		positions[id] = i
+		positions[id.Instance] = i
 	}
 	edges := make([]map[int]bool, len(selected))
 	indegree := make([]int, len(selected))
@@ -54,8 +55,8 @@ func recipeOrderSelectedDAG(ctx context.Context, selected []resolvedSavedRecipe,
 			return nil, err
 		}
 		for _, node := range graph.Nodes {
-			parentIndex, ok := positions[node.Identity]
-			if !ok || parentIndex == childIndex {
+			parentIndex, ok := positions[node.Identity.Instance]
+			if !ok || parentIndex == childIndex || selected[parentIndex].SemanticHash != node.Identity.SemanticHash {
 				continue
 			}
 			if edges[parentIndex] == nil {

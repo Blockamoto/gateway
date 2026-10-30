@@ -46,7 +46,19 @@ func TestRecipeSelectedDAGOrderIncludesTransitiveEdgesWithoutHiddenWriters(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(order) != 2 || order[0].Instance != "alpha" {
-		t.Fatalf("different selected revision substituted for saved ancestor: %+v", order)
+	if len(order) != 2 || order[0].Instance != "delta" {
+		t.Fatalf("selected equivalent generation was not ordered first: %+v", order)
+	}
+	different := stale
+	different.SemanticHash = recipeTestHash("f")
+	resolverWithDifferentGeneration := func(ctx context.Context, id, revision, semantic string) (resolvedSavedRecipe, error) {
+		if id == different.ID && revision == different.Revision && semantic == different.SemanticHash {
+			return different, nil
+		}
+		return resolver(ctx, id, revision, semantic)
+	}
+	order, err = recipeOrderSelectedDAG(context.Background(), []resolvedSavedRecipe{root, different}, resolverWithDifferentGeneration)
+	if err != nil || len(order) != 2 || order[0].Instance != "alpha" {
+		t.Fatalf("different semantic generation substituted for saved ancestor: %+v %v", order, err)
 	}
 }

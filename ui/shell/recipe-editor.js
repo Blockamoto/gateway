@@ -198,7 +198,7 @@
     q('validate').addEventListener('click',async()=>{
       if (busy || importing) return; let value; try { value=draft(); } catch(e) { status.textContent=e.message; return; }
       const started=revision; ++requestEpoch; setBusy(true);
-      try { await request('/validate',{recipe_json:raw.value}); if (started===revision) status.textContent='Validated by the recipe compiler. Finite and Live runs require a reviewed plan; Out caps either choice. Recipe dependencies remain unavailable.'; }
+      try { await request('/validate',{recipe_json:raw.value}); if (started===revision) status.textContent='Validated by the recipe compiler. Finite and Live runs require a reviewed plan; Out caps either choice. Same-block reveal dependencies require a reviewed plan and matching parent coverage; saved-only parents are not started automatically. Transaction recipe dependencies remain unavailable.'; }
       catch(e) { if (started===revision) status.textContent='Validation: '+e.message; }
       finally { setBusy(false); }
     });
@@ -209,7 +209,7 @@
       setBusy(true);
       try {
         const result=await request('',body);
-        if (started===revision) { base={id:value.id,revision:result.revision,semanticHash:result.semantic_hash}; status.textContent='Draft saved and validated. Finite and Live runs require a reviewed plan; Out caps either choice. Recipe dependencies remain unavailable.'; }
+        if (started===revision) { base={id:value.id,revision:result.revision,semanticHash:result.semantic_hash}; status.textContent='Draft saved and validated. Finite and Live runs require a reviewed plan; Out caps either choice. Same-block reveal dependencies require a reviewed plan and matching parent coverage; saved-only parents are not started automatically. Transaction recipe dependencies remain unavailable.'; }
         else { if (base?.id===value.id) base=null; saveNote.textContent='An earlier version of '+value.id+' was saved. Export newer edits, then reload the saved draft before saving this ID again.'; }
       } catch(e) { if (started===revision) status.textContent='Save: '+e.message; }
       finally { setBusy(false); }
@@ -233,7 +233,7 @@
         if (started!==revision) return;
         if (typeof result.recipe_json!=='string') throw new Error('Saved recipe text is unavailable.');
         const loaded=JSON.parse(result.recipe_json); model=loaded; base={id:loaded.id,revision:result.revision,semanticHash:result.semantic_hash}; revision++; pendingGuided=false; raw.value=result.recipe_json; showGuided(); saveNote.textContent='';
-        status.textContent=result.validated===false ? (result.note||'Saved draft is not validated by the current interpreter.') : 'Saved draft loaded. Finite and Live runs require a reviewed plan; Out caps either choice. Recipe dependencies remain unavailable.';
+        status.textContent=result.validated===false ? (result.note||'Saved draft is not validated by the current interpreter.') : 'Saved draft loaded. Finite and Live runs require a reviewed plan; Out caps either choice. Same-block reveal dependencies require a reviewed plan and matching parent coverage; saved-only parents are not started automatically. Transaction recipe dependencies remain unavailable.';
       } catch(e) { if (started===revision) status.textContent='Load: '+e.message; }
       finally { setBusy(false); }
     });
@@ -252,14 +252,14 @@
       try{const v=await request('?id='+encodeURIComponent(id));if(ticket!==parentEpoch||parentChoice.value!==id)return;if(started!==revision){parentStatus.textContent='Draft changed; select the parent again.';return;}
         const d=v?.recipe;if(!v?.validated||d?.id!==id||d.source!=='bitcoin.reveal'||d.history!=='sparse'||(d.dependencies!=null&&(!Array.isArray(d.dependencies)||d.dependencies.length))||!Array.isArray(d.exports)||!d.exports.length||!(/^[0-9a-f]{64}$/.test(v.revision||'')&&/^[0-9a-f]{64}$/.test(v.semantic_hash||'')))throw new Error('No validated independent same-block exports are available.');
         const exports=d.exports.filter(e=>e?.kind==='same_block'&&['text','bool','integer','null'].includes(e.type)&&typeof e.name==='string'&&e.name);if(!exports.length)throw new Error('No supported same-block exports are available.');
-        parentSnapshot={id,revision:v.revision,semanticHash:v.semantic_hash,exports};parentExportChoice.replaceChildren(option('','Choose export'),...exports.map(e=>option(e.name,e.name+' · '+e.type+' · '+e.table+'.'+e.column)));parentStatus.textContent='Choose an export, then use it to pin this exact revision. Parent coverage will be checked when dependency execution is available.';
+        parentSnapshot={id,revision:v.revision,semanticHash:v.semantic_hash,exports};parentExportChoice.replaceChildren(option('','Choose export'),...exports.map(e=>option(e.name,e.name+' · '+e.type+' · '+e.table+'.'+e.column)));parentStatus.textContent='Choose an export, then use it to pin this exact revision. Parent coverage is checked during a reviewed run; saved-only parents are not started automatically.';
       }catch(e){if(ticket===parentEpoch&&started===revision&&parentChoice.value===id)parentStatus.textContent='Parent: '+e.message;}
     });
     q('parentUse').addEventListener('click',()=>{
       const parent=parentSnapshot,exported=parent?.exports.find(e=>e.name===parentExportChoice.value);
       if(!parent||parentChoice.value!==parent.id||!exported){parentStatus.textContent='Choose a current parent and export first.';return;}
       if(parent.id===q('id').value){parentStatus.textContent='A recipe cannot depend on itself.';return;}
-      cancelImport();revision++;pendingGuided=true;q('dependencyName').value=q('dependencyName').value||'parent';q('dependencyInstance').value=parent.id;q('dependencyRevision').value=parent.revision;q('dependencySemanticHash').value=parent.semanticHash;q('dependencyExport').value=exported.name;q('dependencyType').value=exported.type;parentStatus.textContent='Pinned the selected parent revision. Enter a lookup output column, then apply guided changes. Dependency execution remains unavailable.';status.textContent='Apply guided changes before validating or saving.';
+      cancelImport();revision++;pendingGuided=true;q('dependencyName').value=q('dependencyName').value||'parent';q('dependencyInstance').value=parent.id;q('dependencyRevision').value=parent.revision;q('dependencySemanticHash').value=parent.semanticHash;q('dependencyExport').value=exported.name;q('dependencyType').value=exported.type;parentStatus.textContent='Pinned the selected parent revision. Enter a lookup output column, then apply guided changes. A reviewed run can use matching parent coverage; saved-only parents are not started automatically.';status.textContent='Apply guided changes before validating or saving.';
     });
     q('export').addEventListener('click',()=>{
       let d; try { d=draft(); } catch(e) { status.textContent='Cannot export: '+e.message; return; }

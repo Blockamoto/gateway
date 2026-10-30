@@ -69,6 +69,13 @@ func TestRecipeDAGPlanningRejectsParentOriginAfterRequestedStart(t *testing.T) {
 	if _, err = a.recipePlanDependencies(ctx, child, req, 2, 3, resolve); err != nil {
 		t.Fatalf("valid origin blocked: %v", err)
 	}
+	if _, err = a.recipePlanDependencies(ctx, child, req, 0, -1, resolve); err != nil {
+		t.Fatalf("empty finite range blocked: %v", err)
+	}
+	req.Consumers[0].Live = true
+	if _, err = a.recipePlanDependencies(ctx, child, req, 0, -1, resolve); err == nil || !strings.Contains(err.Error(), "after requested start") {
+		t.Fatalf("future Live gap admitted: %v", err)
+	}
 }
 
 func TestRecipeTransactionDependencyRemainsExplicitlyBlocked(t *testing.T) {

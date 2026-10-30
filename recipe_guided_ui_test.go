@@ -10,8 +10,8 @@ func TestGuidedSameBlockAuthoringCompiles(t *testing.T) {
 		if err != nil || !view.Validated {
 			t.Fatalf("guided definition failed to compile: %+v %v", view, err)
 		}
-		if len(view.Recipe.Dependencies) > 0 && view.Runnable {
-			t.Fatal("dependency recipe incorrectly advertised as runnable")
+		if !view.Runnable {
+			t.Fatal("reveal recipe capability unexpectedly unavailable")
 		}
 	}
 }

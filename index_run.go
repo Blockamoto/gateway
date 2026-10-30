@@ -641,6 +641,20 @@ func (a *app) planIndexRun(ctx context.Context, req indexRunRequest) (indexRunPl
 
 // Resume may resolve an admitted historical revision without adopting a new registry head.
 func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, resolve func(string) (resolvedSavedRecipe, error)) (indexRunPlan, error) {
+	// Resolve each selected identity once, so diagnostics and admission bindings
+	// describe the same cohort even if a registry head changes during review.
+	underlyingResolve := resolve
+	resolvedSelections := make(map[string]resolvedSavedRecipe)
+	resolve = func(id string) (resolvedSavedRecipe, error) {
+		if saved, ok := resolvedSelections[id]; ok {
+			return saved, nil
+		}
+		saved, err := underlyingResolve(id)
+		if err == nil {
+			resolvedSelections[id] = saved
+		}
+		return saved, err
+	}
 	req, err := normalizeIndexRunRequestWithRecipes(req, true, resolve)
 	if err != nil {
 		return indexRunPlan{}, err
@@ -707,11 +721,20 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 			}
 			q.State, q.AdmissionState = "ready", "admitted"
 			if len(resolved.Definition.Dependencies) != 0 {
-				q.State, q.AdmissionState = "blocked", "blocked"
 				if resolved.Source == "bitcoin.transaction" {
+					q.State, q.AdmissionState = "blocked", "blocked"
 					q.Reason = "Same-block dependencies are not supported for transaction recipes."
 				} else {
-					q.Reason = "Dependency-backed recipe execution is not integrated with the index scheduler."
+					q.Dependencies, e = a.recipePlanDependencies(ctx, resolved, req, q.From, p.TargetHeight, resolve)
+					if e != nil {
+						if ctx.Err() != nil {
+							return p, ctx.Err()
+						}
+						q.State, q.AdmissionState = "blocked", "blocked"
+						q.Reason = "Recipe dependencies cannot be admitted: " + e.Error()
+					} else {
+						q.Reason = "Same-block parent coverage is checked at each block; unavailable evidence waits."
+					}
 				}
 			}
 			if p.TargetHeight >= 0 && recipeStoreHashValid(p.TargetHash) {
@@ -1183,6 +1206,12 @@ func (a *app) handleIndexRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID string) (indexRunDocument, error) {
+	return a.startIndexRunWithAdmissionBoundary(ctx, req, planID, nil)
+}
+
+// beforeLock is an internal test seam for registry changes between review and
+// the final locked recheck; normal admission always passes nil.
+func (a *app) startIndexRunWithAdmissionBoundary(ctx context.Context, req indexRunRequest, planID string, beforeLock func()) (indexRunDocument, error) {
 	a.indexLiveControlMu.Lock()
 	defer a.indexLiveControlMu.Unlock()
 	p, err := a.planIndexRun(ctx, req)
@@ -1207,6 +1236,29 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 	}
 	if planID != "" && planID != p.PlanID {
 		return indexRunDocument{}, fmt.Errorf("the reviewed run changed; review its current plan again")
+	}
+	// Resolve the exact historical closure before taking registryMu. The root
+	// heads and every member of this closure are checked again under the lock
+	// before the admission record becomes durable.
+	graphIdentities := map[recipeGraphIdentity]struct{}{}
+	for _, progress := range p.Consumers {
+		if progress.Recipe == nil || len(progress.Dependencies) == 0 {
+			continue
+		}
+		root, e := a.ResolveSavedRecipe(ctx, progress.Index, progress.Recipe.Revision, progress.Recipe.SemanticHash)
+		if e != nil {
+			return indexRunDocument{}, fmt.Errorf("saved recipe graph changed since review: %w", e)
+		}
+		graph, e := a.buildRecipeDependencyGraph(ctx, root, nil)
+		if e != nil {
+			return indexRunDocument{}, fmt.Errorf("saved recipe graph changed since review: %w", e)
+		}
+		for _, node := range graph.Nodes {
+			graphIdentities[node.Identity] = struct{}{}
+		}
+	}
+	if beforeLock != nil {
+		beforeLock()
 	}
 	a.indexMu.Lock()
 	defer a.indexMu.Unlock()
@@ -1237,6 +1289,15 @@ func (a *app) startIndexRun(ctx context.Context, req indexRunRequest, planID str
 			view, readErr := recipeRegistryRead(a.dataDir, progress.Index, "")
 			if readErr != nil || !view.Validated || view.Revision != progress.Recipe.Revision || view.SemanticHash != progress.Recipe.SemanticHash {
 				return indexRunDocument{}, fmt.Errorf("saved recipe changed since review; review the plan again")
+			}
+		}
+		for identity := range graphIdentities {
+			if err := ctx.Err(); err != nil {
+				return indexRunDocument{}, err
+			}
+			view, readErr := recipeRegistryRead(a.dataDir, identity.Instance, identity.Revision)
+			if readErr != nil || !view.Validated || view.Revision != identity.Revision || view.SemanticHash != identity.SemanticHash {
+				return indexRunDocument{}, fmt.Errorf("saved recipe dependency changed since review; review the plan again")
 			}
 		}
 	}

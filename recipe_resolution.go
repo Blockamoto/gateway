@@ -65,6 +65,8 @@ func recipeResolveView(view recipeRegistryView) (resolvedSavedRecipe, error) {
 	execution := "independent_finite_and_live"
 	if view.Recipe.Source != "bitcoin.reveal" && view.Recipe.Source != "bitcoin.transaction" {
 		execution = "source_scheduling_unavailable"
+	} else if len(view.Recipe.Dependencies) != 0 && view.Recipe.Source == "bitcoin.reveal" {
+		execution = "reveal_same_block_dependencies"
 	} else if len(view.Recipe.Dependencies) != 0 {
 		execution = "dependency_scheduling_unavailable"
 	}

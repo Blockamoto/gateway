@@ -10,6 +10,33 @@ import (
 	"time"
 )
 
+func waitRecipeDAGRun(t *testing.T, a *app) indexRunDocument {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		d := a.indexRunSnapshot()
+		if d.Run != nil && (d.Run.State == "complete" || d.Run.State == "complete_with_errors" || d.Run.State == "paused" || d.Run.State == "failed" || d.Run.State == "cancelled") {
+			a.indexMu.Lock()
+			active := a.indexCancel != nil
+			a.indexMu.Unlock()
+			if !active {
+				return d
+			}
+		}
+		select {
+		case <-ctx.Done():
+			if d.Run == nil {
+				t.Fatalf("DAG run did not settle: document=%+v", d)
+			}
+			t.Fatalf("DAG run did not settle: state=%s phase=%s reason=%q target=%d consumers=%+v", d.Run.State, d.Run.Phase, d.Run.Reason, d.Run.TargetHeight, d.Run.Consumers)
+		case <-ticker.C:
+		}
+	}
+}
+
 func TestRecipeDAGSchedulerOrdersSelectedParentsAtSameBlock(t *testing.T) {
 	ctx := context.Background()
 	a := runTestApp(t)
@@ -22,8 +49,8 @@ func TestRecipeDAGSchedulerOrdersSelectedParentsAtSameBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Ready {
-		t.Fatal("public dependency gate unexpectedly open")
+	if !plan.Ready {
+		t.Fatalf("dependency plan blocked: %+v", plan)
 	}
 	source := recipeCoordinatorSource(t)
 	a.indexRunSourceBlock = func(ctx context.Context, target blockTarget, _ string) (blockView, error) {
@@ -32,9 +59,10 @@ func TestRecipeDAGSchedulerOrdersSelectedParentsAtSameBlock(t *testing.T) {
 		}
 		return source[0], nil
 	}
-	installRecipeCoordinatorFixture(t, a, plan)
-	launchRecipeCoordinatorFixture(t, a)
-	done := waitRun(t, a)
+	if _, err := a.startIndexRun(ctx, req, plan.PlanID); err != nil {
+		t.Fatalf("public DAG start: %v", err)
+	}
+	done := waitRecipeDAGRun(t, a)
 	if done.Run.State != "complete" {
 		t.Fatalf("DAG run: %+v", done.Run)
 	}
@@ -90,9 +118,10 @@ func TestRecipeDAGSchedulerOrdersSelectedParentsAtSameBlock(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	installRecipeCoordinatorFixture(t, a, plan)
-	launchRecipeCoordinatorFixture(t, a)
-	second := waitRun(t, a)
+	if _, err := a.startIndexRun(ctx, req, plan.PlanID); err != nil {
+		t.Fatalf("public DAG restart: %v", err)
+	}
+	second := waitRecipeDAGRun(t, a)
 	if second.Run.State != "complete" {
 		t.Fatalf("DAG lineage reorg did not recover: %+v", second.Run)
 	}
@@ -131,8 +160,9 @@ func TestRecipeDAGSchedulerUsesSavedParentsWithoutStartingThem(t *testing.T) {
 	}
 	source := recipeCoordinatorSource(t)
 	a.indexRunSourceBlock = func(context.Context, blockTarget, string) (blockView, error) { return source[0], nil }
-	installRecipeCoordinatorFixture(t, a, plan)
-	launchRecipeCoordinatorFixture(t, a)
+	if _, err := a.startIndexRun(ctx, req, plan.PlanID); err != nil {
+		t.Fatalf("public saved-parent start: %v", err)
+	}
 	done := waitRun(t, a)
 	if done.Run.State != "complete" {
 		t.Fatalf("saved-parent run: %+v", done.Run)
@@ -169,8 +199,9 @@ func TestRecipeDAGSchedulerWaitsForMissingSavedParent(t *testing.T) {
 	}
 	source := recipeCoordinatorSource(t)
 	a.indexRunSourceBlock = func(context.Context, blockTarget, string) (blockView, error) { return source[0], nil }
-	installRecipeCoordinatorFixture(t, a, plan)
-	launchRecipeCoordinatorFixture(t, a)
+	if _, err := a.startIndexRun(ctx, req, plan.PlanID); err != nil {
+		t.Fatalf("public missing-parent start: %v", err)
+	}
 	var waiting indexRunDocument
 	deadline := time.Now().Add(15 * time.Second)
 	for {
@@ -240,13 +271,14 @@ func TestRecipeDAGSchedulerMixedIndependentTransactionAndRevealGraph(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Ready {
-		t.Fatal("dependency gate unexpectedly open")
+	if !plan.Ready {
+		t.Fatalf("mixed dependency plan blocked: %+v", plan)
 	}
 	source := recipeCoordinatorSource(t)
 	a.indexRunSourceBlock = func(context.Context, blockTarget, string) (blockView, error) { return source[0], nil }
-	installRecipeCoordinatorFixture(t, a, plan)
-	launchRecipeCoordinatorFixture(t, a)
+	if _, err := a.startIndexRun(ctx, req, plan.PlanID); err != nil {
+		t.Fatalf("public mixed DAG start: %v", err)
+	}
 	done := waitRun(t, a)
 	if done.Run.State != "complete" {
 		t.Fatalf("mixed DAG run: %+v", done.Run)

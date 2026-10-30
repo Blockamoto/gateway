@@ -53,7 +53,7 @@ func parseOrderedRecipeProgram(raw []byte, allowEmit bool) (recipeOrderedProgram
 		}
 		allowed := []string{"kind"}
 		switch header.Kind {
-		case "text", "uint", "bool", "bytes", "object":
+		case "text", "uint", "bool", "bytes", "object", "ranges":
 			allowed = append(allowed, header.Kind)
 		case "missing":
 		default:

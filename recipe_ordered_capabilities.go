@@ -24,5 +24,9 @@ func recipeOrderedFunctions() []recipeFunctionCapability {
 		function("payment_destination", "object", arg("script", "bytes")),
 		function("bip30_exception", "bool", arg("height", "uint"), arg("block", "text"), arg("coinbase", "bool")),
 		function("get", "any", arg("object", "object"), arg("key", "text")),
+		function("range_empty", "ranges"), function("range_subsidy", "ranges", arg("height", "uint")),
+		function("range_concat", "ranges", arg("left", "ranges"), arg("right", "ranges")),
+		function("range_split", "object", arg("ranges", "ranges"), arg("value", "uint")),
+		function("range_value", "uint", arg("ranges", "ranges")), function("range_at", "uint", arg("ranges", "ranges"), arg("offset", "uint")),
 	}
 }

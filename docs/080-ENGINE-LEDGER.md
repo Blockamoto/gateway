@@ -486,3 +486,32 @@ No scan or parent work starts on lookup. Focused projection query checks passed
 in 8.237 seconds; all four recipe/workspace JavaScript checks and production
 build passed. General state contracts, remaining built-ins and complete visible
 preview acceptance are still open. Details are in `080-NATIVE-CURRENT-ADDRESSES.md`.
+
+
+### Native Sat FIFO and retained original range JSON
+
+Actual current-state and retained-history documents now drive native Sat FIFO
+through the common typed interpreter. Their source explicitly orders ordinary
+transactions before coinbase; JSON composes immutable interval concatenation,
+splits, fee carry, lost remainders, output state, legacy duplicate destruction
+and inscription pointer/unbound identity. Individual physical writes retain the
+native COW/fact/reverse-location codec, savepoints, checkpoint identity and GC.
+The old derivation is a test-only differential oracle. A frozen equivalence
+bundle protects existing layout-1 native data.
+
+Both actual documents round-trip through guided controls, including range
+functions, exact interval literals and the optional history declaration. Saved
+copies compile but remain scheduler-gated pending their own public lifecycle.
+No private staged-state or page-pack experiment is adopted. Details and the
+precise source/physical boundary are in `080-NATIVE-SATS.md`.
+
+Complete physical current/history parity and existing same-block/duplicate
+checks passed in 7.918 seconds. The broader native Sat, savepoint recovery and
+registry suite passed in 274.525 seconds. Fragmentation/semantic checks passed
+in 9.603 seconds, including more historical intervals than the expression-node
+quota and unchanged-tail sharing. Final source-fact/compiler rejection and
+native/range checks passed in 6.669 seconds. All four JavaScript checks passed;
+the final production build passed after the source-field follow-up. Saved Sat execution/query/lifecycle, general
+state contracts, remaining built-ins and visible complete-preview acceptance
+remain open. Browser initialization still fails with the missing kernel-assets
+path; no visible acceptance is claimed.

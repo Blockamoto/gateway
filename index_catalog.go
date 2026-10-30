@@ -229,6 +229,11 @@ func indexDefinitions() []indexDefinition {
 			// change without rewriting existing checkpoints or its profile ID.
 			d.Rules = append([]string(nil), d.Rules...)
 			d.Rules[len(d.Rules)-1] = "Output blocator range records share amount and exact script facts; complete historical ranges are optional and off by default."
+			d.ExecutableRecipe = append(json.RawMessage(nil), builtinSatStateJSON...)
+			if programs, err := builtinSatRecipes(); err == nil {
+				d.ExecutableRecipeHash = programs[0].semanticHash()
+				d.ExecutableRecipeVariants = []indexExecutableRecipe{{Name: "Current FIFO state", Definition: append(json.RawMessage(nil), builtinSatStateJSON...), SemanticHash: programs[0].semanticHash()}, {Name: "Retained historical output ranges", Definition: append(json.RawMessage(nil), builtinSatRangesJSON...), SemanticHash: programs[1].semanticHash()}}
+			}
 		}
 		if d.ID == "bitmap-districts" {
 			d.Name = "Legacy Experimental Districts"

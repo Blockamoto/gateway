@@ -1,0 +1,972 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "sat-state",
+  "name": "Sat FIFO state",
+  "source": "bitcoin.fifo",
+  "origin": 0,
+  "history": "ordered",
+  "storage": "bitcoin.sats.cow.v1",
+  "dependencies": [],
+  "tables": [
+    {
+      "name": "outputs",
+      "key": "outpoint"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "block_begin"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "coinbase_stream",
+                "expr": {
+                  "call": "range_subsidy",
+                  "args": [
+                    {
+                      "field": "height"
+                    }
+                  ]
+                }
+              }
+            ],
+            "else": []
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "tx_begin"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "if",
+                "expr": {
+                  "field": "coinbase"
+                },
+                "body": [
+                  {
+                    "op": "let",
+                    "name": "stream",
+                    "expr": {
+                      "var": "coinbase_stream"
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "op": "let",
+                    "name": "stream",
+                    "expr": {
+                      "call": "range_empty",
+                      "args": []
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "field": "coinbase"
+                },
+                "body": [
+                  {
+                    "op": "if",
+                    "expr": {
+                      "call": "eq",
+                      "args": [
+                        {
+                          "field": "height"
+                        },
+                        {
+                          "literal": {
+                            "kind": "uint",
+                            "uint": "91842"
+                          }
+                        }
+                      ]
+                    },
+                    "body": [
+                      {
+                        "op": "emit",
+                        "table": "incarnations",
+                        "key": {
+                          "field": "txid"
+                        },
+                        "expr": {
+                          "object": {
+                            "height": {
+                              "field": "height"
+                            }
+                          }
+                        }
+                      }
+                    ],
+                    "else": [
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "eq",
+                          "args": [
+                            {
+                              "field": "height"
+                            },
+                            {
+                              "literal": {
+                                "kind": "uint",
+                                "uint": "91880"
+                              }
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "emit",
+                            "table": "incarnations",
+                            "key": {
+                              "field": "txid"
+                            },
+                            "expr": {
+                              "object": {
+                                "height": {
+                                  "field": "height"
+                                }
+                              }
+                            }
+                          }
+                        ],
+                        "else": []
+                      }
+                    ]
+                  }
+                ],
+                "else": []
+              }
+            ],
+            "else": []
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "input"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "key",
+                "expr": {
+                  "call": "outpoint",
+                  "args": [
+                    {
+                      "field": "prev_txid"
+                    },
+                    {
+                      "field": "prev_vout"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "read",
+                "name": "coin",
+                "table": "outputs",
+                "key": {
+                  "var": "key"
+                }
+              },
+              {
+                "op": "require",
+                "name": "input exists",
+                "expr": {
+                  "call": "present",
+                  "args": [
+                    {
+                      "var": "coin"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "require",
+                "name": "input is spendable",
+                "expr": {
+                  "call": "eq",
+                  "args": [
+                    {
+                      "call": "get",
+                      "args": [
+                        {
+                          "var": "coin"
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "state"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "literal": {
+                        "kind": "text",
+                        "text": "unspent"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "require",
+                "name": "input intervals match amount",
+                "expr": {
+                  "call": "eq",
+                  "args": [
+                    {
+                      "call": "range_value",
+                      "args": [
+                        {
+                          "call": "get",
+                          "args": [
+                            {
+                              "var": "coin"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "ranges"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "call": "get",
+                      "args": [
+                        {
+                          "var": "coin"
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "value"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "let",
+                "name": "stream",
+                "expr": {
+                  "call": "range_concat",
+                  "args": [
+                    {
+                      "var": "stream"
+                    },
+                    {
+                      "call": "get",
+                      "args": [
+                        {
+                          "var": "coin"
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "ranges"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "delete",
+                "table": "outputs",
+                "key": {
+                  "var": "key"
+                }
+              }
+            ],
+            "else": []
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "inscription"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "known",
+                "expr": {
+                  "literal": {
+                    "kind": "bool",
+                    "bool": false
+                  }
+                }
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "call": "not",
+                  "args": [
+                    {
+                      "field": "unbound"
+                    }
+                  ]
+                },
+                "body": [
+                  {
+                    "op": "if",
+                    "expr": {
+                      "call": "not",
+                      "args": [
+                        {
+                          "call": "eq",
+                          "args": [
+                            {
+                              "field": "input_value"
+                            },
+                            {
+                              "literal": {
+                                "kind": "uint",
+                                "uint": "0"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "body": [
+                      {
+                        "op": "let",
+                        "name": "offset",
+                        "expr": {
+                          "field": "input_offset"
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "field": "has_pointer"
+                        },
+                        "body": [
+                          {
+                            "op": "if",
+                            "expr": {
+                              "call": "not",
+                              "args": [
+                                {
+                                  "call": "less_equal",
+                                  "args": [
+                                    {
+                                      "field": "outputs_value"
+                                    },
+                                    {
+                                      "field": "pointer"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "body": [
+                              {
+                                "op": "let",
+                                "name": "offset",
+                                "expr": {
+                                  "field": "pointer"
+                                }
+                              }
+                            ],
+                            "else": []
+                          }
+                        ],
+                        "else": []
+                      },
+                      {
+                        "op": "let",
+                        "name": "sat",
+                        "expr": {
+                          "call": "range_at",
+                          "args": [
+                            {
+                              "var": "stream"
+                            },
+                            {
+                              "var": "offset"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "op": "require",
+                        "name": "inscription lies within input stream",
+                        "expr": {
+                          "call": "present",
+                          "args": [
+                            {
+                              "var": "sat"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "known",
+                        "expr": {
+                          "literal": {
+                            "kind": "bool",
+                            "bool": true
+                          }
+                        }
+                      }
+                    ],
+                    "else": []
+                  }
+                ],
+                "else": []
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "var": "known"
+                },
+                "body": [
+                  {
+                    "op": "emit",
+                    "table": "identities",
+                    "key": {
+                      "field": "id"
+                    },
+                    "expr": {
+                      "object": {
+                        "state": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "known"
+                          }
+                        },
+                        "sat": {
+                          "var": "sat"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "op": "emit",
+                    "table": "identities",
+                    "key": {
+                      "field": "id"
+                    },
+                    "expr": {
+                      "object": {
+                        "state": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "unbound"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "else": []
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "output"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "split",
+                "expr": {
+                  "call": "range_split",
+                  "args": [
+                    {
+                      "var": "stream"
+                    },
+                    {
+                      "field": "value"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "let",
+                "name": "stream",
+                "expr": {
+                  "call": "get",
+                  "args": [
+                    {
+                      "var": "split"
+                    },
+                    {
+                      "literal": {
+                        "kind": "text",
+                        "text": "rest"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "let",
+                "name": "key",
+                "expr": {
+                  "call": "outpoint",
+                  "args": [
+                    {
+                      "field": "txid"
+                    },
+                    {
+                      "field": "vout"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "read",
+                "name": "old",
+                "table": "outputs",
+                "key": {
+                  "var": "key"
+                }
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "call": "present",
+                  "args": [
+                    {
+                      "var": "old"
+                    }
+                  ]
+                },
+                "body": [
+                  {
+                    "op": "require",
+                    "name": "only historical duplicate coinbases may displace an output",
+                    "expr": {
+                      "field": "coinbase"
+                    }
+                  },
+                  {
+                    "op": "if",
+                    "expr": {
+                      "call": "not",
+                      "args": [
+                        {
+                          "call": "eq",
+                          "args": [
+                            {
+                              "field": "height"
+                            },
+                            {
+                              "literal": {
+                                "kind": "uint",
+                                "uint": "91842"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "body": [
+                      {
+                        "op": "require",
+                        "name": "historical duplicate height",
+                        "expr": {
+                          "call": "eq",
+                          "args": [
+                            {
+                              "field": "height"
+                            },
+                            {
+                              "literal": {
+                                "kind": "uint",
+                                "uint": "91880"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "else": []
+                  },
+                  {
+                    "op": "put",
+                    "table": "outputs",
+                    "key": {
+                      "var": "key"
+                    },
+                    "expr": {
+                      "object": {
+                        "output": {
+                          "call": "get",
+                          "args": [
+                            {
+                              "var": "old"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "output"
+                              }
+                            }
+                          ]
+                        },
+                        "txid": {
+                          "call": "get",
+                          "args": [
+                            {
+                              "var": "old"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "txid"
+                              }
+                            }
+                          ]
+                        },
+                        "vout": {
+                          "call": "get",
+                          "args": [
+                            {
+                              "var": "old"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "vout"
+                              }
+                            }
+                          ]
+                        },
+                        "block": {
+                          "call": "get",
+                          "args": [
+                            {
+                              "var": "old"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "block"
+                              }
+                            }
+                          ]
+                        },
+                        "value": {
+                          "call": "get",
+                          "args": [
+                            {
+                              "var": "old"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "value"
+                              }
+                            }
+                          ]
+                        },
+                        "ranges": {
+                          "call": "get",
+                          "args": [
+                            {
+                              "var": "old"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "ranges"
+                              }
+                            }
+                          ]
+                        },
+                        "state": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "bip30_destroyed"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "else": []
+              },
+              {
+                "op": "let",
+                "name": "position",
+                "expr": {
+                  "call": "output_ref",
+                  "args": [
+                    {
+                      "field": "height"
+                    },
+                    {
+                      "field": "tx_index"
+                    },
+                    {
+                      "field": "vout"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "let",
+                "name": "output_state",
+                "expr": {
+                  "literal": {
+                    "kind": "text",
+                    "text": "unspent"
+                  }
+                }
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "call": "eq",
+                  "args": [
+                    {
+                      "field": "height"
+                    },
+                    {
+                      "literal": {
+                        "kind": "uint",
+                        "uint": "0"
+                      }
+                    }
+                  ]
+                },
+                "body": [
+                  {
+                    "op": "let",
+                    "name": "output_state",
+                    "expr": {
+                      "literal": {
+                        "kind": "text",
+                        "text": "genesis_unspendable"
+                      }
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "op": "if",
+                    "expr": {
+                      "call": "not",
+                      "args": [
+                        {
+                          "call": "retains",
+                          "args": [
+                            {
+                              "field": "height"
+                            },
+                            {
+                              "field": "script"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "body": [
+                      {
+                        "op": "let",
+                        "name": "output_state",
+                        "expr": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "burned"
+                          }
+                        }
+                      }
+                    ],
+                    "else": []
+                  }
+                ]
+              },
+              {
+                "op": "put",
+                "table": "outputs",
+                "key": {
+                  "var": "key"
+                },
+                "expr": {
+                  "object": {
+                    "output": {
+                      "var": "position"
+                    },
+                    "txid": {
+                      "field": "txid"
+                    },
+                    "vout": {
+                      "field": "vout"
+                    },
+                    "block": {
+                      "field": "block"
+                    },
+                    "value": {
+                      "field": "value"
+                    },
+                    "ranges": {
+                      "call": "get",
+                      "args": [
+                        {
+                          "var": "split"
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "taken"
+                          }
+                        }
+                      ]
+                    },
+                    "state": {
+                      "var": "output_state"
+                    }
+                  }
+                }
+              }
+            ],
+            "else": []
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "tx_end"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "if",
+                "expr": {
+                  "field": "coinbase"
+                },
+                "body": [
+                  {
+                    "op": "emit",
+                    "table": "lost",
+                    "key": {
+                      "field": "block"
+                    },
+                    "expr": {
+                      "object": {
+                        "ranges": {
+                          "var": "stream"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "op": "let",
+                    "name": "coinbase_stream",
+                    "expr": {
+                      "call": "range_concat",
+                      "args": [
+                        {
+                          "var": "coinbase_stream"
+                        },
+                        {
+                          "var": "stream"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            "else": []
+          }
+        ]
+      }
+    ]
+  }
+}

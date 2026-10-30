@@ -19,7 +19,7 @@ func recipeTypeTestDefinition(steps string) recipeDefinition {
 
 func TestRecipeCatalogueDescribesInstalledTypes(t *testing.T) {
 	c := recipeCatalogue()
-	if c.Version != 1 || len(c.Sources) != 4 || c.Sources[0].ID != "bitcoin.reveal" || len(c.Steps) != 3 {
+	if c.Version != 1 || len(c.Sources) != 5 || c.Sources[0].ID != "bitcoin.reveal" || len(c.Steps) != 3 {
 		t.Fatalf("catalogue: %+v", c)
 	}
 	projection := c.Sources[3]

@@ -4,18 +4,20 @@
   const object=value=>!!value&&typeof value==='object'&&!Array.isArray(value);
   const keys=(value,allowed)=>object(value)&&Object.keys(value).every(key=>allowed.includes(key));
   const fields=['kind','block','txid','height','tx_index','output_count','coinbase','prev_txid','input_ref','fact_page','prev_vout','input_index','vout','value','fact_row','script'];
+  const fifoFields=[...fields,'id','unbound','has_pointer','input_value','input_offset','pointer','outputs_value'];
   const projectionFields=['block','height','tx_index','vout','value','script','add'];
-  const arities={eq:2,not:1,present:1,add_money:2,sub_money:2,less_equal:2,outpoint:2,output_ref:3,destination:1,payment_destination:1,retains:2,bip30_exception:3,get:2};
+  const arities={eq:2,not:1,present:1,add_money:2,sub_money:2,less_equal:2,outpoint:2,output_ref:3,destination:1,payment_destination:1,retains:2,bip30_exception:3,get:2,range_empty:0,range_subsidy:1,range_concat:2,range_split:2,range_value:1,range_at:2};
   const operations={let:['name','expr'],read:['name','table','key'],put:['table','key','expr'],delete:['table','key'],if:['expr','body','else'],require:['name','expr'],emit:['table','key','expr'],for_range:['name','expr','body'],for_events:['body']};
   const uint=text=>typeof text==='string'&&/^(0|[1-9][0-9]*)$/.test(text)&&(text.length<20||text.length===20&&text<='18446744073709551615');
   function valueSupported(value,depth=0){
     if(depth>32||!object(value))return false;
-    const kind=value.kind;if(!['missing','text','uint','bool','bytes','object'].includes(kind)||!keys(value,kind==='missing'?['kind']:['kind',kind]))return false;
+    const kind=value.kind;if(!['missing','text','uint','bool','bytes','object','ranges'].includes(kind)||!keys(value,kind==='missing'?['kind']:['kind',kind]))return false;
     if(kind==='missing')return true;
     if(kind==='text')return !Object.hasOwn(value,'text')||typeof value.text==='string';
     if(kind==='uint')return uint(value.uint);
     if(kind==='bool')return !Object.hasOwn(value,'bool')||typeof value.bool==='boolean';
     if(kind==='bytes')return !Object.hasOwn(value,'bytes')||typeof value.bytes==='string'&&/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.bytes);
+    if(kind==='ranges')return Array.isArray(value.ranges)&&value.ranges.every(r=>keys(r,['start','end'])&&Object.keys(r).length===2&&uint(r.start)&&uint(r.end)&&BigInt(r.start)<BigInt(r.end)&&BigInt(r.end)<=2099999997690000n);
     return object(value.object)&&Object.keys(value.object).length<=64&&Object.values(value.object).every(v=>valueSupported(v,depth+1));
   }
   function expressionSupported(expr,depth=0,allowedFields=fields){
@@ -34,7 +36,8 @@
       if(!Object.hasOwn(operations,step?.op)||scope?.output&&['read','put','delete'].includes(step.op))return false;
       const allowed=operations[step.op];if(step.op==='for_events'&&depth!==0||!keys(step,['op',...allowed]))return false;
       if(Object.hasOwn(step,'name')&&(typeof step.name!=='string'||!step.name))return false;
-      if(Object.hasOwn(step,'table')&&!(step.op==='emit'?(scope?.output?scope.tables:['prevouts']):['coins','counts']).includes(step.table))return false;
+      if(Object.hasOwn(step,'table')&&!(step.op==='emit'?(scope?.output?scope.tables:scope?.emitTables||['prevouts']):scope?.stateTables||['coins','counts']).includes(step.table))return false;
+      if(scope?.fifo&&step.table==='history'&&step.op!=='put')return false;
       if(['let','read','for_range'].includes(step.op)&&!step.name)return false;
       if(['read','put','delete','emit'].includes(step.op)&&!expressionSupported(step.key,0,scope?.fields))return false;
       if(['let','put','if','require','emit','for_range'].includes(step.op)&&!expressionSupported(step.expr,0,scope?.fields))return false;
@@ -45,10 +48,11 @@
   }
   function toGuided(definition){
     const d=definition;
-    if(!keys(d,['format','version','id','name','source','origin','history','storage','dependencies','exports','tables','ordered'])||d.format!=='gateway-recipe'||d.version!==1||typeof d.id!=='string'||typeof d.name!=='string'||!['bitcoin.ordered','dependency.utxo'].includes(d.source)||!Number.isSafeInteger(d.origin)||d.origin<0)return null;
+    if(!keys(d,['format','version','id','name','source','origin','history','storage','dependencies','exports','tables','ordered'])||d.format!=='gateway-recipe'||d.version!==1||typeof d.id!=='string'||typeof d.name!=='string'||!['bitcoin.ordered','dependency.utxo','bitcoin.fifo'].includes(d.source)||!Number.isSafeInteger(d.origin)||d.origin<0)return null;
     const projection=d.source==='dependency.utxo'&&d.history==='projection'&&d.storage==='bitcoin.address.cow.v1'&&d.origin===0;
+    const fifo=d.source==='bitcoin.fifo'&&d.history==='ordered'&&d.storage==='bitcoin.sats.cow.v1'&&d.origin===0;
     const sparse=d.history==='sparse'&&d.storage==='rows.json.v1';
-    if(d.source==='dependency.utxo'&&!projection||!projection&&!sparse&&(d.origin!==0||d.history!=='ordered'||d.storage!=='bitcoin.utxo.cow.v2'))return null;
+    if(d.source==='dependency.utxo'&&!projection||d.source==='bitcoin.fifo'&&!fifo||!fifo&&!projection&&!sparse&&(d.origin!==0||d.history!=='ordered'||d.storage!=='bitcoin.utxo.cow.v2'))return null;
     if(projection){
       if(!Array.isArray(d.dependencies)||d.dependencies.length!==1)return null;
       const dep=d.dependencies[0],hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value),id=value=>typeof value==='string'&&/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value);
@@ -61,11 +65,14 @@
     }else if(projection){
       if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length))return null;
       if(d.tables.length!==2||!d.tables.every(t=>keys(t,['name','key'])&&['members','excluded'].includes(t.name)&&t.key==='ref'))return null;
+    }else if(fifo){
+      if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length))return null;
+      if(d.tables.length>2||!d.tables.some(t=>t.name==='outputs')||!d.tables.every(t=>keys(t,['name','key'])&&((t.name==='outputs'&&t.key==='outpoint')||(t.name==='history'&&t.key==='output'))))return null;
     }else{
       if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length))return null;
       if(d.tables.length!==2||!d.tables.every(t=>keys(t,['name','key'])&&((t.name==='coins'&&t.key==='outpoint')||(t.name==='counts'&&t.key==='txid'))))return null;
     }
-    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{output:sparse||projection,fields:projection?projectionFields:fields,tables:d.tables.map(t=>t.name)})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
+    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{output:sparse||projection,fifo,fields:projection?projectionFields:fifo?fifoFields:fields,tables:d.tables.map(t=>t.name),stateTables:fifo?d.tables.map(t=>t.name):undefined,emitTables:fifo?['identities','lost','incarnations']:undefined})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
     return copy(d);
   }
   function fromGuided(definition){
@@ -92,7 +99,9 @@
     const changed=()=>{editEpoch++;onChange();};
     const outputOnly=()=>['sparse','projection'].includes(model?.history);
     const availableOperations=()=>Object.keys(operations).filter(op=>op!=='for_events'&&!(outputOnly()&&['read','put','delete'].includes(op)));
-    const newInstruction=op=>{const value=instruction(op);if(op==='emit'&&outputOnly())value.table=model.tables[0].name;if(model?.history==='projection'&&value.key)value.key={call:'output_ref',args:[{field:'height'},{field:'tx_index'},{field:'vout'}]};return value;};
+    const fifo=()=>model?.source==='bitcoin.fifo';
+    const tableChoices=op=>op==='emit'?(outputOnly()?model.tables.map(t=>t.name):fifo()?['identities','lost','incarnations']:['prevouts']):fifo()?model.tables.map(t=>t.name).filter(name=>op==='put'||name!=='history'):['coins','counts'];
+    const newInstruction=op=>{const value=instruction(op);if(fifo()&&value.table){value.table=tableChoices(op)[0];value.key={field:op==='emit'?'id':'txid'};}if(op==='emit'&&outputOnly())value.table=model.tables[0].name;if(model?.history==='projection'&&value.key)value.key={call:'output_ref',args:[{field:'height'},{field:'tx_index'},{field:'vout'}]};return value;};
     function textInput(title,value,set){const input=el('input');input.type='text';input.value=value||'';input.addEventListener('input',()=>{set(input.value);changed();});return label(title,input);}
     function select(title,choices,value,set){const input=el('select');for(const choice of choices){const [key,name]=Array.isArray(choice)?choice:[choice,choice],option=el('option',name);option.value=key;input.append(option);}input.value=value;input.addEventListener('change',()=>{set(input.value);changed();});return label(title,input);}
     function lazy(title,render){const node=el('details'),summary=el('summary',title),body=el('div');body.className='ordered-editor-body';let drawn=false;node.append(summary,body);node.addEventListener('toggle',()=>{if(node.open&&!drawn){drawn=true;render(body);}});return node;}
@@ -108,14 +117,19 @@
       actions.append(button('Add object field',()=>{let name='field';while(Object.hasOwn(mapping,name))name='field_'+(++sequence);Object.defineProperty(mapping,name,{value:renderChild===literalEditor?{kind:'missing'}:missing(),enumerable:true,writable:true,configurable:true});paint();changed();}));paint();
     }
     function literalEditor(host,value,set){
-      function draw(){host.replaceChildren();host.append(select('Value type',['missing','text','uint','bool','bytes','object'],value.kind,kind=>{
-        value={kind};if(kind==='text')value.text='';if(kind==='uint')value.uint='0';if(kind==='bool')value.bool=false;if(kind==='bytes')value.bytes='';if(kind==='object')value.object=Object.create(null);set(value);draw();
+      function draw(){host.replaceChildren();host.append(select('Value type',['missing','text','uint','bool','bytes','object','ranges'],value.kind,kind=>{
+        value={kind};if(kind==='text')value.text='';if(kind==='uint')value.uint='0';if(kind==='bool')value.bool=false;if(kind==='bytes')value.bytes='';if(kind==='object')value.object=Object.create(null);if(kind==='ranges')value.ranges=[];set(value);draw();
       }));
       if(value.kind==='text')host.append(textInput('Text',value.text||'',text=>{value.text=text;}));
       if(value.kind==='uint')host.append(textInput('Unsigned integer (exact decimal)',value.uint,text=>{value.uint=text;}));
       if(value.kind==='bytes')host.append(textInput('Bytes (base64)',value.bytes||'',text=>{value.bytes=text;}));
       if(value.kind==='bool')host.append(select('Boolean',['false','true'],String(!!value.bool),text=>{value.bool=text==='true';}));
       if(value.kind==='object')members(host,value.object,literalEditor);
+      if(value.kind==='ranges'){
+        const rows=el('div');host.append(rows);
+        const paint=()=>{rows.replaceChildren();value.ranges.forEach((range,index)=>{const row=el('div');row.append(textInput('Interval start (exact decimal)',range.start,text=>{range.start=text;}),textInput('Interval end, exclusive (exact decimal)',range.end,text=>{range.end=text;}),button('Remove interval',()=>{value.ranges.splice(index,1);paint();changed();}));rows.append(row);});};
+        host.append(button('Add interval',()=>{value.ranges.push({start:'0',end:'1'});paint();changed();}));paint();
+      }
       }draw();
     }
     function expressionEditor(host,expr,set){
@@ -125,7 +139,7 @@
         }));
         if(mode==='field'){
           const declared=getCatalogue()?.sources?.find(source=>source.id===model.source)?.fields;
-          const available=Array.isArray(declared)?declared.filter(f=>Array.isArray(f.path)&&f.path.length===1).map(f=>f.path[0]):model?.history==='projection'?projectionFields:fields;
+          const available=Array.isArray(declared)?declared.filter(f=>Array.isArray(f.path)&&f.path.length===1).map(f=>f.path[0]):model?.history==='projection'?projectionFields:fifo()?fifoFields:fields;
           host.append(select('Source field',available,expr.field,value=>{expr.field=value;}));
         }
         if(mode==='var')host.append(textInput('Variable name',expr.var,value=>{expr.var=value;}));
@@ -147,7 +161,7 @@
           fields.append(select('Instruction',availableOperations(),step.op,op=>{steps[index]=newInstruction(op);paint();}));
           if(['let','read','for_range'].includes(step.op))fields.append(textInput('Bind variable',step.name,value=>{step.name=value;}));
           if(step.op==='require')fields.append(textInput('Assertion name',step.name,value=>{if(value)step.name=value;else delete step.name;}));
-          if(['read','put','delete','emit'].includes(step.op))fields.append(select('Table',step.op==='emit'?(outputOnly()?model.tables.map(t=>t.name):['prevouts']):['coins','counts'],step.table,value=>{step.table=value;}));
+          if(['read','put','delete','emit'].includes(step.op))fields.append(select('Table',tableChoices(step.op),step.table,value=>{step.table=value;}));
           body.append(fields);
           if(step.key)body.append(lazy('State or emitted key',child=>expressionEditor(child,step.key,value=>{step.key=value;})));
           if(step.expr)body.append(lazy(step.op==='if'||step.op==='require'?'Condition':step.op==='for_range'?'Exclusive range end':'Value',child=>expressionEditor(child,step.expr,value=>{step.expr=value;})));
@@ -174,6 +188,12 @@
       }
       const addExport=button('Add same-block export',()=>{if(!model.exports)model.exports=[];let name='value';while(model.exports.some(entry=>entry.name===name))name='value_'+(++sequence);model.exports.push({name,kind:'same_block',table:model.tables[0].name,column:model.tables[0].key,type:'text'});render();changed();});addExport.disabled=(model.exports||[]).length>=64;box.append(addExport);
     }
+    function fifoTablesEditor(host){
+      const box=el('fieldset');box.append(el('legend','FIFO state tables'),el('p','Every source output is retained in current state. The optional history table requires a history write for each output event.'));
+      const retained=model.tables.some(table=>table.name==='history'),references=steps=>steps.some(step=>step.table==='history'||references(step.body||[])||references(step.else||[]));
+      const toggle=button(retained?'Remove retained-history table':'Add retained-history table',()=>{if(retained)model.tables=model.tables.filter(table=>table.name!=='history');else model.tables.push({name:'history',key:'output'});render();changed();});
+      toggle.disabled=retained&&references(model.ordered.steps);box.append(toggle);host.append(box);
+    }
     function checkpointParentEditor(host){
       const dep=model.dependencies[0],box=el('fieldset'),row=el('div');box.append(el('legend','Checkpoint source'));host.append(box);
       const builtin=()=>getCatalogue()?.builtin_checkpoints?.find(value=>value.scope==='builtin'&&value.instance==='utxo-state'&&value.export==='coins');
@@ -194,9 +214,10 @@
     }
     function render(){root.replaceChildren();if(!model)return;const legend=el('legend',model.history==='projection'?'Guided checkpoint draft':'Guided ordered draft'),header=el('div');header.className='recipe-fields';
       header.append(textInput('Ordered recipe ID',model.id,value=>{model.id=value;}),textInput('Ordered recipe name',model.name,value=>{model.name=value;}));
-      root.append(legend,el('p',model.history==='projection'?'Derive current destination members and exclusion counts from the declared complete Coin snapshot, then apply checked deltas. Every source Coin must be accounted for. Source selection does not start its writer.':model.history==='sparse'?'Project complete transaction events into per-block rows from the chosen origin. Empty evaluated blocks are retained; no UTXO prefix is required.':'Process transaction events in order from genesis. Coins are keyed by outpoint; counts by transaction ID. Expand an instruction to edit its expressions, branches or nested instructions.'),header);
+      root.append(legend,el('p',model.history==='projection'?'Derive current destination members and exclusion counts from the declared complete Coin snapshot, then apply checked deltas. Every source Coin must be accounted for. Source selection does not start its writer.':fifo()?'Process ordinary transactions in Bitcoin order, then allocate subsidy and their fees to coinbase outputs. Compose FIFO intervals, lost sats and inscription identities. The outputs table stores current state; the optional history table retains original output ranges.':model.history==='sparse'?'Project complete transaction events into per-block rows from the chosen origin. Empty evaluated blocks are retained; no UTXO prefix is required.':'Process transaction events in order from genesis. Coins are keyed by outpoint; counts by transaction ID. Expand an instruction to edit its expressions, branches or nested instructions.'),header);
       if(model.history==='sparse'){header.append(textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));declarationsEditor(root);}
       if(model.history==='projection')checkpointParentEditor(root);
+      if(fifo())fifoTablesEditor(root);
       stepsEditor(root,model.ordered.steps[0].body);root.append(button('Apply ordered changes',onApply));
     }
     return {load(definition){parentEpoch++;editEpoch++;parentNote='';model=toGuided(definition);root.hidden=!model;render();return !!model;},definition(){return fromGuided(model);}};

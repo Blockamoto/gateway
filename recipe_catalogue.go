@@ -34,6 +34,7 @@ func recipeCatalogue() recipeCapabilityCatalogue {
 	if revision, semantic, err := recipeNativeUTXORevision(); err == nil {
 		catalogue.BuiltinCheckpoints = []recipeDependency{{Name: "utxo", Scope: "builtin", Instance: "utxo-state", Revision: revision, SemanticHash: semantic, Export: "coins", Coverage: "snapshot_delta", Type: "coin"}}
 	}
+	catalogue.Sources = append(catalogue.Sources, recipeSourceCapability{ID: recipeSatSource, Histories: []string{"ordered"}, Fields: recipeSatSourceFields(), Steps: recipeOrderedSteps(), Functions: recipeOrderedFunctions(), StateContracts: []string{recipeSatStorage}, Events: []string{"block_begin", "tx_begin", "input", "inscription", "output", "tx_end"}})
 	return catalogue
 }
 

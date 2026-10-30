@@ -180,6 +180,9 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 	if d.Source == "bitcoin.ordered" {
 		return compileOrderedRecipe(d)
 	}
+	if d.Source == recipeSatSource {
+		return compileSatRecipe(d)
+	}
 	if d.Source == recipeUTXOProjectionSource {
 		return compileUTXOProjectionRecipe(d)
 	}

@@ -178,6 +178,12 @@ func parseHeadersPayload(p []byte) ([][]byte, error) {
 }
 
 func readHeaderAt(path string, height int64) ([]byte, error) {
+	// Reject before multiplication: a wrapped offset can otherwise make an
+	// impossible height read a real header at a completely different height.
+	const maxHeaderHeight = int64((1<<63 - 1) / 80)
+	if height < 0 || height > maxHeaderHeight {
+		return nil, fmt.Errorf("header height is outside the readable range")
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err

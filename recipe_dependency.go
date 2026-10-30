@@ -88,8 +88,19 @@ func recipeExportValue(value any, kind string) bool {
 }
 
 func recipeValidateExportRows(d recipeDefinition, rows recipeRows) error {
+	for table, values := range rows {
+		for _, row := range values {
+			if err := recipeValidateExportRow(d, table, row); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func recipeValidateExportRow(d recipeDefinition, table string, row map[string]any) error {
 	for _, export := range d.Exports {
-		for _, row := range rows[export.Table] {
+		if export.Table == table {
 			value, ok := row[export.Column]
 			if !ok || !recipeExportValue(value, export.Type) {
 				return fmt.Errorf("export %q row has missing or invalid %s value", export.Name, export.Type)

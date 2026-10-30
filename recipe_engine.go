@@ -601,12 +601,40 @@ func (p *recipeProgram) evaluate(event map[string]any) (recipeRows, error) {
 
 func (p *recipeProgram) evaluateWithLookup(event map[string]any, lookup func(string, string) (any, error)) (recipeRows, error) {
 	rows := recipeRows{}
+	proposals, matched, err := p.evaluateRowProposals(event, lookup)
+	if err != nil {
+		return nil, err
+	}
+	if !matched {
+		return rows, nil
+	}
+	for _, table := range p.definition.Tables {
+		rows[table.Name] = map[string]map[string]any{}
+	}
+	for _, row := range proposals {
+		rows[row.Table][row.Key] = row.Value
+	}
+	return rows, nil
+}
+
+// Proposals remain private until the entire event succeeds, including any
+// require after a write and every export check. Encoded is reused by block
+// adapters for byte accounting instead of serializing the same row twice.
+type recipeRowProposal struct {
+	Table, Key string
+	Value      map[string]any
+	Encoded    []byte
+}
+
+func (p *recipeProgram) evaluateRowProposals(event map[string]any, lookup func(string, string) (any, error)) ([]recipeRowProposal, bool, error) {
+	rows := []recipeRowProposal{}
 	budget := &recipeEvalBudget{lookup: lookup}
 	outputBytes := 0
 	tables := map[string]recipeTable{}
+	keys := map[string]map[string]bool{}
 	for _, t := range p.definition.Tables {
 		tables[t.Name] = t
-		rows[t.Name] = map[string]map[string]any{}
+		keys[t.Name] = map[string]bool{}
 	}
 	vars := map[string]any{}
 	for _, s := range p.definition.Steps {
@@ -614,56 +642,59 @@ func (p *recipeProgram) evaluateWithLookup(event map[string]any, lookup func(str
 		case "let":
 			v, err := recipeEvaluateExprBudget(*s.Value, event, vars, budget)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			vars[s.As] = v
 		case "require":
 			v, err := recipeEvaluateExprBudget(*s.Test, event, vars, budget)
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			b, ok := v.(bool)
 			if !ok {
-				return nil, fmt.Errorf("require needs a boolean")
+				return nil, false, fmt.Errorf("require needs a boolean")
 			}
 			if !b {
-				return recipeRows{}, nil
+				return nil, false, nil
 			}
 		case "write":
 			row := map[string]any{}
 			for name, e := range s.Row {
 				v, err := recipeEvaluateExprBudget(e, event, vars, budget)
 				if err != nil {
-					return nil, err
+					return nil, false, err
 				}
 				if _, missing := v.(recipeMissing); missing {
-					return nil, fmt.Errorf("missing column %q", name)
+					return nil, false, fmt.Errorf("missing column %q", name)
 				}
 				if invalid, ok := v.(recipeInvalid); ok {
-					return nil, fmt.Errorf("invalid column %q: %s", name, invalid.reason)
+					return nil, false, fmt.Errorf("invalid column %q: %s", name, invalid.reason)
 				}
 				row[name] = v
 			}
 			key, ok := row[tables[s.Table].Key].(string)
 			if !ok || key == "" {
-				return nil, fmt.Errorf("table key must be non-empty text")
+				return nil, false, fmt.Errorf("table key must be non-empty text")
 			}
-			if _, exists := rows[s.Table][key]; exists {
-				return nil, fmt.Errorf("duplicate key in %q", s.Table)
+			if keys[s.Table][key] {
+				return nil, false, fmt.Errorf("duplicate key in %q", s.Table)
 			}
 			encoded, err := json.Marshal(row)
 			if err != nil {
-				return nil, fmt.Errorf("encode recipe row: %w", err)
+				return nil, false, fmt.Errorf("encode recipe row: %w", err)
 			}
 			if len(encoded) > recipeMaxEventOutputBytes-outputBytes {
-				return nil, fmt.Errorf("recipe event output exceeds limit")
+				return nil, false, fmt.Errorf("recipe event output exceeds limit")
 			}
 			outputBytes += len(encoded)
-			rows[s.Table][key] = row
+			keys[s.Table][key] = true
+			rows = append(rows, recipeRowProposal{Table: s.Table, Key: key, Value: row, Encoded: encoded})
 		}
 	}
-	if err := recipeValidateExportRows(p.definition, rows); err != nil {
-		return nil, err
+	for _, row := range rows {
+		if err := recipeValidateExportRow(p.definition, row.Table, row.Value); err != nil {
+			return nil, false, err
+		}
 	}
-	return rows, nil
+	return rows, true, nil
 }

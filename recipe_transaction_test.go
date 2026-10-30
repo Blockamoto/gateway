@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,14 @@ func locatorRecipeProgram(t *testing.T) *recipeProgram {
 }
 func checkLocatorRows(t *testing.T, p *recipeProgram, b blockView, want *transactionLocatorPayload) {
 	t.Helper()
+	// Fixture-only admission exercises the native physical adapter. The raw
+	// block proof is real; this flag does not prove selected-chain membership.
+	nativeBlock := b
+	nativeBlock.Verification.HeaderChainMatch = true
+	native, nativeErr := transactionLocatorFromRecipe(context.Background(), nativeBlock)
+	if nativeErr != nil || !reflect.DeepEqual(native, want) {
+		t.Fatalf("native recipe/oracle mismatch: %v", nativeErr)
+	}
 	rows, err := p.evaluateTransactionBlock(context.Background(), b)
 	if err != nil {
 		t.Fatal(err)

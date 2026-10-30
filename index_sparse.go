@@ -64,6 +64,7 @@ func (b *indexBatch) UnmarshalJSON(data []byte) error {
 }
 
 func legacyIndexDefinition(d indexDefinition) indexDefinition {
+	d.ExecutableRecipe, d.ExecutableRecipeHash = nil, "" // absent from the frozen legacy identity
 	d.Version, d.OutputSchema, d.RuleHash = 1, 1, ""
 	d.Locked, d.LockReason = false, ""
 	if d.ID == "inscriptions" {
@@ -343,14 +344,6 @@ func (a *app) indexQueryBlock(ctx context.Context, id string, height int64, limi
 	result["scanned"], result["known"], result["inspected_blocks"] = complete, complete, 1
 	result["inventory_complete"], result["known_occurrences"] = complete, len(coordinates)
 	return result, nil
-}
-func transactionLocatorFromBlock(block blockView) *transactionLocatorPayload {
-	count := uint32(len(block.Transactions))
-	entries := make([]transactionLocatorEntry, 0, len(block.Transactions))
-	for i, tx := range block.Transactions {
-		entries = append(entries, transactionLocatorEntry{uint32(i), tx.TxID})
-	}
-	return &transactionLocatorPayload{Block: transactionLocatorBlock{Height: block.Height, TransactionCount: &count, Transactions: entries}, Completeness: "complete", Selection: "all"}
 }
 
 // Enrichment consumes the already authenticated occurrence batch. Full supplies

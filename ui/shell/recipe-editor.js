@@ -277,6 +277,12 @@
     Promise.resolve().then(()=>request('/catalogue')).then(value=>{
       catalogue=value;sourceFields();
     }).catch(()=>{});
+    return {useDefinition(definition){
+      const copy=JSON.parse(JSON.stringify(definition));
+      if(!toGuided(copy))throw new Error('This recipe requires the JSON editor.');
+      cancelImport();revision++;base=null;copy.id=copy.id+'-copy';copy.name=copy.name+' copy';model=copy;showModel();
+      status.textContent='Custom draft copied from the executable recipe. Choose a new ID, then review and save; no indexing has started.';
+    }};
   }
   global.GatewayRecipeEditor={initial,toGuided,fromGuided,guidableJSON,cataloguePaths,mount};
 })(typeof window === 'undefined' ? globalThis : window);

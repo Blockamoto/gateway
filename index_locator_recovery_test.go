@@ -34,6 +34,7 @@ func nextLocatorBlock064(t *testing.T, a *app, s *indexStore) blockView {
 	a.status.HeaderHeight = v.Height
 	v.Transactions = append([]transactionView(nil), v.Transactions...)
 	v.Transactions[0].TxID = strings.Repeat("b", 64)
+	v.verifiedRaw, v.verifiedRawProof = nil, nil // synthetic decoded storage fixture
 	return v
 }
 

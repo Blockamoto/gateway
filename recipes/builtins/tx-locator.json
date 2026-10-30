@@ -1,0 +1,18 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "tx-locator",
+  "name": "TX ID Locators",
+  "source": "bitcoin.transaction",
+  "origin": 0,
+  "history": "sparse",
+  "dependencies": [],
+  "tables": [{"name": "transactions", "key": "txid"}],
+  "steps": [{"op": "write", "table": "transactions", "row": {
+    "txid": {"field": ["txid"]},
+    "ref": {"field": ["ref"]},
+    "block_hash": {"field": ["block_hash"]},
+    "height": {"field": ["height"]},
+    "tx_index": {"field": ["tx_index"]}
+  }}]
+}

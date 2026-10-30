@@ -42,6 +42,9 @@ func olderExplorerFixture064(t *testing.T, id string, count int) (*app, *indexSt
 		}
 		b.Height = height
 		b.PreviousBlockHash = previous
+		// These storage-only decoded fixtures relabel the original block.
+		// They must not retain its parser-owned raw-byte receipt.
+		b.verifiedRaw, b.verifiedRawProof = nil, nil
 		if h != 0 || id == "inscriptions" {
 			header := make([]byte, 80)
 			binary.LittleEndian.PutUint64(header[72:], uint64(h+1234))

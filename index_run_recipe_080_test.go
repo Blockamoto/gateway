@@ -220,7 +220,7 @@ func TestSavedRecipeRunBindingSurvivesUnrelatedAmendment(t *testing.T) {
 	}
 }
 
-func TestSavedRecipePlanSupportsLiveAndBlocksDependencies(t *testing.T) {
+func TestSavedRecipePlanSupportsLiveAndRejectsMissingExport(t *testing.T) {
 	ctx := context.Background()
 	a, view, req := savedRecipeRunFixture(t)
 	req.Consumers[0].Live = true
@@ -249,7 +249,7 @@ func TestSavedRecipePlanSupportsLiveAndBlocksDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Ready || plan.Consumers[0].AdmissionState != "blocked" || !strings.Contains(plan.Consumers[0].Reason, "Dependency") {
+	if plan.Ready || plan.Consumers[0].AdmissionState != "blocked" || !strings.Contains(plan.Consumers[0].Reason, "export contract is unavailable") {
 		t.Fatalf("dependency admitted: %+v", plan)
 	}
 }

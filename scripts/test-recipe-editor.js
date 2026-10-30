@@ -71,7 +71,7 @@ const strange=editor.fromGuided({...guided,key:'__proto__'}); assert.equal(Objec
  const nodes=Object.fromEntries(names.map(name=>[name,new FakeNode()]));
  const calls=[];let handler=async()=>({});
  const root={ownerDocument:{createElement(){return new FakeNode();}},querySelector(selector){return nodes[selector.match(/"([^"]+)"/)[1]];}};
- editor.mount(root,{request:async(action,body)=>{calls.push({action,body});return handler(action,body);}});
+ const mounted=editor.mount(root,{request:async(action,body)=>{calls.push({action,body});return handler(action,body);}});
  await Promise.resolve(); await Promise.resolve();
  nodes.filterPath.value='metaprotocol';nodes.filterValue.value='"labitbu"';nodes.addFilter.events.click();
  let filterRow=nodes.extraFilters.children[0],extraMode=filterRow.children[0].children[0],extraKey=filterRow.children[2].children[0],extraValue=filterRow.children[3].children[0];
@@ -136,5 +136,7 @@ const strange=editor.fromGuided({...guided,key:'__proto__'}); assert.equal(Objec
  nodes.parentChoice.value='parent';handler=async()=>({recipe:parentRecipe,validated:true,revision:'a'.repeat(64),semantic_hash:'b'.repeat(64)});await nodes.parentChoice.events.change();nodes.parentExportChoice.value='kind';nodes.parentUse.events.click();
  assert.equal(nodes.dependencyRevision.value,'a'.repeat(64));assert.equal(nodes.dependencySemanticHash.value,'b'.repeat(64));assert.equal(nodes.dependencyType.value,'text');assert.match(nodes.parentStatus.textContent,/saved-only parents are not started automatically/i);assert.equal(nodes.raw.value,beforeParent,'explicit pin waits for Apply');
  nodes.lookupColumn.value='kind';nodes.apply.events.click();assert.equal(JSON.parse(nodes.raw.value).dependencies[0].revision,'a'.repeat(64));
+ const beforeCopy=calls.length;mounted.useDefinition(transactionRecipe);
+ const copied=JSON.parse(nodes.raw.value);assert.equal(copied.id,'txs-copy');assert.equal(copied.source,'bitcoin.transaction');assert.equal(nodes.guided.disabled,false);assert.equal(calls.length,beforeCopy,'copying a built-in performs no save or run');
  console.log('Recipe draft editor PASS: guided/JSON round-trip, safe unsupported forms, validation, registry concurrency and stale-response handling.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

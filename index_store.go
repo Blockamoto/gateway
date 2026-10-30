@@ -135,6 +135,9 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 	if e != nil {
 		return nil, e
 	}
+	if e = recipeLocatorCheckStoreDefinition(d); e != nil {
+		return nil, e
+	}
 	if !d.Buildable {
 		return nil, fmt.Errorf("%s has no derivation executor", id)
 	}
@@ -302,6 +305,9 @@ func (s *indexStore) readBatchBytes(commit string) ([]byte, error) {
 }
 
 func (s *indexStore) readBatch(commit string) (indexBatch, error) {
+	if err := recipeLocatorCheckStoreDefinition(s.definition); err != nil {
+		return indexBatch{}, err
+	}
 	data, err := s.readBatchBytes(commit)
 	if err != nil {
 		return indexBatch{}, err
@@ -558,15 +564,22 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 			return e
 		}
 	} else if s.definition.ID == "tx-locator" && s.head.Mode != "" {
-		b.TransactionLocator = transactionLocatorFromBlock(block)
+		b.TransactionLocator, e = transactionLocatorFromRecipe(s.locatorContext, block)
+		if e != nil {
+			return e
+		}
 	} else if s.definition.ID == "blocks" {
 		b.Bitcoin, e = s.prepareRawBitcoinRecord(block)
 		if e != nil {
 			return e
 		}
 	} else if s.definition.ID == "tx-locator" {
+		payload, err := transactionLocatorFromRecipe(s.locatorContext, block)
+		if err != nil {
+			return err
+		}
 		b.Bitcoin = &bitcoinIndexBlock{VerifierVersion: blockVerifierVersion, TxIDs: []string{}}
-		for _, tx := range block.Transactions {
+		for _, tx := range payload.Block.Transactions {
 			b.Bitcoin.TxIDs = append(b.Bitcoin.TxIDs, tx.TxID)
 		}
 	} else if s.definition.ID == "bitmap" {
@@ -610,6 +623,9 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 }
 
 func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash string, from int64, retention string) error {
+	if err := recipeLocatorCheckStoreDefinition(s.definition); err != nil {
+		return err
+	}
 	if s.definition.ID == "inscriptions" || s.definition.ID == inscriptionLocatorIndex {
 		if err := requireInscriptionIngestionRange(s.definition.Network, height, from); err != nil {
 			return err

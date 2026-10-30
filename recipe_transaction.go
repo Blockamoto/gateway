@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -67,54 +68,69 @@ func (p *recipeProgram) evaluateTransactionSource(ctx context.Context, block blo
 }
 
 func (p *recipeProgram) evaluateTransactionSourceWithLookup(ctx context.Context, block blockView, source *recipeTransactionSource, lookup func(string, string) (any, error)) (recipeRows, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("missing recipe context")
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if p.definition.Source != "bitcoin.transaction" {
-		return nil, fmt.Errorf("recipe source is not bitcoin.transaction")
-	}
-	if len(p.definition.Dependencies) != 0 && lookup == nil {
-		return nil, errRecipeDependencyUnavailable
-	}
-	if block.Height < p.definition.Origin || block.Height < 0 {
-		return nil, fmt.Errorf("block precedes recipe origin")
-	}
-	if source == nil || source.height != block.Height || source.hash != block.Hash || len(source.ids) == 0 || uint64(len(source.ids)) != block.TransactionCount {
-		return nil, fmt.Errorf("transaction source differs from block identity")
-	}
 	all := recipeRows{}
 	for _, table := range p.definition.Tables {
 		all[table.Name] = map[string]map[string]any{}
 	}
+	err := p.evaluateTransactionSourceInto(ctx, block, source, lookup, func(row recipeRowProposal) error {
+		all[row.Table][row.Key] = row.Value
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return all, nil
+}
+
+// The sink receives staged proposals, never permission to publish. It must
+// discard them if any later event, duplicate, byte limit or cancellation fails.
+func (p *recipeProgram) evaluateTransactionSourceInto(ctx context.Context, block blockView, source *recipeTransactionSource, lookup func(string, string) (any, error), sink func(recipeRowProposal) error) error {
+	if ctx == nil {
+		return fmt.Errorf("missing recipe context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if p.definition.Source != "bitcoin.transaction" || sink == nil {
+		return fmt.Errorf("recipe source is not bitcoin.transaction or sink is missing")
+	}
+	if len(p.definition.Dependencies) != 0 && lookup == nil {
+		return errRecipeDependencyUnavailable
+	}
+	if block.Height < p.definition.Origin || block.Height < 0 {
+		return fmt.Errorf("block precedes recipe origin")
+	}
+	if source == nil || source.height != block.Height || source.hash != block.Hash || len(source.ids) == 0 || uint64(len(source.ids)) != block.TransactionCount {
+		return fmt.Errorf("transaction source differs from block identity")
+	}
+	seen := map[string]map[string]bool{}
+	for _, table := range p.definition.Tables {
+		seen[table.Name] = map[string]bool{}
+	}
 	outputBytes := 0
+	height := json.Number(strconv.FormatInt(source.height, 10))
 	for i, id := range source.ids {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return err
 		}
-		event := map[string]any{"ref": txCoordinate(i, source.height), "txid": id, "block_hash": source.hash, "height": json.Number(fmt.Sprint(source.height)), "tx_index": json.Number(fmt.Sprint(i))}
-		rows, err := p.evaluateWithLookup(event, lookup)
+		event := map[string]any{"ref": txCoordinate(i, source.height), "txid": id, "block_hash": source.hash, "height": height, "tx_index": json.Number(strconv.Itoa(i))}
+		rows, _, err := p.evaluateRowProposals(event, lookup)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		for table, values := range rows {
-			for key, row := range values {
-				if _, ok := all[table][key]; ok {
-					return nil, fmt.Errorf("duplicate key %q in table %q", key, table)
-				}
-				encoded, err := json.Marshal(row)
-				if err != nil {
-					return nil, fmt.Errorf("encode recipe row: %w", err)
-				}
-				if len(encoded) > recipeMaxBlockOutputBytes-outputBytes {
-					return nil, fmt.Errorf("recipe block output exceeds limit")
-				}
-				outputBytes += len(encoded)
-				all[table][key] = row
+		for _, row := range rows {
+			if seen[row.Table][row.Key] {
+				return fmt.Errorf("duplicate key %q in table %q", row.Key, row.Table)
+			}
+			if len(row.Encoded) > recipeMaxBlockOutputBytes-outputBytes {
+				return fmt.Errorf("recipe block output exceeds limit")
+			}
+			outputBytes += len(row.Encoded)
+			seen[row.Table][row.Key] = true
+			if err = sink(row); err != nil {
+				return err
 			}
 		}
 	}
-	return all, nil
+	return ctx.Err()
 }

@@ -238,7 +238,10 @@ func singletonBrowseBatchMode(choice indexRunSelection, block blockView, extract
 	}
 	b := indexBatch{PreviousBlockHash: block.PreviousBlockHash}
 	if id == "tx-locator" {
-		b.TransactionLocator = transactionLocatorFromBlock(block)
+		b.TransactionLocator, err = transactionLocatorFromRecipe(context.Background(), block)
+		if err != nil {
+			return b, err
+		}
 	} else if id == "inscriptions" {
 		if extracted == nil {
 			result, e := extractInscriptionOccurrences(block)

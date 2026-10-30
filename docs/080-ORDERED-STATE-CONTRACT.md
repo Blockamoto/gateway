@@ -88,3 +88,12 @@ reclaimed separately. Undo and delta readers must verify the complete manifest
 and apply bounded pages without silently truncating. The design must bound
 memory and work per step while supporting every consensus-valid block, and
 must not publish a partial block or impose an artificial per-block key quota.
+
+The experimental ordered interpreter currently materializes at most 50,000
+source events and allows at most 1,000,000 instruction/expression work units.
+These are safety limits, not consensus limits; valid blocks can exceed either.
+Full-block support requires streaming events and resumable bounded execution
+with backpressure into the staged transaction described above. A budget failure
+must abort the entire staged block. The sample UTXO program deliberately rejects
+live duplicate transaction IDs, including the historical BIP30 exceptions;
+generic displacement and its undo must be implemented before parity is claimed.

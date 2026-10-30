@@ -563,6 +563,15 @@ func (s *recipeStore) Coverage(ctx context.Context, from, to int64, after *int64
 	return s.coverage(ctx, from, to, after, expectedRevision, limit, false)
 }
 func (s *recipeStore) coverage(ctx context.Context, from, to int64, after *int64, expectedRevision uint64, limit int, journal bool) (recipeCoveragePage, error) {
+	return s.coverageMode(ctx, from, to, after, expectedRevision, limit, journal, false)
+}
+
+// Raw dependent anchors are never evidence on their own; only the DAG
+// verifier may consume this internal enumeration before atomic rechecking.
+func (s *recipeStore) dependencyCoverageRefs(ctx context.Context, from, to int64, after *int64, expectedRevision uint64, limit int) (recipeCoveragePage, error) {
+	return s.coverageMode(ctx, from, to, after, expectedRevision, limit, false, true)
+}
+func (s *recipeStore) coverageMode(ctx context.Context, from, to int64, after *int64, expectedRevision uint64, limit int, journal, allowLineage bool) (recipeCoveragePage, error) {
 	var result recipeCoveragePage
 	if ctx == nil || from < 0 || to < from || limit < 1 || limit > recipeCoverageMaxPage || after != nil && (*after < from || *after > to || expectedRevision == 0) {
 		return result, fmt.Errorf("invalid recipe coverage request")
@@ -659,7 +668,7 @@ func (s *recipeStore) coverage(ctx context.Context, from, to int64, after *int64
 			if readErr != nil {
 				return readErr
 			}
-			if len(unit.Lineage) != 0 {
+			if len(unit.Lineage) != 0 && !allowLineage {
 				return fmt.Errorf("dependency lineage requires verified coverage")
 			}
 			result.Anchors = append(result.Anchors, recipeCoverageAnchor{Height: int64(n), BlockHash: ref.BlockHash})

@@ -191,7 +191,7 @@ func (c *recipeSparseConsumer) Next(ctx context.Context, chainSnapshot string, s
 // explicit empty result, with atomic coverage revision comparison. The input
 // must be the scheduler's immutable verified parsed block and complete shared
 // extraction; callers must not mutate either while this operation runs.
-func (c *recipeSparseConsumer) Apply(ctx context.Context, work recipeConsumerWork, block blockView, extraction *inscriptionBlockResult, guard recipeConsumerGuard) error {
+func (c *recipeSparseConsumer) Apply(ctx context.Context, work recipeConsumerWork, block blockView, extraction *inscriptionBlockResult, guard recipeConsumerGuard, transactionSources ...*recipeTransactionSource) error {
 	if ctx == nil || guard == nil {
 		return fmt.Errorf("recipe context and authority guard are required")
 	}
@@ -213,7 +213,25 @@ func (c *recipeSparseConsumer) Apply(ctx context.Context, work recipeConsumerWor
 	if _, _, err := exactVerifiedBlockPayload(block); err != nil {
 		return fmt.Errorf("recipe verified block evidence: %w", err)
 	}
-	rows, err := c.program.evaluateInscriptionBlock(ctx, block, extraction)
+	var rows recipeRows
+	var err error
+	if c.program.definition.Source == "bitcoin.transaction" {
+		var source *recipeTransactionSource
+		if len(transactionSources) > 1 {
+			return fmt.Errorf("multiple transaction sources")
+		}
+		if len(transactionSources) == 1 {
+			source = transactionSources[0]
+		}
+		if source == nil {
+			source, err = recipeTransactionSourceFromBlock(ctx, block)
+		}
+		if err == nil {
+			rows, err = c.program.evaluateTransactionSource(ctx, block, source)
+		}
+	} else {
+		rows, err = c.program.evaluateInscriptionBlock(ctx, block, extraction)
+	}
 	if err != nil {
 		return err
 	}

@@ -137,13 +137,13 @@ func recipeRegistryCompile(raw []byte) (recipeRegistryView, []byte, error) {
 }
 
 func recipeRegistryRunnable(d recipeDefinition) bool {
-	return d.Source == "bitcoin.reveal" && len(d.Dependencies) == 0
+	return (d.Source == "bitcoin.reveal" || d.Source == "bitcoin.transaction") && len(d.Dependencies) == 0
 }
 
 // Runnable indicates the currently supported execution shape, not readiness or coverage.
 // Actual runs always require admission and a reviewed plan.
 func recipeRegistryCapabilityNote(d recipeDefinition) string {
-	if d.Source != "bitcoin.reveal" {
+	if d.Source != "bitcoin.reveal" && d.Source != "bitcoin.transaction" {
 		return "Definition validated. This source is not yet integrated with the scheduler."
 	}
 	if len(d.Dependencies) != 0 {

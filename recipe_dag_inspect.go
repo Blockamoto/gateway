@@ -43,15 +43,18 @@ func recipeReadJournalRootLocked(ctx context.Context, store *recipeStore, height
 // graph identities, run admission and every store ref are held through the
 // final check. Journal mode is private to a fenced recovery transaction.
 func (a *app) recipeLocalDAGInspectPage(ctx context.Context, binding recipeRunBinding, plan recipeAdmissionPlan, lineage *recipeLineagePlan, store *recipeStore, after *int64, revision uint64, journal bool) (recipeCoveragePage, error) {
+	return a.recipeLocalDAGInspectRange(ctx, binding, plan, lineage, store, plan.EffectiveFrom, after, revision, journal)
+}
+func (a *app) recipeLocalDAGInspectRange(ctx context.Context, binding recipeRunBinding, plan recipeAdmissionPlan, lineage *recipeLineagePlan, store *recipeStore, from int64, after *int64, revision uint64, journal bool) (recipeCoveragePage, error) {
 	var empty recipeCoveragePage
-	if ctx == nil || lineage == nil || store == nil || plan.NoWork || lineage.root != (recipeGraphIdentity{plan.Index, plan.Revision, plan.SemanticHash}) {
+	if ctx == nil || lineage == nil || store == nil || plan.NoWork || from < plan.EffectiveFrom || from > plan.TargetHeight || lineage.root != (recipeGraphIdentity{plan.Index, plan.Revision, plan.SemanticHash}) {
 		return empty, fmt.Errorf("invalid dependent DAG inspection")
 	}
 	root, ok := lineage.nodes[lineage.root]
 	if !ok || root.store == nil || root.store.dir != store.dir {
 		return empty, fmt.Errorf("invalid dependent DAG store")
 	}
-	page, err := store.coverageMode(ctx, plan.EffectiveFrom, plan.TargetHeight, after, revision, recipeDAGInspectMaxPage, journal, true)
+	page, err := store.coverageMode(ctx, from, plan.TargetHeight, after, revision, recipeDAGInspectMaxPage, journal, true)
 	if err != nil {
 		return empty, err
 	}

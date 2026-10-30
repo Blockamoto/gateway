@@ -296,6 +296,10 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 			err := operation(ctx)
 			if errors.Is(err, errIndexRunConsumerStopped) || errors.Is(err, errIndexRunAdmissionChanged) || errors.Is(err, context.Canceled) {
 				appendResult(indexBrowseResult{id, "off", err.Error()})
+			} else if errors.Is(err, errRecipeDependencyUnavailable) {
+				// Missing same-block evidence is retryable unknown, not a
+				// permanent source-fact failure after later backfill succeeds.
+				appendResult(indexBrowseResult{id, "pending", err.Error()})
 			} else if err != nil {
 				appendResult(indexBrowseResult{id, "unavailable", err.Error()})
 			} else {
@@ -391,9 +395,28 @@ func (a *app) ingestArmedResolvedBlock(ctx context.Context, block blockView) []i
 	sparse("inscriptions")
 	// Recipe execution is coordinated only: there is no incidental browse
 	// writer. The native callback exists only for an explicitly admitted run.
-	for _, choice := range indexRunEffectiveRequest(d).Consumers {
-		if choice.Recipe && native[choice.Index] != nil {
-			apply(choice.Index, nil)
+	if order, ordered := ctx.Value(indexRunRecipeDispatchOrderKey{}).([]string); ordered {
+		seen := map[string]bool{}
+		for _, id := range order {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			if choices[id].Recipe && native[id] != nil {
+				apply(id, nil)
+			}
+		}
+		// A missing ordered member must never fall back to request order.
+		for _, choice := range indexRunEffectiveRequest(d).Consumers {
+			if choice.Recipe && native[choice.Index] != nil && !seen[choice.Index] {
+				appendResult(indexBrowseResult{choice.Index, "unavailable", "recipe is missing from the admitted dependency order"})
+			}
+		}
+	} else {
+		for _, choice := range indexRunEffectiveRequest(d).Consumers {
+			if choice.Recipe && native[choice.Index] != nil {
+				apply(choice.Index, nil)
+			}
 		}
 	}
 	for _, id := range []string{bitmapStandardDistrictID, bitmapStandardParcelID, bitmapReplayParcelID} {
@@ -485,7 +508,7 @@ func prepareSharedBlockInventory(root string, p *indexRunPrepared, d indexRunDoc
 		recipeAdmitted := false
 		if c.Recipe && d.Run != nil && (d.Run.State == "running" || d.Run.State == "waiting") {
 			progress, ok := indexRunProgressFor(d.Run, c.Index)
-			recipeAdmitted = ok && progress.AdmissionState == "admitted"
+			recipeAdmitted = ok && progress.AdmissionState == "admitted" && progress.Recipe != nil && progress.Recipe.Source == "bitcoin.reveal"
 		}
 		if c.Armed && (resolvedNeedsInventory(c.Index) || recipeAdmitted) && resolvedAdmissionAllowedForRoot(root, d, c.Index, p.block.Height) == nil {
 			needed = true

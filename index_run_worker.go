@@ -28,6 +28,11 @@ type indexRunOutcomeConsumer interface {
 }
 type indexRunRetentionConsumer interface{ ConfigureRetention(string) }
 type indexRunSourceFunc func(context.Context, blockTarget, string) (blockView, error)
+type indexRunRecipeConsumer interface {
+	Next(context.Context) (recipeConsumerProgress, error)
+	Rebind(context.Context, int64, string) error
+	Apply(context.Context, recipeConsumerWork, blockView, *inscriptionBlockResult, ...*recipeTransactionSource) error
+}
 type indexRunConsumer struct {
 	selection                indexRunSelection
 	progress                 indexRunProgress
@@ -35,7 +40,7 @@ type indexRunConsumer struct {
 	utxo                     *utxoStore
 	history                  *addressHistoryStore
 	external                 indexRunExternalConsumer
-	recipe                   *recipeLocalConsumer
+	recipe                   indexRunRecipeConsumer
 	recipeWork               *recipeConsumerWork
 	enrich                   bool
 	retryAfter               time.Time
@@ -227,18 +232,21 @@ func (a *app) indexRunConsumerContext(ctx context.Context, index string, admitte
 }
 
 type indexRunPrepared struct {
-	factsMu             sync.Mutex
-	prevoutsMu          sync.RWMutex
-	extractionErr       error
-	extractionAttempted bool
-	cacheBytes          int
-	rawProduced         bool
-	block               blockView
-	extraction          *inscriptionBlockResult
-	extractionCounted   bool
-	refs                map[string]map[string]outputFactRef
-	prevouts            map[string]utxoCoin
-	owner               indexRunSourceOwnership
+	factsMu              sync.Mutex
+	prevoutsMu           sync.RWMutex
+	extractionErr        error
+	extractionAttempted  bool
+	cacheBytes           int
+	rawProduced          bool
+	block                blockView
+	extraction           *inscriptionBlockResult
+	transactionSource    *recipeTransactionSource
+	transactionErr       error
+	transactionAttempted bool
+	extractionCounted    bool
+	refs                 map[string]map[string]outputFactRef
+	prevouts             map[string]utxoCoin
+	owner                indexRunSourceOwnership
 }
 
 func (a *app) ensurePreparedRawProducer(ctx context.Context, p *indexRunPrepared) error {
@@ -410,15 +418,27 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 		if err != nil {
 			return v, err
 		}
-		if len(resolved.Definition.Dependencies) != 0 {
-			return v, fmt.Errorf("dependency-backed recipe scheduling is not integrated")
-		}
 		binding, err := recipeBindRun(r, c.Index, plan.SemanticHash, plan.Revision)
 		if err != nil {
 			return v, err
 		}
-		v.recipe, err = a.openRecipeLocalConsumer(ctx, plan, binding)
-		return v, err
+		if len(resolved.Definition.Dependencies) != 0 {
+			if resolved.Source != "bitcoin.reveal" {
+				return v, fmt.Errorf("same-block dependencies are not supported for this recipe source")
+			}
+			consumer, e := a.openRecipeDAGRunConsumer(ctx, plan, binding)
+			if e != nil {
+				return v, e
+			}
+			v.recipe = consumer
+		} else {
+			consumer, e := a.openRecipeLocalConsumer(ctx, plan, binding)
+			if e != nil {
+				return v, e
+			}
+			v.recipe = consumer
+		}
+		return v, nil
 	}
 	if indexRunFactsOnly(c) {
 		consumer := &sparseFactsRunConsumer{a: a, choice: c, from: p.From, next: p.From}
@@ -723,7 +743,7 @@ func (a *app) applyRunConsumer(ctx context.Context, c *indexRunConsumer, prepare
 		if c.recipeWork == nil {
 			return fmt.Errorf("recipe consumer has no admitted work")
 		}
-		return c.recipe.Apply(ctx, *c.recipeWork, b, prepared.extraction)
+		return c.recipe.Apply(ctx, *c.recipeWork, b, prepared.extraction, prepared.transactionSource)
 	}
 	hashAt := a.addressSelectedHashes(ctx, authority)
 	if c.external != nil {
@@ -1369,6 +1389,8 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		}
 	}
 	processed := int64(0)
+	var cachedRecipeOrder []string
+	var cachedRecipeOrderRevision uint64
 	for {
 		select {
 		case result := <-parcelDone:
@@ -2176,6 +2198,16 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			counts.ExtractionMilliseconds += time.Since(extractionStarted).Milliseconds()
 		}
 		countPreparedExtraction(p, &counts)
+		for _, i := range eligible {
+			c := consumers[i]
+			if nexts[i] == h && c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.Source == "bitcoin.transaction" {
+				if !p.transactionAttempted {
+					p.transactionAttempted = true
+					p.transactionSource, p.transactionErr = recipeTransactionSourceFromBlock(ctx, p.block)
+				}
+				break
+			}
+		}
 		owners := map[string]bool{}
 		for _, i := range eligible {
 			if nexts[i] == h {
@@ -2209,11 +2241,36 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		}
 		results := make([]consumerResult, len(consumers))
 		operations := map[string]indexRunBlockConsumer{}
+		var recipeOrder []string
+		var recipeOrderErr error
+		for _, i := range eligible {
+			if _, dependent := consumers[i].recipe.(*recipeDAGRunConsumer); dependent {
+				currentRevision := effectiveIndexRunAdmissionRevision(record)
+				if cachedRecipeOrder != nil && cachedRecipeOrderRevision == currentRevision {
+					recipeOrder = cachedRecipeOrder
+				} else {
+					recipeOrder, recipeOrderErr = a.recipeRunDispatchOrder(ctx, record)
+					if recipeOrderErr == nil {
+						cachedRecipeOrder, cachedRecipeOrderRevision = recipeOrder, currentRevision
+					}
+				}
+				break
+			}
+		}
 		for _, i := range eligible {
 			if nexts[i] != h {
 				continue
 			}
 			i, c := i, consumers[i]
+			if recipeOrderErr != nil && c.selection.Recipe {
+				results[i].attempted = true
+				if ctx.Err() != nil {
+					results[i].err = ctx.Err()
+				} else {
+					results[i].err = fmt.Errorf("%w: recipe dispatch graph: %v", errRecipeDependencyUnavailable, recipeOrderErr)
+				}
+				continue
+			}
 			operations[c.selection.Index] = func(sharedCtx context.Context) error {
 				result := &results[i]
 				result.attempted = true
@@ -2221,8 +2278,12 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					result.err = rawErr
 					return result.err
 				}
-				if p.extractionErr != nil && (resolvedNeedsInventory(c.selection.Index) || c.selection.Recipe) {
+				if p.extractionErr != nil && (resolvedNeedsInventory(c.selection.Index) || c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.Source == "bitcoin.reveal") {
 					result.err = p.extractionErr
+					return result.err
+				}
+				if p.transactionErr != nil && c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.Source == "bitcoin.transaction" {
+					result.err = p.transactionErr
 					return result.err
 				}
 
@@ -2263,6 +2324,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 		}
 		blockCtx = context.WithValue(blockCtx, indexRunBlockConsumersKey{}, operations)
+		if recipeOrder != nil {
+			blockCtx = context.WithValue(blockCtx, indexRunRecipeDispatchOrderKey{}, recipeOrder)
+		}
 		var offered []indexBrowseResult
 		if rawErr == nil {
 			offered = a.ingestArmedResolvedBlock(blockCtx, p.block)
@@ -2319,6 +2383,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					cache = map[string]*indexRunPrepared{}
 					order = nil
 					cacheBytes = 0
+				}
+				if errors.Is(err, errRecipeDependencyUnavailable) {
+					c.progress.State = "waiting"
+					c.retryAfter = time.Now().Add(time.Second)
 				}
 				if errors.Is(err, ErrBitmapEvidenceRequired) {
 					c.progress.State = "waiting"

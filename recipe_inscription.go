@@ -121,7 +121,7 @@ func (p *recipeProgram) semanticHash() string {
 	}
 	transactionProfile := ""
 	if d.Source == "bitcoin.transaction" {
-		transactionProfile = "gateway-recipe-transaction-verified-v1"
+		transactionProfile = "gateway-recipe-transaction-merkle-v2"
 	}
 	lookupProfile := ""
 	if len(d.Dependencies) != 0 || len(d.Exports) != 0 {

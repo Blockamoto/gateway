@@ -140,13 +140,13 @@ func (c *recipeLocalConsumer) Rebind(ctx context.Context, height int64, hash str
 	return nil
 }
 
-func (c *recipeLocalConsumer) Apply(ctx context.Context, work recipeConsumerWork, block blockView, extraction *inscriptionBlockResult) error {
+func (c *recipeLocalConsumer) Apply(ctx context.Context, work recipeConsumerWork, block blockView, extraction *inscriptionBlockResult, transactionSources ...*recipeTransactionSource) error {
 	if c == nil || c.a == nil {
 		return fmt.Errorf("missing local recipe consumer")
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	err := c.a.recipeLocalApply(ctx, c.consumer, c.binding, work, block, extraction)
+	err := c.a.recipeLocalApply(ctx, c.consumer, c.binding, work, block, extraction, transactionSources...)
 	if err == nil {
 		c.consumer.mu.Lock()
 		c.auditRevision = c.consumer.observedRevision
@@ -342,9 +342,9 @@ func (a *app) recipeLocalConsumerGuard(ctx context.Context, binding recipeRunBin
 	}
 }
 
-func (a *app) recipeLocalApply(ctx context.Context, consumer *recipeSparseConsumer, binding recipeRunBinding, work recipeConsumerWork, block blockView, extraction *inscriptionBlockResult) error {
+func (a *app) recipeLocalApply(ctx context.Context, consumer *recipeSparseConsumer, binding recipeRunBinding, work recipeConsumerWork, block blockView, extraction *inscriptionBlockResult, transactionSources ...*recipeTransactionSource) error {
 	if consumer == nil || consumer.a != a || consumer.store == nil || consumer.store.instance != binding.Index || consumer.store.fingerprint != binding.Fingerprint {
 		return fmt.Errorf("recipe consumer differs from admitted store")
 	}
-	return consumer.Apply(ctx, work, block, extraction, a.recipeLocalConsumerGuard(ctx, binding))
+	return consumer.Apply(ctx, work, block, extraction, a.recipeLocalConsumerGuard(ctx, binding), transactionSources...)
 }

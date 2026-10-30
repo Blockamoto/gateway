@@ -63,7 +63,7 @@ func recipeAdmissionCloneRequest(req indexRunRequest) (indexRunRequest, error) {
 
 func recipeAdmissionBuild(resolved resolvedSavedRecipe, req indexRunRequest, targetHeight int64, targetHash string) (recipeAdmissionPlan, error) {
 	var p recipeAdmissionPlan
-	if resolved.ID == "" || !recipeStoreHashValid(resolved.Revision) || !recipeStoreHashValid(resolved.SemanticHash) || resolved.Source != "bitcoin.reveal" || resolved.History != "sparse" || resolved.Origin < 0 {
+	if resolved.ID == "" || !recipeStoreHashValid(resolved.Revision) || !recipeStoreHashValid(resolved.SemanticHash) || (resolved.Source != "bitcoin.reveal" && resolved.Source != "bitcoin.transaction") || resolved.History != "sparse" || resolved.Origin < 0 {
 		return p, fmt.Errorf("unsupported recipe admission identity or capability")
 	}
 	req, err := recipeAdmissionCloneRequest(req)

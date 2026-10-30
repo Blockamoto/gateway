@@ -14,7 +14,7 @@ type recipeLineageHead struct {
 
 // Caller holds recipeStoreMutex. This is an in-process consistency token,
 // not a signature or selected-chain proof. Fenced ancestors are unavailable.
-func (p *recipeLineagePlan) headTokenLocked(ctx context.Context) (string, error) {
+func (p *recipeLineagePlan) headsLocked(ctx context.Context) ([]recipeLineageHead, error) {
 	ids := make([]recipeGraphIdentity, 0, len(p.nodes)-1)
 	for id := range p.nodes {
 		if id != p.root {
@@ -34,21 +34,31 @@ func (p *recipeLineagePlan) headTokenLocked(ctx context.Context) (string, error)
 	heads := make([]recipeLineageHead, 0, len(ids))
 	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
-			return "", err
+			return nil, err
 		}
 		node := p.nodes[id]
 		if err := node.store.rejectReconcileFenceLocked(); err != nil {
-			return "", err
+			return nil, err
 		}
 		head, err := node.store.head()
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		heads = append(heads, recipeLineageHead{Identity: id, Revision: head.Revision, Root: head.Root, Checksum: head.Checksum})
 	}
+	return heads, nil
+}
+func (p *recipeLineagePlan) headTokenLocked(ctx context.Context) (string, error) {
+	heads, err := p.headsLocked(ctx)
+	if err != nil {
+		return "", err
+	}
+	return recipeLineageHeadsToken(p.root, heads), nil
+}
+func recipeLineageHeadsToken(root recipeGraphIdentity, heads []recipeLineageHead) string {
 	return indexDigest(struct {
 		Domain string              `json:"domain"`
 		Root   recipeGraphIdentity `json:"root"`
 		Heads  []recipeLineageHead `json:"heads"`
-	}{"gateway-recipe-dag-lineage-token-v1", p.root, heads}), nil
+	}{"gateway-recipe-dag-lineage-token-v1", root, heads})
 }

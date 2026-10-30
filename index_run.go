@@ -708,7 +708,11 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 			q.State, q.AdmissionState = "ready", "admitted"
 			if len(resolved.Definition.Dependencies) != 0 {
 				q.State, q.AdmissionState = "blocked", "blocked"
-				q.Reason = "Dependency-backed recipe execution is not integrated with the index scheduler."
+				if resolved.Source == "bitcoin.transaction" {
+					q.Reason = "Same-block dependencies are not supported for transaction recipes."
+				} else {
+					q.Reason = "Dependency-backed recipe execution is not integrated with the index scheduler."
+				}
 			}
 			if p.TargetHeight >= 0 && recipeStoreHashValid(p.TargetHash) {
 				binding, e := recipeAdmissionBuild(resolved, req, p.TargetHeight, p.TargetHash)

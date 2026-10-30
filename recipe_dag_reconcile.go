@@ -208,48 +208,70 @@ func (r *recipeLocalDAGReconciler) finish(ctx context.Context, plan recipeAdmiss
 // Audit all pages before mutation. If the dependency vector or selected
 // target changes, leave any durable fence in place and retry from the start.
 func (r *recipeLocalDAGReconciler) reconcile(ctx context.Context, plan recipeAdmissionPlan) error {
+	_, _, err := r.auditFrom(ctx, plan, plan.EffectiveFrom)
+	return err
+}
+
+// auditFrom may skip only a prefix already proved equal by the caller. An
+// existing fence always forces the entire admitted range to be re-audited.
+func (r *recipeLocalDAGReconciler) auditFrom(ctx context.Context, plan recipeAdmissionPlan, from int64) (uint64, string, error) {
+	return r.auditFromExpected(ctx, plan, from, nil, "")
+}
+func (r *recipeLocalDAGReconciler) auditFromExpected(ctx context.Context, plan recipeAdmissionPlan, from int64, expectedRevision *uint64, expectedToken string) (uint64, string, error) {
 	if r == nil || r.a == nil || r.lineage == nil || r.store == nil || ctx == nil || plan.NoWork || r.lineage.root != (recipeGraphIdentity{plan.Index, plan.Revision, plan.SemanticHash}) {
-		return fmt.Errorf("invalid dependent reconciliation")
+		return 0, "", fmt.Errorf("invalid dependent reconciliation")
 	}
 	root, ok := r.lineage.nodes[r.lineage.root]
 	if !ok || root.store == nil || root.store.dir != r.store.dir {
-		return fmt.Errorf("invalid dependent reconciliation store")
+		return 0, "", fmt.Errorf("invalid dependent reconciliation store")
 	}
 	fence, pending, err := r.store.inspectReconcileFence()
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 	if pending && (plan.EffectiveFrom > fence.From || plan.TargetHeight < fence.To) {
-		return fmt.Errorf("reconciliation recovery requires the previously fenced range")
+		return 0, "", fmt.Errorf("reconciliation recovery requires the previously fenced range")
+	}
+	if from < plan.EffectiveFrom || from > plan.TargetHeight {
+		return 0, "", fmt.Errorf("invalid dependent audit start")
+	}
+	if pending {
+		from = plan.EffectiveFrom
 	}
 	token, err := r.token(ctx, plan, "")
 	if err != nil {
-		return err
+		return 0, "", err
+	}
+	if expectedToken != "" && token != expectedToken {
+		return 0, "", fmt.Errorf("dependent parent coverage changed before audit")
 	}
 	if pending && (plan.EffectiveFrom < fence.From || plan.TargetHeight > fence.To) {
 		rev, e := r.store.reconcileFenceRevision()
 		if e != nil {
-			return e
+			return 0, "", e
 		}
 		if e = r.begin(ctx, plan, rev, token); e != nil {
-			return e
+			return 0, "", e
 		}
 	}
 	var after *int64
 	var revision uint64
 	mismatch := false
 	for {
-		page, e := r.a.recipeLocalDAGInspectPage(ctx, r.binding, plan, r.lineage, r.store, after, revision, pending)
+		page, e := r.a.recipeLocalDAGInspectRange(ctx, r.binding, plan, r.lineage, r.store, from, after, revision, pending)
 		if e != nil {
-			return e
+			return 0, "", e
 		}
 		if after == nil {
 			revision = page.Revision
+			if expectedRevision != nil && revision != *expectedRevision {
+				return 0, "", fmt.Errorf("dependent coverage changed before audit")
+			}
 		} else if page.Revision != revision {
-			return fmt.Errorf("dependent coverage changed during audit")
+			return 0, "", fmt.Errorf("dependent coverage changed during audit")
 		}
 		if _, e = r.token(ctx, plan, token); e != nil {
-			return e
+			return 0, "", e
 		}
 		mismatch = mismatch || len(page.Anchors) > 0
 		if page.Next == nil {
@@ -260,25 +282,25 @@ func (r *recipeLocalDAGReconciler) reconcile(ctx context.Context, plan recipeAdm
 	}
 	if mismatch || pending {
 		if err = r.begin(ctx, plan, revision, token); err != nil {
-			return err
+			return 0, "", err
 		}
 		pending = true
 	}
 	if !pending {
-		return nil
+		return revision, token, nil
 	}
 	after = nil
 	for {
 		page, e := r.a.recipeLocalDAGInspectPage(ctx, r.binding, plan, r.lineage, r.store, after, revision, true)
 		if e != nil {
-			return e
+			return 0, "", e
 		}
 		if page.Revision != revision {
-			return fmt.Errorf("dependent coverage changed during reconciliation")
+			return 0, "", fmt.Errorf("dependent coverage changed during reconciliation")
 		}
 		if len(page.Anchors) > 0 {
 			if e = r.batch(ctx, plan, revision, token, page.Anchors); e != nil {
-				return e
+				return 0, "", e
 			}
 			revision++
 		}
@@ -288,5 +310,8 @@ func (r *recipeLocalDAGReconciler) reconcile(ctx context.Context, plan recipeAdm
 		next := *page.Next
 		after = &next
 	}
-	return r.finish(ctx, plan, revision, token)
+	if err := r.finish(ctx, plan, revision, token); err != nil {
+		return 0, "", err
+	}
+	return revision, token, nil
 }

@@ -1,17 +1,68 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 )
 
-// evaluateTransactionBlock re-decodes the authenticated bytes so a mutated
-// decoded view cannot turn a receipt for one transaction into another. The
-// caller must separately fence selected-chain authority at publication.
-// This adapter is intentionally not connected to scheduler or storage.
+// A transaction snapshot is private to a prepared block. Its entries are
+// copied only after their ordered Merkle root is matched to authenticated raw
+// header bytes; it carries no selected-chain or run authority.
+type recipeTransactionSource struct {
+	height int64
+	hash   string
+	ids    []string
+}
+
+func recipeTransactionSourceFromBlock(ctx context.Context, block blockView) (*recipeTransactionSource, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("missing recipe context")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if block.Height < 0 || !recipeStoreHashValid(block.Hash) || len(block.Transactions) == 0 || block.TransactionCount != uint64(len(block.Transactions)) {
+		return nil, fmt.Errorf("transaction source is incomplete or has invalid identity")
+	}
+	raw, _, err := exactVerifiedBlockPayload(block)
+	if err != nil {
+		return nil, fmt.Errorf("transaction source requires authenticated complete bytes: %w", err)
+	}
+	hashes := make([][32]byte, 0, len(block.Transactions))
+	ids := make([]string, 0, len(block.Transactions))
+	for i, tx := range block.Transactions {
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
+		if tx.Index != i || !validHash(tx.TxID) || tx.TxID != strings.ToLower(tx.TxID) {
+			return nil, fmt.Errorf("invalid transaction identity or ordering at %d", i)
+		}
+		hash, e := displayHashRaw(tx.TxID)
+		if e != nil {
+			return nil, e
+		}
+		hashes = append(hashes, hash)
+		ids = append(ids, tx.TxID)
+	}
+	root := merkleRoot(hashes)
+	if !bytes.Equal(root[:], raw[36:68]) || merkleMutated(hashes) {
+		return nil, fmt.Errorf("transaction identities differ from verified block Merkle root")
+	}
+	return &recipeTransactionSource{height: block.Height, hash: block.Hash, ids: ids}, nil
+}
+
 func (p *recipeProgram) evaluateTransactionBlock(ctx context.Context, block blockView) (recipeRows, error) {
+	source, err := recipeTransactionSourceFromBlock(ctx, block)
+	if err != nil {
+		return nil, err
+	}
+	return p.evaluateTransactionSource(ctx, block, source)
+}
+
+func (p *recipeProgram) evaluateTransactionSource(ctx context.Context, block blockView, source *recipeTransactionSource) (recipeRows, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("missing recipe context")
 	}
@@ -27,30 +78,19 @@ func (p *recipeProgram) evaluateTransactionBlock(ctx context.Context, block bloc
 	if block.Height < p.definition.Origin || block.Height < 0 {
 		return nil, fmt.Errorf("block precedes recipe origin")
 	}
-	raw, _, err := exactVerifiedBlockPayload(block)
-	if err != nil {
-		return nil, fmt.Errorf("transaction source requires authenticated complete bytes: %w", err)
-	}
-	verified, err := parseBlockDetailed(block.Height, block.Hash, nil, raw, "recipe transaction source", false)
-	if err != nil || !integrityVerified(verified) {
-		return nil, fmt.Errorf("transaction source verification failed: %v", err)
-	}
-	if len(verified.Transactions) == 0 || verified.TransactionCount != uint64(len(verified.Transactions)) {
-		return nil, fmt.Errorf("transaction source is incomplete")
+	if source == nil || source.height != block.Height || source.hash != block.Hash || len(source.ids) == 0 || uint64(len(source.ids)) != block.TransactionCount {
+		return nil, fmt.Errorf("transaction source differs from block identity")
 	}
 	all := recipeRows{}
 	for _, table := range p.definition.Tables {
 		all[table.Name] = map[string]map[string]any{}
 	}
 	outputBytes := 0
-	for i, tx := range verified.Transactions {
+	for i, id := range source.ids {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if tx.Index != i || !validHash(tx.TxID) || tx.TxID != strings.ToLower(tx.TxID) {
-			return nil, fmt.Errorf("invalid transaction identity or ordering at %d", i)
-		}
-		event := map[string]any{"ref": txCoordinate(i, verified.Height), "txid": tx.TxID, "block_hash": verified.Hash, "height": json.Number(fmt.Sprint(verified.Height)), "tx_index": json.Number(fmt.Sprint(i))}
+		event := map[string]any{"ref": txCoordinate(i, source.height), "txid": id, "block_hash": source.hash, "height": json.Number(fmt.Sprint(source.height)), "tx_index": json.Number(fmt.Sprint(i))}
 		rows, err := p.evaluate(event)
 		if err != nil {
 			return nil, err

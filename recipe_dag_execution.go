@@ -56,7 +56,7 @@ func (p *recipeLineagePlan) lookupInputs(snapshot *recipeLineageSnapshot) (*reci
 }
 
 func (a *app) recipeExecuteDAGBlock(ctx context.Context, root resolvedSavedRecipe, store *recipeStore, block blockView, inventory *inscriptionBlockResult, revision uint64, guard recipeStoreGuard) error {
-	if ctx == nil || store == nil || guard == nil || store.instance != root.ID || store.fingerprint != root.SemanticHash || len(root.Definition.Dependencies) == 0 {
+	if ctx == nil || store == nil || guard == nil || root.Source != "bitcoin.reveal" || root.Definition.Source != "bitcoin.reveal" || store.instance != root.ID || store.fingerprint != root.SemanticHash || len(root.Definition.Dependencies) == 0 {
 		return fmt.Errorf("invalid dependent DAG execution")
 	}
 	if !integrityVerified(block) {

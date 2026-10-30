@@ -145,12 +145,17 @@ func TestRecipeTransactionSourceSafetyAndGating(t *testing.T) {
 	tampered := b
 	tampered.Transactions = append([]transactionView(nil), b.Transactions...)
 	tampered.Transactions[0].TxID = strings.Repeat("a", 64)
-	rows, err := p.evaluateTransactionBlock(context.Background(), tampered)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := p.evaluateTransactionBlock(context.Background(), tampered); err == nil {
+		t.Fatal("accepted decoded transaction identity inconsistent with Merkle root")
 	}
-	if _, ok := rows["transactions"][b.Transactions[0].TxID]; !ok {
-		t.Fatal("trusted mutated view instead of verified raw bytes")
+	// Duplicate-last Merkle padding can preserve a root. The authenticated
+	// parser receipt independently fixes the raw transaction count.
+	padded := b
+	padded.Transactions = append(append([]transactionView(nil), b.Transactions...), b.Transactions[0])
+	padded.Transactions[1].Index = 1
+	padded.TransactionCount = 2
+	if _, err := recipeTransactionSourceFromBlock(context.Background(), padded); err == nil {
+		t.Fatal("accepted transaction inventory count differing from raw receipt")
 	}
 	bad := b
 	bad.verifiedRaw = append([]byte(nil), b.verifiedRaw...)
@@ -168,15 +173,15 @@ func TestRecipeTransactionSourceSafetyAndGating(t *testing.T) {
 		t.Fatal(err)
 	}
 	view, _, err := recipeRegistryCompile(source)
-	if err != nil || !view.Validated || view.Runnable {
+	if err != nil || !view.Validated || !view.Runnable {
 		t.Fatalf("source capability: %+v %v", view, err)
 	}
 	resolved, err := recipeResolveView(view)
-	if err != nil || resolved.Execution != "source_scheduling_unavailable" {
+	if err != nil || resolved.Execution != "independent_finite_and_live" {
 		t.Fatalf("resolver: %+v %v", resolved, err)
 	}
-	if _, err = recipeAdmissionBuild(resolved, indexRunRequest{}, 0, genesisHashDisplay); err == nil {
-		t.Fatal("transaction source admitted to reveal scheduler")
+	if _, err = recipeAdmissionBuild(resolved, indexRunRequest{Consumers: []indexRunSelection{{Index: resolved.ID, Armed: true}}}, 0, genesisHashDisplay); err != nil {
+		t.Fatalf("independent transaction admission: %v", err)
 	}
 	if _, err = p.evaluateInscriptionBlock(context.Background(), b, nil); err == nil {
 		t.Fatal("transaction program accepted by reveal adapter")

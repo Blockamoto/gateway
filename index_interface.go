@@ -132,6 +132,9 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 	var result any
 	var err error
 	switch strings.TrimPrefix(r.URL.Path, "/api/v1/index/") {
+	case "layout/hierarchy":
+		a.handleIndexPresentation(w, r)
+		return
 	case "recipes":
 		a.handleRecipeRegistry(w, r, false)
 		return

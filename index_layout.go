@@ -19,10 +19,11 @@ import (
 var indexLayoutMu sync.Mutex
 
 type indexLayoutDocument struct {
-	Schema   int                 `json:"schema"`
-	Revision uint64              `json:"revision"`
-	Order    map[string][]string `json:"order"`
-	Checksum string              `json:"checksum,omitempty"`
+	Schema    int                     `json:"schema"`
+	Revision  uint64                  `json:"revision"`
+	Order     map[string][]string     `json:"order"`
+	Hierarchy []indexPresentationNode `json:"hierarchy,omitempty"`
+	Checksum  string                  `json:"checksum,omitempty"`
 }
 
 func indexLayoutDigest(d indexLayoutDocument) string { d.Checksum = ""; return indexDigest(d) }
@@ -209,7 +210,9 @@ func normalizeIndexLayoutVersion(ctx context.Context, root string, order map[str
 	}
 	return out, nil
 }
-func readIndexLayout(ctx context.Context, root string) (indexLayoutDocument, error) {
+
+// The stored order is retained separately from its read-only legacy projection.
+func readStoredIndexLayout(ctx context.Context, root string) (indexLayoutDocument, error) {
 	d := indexLayoutDocument{Schema: 2, Order: map[string][]string{}}
 	path := indexLayoutPath(root)
 	if err := updateapply.CheckPath(path); err != nil {
@@ -222,13 +225,79 @@ func readIndexLayout(ctx context.Context, root string) (indexLayoutDocument, err
 	if err != nil {
 		return d, err
 	}
-	if (d.Schema != 1 && d.Schema != 2) || d.Order == nil || d.Checksum != indexLayoutDigest(d) {
+	if (d.Schema != 1 && d.Schema != 2 && d.Schema != 3) || d.Order == nil || d.Checksum != indexLayoutDigest(d) {
 		return d, fmt.Errorf("saved timeline layout is damaged; indexing state was not changed")
 	}
+	if d.Schema != 3 && len(d.Hierarchy) > 0 {
+		return d, fmt.Errorf("presentation hierarchy requires timeline layout schema 3")
+	}
+	if err = validateIndexPresentation(d.Hierarchy); err != nil {
+		return d, fmt.Errorf("saved presentation hierarchy is damaged: %w", err)
+	}
+	return d, nil
+}
+func readIndexLayout(ctx context.Context, root string) (indexLayoutDocument, error) {
+	d, err := readStoredIndexLayout(ctx, root)
+	if err != nil {
+		return d, err
+	}
 	d.Order, err = normalizeIndexLayoutVersion(ctx, root, d.Order, true)
-	d.Schema = 2
+	if d.Schema != 3 {
+		d.Schema = 2
+	}
 	d.Checksum = indexLayoutDigest(d)
 	return d, err
+}
+
+// Carry unrecognized saved identities forward when an older layout client
+// submits a reordered known subset. New unknown request entries remain filtered.
+func preserveUnknownIndexLayout(ctx context.Context, root string, raw, normalized map[string][]string) error {
+	parents, err := indexLayoutParents(ctx, root)
+	if err != nil {
+		return err
+	}
+	for parent, ids := range raw {
+		for position, id := range ids {
+			if _, known := parents[id]; known {
+				continue
+			}
+			// Preserve unknown entries and their approximate former positions,
+			// including legacy duplicates, alongside the new known ordering.
+			row := normalized[parent]
+			at := position
+			if at > len(row) {
+				at = len(row)
+			}
+			row = append(row, "")
+			copy(row[at+1:], row[at:])
+			row[at] = id
+			normalized[parent] = row
+		}
+	}
+	if len(normalized) > 256 {
+		return fmt.Errorf("preserved timeline layout exceeds group limit")
+	}
+	total := 0
+	for parent, ids := range normalized {
+		if len(parent) > 100 || len(ids) > 320 {
+			return fmt.Errorf("preserved timeline layout exceeds group size")
+		}
+		total += len(ids)
+		if total > 640 {
+			return fmt.Errorf("preserved timeline layout exceeds track budget")
+		}
+	}
+	return nil
+}
+func validateIndexLayoutStorageSize(d indexLayoutDocument) error {
+	data, err := json.MarshalIndent(d, "", "  ")
+	if err != nil {
+		return err
+	}
+	if len(data) > 64<<10 {
+		return fmt.Errorf("timeline layout exceeds its saved size limit")
+	}
+	return nil
 }
 func (a *app) handleIndexLayout(w http.ResponseWriter, r *http.Request) {
 	if !safeLocalRequest(r) {
@@ -262,7 +331,15 @@ func (a *app) handleIndexLayout(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 400, fmt.Errorf("one bounded JSON layout request is required"))
 		return
 	}
+	stored, e := readStoredIndexLayout(r.Context(), a.dataDir)
+	if e != nil {
+		jsonError(w, 409, e)
+		return
+	}
 	d.Order, err = normalizeIndexLayout(r.Context(), a.dataDir, q.Order)
+	if err == nil {
+		err = preserveUnknownIndexLayout(r.Context(), a.dataDir, stored.Order, d.Order)
+	}
 	if err != nil {
 		jsonError(w, 400, err)
 		return
@@ -271,8 +348,16 @@ func (a *app) handleIndexLayout(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 409, err)
 		return
 	}
+	if d.Revision == ^uint64(0) {
+		jsonError(w, 409, fmt.Errorf("timeline layout revision exhausted"))
+		return
+	}
 	d.Revision++
 	d.Checksum = indexLayoutDigest(d)
+	if err = validateIndexLayoutStorageSize(d); err != nil {
+		jsonError(w, 400, err)
+		return
+	}
 	if err = updateapply.CheckPath(indexLayoutPath(a.dataDir)); err == nil {
 		err = atomicWriteJSON(indexLayoutPath(a.dataDir), d)
 	}

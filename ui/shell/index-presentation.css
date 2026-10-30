@@ -1,0 +1,9 @@
+.presentation-editor{margin-left:auto;font-size:11px;position:relative}
+.presentation-editor>summary{cursor:pointer;color:var(--text);padding:5px}
+.presentation-editor[open]{position:absolute;z-index:12;right:8px;top:38px;width:min(460px,95%);padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 24px #0003}
+.presentation-note,.presentation-status{font-size:11px;line-height:1.5;color:var(--muted)}
+.presentation-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}.presentation-fields label{display:grid;gap:4px}.presentation-fields input,.presentation-fields select{min-width:0;width:100%}
+.presentation-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.presentation-actions button{font-size:11px}
+.presentation-row{display:grid;grid-template-columns:var(--track-label) minmax(0,1fr);min-height:var(--timeline-track-height,24px);border-bottom:1px solid var(--line);font-size:10px}
+.presentation-heading{display:flex;align-items:center;gap:4px;min-width:0;border-right:1px solid var(--line);overflow:hidden}.presentation-heading>span,.presentation-heading>button{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.presentation-heading button{border:0;background:transparent;color:var(--text);font-size:10px;padding:2px;min-height:0}.presentation-spacer{width:12px;flex:0 0 12px}
+.presentation-lane{display:flex;align-items:center;min-width:0;margin:0 12px;color:var(--muted)}.presentation-lane canvas{display:block;width:100%;height:8px}.presentation-lane span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

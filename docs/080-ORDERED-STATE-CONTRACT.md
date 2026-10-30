@@ -99,3 +99,36 @@ range loop and temporary state for the exact two mainnet BIP30 exception
 coinbases; it requires every live displaced output to be replaced and records
 first-touch images for undo. That loop is capped at 4,096 original output slots,
 so it is an experimental slice rather than full-block parity.
+
+The separate staging prototype stores bounded immutable chunks and a persistent
+first-before/final-after journal tree, supports private reads fenced by chunk
+revision, then publishes one guarded manifest and head after resumable chunk
+verification. It does not authenticate a producer's
+source cursor or resume interpreter locals; the guard must supply that proof.
+Its checked roots do not establish complete availability of every untouched
+inherited page, and snapshot/delta pagination and staging reclamation are not
+implemented. It remains separate from the existing adapter and scheduler.
+
+An opt-in 4,100-key synthetic test (`GATEWAY_STAGING_STRESS=1`) passed on the
+pre-final prototype in 273.5 seconds on this Windows host. A CPU profile of the
+smaller 301-key test attributed 56% of samples cumulatively to path checking,
+including repeated Windows file attribute/reparse checks, and 39% to radix-tree
+flush (categories overlap). This is evidence of costly filesystem operations,
+not a representative production benchmark. A production design needs measured
+batching and safe reuse of checked directory handles or equivalent protections;
+do not remove path or durability checks merely to improve the number.
+
+Verification can now share authenticated pages within one bounded verification
+call, with a 64-page and estimated 16 MiB decoded-cache cap and reserved space
+before loading each new page. The cache is discarded between calls; path and
+hash checks still run on first load. A separate opt-in durable transaction pins
+its authenticated head for reads, rechecks the small head and marker on each
+read, and revalidates the full receipt under the publication guard and CAS.
+Neither optimization changes the existing durable adapter's default API.
+
+On this host, a three-iteration microbenchmark with a synthetic roughly
+0.5 MiB receipt measured 23.69 ms per original read and 7.03 ms per pinned read.
+For a four-chunk, 128-key verification fixture, budgets of one and four chunks
+per call averaged 675.5 ms and 625.4 ms respectively. These limited measurements
+are noisy and do not establish production throughput or a reliable before/after
+percentage for the cache.

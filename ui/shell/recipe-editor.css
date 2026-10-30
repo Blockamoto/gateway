@@ -1,0 +1,8 @@
+.recipe-editor fieldset{border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.recipe-editor legend{padding:0 6px;font-size:13px}
+.recipe-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.recipe-fields label,.recipe-raw-label{display:grid;gap:5px;font-size:13px}
+.recipe-fields input,.recipe-raw-label textarea{width:100%;min-width:0}
+.recipe-raw-label textarea{font-family:monospace;resize:vertical;line-height:1.5}
+.recipe-editor .actions{display:flex;align-items:center;gap:12px;margin-top:12px}
+.recipe-editor [data-recipe="status"]{min-height:1.5em}

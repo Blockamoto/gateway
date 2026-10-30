@@ -1,0 +1,90 @@
+'use strict';
+const assert=require('node:assert/strict');
+require('../ui/shell/recipe-editor.js');
+const editor=globalThis.GatewayRecipeEditor;
+const initial=editor.initial(), guided=editor.toGuided(initial);
+assert.equal(guided.keyPath,'ref');
+assert.deepEqual(JSON.parse(JSON.stringify(editor.fromGuided(guided))),initial);
+const g={...guided, id:'example', name:'Example', origin:'767430', filterPath:'metaprotocol', filterValue:'"example"', valueColumn:'metadata', valuePath:'metadata_hex'};
+const recipe=JSON.parse(JSON.stringify(editor.fromGuided(g)));
+assert.deepEqual(recipe.steps[0],{op:'require',test:{call:'and',args:[{call:'present',args:[{field:['metaprotocol']}]},{call:'eq',args:[{field:['metaprotocol']},{literal:'example'}]}]}});
+assert.deepEqual(recipe.steps[1].row,{id:{field:['ref']},metadata:{field:['metadata_hex']}});
+assert.deepEqual(editor.toGuided(recipe),g);
+const metadataGuided={...guided,filterMode:'metadata',filterKey:'name',filterValue:'"sats"'};
+const metadataRecipe=JSON.parse(JSON.stringify(editor.fromGuided(metadataGuided)));
+assert.deepEqual(metadataRecipe.steps[0],{op:'let',as:'metadata_value',value:{call:'cbor.scalar',args:[{call:'cbor.key',args:[{call:'cbor.decode',args:[{field:['metadata_hex']}]},{literal:'name'}]}]}});
+assert.deepEqual(metadataRecipe.steps[1],{op:'require',test:{call:'and',args:[{call:'valid',args:[{variable:'metadata_value'}]},{call:'eq',args:[{variable:'metadata_value'},{literal:'sats'}]}]}});
+assert.deepEqual(editor.toGuided(metadataRecipe),metadataGuided);
+const traitGuided={...guided,filterMode:'trait',filterKey:'eye.color',filterValue:'"blue"'};
+const traitRecipe=JSON.parse(JSON.stringify(editor.fromGuided(traitGuided)));
+assert.deepEqual(traitRecipe.steps[0].test.args[0].args[0],{field:['properties','attributes','traits','eye.color']});
+assert.deepEqual(editor.toGuided(traitRecipe),traitGuided);
+assert.deepEqual(editor.cataloguePaths({version:1,sources:[{id:'bitcoin.reveal',fields:[{path:['ref']},{path:['properties','status']},{path:['properties','attributes','traits'],dynamic_tail:true}]}]}),['ref','properties.status']);
+assert.deepEqual(editor.cataloguePaths({version:2,sources:[]}),[]);
+
+assert.throws(()=>editor.fromGuided({...metadataGuided,filterValue:'9007199254740993'}),/safely/);
+assert.throws(()=>editor.fromGuided({...traitGuided,filterValue:'[]'}),/support text/);
+assert.throws(()=>editor.fromGuided({...g,filterValue:'1.5'}),/Decimal comparisons/);
+
+for (const mutate of [d=>d.dependencies.push('parent'), d=>d.steps.unshift({op:'let',as:'x',value:{literal:1}}),d=>d.steps[0].test.call='not',d=>d.steps[1].row.extra={literal:5},d=>d.newField=true]) {
+ const d=structuredClone(recipe); mutate(d); const before=JSON.stringify(d); assert.equal(editor.toGuided(d),null); assert.equal(JSON.stringify(d),before,'unsupported forms are never changed');
+}
+assert.equal(editor.fromGuided({...g,filterValue:'null'}).steps[0].test.args[1].args[1].literal,null);
+assert.throws(()=>editor.fromGuided({...g,filterValue:'invalid'}),/valid JSON/);
+assert.throws(()=>editor.fromGuided({...g,origin:'1.5'}),/whole block/);
+assert.throws(()=>editor.fromGuided({...g,keyPath:'x..y'}),/field path/);
+const strange=editor.fromGuided({...guided,key:'__proto__'}); assert.equal(Object.hasOwn(strange.steps[0].row,'__proto__'),true);
+(async()=>{
+ const names=['raw','status','guided','id','name','origin','table','key','keyPath','filterMode','filterPath','filterKey','filterValue','valueColumn','valuePath','apply','reset','import','export','validate','save','refresh','load','saved','save-note','field-list'];
+ const nodes=Object.fromEntries(names.map(name=>[name,{value:'',textContent:'',disabled:false,events:{},addEventListener(type,fn){this.events[type]=fn;},replaceChildren(...children){this.children=children;}}]));
+ const calls=[];let handler=async()=>({});
+ const root={ownerDocument:{createElement(){return {value:'',textContent:''};}},querySelector(selector){return nodes[selector.match(/"([^"]+)"/)[1]];}};
+ editor.mount(root,{request:async(action,body)=>{calls.push({action,body});return handler(action,body);}});
+ await Promise.resolve(); await Promise.resolve();
+ nodes.filterMode.value='metadata';nodes.filterMode.events.input();nodes.filterKey.value='name';nodes.filterValue.value='"sats"';nodes.apply.events.click();assert.deepEqual(JSON.parse(nodes.raw.value).steps,metadataRecipe.steps);
+ nodes.filterMode.value='trait';nodes.filterMode.events.input();nodes.filterKey.value='eye.color';nodes.filterValue.value='"blue"';nodes.apply.events.click();assert.deepEqual(JSON.parse(nodes.raw.value).steps,traitRecipe.steps);
+ nodes.filterMode.value='field';nodes.filterMode.events.input(); nodes.filterPath.value='metaprotocol';nodes.filterValue.value='"ord"';nodes.apply.events.click();
+ assert.equal(JSON.parse(nodes.raw.value).steps[0].test.args[1].args[1].literal,'ord');
+ const unsupported=structuredClone(recipe); unsupported.dependencies=['parent']; nodes.raw.value=JSON.stringify(unsupported);nodes.raw.events.input();
+ assert.equal(nodes.guided.disabled,true);assert.equal(JSON.parse(nodes.raw.value).dependencies[0],'parent');
+ nodes.raw.value='{';nodes.raw.events.input();assert.match(nodes.status.textContent,/JSON:/);assert.equal(nodes.guided.disabled,true);
+ let resolve;const file={size:5,arrayBuffer:()=>new Promise(r=>resolve=r)}, target={files:[file],value:'file'};const pending=nodes.import.events.change({target});
+ const callsBeforeImport=calls.length;await nodes.save.events.click();assert.equal(calls.length,callsBeforeImport,'save cannot race pending import');
+ nodes.raw.value=JSON.stringify(initial);nodes.raw.events.input();resolve(new TextEncoder().encode(JSON.stringify(recipe)));await pending;
+ assert.deepEqual(JSON.parse(nodes.raw.value),initial,'late import cannot override newer editing');
+ const beforeInvalid=nodes.raw.value;await nodes.import.events.change({target:{files:[{size:1,arrayBuffer:async()=>new Uint8Array([255])}],value:'file'}});
+ assert.equal(nodes.raw.value,beforeInvalid,'invalid UTF-8 import cannot replace the draft');assert.match(nodes.status.textContent,/Import:/);
+
+ handler=async(action,body)=>action==='/validate'?{}:{recipe_json:body.recipe_json,revision:'rev1',semantic_hash:'sem1'};
+ await nodes.validate.events.click();assert.match(nodes.status.textContent,/Validated/);
+ await nodes.save.events.click();assert.equal(calls.at(-1).body.recipe_json,JSON.stringify(initial));assert.match(nodes.status.textContent,/saved/);
+ const changed=structuredClone(initial);changed.name='Changed';nodes.raw.value=JSON.stringify(changed);nodes.raw.events.input();
+ handler=async(action,body)=>({recipe_json:body.recipe_json,revision:'rev2',semantic_hash:'sem1'});
+ await nodes.save.events.click();assert.equal(calls.at(-1).body.previous_revision,'rev1');assert.equal(calls.at(-1).body.previous_semantic_hash,'sem1');
+ handler=async()=>[{recipe:changed}];await nodes.refresh.events.click();assert.equal(nodes.saved.children[1].value,'my-reveals');
+ nodes.saved.value='my-reveals';nodes.saved.events.change();handler=async()=>({recipe_json:JSON.stringify(changed),revision:'rev2',semantic_hash:'sem1'});await nodes.load.events.click();assert.deepEqual(JSON.parse(nodes.raw.value),changed);
+ handler=async()=>({recipe_json:JSON.stringify(changed),revision:'rev2',semantic_hash:'old',validated:false,note:'Different interpreter profile.'});await nodes.load.events.click();assert.match(nodes.status.textContent,/Different interpreter profile/);
+ let finishLoad;handler=()=>new Promise(r=>finishLoad=r);const load=nodes.load.events.click();
+ nodes.raw.value=JSON.stringify(initial);nodes.raw.events.input();finishLoad({recipe_json:JSON.stringify(changed),revision:'rev2',semantic_hash:'sem1'});await load;
+ assert.deepEqual(JSON.parse(nodes.raw.value),initial,'late server load cannot override newer editing');
+ nodes.name.value='unsaved guided';nodes.name.events.input();const count=calls.length;await nodes.save.events.click();assert.equal(calls.length,count);assert.match(nodes.status.textContent,/Apply guided/);
+ nodes.reset.events.click();
+ let finishSave;handler=()=>new Promise(r=>finishSave=r);const saving=nodes.save.events.click();
+ nodes.reset.events.click();finishSave({revision:'old',semantic_hash:'oldsem'});await saving;
+ assert.match(nodes['save-note'].textContent,/earlier version/);
+ handler=async(action,body)=>({recipe_json:body.recipe_json,revision:'new',semantic_hash:'newsem'});await nodes.save.events.click();
+ assert.equal(calls.at(-1).body.previous_revision,undefined,'late save cannot attach its revision to a reset draft');
+ const dup=JSON.stringify(initial).replace('"id":"my-reveals"','"id":"my-reveals","id":"other"');
+ nodes.raw.value=dup;nodes.raw.events.input();assert.equal(nodes.guided.disabled,true);
+ handler=async()=>{throw new Error('duplicate key')};await nodes.validate.events.click();assert.equal(calls.at(-1).body.recipe_json,dup,'duplicate keys reach backend without collapse');
+ const huge=JSON.stringify(recipe).replace('"example"','9007199254740993');
+ nodes.raw.value=huge;nodes.raw.events.input();assert.equal(nodes.guided.disabled,true);assert.equal(editor.guidableJSON(huge),false);
+ handler=async()=>({});await nodes.validate.events.click();assert.equal(calls.at(-1).body.recipe_json,huge,'large integers reach backend exactly');
+ const priorDocument=globalThis.document,priorBlob=globalThis.Blob,priorCreate=URL.createObjectURL,priorRevoke=URL.revokeObjectURL;let exported;
+ globalThis.document={createElement:()=>({click(){}})};globalThis.Blob=class{constructor(parts){exported=parts[0];}};URL.createObjectURL=()=> 'blob:test';URL.revokeObjectURL=()=>{};
+ nodes.export.events.click();assert.equal(exported,huge,'export preserves exact raw number');
+ globalThis.document=priorDocument;globalThis.Blob=priorBlob;URL.createObjectURL=priorCreate;URL.revokeObjectURL=priorRevoke;
+
+
+ console.log('Recipe draft editor PASS: guided/JSON round-trip, safe unsupported forms, validation, registry concurrency and stale-response handling.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -132,6 +132,23 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 	var result any
 	var err error
 	switch strings.TrimPrefix(r.URL.Path, "/api/v1/index/") {
+	case "recipes":
+		a.handleRecipeRegistry(w, r, false)
+		return
+	case "recipes/validate":
+		a.handleRecipeRegistry(w, r, true)
+		return
+	case "recipes/catalogue":
+		if !safeLocalRequest(r) {
+			jsonError(w, http.StatusForbidden, fmt.Errorf("recipe catalogue is restricted to the local management interface"))
+			return
+		}
+		if !indexMethod(w, r, http.MethodGet) {
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, recipeCatalogue())
+		return
 	case "block-map":
 		a.handleIndexBlockMap(w, r)
 		return

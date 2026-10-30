@@ -1,0 +1,47 @@
+{
+  "genesis": {
+    "block": {
+      "height": 0,
+      "tx count": 1,
+      "tx": [
+        {
+          "0": "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"
+        }
+      ]
+    },
+    "completeness": "complete",
+    "selection": "all"
+  },
+  "block1": {
+    "block": {
+      "height": 1,
+      "tx count": 1,
+      "tx": [
+        {
+          "0": "0e3e2357e806b6cdb1f70b54c3a3a17b6714ee1f0e68bebb44a74b1efd512098"
+        }
+      ]
+    },
+    "completeness": "complete",
+    "selection": "all"
+  },
+  "synthetic": {
+    "block": {
+      "height": 10,
+      "tx count": 3,
+      "tx": [
+        {
+          "0": "ab006b2cef02c7b23082847f9a73d39e9c11eabfeecae8678c59f96f276a0ec4"
+        },
+        {
+          "1": "ab0048e2802fe678c45492a8d2687a078b9a0ab92ed73df947a462d1bd426026"
+        },
+        {
+          "2": "ab00de0072fbc74cb9af1dbee220c73b86881f948e44cc8b8d082cce2c6a6b84"
+        }
+      ]
+    },
+    "completeness": "complete",
+    "selection": "all"
+  }
+}

@@ -271,6 +271,17 @@ func (m *recipeOrderedMachine) eval(e recipeOrderedExpr, depth int) (recipeOrder
 		}
 		s, err := recipeBitcoinOutpoint(args[0].Text, uint32(args[1].Uint))
 		return rovText(s), err
+	case "destination":
+		if len(args) != 1 || args[0].Kind != "bytes" {
+			return fail()
+		}
+		// This classifies the exact locking script; a public key is not
+		// interchangeable with its P2PKH address or another SEC encoding.
+		kind, destination := describeDestinationScript(args[0].Bytes)
+		return recipeOrderedValue{Kind: "object", Object: map[string]recipeOrderedValue{
+			"kind": rovText(kind), "destination": rovText(destination),
+			"supported": rovBool(destination != ""),
+		}}, nil
 	case "retains":
 		if len(args) != 2 || args[0].Kind != "uint" || args[0].Uint > uint64(^uint64(0)>>1) || args[1].Kind != "bytes" {
 			return fail()

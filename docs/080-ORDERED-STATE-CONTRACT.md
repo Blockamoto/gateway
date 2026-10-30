@@ -132,3 +132,20 @@ For a four-chunk, 128-key verification fixture, budgets of one and four chunks
 per call averaged 675.5 ms and 625.4 ms respectively. These limited measurements
 are noisy and do not establish production throughput or a reliable before/after
 percentage for the cache.
+
+The private resumable AST executor binds its exact program and interpreter
+profiles to a content-hashed event sequence. Each bounded slice commits its AST
+path, local variables, loop stack and state writes in one private staged chunk;
+the stage sequence and source cursor fence retries. The continuation uses a
+reserved state key and is not a user-facing recipe format. Its source digest
+authenticates the supplied sequence as data, not its completeness or Bitcoin
+chain authority; a verified complete block-source adapter and publication
+authority are still required. This prototype materializes at most 50,000 events
+and 16 MiB, caps range loops at 4,096 iterations and checkpoints at 256 KiB,
+and rehashes the materialized source for every slice. Those limits and costs
+remain blockers to claiming full-block support.
+Full-block integration needs a verified immutable source receipt bound to the
+exact parsed block, event profile and complete event count, plus bounded,
+content-addressed event pages or equivalent proofs that authenticate each
+cursor. Reuse that receipt across slices instead of rehashing the whole source;
+a caller-supplied count alone cannot establish completeness.

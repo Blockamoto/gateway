@@ -82,6 +82,44 @@ const recipeInterpreterProfile = "gateway-recipe-interpreter-v4"
 const recipeCBORProfile = "gateway-recipe-cbor-v1"
 const recipePropertiesProfile = "gateway-ord-properties-b7ccfcf6-uncompressed-v1"
 const recipePropertiesBrotliProfile = "gateway-ord-properties-b7ccfcf6-brotli-v2"
+const recipeRevealRecordProfile = "gateway-reveal-source-record-v1"
+
+// A whole authenticated source record is an opaque object value. Generic row
+// serialization retains its exact source fields; physical adapters can retain
+// the already-admitted value without decoding another large JSON copy.
+type recipeRevealRecord struct {
+	occurrence inscriptionOccurrence
+	receipt    *inscriptionInventoryReceipt
+	ordinal    int
+}
+
+func (r *recipeRevealRecord) MarshalJSON() ([]byte, error) { return json.Marshal(r.occurrence) }
+
+func recipeUsesSourceRoot(d recipeDefinition, root string) bool {
+	var uses func(recipeExpr) bool
+	uses = func(e recipeExpr) bool {
+		if len(e.Field) > 0 && e.Field[0] == root {
+			return true
+		}
+		for _, a := range e.Args {
+			if uses(a) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, s := range d.Steps {
+		if s.Test != nil && uses(*s.Test) || s.Value != nil && uses(*s.Value) {
+			return true
+		}
+		for _, e := range s.Row {
+			if uses(e) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 func recipeUsesProperties(d recipeDefinition) bool {
 	var uses func(recipeExpr) bool
@@ -127,6 +165,12 @@ func (p *recipeProgram) semanticHash() string {
 	if len(d.Dependencies) != 0 || len(d.Exports) != 0 {
 		lookupProfile = "gateway-sparse-same-anchor-lookup-v1"
 	}
+	recordProfile := ""
+	for _, field := range []string{"record", "tx_ref", "tx_index", "reveal_index"} {
+		if d.Source == "bitcoin.reveal" && recipeUsesSourceRoot(d, field) {
+			recordProfile = recipeRevealRecordProfile
+		}
+	}
 	return indexDigest(struct {
 		Engine          string           `json:"engine"`
 		Parser          string           `json:"parser"`
@@ -137,7 +181,8 @@ func (p *recipeProgram) semanticHash() string {
 		Lookup          string           `json:"lookup,omitempty"`
 		Definition      recipeDefinition `json:"definition"`
 		Transaction     string           `json:"transaction,omitempty"`
-	}{recipeInterpreterProfile, inscriptionParserProfile, inscriptionReferenceCommit, ordInterpretationProfile, recipeCBORProfile, propertiesProfile, lookupProfile, d, transactionProfile})
+		RevealRecord    string           `json:"reveal_record,omitempty"`
+	}{recipeInterpreterProfile, inscriptionParserProfile, inscriptionReferenceCommit, ordInterpretationProfile, recipeCBORProfile, propertiesProfile, lookupProfile, d, transactionProfile, recordProfile})
 }
 
 // commitInscriptionBlock links the interpreter to its independent sparse store.
@@ -180,7 +225,9 @@ func recipeRevealEventContext(ctx context.Context, o inscriptionOccurrence) (map
 	e := map[string]any{
 		"ref":  inscriptionCoordinate(uint32(o.TxIndex), o.Index, o.BlockHeight),
 		"txid": o.TxID, "block_hash": o.BlockHash,
-		"height":            json.Number(fmt.Sprint(o.BlockHeight)),
+		"height": json.Number(fmt.Sprint(o.BlockHeight)),
+		"tx_ref": txCoordinate(o.TxIndex, o.BlockHeight), "tx_index": json.Number(fmt.Sprint(o.TxIndex)), "reveal_index": json.Number(fmt.Sprint(o.Index)),
+		"record":            &recipeRevealRecord{occurrence: o},
 		"content_type":      o.Envelope.ContentType,
 		"has_content_type":  o.HasContentType,
 		"body_hex":          hex.EncodeToString(o.Body),
@@ -230,54 +277,131 @@ func (p *recipeProgram) evaluateInscriptionBlock(ctx context.Context, block bloc
 }
 
 func (p *recipeProgram) evaluateInscriptionBlockWithLookup(ctx context.Context, block blockView, result *inscriptionBlockResult, lookup func(string, string) (any, error)) (recipeRows, error) {
-	if p.definition.Source != "bitcoin.reveal" {
-		return nil, fmt.Errorf("recipe source is not bitcoin.reveal")
+	all := recipeRows{}
+	for _, table := range p.definition.Tables {
+		all[table.Name] = map[string]map[string]any{}
 	}
+	err := p.evaluateInscriptionSourceInto(ctx, block, result, lookup, func(row recipeRowProposal) error { all[row.Table][row.Key] = row.Value; return nil })
+	if err != nil {
+		return nil, err
+	}
+	return all, nil
+}
+
+// Staged row proposals carry no publication authority. The host discards all
+// proposals if any later event, limit, duplicate or cancellation fails.
+func (p *recipeProgram) evaluateInscriptionSourceInto(ctx context.Context, block blockView, result *inscriptionBlockResult, lookup func(string, string) (any, error), sink func(recipeRowProposal) error) error {
+	source, err := recipeAdmitInscriptionSource(ctx, block, result)
+	if err != nil {
+		return err
+	}
+	return p.evaluateAdmittedInscriptionSourceInto(ctx, block, source, lookup, sink)
+}
+
+// A source is scoped to one synchronous host operation. The host owns the
+// immutable parser inventory; multiple recipe layers can reuse its admission.
+type recipeAdmittedInscriptionSource struct {
+	height    int64
+	hash      string
+	inventory *inscriptionBlockResult
+}
+
+func recipeAdmitInscriptionSource(ctx context.Context, block blockView, result *inscriptionBlockResult) (*recipeAdmittedInscriptionSource, error) {
 	if ctx == nil {
-		return nil, fmt.Errorf("missing recipe context")
+		return nil, fmt.Errorf("recipe context required")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if block.Height < p.definition.Origin {
-		return nil, fmt.Errorf("block precedes recipe origin")
-	}
 	if err := validateCompleteInscriptionInventory(block, result); err != nil {
 		return nil, err
 	}
-	all := recipeRows{}
-	outputBytes := 0
-	for _, t := range p.definition.Tables {
-		all[t.Name] = map[string]map[string]any{}
+	return &recipeAdmittedInscriptionSource{height: block.Height, hash: block.Hash, inventory: result}, nil
+}
+
+func (p *recipeProgram) evaluateAdmittedInscriptionSourceInto(ctx context.Context, block blockView, source *recipeAdmittedInscriptionSource, lookup func(string, string) (any, error), sink func(recipeRowProposal) error) error {
+	if ctx == nil || sink == nil {
+		return fmt.Errorf("recipe context and sink required")
 	}
-	for _, occurrence := range result.Occurrences {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if p.definition.Source != "bitcoin.reveal" {
+		return fmt.Errorf("recipe source is not bitcoin.reveal")
+	}
+	if len(p.definition.Dependencies) != 0 && lookup == nil {
+		return errRecipeDependencyUnavailable
+	}
+	if block.Height < p.definition.Origin {
+		return fmt.Errorf("block precedes recipe origin")
+	}
+	if source == nil || source.height != block.Height || source.hash != block.Hash || source.inventory == nil {
+		return fmt.Errorf("admitted inscription source differs from block")
+	}
+	result := source.inventory
+	seen := map[string]map[string]bool{}
+	for _, table := range p.definition.Tables {
+		seen[table.Name] = map[string]bool{}
+	}
+	outputBytes := 0
+	minimal := true
+	var needs func(recipeExpr)
+	needs = func(e recipeExpr) {
+		if len(e.Field) > 0 {
+			switch e.Field[0] {
+			case "ref", "txid", "block_hash", "height", "tx_ref", "tx_index", "reveal_index", "record":
+			default:
+				minimal = false
+			}
+		}
+		for _, a := range e.Args {
+			needs(a)
+		}
+	}
+	for _, s := range p.definition.Steps {
+		if s.Test != nil {
+			needs(*s.Test)
+		}
+		if s.Value != nil {
+			needs(*s.Value)
+		}
+		for _, e := range s.Row {
+			needs(e)
+		}
+	}
+	for i, o := range result.Occurrences {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return err
 		}
-		event, err := recipeRevealEventContext(ctx, occurrence)
+		event := map[string]any{}
+		if !minimal {
+			var err error
+			event, err = recipeRevealEventContext(ctx, o)
+			if err != nil {
+				return err
+			}
+		}
+		event["ref"] = inscriptionCoordinate(uint32(o.TxIndex), o.Index, o.BlockHeight)
+		event["txid"], event["block_hash"], event["height"] = o.TxID, o.BlockHash, json.Number(fmt.Sprint(o.BlockHeight))
+		event["tx_ref"], event["tx_index"], event["reveal_index"] = txCoordinate(o.TxIndex, o.BlockHeight), json.Number(fmt.Sprint(o.TxIndex)), json.Number(fmt.Sprint(o.Index))
+		event["record"] = &recipeRevealRecord{occurrence: o, receipt: result.inventoryReceipt, ordinal: i}
+		rows, _, err := p.evaluateRowProposals(event, lookup)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		rows, err := p.evaluateWithLookup(event, lookup)
-		if err != nil {
-			return nil, err
-		}
-		for table, values := range rows {
-			for key, row := range values {
-				if _, exists := all[table][key]; exists {
-					return nil, fmt.Errorf("duplicate key %q in table %q", key, table)
-				}
-				encoded, err := json.Marshal(row)
-				if err != nil {
-					return nil, fmt.Errorf("encode recipe row: %w", err)
-				}
-				if len(encoded) > recipeMaxBlockOutputBytes-outputBytes {
-					return nil, fmt.Errorf("recipe block output exceeds limit")
-				}
-				outputBytes += len(encoded)
-				all[table][key] = row
+		for _, row := range rows {
+			if seen[row.Table][row.Key] {
+				return fmt.Errorf("duplicate key %q in table %q", row.Key, row.Table)
+			}
+			if len(row.Encoded) > recipeMaxBlockOutputBytes-outputBytes {
+				return fmt.Errorf("recipe block output exceeds limit")
+			}
+			outputBytes += len(row.Encoded)
+			seen[row.Table][row.Key] = true
+			if err = sink(row); err != nil {
+				return err
 			}
 		}
 	}
-	return all, nil
+	return ctx.Err()
 }

@@ -37,6 +37,7 @@ func recipeSourceFields(source string) []recipeFieldCapability {
 	}
 	result := []recipeFieldCapability{
 		field("ref", "text", false), field("txid", "text", false), field("block_hash", "text", false),
+		field("tx_ref", "text", false), field("tx_index", "integer", false), field("reveal_index", "integer", false), field("record", "object", false),
 		field("height", "integer", false), field("content_type", "text", false), field("has_content_type", "bool", false),
 		field("body_hex", "text", false), field("has_body", "bool", false), field("incomplete_fields", "bool", false),
 		field("duplicate_fields", "bool", false), field("payload_hex", "array", false),

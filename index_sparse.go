@@ -65,6 +65,7 @@ func (b *indexBatch) UnmarshalJSON(data []byte) error {
 
 func legacyIndexDefinition(d indexDefinition) indexDefinition {
 	d.ExecutableRecipe, d.ExecutableRecipeHash = nil, "" // absent from the frozen legacy identity
+	d.ExecutableRecipeVariants = nil
 	d.Version, d.OutputSchema, d.RuleHash = 1, 1, ""
 	d.Locked, d.LockReason = false, ""
 	if d.ID == "inscriptions" {

@@ -1,0 +1,9 @@
+{
+  "format":"gateway-recipe","version":1,"id":"inscriptions-conventional-ids","name":"Reveal transaction IDs",
+  "source":"bitcoin.reveal","origin":0,"history":"sparse","dependencies":[],
+  "tables":[{"name":"transactions","key":"ref"}],
+  "steps":[
+    {"op":"require","test":{"call":"eq","args":[{"field":["reveal_index"]},{"literal":0}]}},
+    {"op":"write","table":"transactions","row":{"ref":{"field":["tx_ref"]},"tx_index":{"field":["tx_index"]},"txid":{"field":["txid"]}}}
+  ]
+}

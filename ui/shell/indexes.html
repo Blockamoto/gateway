@@ -53,7 +53,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 </section>
 
 </div>
-<section class="panel index-section" data-pane="build" aria-labelledby="rules-heading"><h2 id="rules-heading">Understand the recipe</h2><p id="rule-theory" class="small"></p><dl id="rule-meta" class="index-meta"></dl><details><summary>Detailed rules</summary><ol id="rule-list"></ol></details><p class="small muted">A definition describes what answers mean; it does not prove this node can answer them. Provider and retained-instance status appear below. Unsupported historical compatibility profiles remain unavailable and never rewrite Bitmap base results.</p><details><summary>Machine-readable definition</summary><pre id="rule-json"></pre></details><details id="executable-recipe" hidden><summary>Executable JSON recipe</summary><pre id="executable-recipe-json"></pre><button type="button" id="executable-recipe-copy">Use as a custom draft</button></details></section>
+<section class="panel index-section" data-pane="build" aria-labelledby="rules-heading"><h2 id="rules-heading">Understand the recipe</h2><p id="rule-theory" class="small"></p><dl id="rule-meta" class="index-meta"></dl><details><summary>Detailed rules</summary><ol id="rule-list"></ol></details><p class="small muted">A definition describes what answers mean; it does not prove this node can answer them. Provider and retained-instance status appear below. Unsupported historical compatibility profiles remain unavailable and never rewrite Bitmap base results.</p><details><summary>Machine-readable definition</summary><pre id="rule-json"></pre></details><details id="executable-recipe" hidden><summary>Executable JSON recipe</summary><label id="executable-recipe-variants-label" hidden>Retained layer <select id="executable-recipe-variants"></select></label><pre id="executable-recipe-json"></pre><button type="button" id="executable-recipe-copy">Use as a custom draft</button></details></section>
 
 <section id="sat-lookup-panel" class="panel index-section" data-pane="results" hidden><h2>Find a sat</h2><form id="sat-lookup-form" class="query-controls"><label class="field">Sat number<input id="sat-lookup-number" type="text" inputmode="numeric" pattern="0|[1-9][0-9]*" required placeholder="0"></label><button type="submit">Look up sat</button></form><p class="small muted">Reads your Sat index. Identity, origin and placement are valid only within its verified snapshot. Lookup never starts indexing or tracing.</p><p id="sat-lookup-summary" class="small" role="status"></p><dl id="sat-lookup-meta" class="index-meta"></dl><details><summary>Sat evidence</summary><pre id="sat-lookup-json"></pre></details></section>
 <section class="panel index-section" data-pane="results" aria-labelledby="lookup-heading" hidden><h2 id="lookup-heading">Find a Bitmap district</h2><form id="lookup-form" class="query-controls"><div class="field"><label for="lookup-key">District number</label><input id="lookup-key" type="text" inputmode="numeric" pattern="0|[1-9][0-9]*" maxlength="20" placeholder="0" required></div><button type="submit">Look up district</button></form><p class="small muted">Enter the exact district number, without .bitmap or leading zeros. Lookup reads retained derived records; it does not build an index or fetch source blocks. Exact lookup may inspect the committed history and take longer than the bounded preview. A missing local result does not prove no claim exists.</p><p id="lookup-summary" class="small" role="status"></p><details><summary>Lookup evidence</summary><pre id="lookup-json" hidden></pre></details></section>
@@ -115,6 +115,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 const $ = id => document.getElementById(id);
 if (new URLSearchParams(location.search).get('embedded') === '1') document.body.classList.add('embedded');
 let currentView = "catalog", selectedIndex = "", timeline, explorer, viewport, utxoPanel, addressPanel, satPanel, indexExport, recordSerial = 0, recordKey = "", recordLoading = false, receivedRecordKeys = new Set(), lastRecordReceipt = "", discoveredSats=new Map(),satDiscoveryPending=new Set(),planDrafts=new Map();
+const executableVariantChoices=new Map();
 let workspaceBoot={};try{workspaceBoot=JSON.parse($('index-bootstrap').textContent);}catch{}
 function selectView(view) {
   currentView = view;
@@ -261,10 +262,14 @@ function showRules() {
   }
   $('rule-theory').textContent = d.theory;
   $('rule-json').textContent = pretty(d);
-  $('executable-recipe').hidden=!d.executable_recipe;
-  $('executable-recipe-json').textContent=d.executable_recipe?pretty(d.executable_recipe):'';
-  $('executable-recipe-copy').hidden=d.executable_recipe?.format!=='gateway-recipe';
-  $('executable-recipe-copy').onclick=()=>{try{recipeEditor?.useDefinition(d.executable_recipe);selectView('recipe');}catch(e){message(e.message,true);}};
+  const variants=d.executable_recipe_variants?.length?d.executable_recipe_variants:[{name:'Recipe',definition:d.executable_recipe}];
+  const variantSelect=$('executable-recipe-variants');variantSelect.replaceChildren();
+  variants.forEach((v,i)=>{const option=element('option',v.name);option.value=String(i);variantSelect.append(option);});
+  variantSelect.value=String(Math.min(executableVariantChoices.get(d.id)||0,variants.length-1));
+  $('executable-recipe-variants-label').hidden=variants.length<2;
+  const showExecutable=()=>{const recipe=variants[Number(variantSelect.value)]?.definition;$('executable-recipe').hidden=!recipe;$('executable-recipe-json').textContent=recipe?pretty(recipe):'';$('executable-recipe-copy').hidden=recipe?.format!=='gateway-recipe';return recipe;};
+  variantSelect.onchange=()=>{executableVariantChoices.set(d.id,Number(variantSelect.value));showExecutable();};showExecutable();
+  $('executable-recipe-copy').onclick=()=>{try{recipeEditor?.useDefinition(showExecutable());selectView('recipe');}catch(e){message(e.message,true);}};
   const rangePolicy=window.GatewayIndexTransport.rangePolicy(d,(status?.run?.run?.consumers||[]).find(c=>c.index===d.id));$('from').disabled=['complete_prefix','snapshot_projection'].includes(rangePolicy?.mode);$('from').title=$('from').disabled?rangePolicy.text:'Global In/Out in the timeline own the shared scope.';
   $('from').placeholder = String(d.start_height);
   $('from-start-note').textContent=d.id==='inscriptions'&&d.network==='bitcoin-mainnet'?'Mainnet inscriptions suggest 767430 (inscription zero). Custom starts remain available; this is not preceding sat history.':'Block heights are inclusive. Review the plan before fetching data.';

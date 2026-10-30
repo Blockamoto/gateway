@@ -142,3 +142,32 @@ The typed adapter cut a 2,048-output synthetic fixture's allocations from about
 separate noisy paired runs. Native baseline was approximately 0.84–0.88 s and
 11 MB. See the adapter decisions document for commands, exact counts and limits.
 This is one native conversion, not full 0.8.0 acceptance.
+
+### Native inscription retention compositions
+
+Lean positions, Full source records and browse conventional-ID projection now
+execute actual JSON recipes through the sparse interpreter and streamed row
+sink. Settings exposes all three documents separately, preserves the selected
+document during observation, and can copy each into a separate custom draft.
+Lean and Full survive guided-editor round trips. Custom Full output serializes
+the exact source occurrence, while individual source fields remain available
+for filters. Additive reveal fields bind a profile only when used, preserving
+previous recipe identities and the native locator fingerprint.
+
+Native v1/v2 generations have an explicit semantic-equivalence mapping for the
+three-program bundle. Differential fixtures match exact native payloads for
+empty genesis, synthetic multi-envelope reveals and real blocks 792435/908657.
+The original retained projection is test-only. The internal inscription-locator
+hash now excludes inherited executable display metadata, preserving the
+pre-display definition rule. This does not complete the separate retroactive
+saved-inscription locator or legacy explicit numbering conversions.
+
+The broad recipe/saved-recipe/sparse/positional/inscription suite, including the
+optional pinned metadata fixture, passed in 188.404 seconds after routing native
+retention through JSON. Subsequent admission-reuse, catalog variants, native
+identity, source/sink rejection and durable Full-record checks passed with
+dependency/sparse lifecycle checks in 72.358 seconds. Editor/workspace checks
+also passed. See `080-NATIVE-INSCRIPTIONS.md` for source
+authority, physical compatibility, authoring and engineering bounds. Large
+generic Full records still face the experimental 16 MiB durable-unit bound;
+that remains open release work, not an accepted scope reduction.

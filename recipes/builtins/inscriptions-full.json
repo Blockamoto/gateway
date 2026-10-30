@@ -1,0 +1,6 @@
+{
+  "format":"gateway-recipe","version":1,"id":"inscriptions-full","name":"Inscriptions full reveals",
+  "source":"bitcoin.reveal","origin":0,"history":"sparse","dependencies":[],
+  "tables":[{"name":"positions","key":"ref"}],
+  "steps":[{"op":"write","table":"positions","row":{"ref":{"field":["ref"]},"record":{"field":["record"]}}}]
+}

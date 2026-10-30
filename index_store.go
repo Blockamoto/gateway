@@ -135,7 +135,7 @@ func indexStoreHead(root, id string) (*indexStore, error) {
 	if e != nil {
 		return nil, e
 	}
-	if e = recipeLocatorCheckStoreDefinition(d); e != nil {
+	if e = recipeNativeCheckStoreDefinition(d); e != nil {
 		return nil, e
 	}
 	if !d.Buildable {
@@ -305,7 +305,7 @@ func (s *indexStore) readBatchBytes(commit string) ([]byte, error) {
 }
 
 func (s *indexStore) readBatch(commit string) (indexBatch, error) {
-	if err := recipeLocatorCheckStoreDefinition(s.definition); err != nil {
+	if err := recipeNativeCheckStoreDefinition(s.definition); err != nil {
 		return indexBatch{}, err
 	}
 	data, err := s.readBatchBytes(commit)
@@ -546,11 +546,6 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 				return e
 			}
 		}
-		if s.definition.ID == "inscriptions" {
-			if err := validateCompleteInscriptionInventory(block, &extracted); err != nil {
-				return err
-			}
-		}
 	}
 	b := indexBatch{PreviousBlockHash: block.PreviousBlockHash, Diagnostics: extracted.Diagnostics}
 	if s.definition.ID == "txo-spender" {
@@ -589,14 +584,12 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 		if mode == "" {
 			mode = "full"
 		} // Explicit legacy/test stores retain their richer format.
-		b.InscriptionBlock = &inscriptionBlockMetadata{Mode: mode, TransactionCount: uint32(len(block.Transactions))}
-		b.InscriptionCoordinates = make([]string, 0, len(extracted.Occurrences))
-		for _, occurrence := range extracted.Occurrences {
-			b.InscriptionCoordinates = append(b.InscriptionCoordinates, inscriptionCoordinate(uint32(occurrence.TxIndex), occurrence.Index, block.Height))
+		payload, err := inscriptionPayloadFromRecipes(s.locatorContext, block, &extracted, mode, false)
+		if err != nil {
+			return err
 		}
-		if mode == "full" {
-			b.Inscriptions = append([]inscriptionOccurrence(nil), extracted.Occurrences...)
-		} else {
+		b.InscriptionBlock, b.InscriptionCoordinates, b.Inscriptions = payload.InscriptionBlock, payload.InscriptionCoordinates, payload.Inscriptions
+		if mode != "full" {
 			b.Diagnostics = nil
 		}
 		// New Lean and Full jobs never perform hidden history/UTXO work. The
@@ -623,7 +616,7 @@ func (s *indexStore) appendPreparedBlock(block blockView, from int64, retention 
 }
 
 func (s *indexStore) commitPreparedIndexBatch(b indexBatch, height int64, hash string, from int64, retention string) error {
-	if err := recipeLocatorCheckStoreDefinition(s.definition); err != nil {
+	if err := recipeNativeCheckStoreDefinition(s.definition); err != nil {
 		return err
 	}
 	if s.definition.ID == "inscriptions" || s.definition.ID == inscriptionLocatorIndex {

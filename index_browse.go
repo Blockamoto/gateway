@@ -250,30 +250,15 @@ func singletonBrowseBatchMode(choice indexRunSelection, block blockView, extract
 			}
 			extracted = &result
 		}
-		if err := validateCompleteInscriptionInventory(block, extracted); err != nil {
-			return b, err
-		}
 		mode := choice.Mode
 		if mode == "" {
 			mode = "lean"
 		}
-		b.InscriptionBlock = &inscriptionBlockMetadata{Mode: mode, TransactionCount: uint32(len(block.Transactions))}
-		b.InscriptionCoordinates = []string{}
-		for _, o := range extracted.Occurrences {
-			b.InscriptionCoordinates = append(b.InscriptionCoordinates, inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height))
+		payload, e := inscriptionPayloadFromRecipes(context.Background(), block, extracted, mode, inscriptionIDsEnabled(choice.ConventionalIDs))
+		if e != nil {
+			return b, e
 		}
-		if mode == "full" {
-			b.Inscriptions = append([]inscriptionOccurrence(nil), extracted.Occurrences...)
-		}
-		if inscriptionIDsEnabled(choice.ConventionalIDs) {
-			seen := map[int]bool{}
-			for _, o := range extracted.Occurrences {
-				if !seen[o.TxIndex] {
-					b.InscriptionBlock.ConventionalIDs = append(b.InscriptionBlock.ConventionalIDs, transactionLocatorEntry{TxIndex: uint32(o.TxIndex), TxID: o.TxID})
-					seen[o.TxIndex] = true
-				}
-			}
-		}
+		b.InscriptionBlock, b.InscriptionCoordinates, b.Inscriptions = payload.InscriptionBlock, payload.InscriptionCoordinates, payload.Inscriptions
 	} else {
 		return b, fmt.Errorf("unsupported browsing index")
 	}

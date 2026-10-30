@@ -3,6 +3,11 @@ const assert=require('node:assert/strict');
 require('../ui/shell/recipe-editor.js');
 const editor=globalThis.GatewayRecipeEditor;
 const initial=editor.initial(), guided=editor.toGuided(initial);
+for(const file of ['inscriptions-lean.json','inscriptions-full.json']){
+ const source=JSON.parse(require('node:fs').readFileSync('recipes/builtins/'+file,'utf8'));
+ const draft=editor.toGuided(source);assert(draft,file+' has a guided representation');
+ assert.deepEqual(JSON.parse(JSON.stringify(editor.fromGuided(draft))),source,file+' survives guided editing without dropping source content');
+}
 assert.equal(guided.keyPath,'ref');
 assert.deepEqual(JSON.parse(JSON.stringify(editor.fromGuided(guided))),initial);
 const transactionGuided={...guided,source:'bitcoin.transaction',id:'txs',name:'Transactions',table:'transactions',key:'txid',keyPath:'txid',valueColumn:'ref',valuePath:'ref'};

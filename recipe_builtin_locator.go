@@ -49,6 +49,13 @@ func recipeLocatorCheckStoreDefinition(d indexDefinition) error {
 	return recipeLocatorCheckEquivalenceHash(d.RuleHash, builtinTransactionRecipeSemantic)
 }
 
+func recipeNativeCheckStoreDefinition(d indexDefinition) error {
+	if err := recipeLocatorCheckStoreDefinition(d); err != nil {
+		return err
+	}
+	return recipeInscriptionCheckStoreDefinition(d)
+}
+
 func builtinTransactionRecipe() (*recipeProgram, error) {
 	builtinTransactionRecipeOnce.Do(func() {
 		var definition recipeDefinition

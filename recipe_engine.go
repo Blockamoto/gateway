@@ -630,6 +630,10 @@ func (p *recipeProgram) evaluateRowProposals(event map[string]any, lookup func(s
 	rows := []recipeRowProposal{}
 	budget := &recipeEvalBudget{lookup: lookup}
 	outputBytes := 0
+	outputLimit := recipeMaxEventOutputBytes
+	if p.definition.Source == "bitcoin.reveal" && recipeUsesSourceRoot(p.definition, "record") {
+		outputLimit = recipeMaxBlockOutputBytes
+	}
 	tables := map[string]recipeTable{}
 	keys := map[string]map[string]bool{}
 	for _, t := range p.definition.Tables {
@@ -683,7 +687,7 @@ func (p *recipeProgram) evaluateRowProposals(event map[string]any, lookup func(s
 			if err != nil {
 				return nil, false, fmt.Errorf("encode recipe row: %w", err)
 			}
-			if len(encoded) > recipeMaxEventOutputBytes-outputBytes {
+			if len(encoded) > outputLimit-outputBytes {
 				return nil, false, fmt.Errorf("recipe event output exceeds limit")
 			}
 			outputBytes += len(encoded)

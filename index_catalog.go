@@ -10,36 +10,43 @@ import (
 
 // Definitions describe recipes. They never assert that this node holds their data.
 type indexDefinition struct {
-	ExecutableRecipe      json.RawMessage `json:"executable_recipe,omitempty"`
-	ExecutableRecipeHash  string          `json:"executable_recipe_hash,omitempty"`
-	LiveSupported         *bool           `json:"live_supported,omitempty"`
-	SourceURL             string          `json:"source_url,omitempty"`
-	SourceRevision        string          `json:"source_revision,omitempty"`
-	Metadata              any             `json:"metadata,omitempty"`
-	ConfigurationRevision uint64          `json:"configuration_revision,omitempty"`
-	Classification        string          `json:"classification,omitempty"`
-	Kind                  string          `json:"kind,omitempty"`
-	ProfileHash           string          `json:"profile_hash,omitempty"`
-	RecipeHash            string          `json:"recipe_hash,omitempty"`
-	DistrictInstance      string          `json:"district_instance,omitempty"`
-	DistrictProfileHash   string          `json:"district_profile_hash,omitempty"`
-	ChainInstance         string          `json:"chain_instance,omitempty"`
-	Locked                bool            `json:"locked,omitempty"`
-	LockReason            string          `json:"lock_reason,omitempty"`
-	ID                    string          `json:"id"`
-	Name                  string          `json:"name"`
-	Version               int             `json:"version"`
-	Network               string          `json:"network"`
-	Theory                string          `json:"theory"`
-	Rules                 []string        `json:"rules"`
-	RuleHash              string          `json:"rule_hash"`
-	Dependencies          []string        `json:"dependencies"`
-	StartHeight           int64           `json:"start_height"`
-	ArbitraryStart        bool            `json:"arbitrary_start"`
-	Buildable             bool            `json:"buildable"`
-	CheckpointSchema      int             `json:"checkpoint_schema"`
-	OutputSchema          int             `json:"output_schema"`
-	CanonicalEncoding     string          `json:"canonical_encoding"`
+	ExecutableRecipeVariants []indexExecutableRecipe `json:"executable_recipe_variants,omitempty"`
+	ExecutableRecipe         json.RawMessage         `json:"executable_recipe,omitempty"`
+	ExecutableRecipeHash     string                  `json:"executable_recipe_hash,omitempty"`
+	LiveSupported            *bool                   `json:"live_supported,omitempty"`
+	SourceURL                string                  `json:"source_url,omitempty"`
+	SourceRevision           string                  `json:"source_revision,omitempty"`
+	Metadata                 any                     `json:"metadata,omitempty"`
+	ConfigurationRevision    uint64                  `json:"configuration_revision,omitempty"`
+	Classification           string                  `json:"classification,omitempty"`
+	Kind                     string                  `json:"kind,omitempty"`
+	ProfileHash              string                  `json:"profile_hash,omitempty"`
+	RecipeHash               string                  `json:"recipe_hash,omitempty"`
+	DistrictInstance         string                  `json:"district_instance,omitempty"`
+	DistrictProfileHash      string                  `json:"district_profile_hash,omitempty"`
+	ChainInstance            string                  `json:"chain_instance,omitempty"`
+	Locked                   bool                    `json:"locked,omitempty"`
+	LockReason               string                  `json:"lock_reason,omitempty"`
+	ID                       string                  `json:"id"`
+	Name                     string                  `json:"name"`
+	Version                  int                     `json:"version"`
+	Network                  string                  `json:"network"`
+	Theory                   string                  `json:"theory"`
+	Rules                    []string                `json:"rules"`
+	RuleHash                 string                  `json:"rule_hash"`
+	Dependencies             []string                `json:"dependencies"`
+	StartHeight              int64                   `json:"start_height"`
+	ArbitraryStart           bool                    `json:"arbitrary_start"`
+	Buildable                bool                    `json:"buildable"`
+	CheckpointSchema         int                     `json:"checkpoint_schema"`
+	OutputSchema             int                     `json:"output_schema"`
+	CanonicalEncoding        string                  `json:"canonical_encoding"`
+}
+
+type indexExecutableRecipe struct {
+	Name         string          `json:"name"`
+	Definition   json.RawMessage `json:"definition"`
+	SemanticHash string          `json:"semantic_hash"`
 }
 
 type indexInstance struct {
@@ -175,6 +182,16 @@ func indexDefinitions() []indexDefinition {
 		}{semanticDefinition, inscriptionParserProfile, inscriptionReferenceCommit})
 		if d.ID == "inscriptions" {
 			d.Theory = "Verified positional inscription coordinates. Lean retains positions and block counts; Full additionally retains reveal content. Numbering and ownership require separate explicit historical work."
+			d.ExecutableRecipe = append(json.RawMessage(nil), builtinInscriptionLeanJSON...)
+			if programs, err := builtinInscriptionRecipes(); err == nil {
+				d.ExecutableRecipeHash = programs[0].semanticHash()
+				for i, variant := range []struct {
+					name string
+					raw  []byte
+				}{{"Lean positions", builtinInscriptionLeanJSON}, {"Full reveal content", builtinInscriptionFullJSON}, {"Optional conventional IDs", builtinInscriptionIDsJSON}} {
+					d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: variant.name, Definition: append(json.RawMessage(nil), variant.raw...), SemanticHash: programs[i].semanticHash()})
+				}
+			}
 		}
 		if d.ID == "tx-locator" {
 			// Refine only the public label after hashing the frozen recipe above.
@@ -301,6 +318,10 @@ func findIndexDefinition(id string) (indexDefinition, error) {
 		d.Dependencies = []string{"inscriptions"}
 		d.Theory = "Private sparse transaction positions for inscription reveals, bound to committed inscription coverage."
 		d.Rules = []string{d.Theory, "Selection inscription_reveals; actual Bitcoin transaction positions; empty evaluated blocks are explicit."}
+		// Executable display metadata is assigned after frozen identities.
+		// Do not inherit the parent locator document into this private hash.
+		d.ExecutableRecipe, d.ExecutableRecipeHash = nil, ""
+		d.ExecutableRecipeVariants = nil
 		d.Locked, d.LockReason = true, "Internal inscription-scoped derivation; not a standalone public index."
 		semantic := d
 		semantic.Locked, semantic.LockReason, semantic.RuleHash = false, "", ""

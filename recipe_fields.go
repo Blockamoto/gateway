@@ -20,6 +20,9 @@ type recipeFieldCapability struct {
 }
 
 func recipeSourceFields(source string) []recipeFieldCapability {
+	if source == "bitcoin.ordered" {
+		return recipeOrderedSourceFields()
+	}
 	if source == "bitcoin.transaction" {
 		return []recipeFieldCapability{
 			{Path: []string{"ref"}, Type: recipeTypeSpec{Types: []string{"text"}}},

@@ -243,6 +243,9 @@ type indexRunPrepared struct {
 	transactionSource    *recipeTransactionSource
 	transactionErr       error
 	transactionAttempted bool
+	orderedSource        *recipeOrderedOwnedSource
+	orderedErr           error
+	orderedAttempted     bool
 	extractionCounted    bool
 	refs                 map[string]map[string]outputFactRef
 	prevouts             map[string]utxoCoin
@@ -2207,6 +2210,38 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		}
 		owners := map[string]bool{}
 		for _, i := range eligible {
+			c := consumers[i]
+			if nexts[i] == h && c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.Source == "bitcoin.ordered" {
+				if !p.orderedAttempted {
+					p.orderedAttempted = true
+					started := time.Now()
+					p.orderedSource, p.orderedErr = recipeOrderedSourceFromBlock(ctx, p.block)
+					elapsed := time.Since(started).Milliseconds()
+					counts.SourceDecodeMilliseconds += elapsed
+					counts.SourceMilliseconds += elapsed
+					if p.orderedSource != nil {
+						counts.DecodedBlocks++
+						counts.OrderedSourceVerifications++
+						// The independently owned inventory belongs to this cache
+						// entry too; its extra copy must respect the same byte bound.
+						if cache[p.block.Hash] == p {
+							encoded, _ := json.Marshal(p.orderedSource.block)
+							extra := len(encoded) + len(p.orderedSource.block.verifiedRaw)
+							p.cacheBytes += extra
+							cacheBytes += extra
+							for len(order) > 0 && cacheBytes > 32<<20 {
+								old := order[0]
+								order = order[1:]
+								cacheBytes -= cache[old].cacheBytes
+								delete(cache, old)
+							}
+						}
+					}
+				}
+				break
+			}
+		}
+		for _, i := range eligible {
 			if nexts[i] == h {
 				owners[consumers[i].selection.Index] = true
 			}
@@ -2281,6 +2316,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				}
 				if p.transactionErr != nil && c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.Source == "bitcoin.transaction" {
 					result.err = p.transactionErr
+					return result.err
+				}
+				if p.orderedErr != nil && c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.Source == "bitcoin.ordered" {
+					result.err = p.orderedErr
 					return result.err
 				}
 

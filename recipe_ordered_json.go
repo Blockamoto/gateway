@@ -63,6 +63,15 @@ func parseOrderedRecipeProgram(raw []byte, allowEmit bool) (recipeOrderedProgram
 		if e != nil {
 			return e
 		}
+		if member, present := value[header.Kind]; present {
+			trimmed := bytes.TrimSpace(member)
+			if (header.Kind == "text" || header.Kind == "bytes") && (len(trimmed) == 0 || trimmed[0] != '"') {
+				return fmt.Errorf("ordered %s literal must be a JSON string", header.Kind)
+			}
+			if header.Kind == "bool" && !bytes.Equal(trimmed, []byte("true")) && !bytes.Equal(trimmed, []byte("false")) {
+				return fmt.Errorf("ordered bool literal must be a JSON boolean")
+			}
+		}
 		if header.Kind == "object" {
 			var members map[string]json.RawMessage
 			if json.Unmarshal(value["object"], &members) != nil || members == nil || len(members) > 64 {

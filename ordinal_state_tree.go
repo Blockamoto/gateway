@@ -230,6 +230,45 @@ func (t *ordinalTree) walk(visit func(ordinalKV) error) error {
 	}
 	return walk(t.root, 0)
 }
+
+// walkAfter traverses a committed tree in key order and skips entire branches
+// preceding the exclusive cursor. Callers may stop with their own sentinel.
+// Pending edits are deliberately excluded, as in walk.
+func (t *ordinalTree) walkAfter(after string, visit func(ordinalKV) error) error {
+	if after != "" && !ordinalKeyValid(after) {
+		return fmt.Errorf("invalid ordinal range cursor")
+	}
+	var walk func(string, string) error
+	walk = func(hash, prefix string) error {
+		if hash == "" || prefix != "" && prefix <= after && !strings.HasPrefix(after, prefix) {
+			return nil
+		}
+		if len(prefix) > 128 {
+			return fmt.Errorf("ordinal walk depth exceeded")
+		}
+		page, err := t.read(hash)
+		if err != nil {
+			return err
+		}
+		for _, kv := range page.Entries {
+			if !strings.HasPrefix(kv.Key, prefix) {
+				return fmt.Errorf("ordinal leaf key differs from branch")
+			}
+			if kv.Key > after {
+				if err := visit(kv); err != nil {
+					return err
+				}
+			}
+		}
+		for i, child := range page.Children {
+			if err := walk(child, prefix+string("0123456789abcdef"[i])); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return walk(t.root, "")
+}
 func ordinalNibble(key string, depth int) int {
 	c := key[depth]
 	if c <= '9' {

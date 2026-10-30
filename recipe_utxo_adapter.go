@@ -330,6 +330,23 @@ func (a *recipeUTXOAdapter) CommitOrdered(ctx context.Context) error {
 		if actual.Kind != expected.Kind || actual.Kind != "missing" && actual.Object["live"].Uint != expected.Object["live"].Uint {
 			return fmt.Errorf("logical and physical live counters differ")
 		}
+		if origin := a.origins[txid]; origin.BlockHash != "" {
+			var bridge utxoBridge
+			found, err := a.edit.trees["bridge"].get(utxoBridgeKey(txid), &bridge)
+			if err != nil {
+				return err
+			}
+			if !found || bridge != origin {
+				var prior utxoTransaction
+				stillLive, err := a.edit.trees["transactions"].get(utxoTransactionKey(origin.Height, origin.TxIndex), &prior)
+				if err != nil {
+					return err
+				}
+				if stillLive {
+					return fmt.Errorf("Coin contract left an inaccessible older transaction incarnation")
+				}
+			}
+		}
 	}
 	a.closed = true // publication may have an uncertain filesystem outcome
 	return a.publish()
@@ -369,6 +386,11 @@ func (a *recipeUTXOAdapter) emit(ctx context.Context, table, key string, value r
 		return err
 	}
 	a.emitted[key] = true
+	// The cohort can reuse authenticated creation facts, but a fact reference
+	// owned by a custom generation must never look like a native-profile pin.
+	if a.store.privateFacts {
+		actual.FactRef = outputFactRef{}
+	}
 	runRememberPrevout(ctx, ti, int(vi), actual)
 	return nil
 }

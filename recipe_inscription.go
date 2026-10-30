@@ -153,6 +153,12 @@ func recipeUsesProperties(d recipeDefinition) bool {
 func (p *recipeProgram) semanticHash() string {
 	d := p.definition
 	d.ID, d.Name = "", ""
+	if d.Source == "bitcoin.ordered" {
+		return indexDigest(struct {
+			Document, Interpreter, Stream, Source, Bitcoin, Physical string
+			Definition                                               recipeDefinition
+		}{recipeOrderedDocumentProfile, recipeOrderedProfile, recipeOrderedStreamProfile, recipeOrderedSourceProfile, "gateway-bitcoin-primitives-v1", recipeOrderedUTXOStorage + "/" + recipeOrderedGenerationProfile, d})
+	}
 	propertiesProfile := recipePropertiesProfile
 	if recipeUsesProperties(d) {
 		propertiesProfile = recipePropertiesBrotliProfile

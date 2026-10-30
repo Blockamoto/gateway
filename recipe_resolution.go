@@ -68,7 +68,14 @@ func recipeResolveView(view recipeRegistryView) (resolvedSavedRecipe, error) {
 	} else if len(view.Recipe.Dependencies) != 0 {
 		execution = "same_block_dependencies"
 	}
-	return resolvedSavedRecipe{ID: view.Recipe.ID, Revision: view.Revision, SemanticHash: view.SemanticHash, Source: view.Recipe.Source, Origin: view.Recipe.Origin, History: view.Recipe.History, Definition: view.Recipe, DefinitionJSON: view.RecipeJSON, SourceCapability: source, Functions: catalogue.Functions, Steps: catalogue.Steps, CatalogueVersion: catalogue.Version, Execution: execution, LegacyCompatibility: "unverified"}, nil
+	functions, steps := catalogue.Functions, catalogue.Steps
+	if len(source.Functions) > 0 {
+		functions = source.Functions
+	}
+	if len(source.Steps) > 0 {
+		steps = source.Steps
+	}
+	return resolvedSavedRecipe{ID: view.Recipe.ID, Revision: view.Revision, SemanticHash: view.SemanticHash, Source: view.Recipe.Source, Origin: view.Recipe.Origin, History: view.Recipe.History, Definition: view.Recipe, DefinitionJSON: view.RecipeJSON, SourceCapability: source, Functions: functions, Steps: steps, CatalogueVersion: catalogue.Version, Execution: execution, LegacyCompatibility: "unverified"}, nil
 }
 
 // ResolveSavedRecipe reads current head when revision is empty. For an older

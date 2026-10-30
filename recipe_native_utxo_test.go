@@ -35,7 +35,7 @@ func TestRecipeNativeUTXOSemanticEquivalence(t *testing.T) {
 		t.Fatalf("%s: %v", builtinUTXOSemantic, err)
 	}
 	definition, err := findIndexDefinition("utxo-state")
-	if err != nil || definition.ExecutableRecipeHash != builtinUTXOSemantic || string(definition.ExecutableRecipe) != string(builtinUTXOProgramJSON) {
+	if err != nil || definition.ExecutableRecipeHash != builtinUTXORecipeProgram.semanticHash() || string(definition.ExecutableRecipe) != string(builtinUTXODefinitionJSON) {
 		t.Fatalf("catalog does not expose actual UTXO program: %v", err)
 	}
 	for _, change := range []string{"program", "stream", "source", "bitcoin", "physical", "schema"} {

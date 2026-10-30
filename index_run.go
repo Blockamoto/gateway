@@ -157,6 +157,7 @@ type indexRunCounts struct {
 	ChainSteps                     int64  `json:"chain_steps,omitempty"`
 	SourceReads                    int64  `json:"source_reads"`
 	DecodedBlocks                  int64  `json:"decoded_blocks"`
+	OrderedSourceVerifications     int64  `json:"ordered_source_verifications,omitempty"`
 	InscriptionExtractions         int64  `json:"inscription_extractions"`
 	CacheHits                      int64  `json:"cache_hits"`
 }
@@ -708,6 +709,9 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 			resolved, e := resolve(c.Index)
 			if e != nil {
 				return p, fmt.Errorf("saved recipe %q unavailable: %w", c.Index, e)
+			}
+			if resolved.Source == "bitcoin.ordered" && !recipeOrderedPublicEnabled {
+				return p, fmt.Errorf("ordered recipe execution is not yet enabled")
 			}
 			q.RecipeRevision, q.RecipeSemanticHash = resolved.Revision, resolved.SemanticHash
 			q.ProfileHash = recipeAdmissionProfile(c.Index, resolved.SemanticHash, resolved.Revision)

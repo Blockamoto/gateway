@@ -116,7 +116,7 @@ Per-block output tokens bind immutable unit bytes and recheck their complete sam
 
 ### Native UTXO composition
 
-Ordinary UTXO `ApplyBlock` executes `recipes/builtins/utxo-state.program.json`
+Ordinary UTXO `ApplyBlock` executes `recipes/builtins/utxo-state.json`
 through the common ordered interpreter. Its typed state interface also has a
 JSON adapter for the existing generic state transactions. The native adapter
 performs individual keyed coin mutations and checks logical counters against
@@ -199,3 +199,28 @@ broader recipe/saved/sparse/positional/coordinator-recipe set passed in 163.427
 seconds after the generic table operation. Final duplicate-export, real saved
 source, custom durable row and four-variant presentation checks passed in
 14.957 seconds. Guided-editor/workspace checks and the production build passed.
+
+### Complete ordered documents and isolated native-format generations
+
+The complete UTXO document now compiles through the common registry/compiler;
+native AST identity/checkpoints remain compatible. Exact structural JSON field
+spelling is enforced while literal object keys retain their spelling. Ordered
+capabilities expose the actual typed events, functions and instructions.
+
+Private custom generations reuse native COW/facts/first-before undo with explicit
+origin/definition ownership and an authority-first CAS. The private consumer
+binds selected headers, the admitted run and exact revision through publication,
+supports restart/finite scope and authenticated local reorg recovery, and
+rejects stale work. A cohort shares one owned raw-verified ordered source;
+its extra authentication decode is counted rather than hidden.
+
+State queries page committed coins/counts without materializing the full tree.
+An immutable historical checkpoint token survives unrelated appends within the
+retained recovery window, while changed selected ancestors reject continuation.
+The output UI supports either sparse offsets or ordered physical cursors.
+
+Public ordered execution remains gated pending scheduler/rebuild/maintenance
+and guided-authoring integration. Other built-ins, generic ordered contracts,
+large sparse persistence and full historical DAG ranges remain open. This is
+an intermediate engine increment, not the requested finished preview.
+See `080-ORDERED-PUBLIC-INTEGRATION.md` for implementation and test evidence.

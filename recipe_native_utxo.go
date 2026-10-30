@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"sync"
 )
@@ -10,13 +11,22 @@ import (
 // Native ordered derivation uses the same typed interpreter as other ordered
 // compositions, with the existing physical state and guarded publisher.
 //
-//go:embed recipes/builtins/utxo-state.program.json
-var builtinUTXOProgramJSON []byte
+//go:embed recipes/builtins/utxo-state.json
+var builtinUTXODefinitionJSON []byte
+
+var builtinUTXOProgramJSON = func() []byte {
+	var d struct {
+		Ordered json.RawMessage `json:"ordered"`
+	}
+	_ = json.Unmarshal(builtinUTXODefinitionJSON, &d)
+	return d.Ordered
+}()
 
 var builtinUTXOProgramOnce sync.Once
 var builtinUTXOProgram recipeOrderedProgram
 var builtinUTXOProgramError error
 var builtinUTXOSemantic string
+var builtinUTXORecipeProgram *recipeProgram
 
 const builtinUTXOEquivalentSemantic = "b0c3c2ff4df3a9cd7cd2203aa70a914e779ac949d4be0991e21dc2e99e994d96"
 
@@ -36,7 +46,17 @@ func recipeNativeUTXOCheckEquivalence(semantic string, schema int) error {
 
 func loadBuiltinUTXOProgram() (recipeOrderedProgram, error) {
 	builtinUTXOProgramOnce.Do(func() {
-		builtinUTXOProgram, builtinUTXOProgramError = parseOrderedRecipeProgram(builtinUTXOProgramJSON, true)
+		var definition recipeDefinition
+		definition, builtinUTXOProgramError = parseRecipe(builtinUTXODefinitionJSON)
+		if builtinUTXOProgramError == nil {
+			builtinUTXORecipeProgram, builtinUTXOProgramError = compileRecipe(definition)
+		}
+		if builtinUTXOProgramError == nil && builtinUTXORecipeProgram.ordered == nil {
+			builtinUTXOProgramError = fmt.Errorf("built-in UTXO definition has no executable ordered program")
+		}
+		if builtinUTXOProgramError == nil {
+			builtinUTXOProgram = *builtinUTXORecipeProgram.ordered
+		}
 		if builtinUTXOProgramError == nil {
 			builtinUTXOSemantic = recipeNativeUTXOSemantic(builtinUTXOProgram, recipeOrderedStreamProfile, recipeVerifiedEventProfile+"/native-admitted-facts-v1", "gateway-bitcoin-primitives-v1", "gateway-utxo-cow-facts-schema2-v1")
 		}
@@ -81,6 +101,16 @@ func (s *utxoStore) applyBlockRecipe(ctx context.Context, block blockView) error
 	defer utxoWriterMu.Unlock()
 	utxoStateMu.Lock()
 	defer utxoStateMu.Unlock()
+	program, err := loadBuiltinUTXOProgram()
+	if err != nil {
+		return err
+	}
+	return s.applyOrderedBlockSnapshot(ctx, block, program)
+}
+
+// A private snapshot owns its decoded source and COW edits. Publication may
+// be supplied by a generation CAS host; no native global locks are acquired.
+func (s *utxoStore) applyOrderedBlockSnapshot(ctx context.Context, block blockView, program recipeOrderedProgram) error {
 	if err := s.reload(ctx); err != nil {
 		return err
 	}
@@ -96,10 +126,6 @@ func (s *utxoStore) applyBlockRecipe(ctx context.Context, block blockView) error
 		if block.Height != checkpoint.Height+1 || block.PreviousBlockHash != checkpoint.BlockHash {
 			return fmt.Errorf("UTXO block is not the next committed transition; reconcile first")
 		}
-	}
-	program, err := loadBuiltinUTXOProgram()
-	if err != nil {
-		return err
 	}
 	previous := checkpoint.Commitment
 	journal := utxoJournal{Schema: 1, Height: block.Height, BlockHash: block.Hash, PreviousCommitment: previous, BeforeImages: []utxoBeforeImage{}}

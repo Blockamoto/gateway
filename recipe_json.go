@@ -5,9 +5,99 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"reflect"
+	"sort"
 	"strconv"
 	"unicode/utf8"
 )
+
+// Structural names are exact. Go's case-insensitive JSON field matching must
+// not collapse aliases such as source/Source in a reviewed document. Literal
+// JSON and the separately validated ordered program remain opaque here.
+func recipeCheckJSONShape(raw json.RawMessage, typ reflect.Type, path string) error {
+	if typ == reflect.TypeOf(json.RawMessage(nil)) {
+		return nil
+	}
+	if typ.Kind() == reflect.Pointer {
+		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			return nil
+		}
+		return recipeCheckJSONShape(raw, typ.Elem(), path)
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) && typ.Kind() != reflect.Slice && typ.Kind() != reflect.Map {
+		return recipeDiagnosticAt("RECIPE_NULL_FIELD", path, "this structural field cannot be null")
+	}
+	switch typ.Kind() {
+	case reflect.Struct:
+		var object map[string]json.RawMessage
+		if json.Unmarshal(raw, &object) != nil || object == nil {
+			return recipeDiagnosticAt("RECIPE_JSON_SHAPE", path, "JSON object required")
+		}
+		fields := map[string]reflect.Type{}
+		for i := 0; i < typ.NumField(); i++ {
+			field := typ.Field(i)
+			if field.PkgPath != "" {
+				continue
+			}
+			tag := field.Tag.Get("json")
+			name := tag
+			for j, c := range name {
+				if c == ',' {
+					name = name[:j]
+					break
+				}
+			}
+			if name == "-" {
+				continue
+			}
+			if name == "" {
+				name = field.Name
+			}
+			fields[name] = field.Type
+		}
+		names := make([]string, 0, len(object))
+		for name := range object {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			field, found := fields[name]
+			pointer := path + "/" + recipePointerPart(name)
+			if !found {
+				return recipeDiagnosticAt("RECIPE_UNKNOWN_FIELD", pointer, "unknown structural field")
+			}
+			if err := recipeCheckJSONShape(object[name], field, pointer); err != nil {
+				return err
+			}
+		}
+	case reflect.Slice:
+		var values []json.RawMessage
+		if err := json.Unmarshal(raw, &values); err != nil {
+			return recipeDiagnosticAt("RECIPE_JSON_SHAPE", path, "JSON array required")
+		}
+		for i, value := range values {
+			if err := recipeCheckJSONShape(value, typ.Elem(), path+"/"+strconv.Itoa(i)); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		var values map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &values); err != nil {
+			return recipeDiagnosticAt("RECIPE_JSON_SHAPE", path, "JSON object required")
+		}
+		names := make([]string, 0, len(values))
+		for name := range values {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if err := recipeCheckJSONShape(values[name], typ.Elem(), path+"/"+recipePointerPart(name)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // Go's JSON decoder replaces malformed UTF-8 and unpaired Unicode surrogate
 // escapes. Reject them before decoding so saved semantics cannot silently change.

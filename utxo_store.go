@@ -132,6 +132,13 @@ type utxoStore struct {
 	head              *utxoHead
 	commitHook        func(string) error // deterministic interruption tests; nil in production
 	addressCommitHook func(string) error // optional projection interruption tests
+	// Optional generation-owned host bindings. Native stores leave these nil.
+	generationCheck       func() error
+	originLoad            func(context.Context) (bool, error)
+	publicationGuard      recipeStoreGuard
+	publicationCheck      func(context.Context) error
+	skipAddressProjection bool
+	privateFacts          bool
 }
 
 func utxoCheckpointDigest(c utxoCheckpoint) string {
@@ -221,11 +228,25 @@ func (s *utxoStore) validateRootPages(ctx context.Context) error {
 }
 
 func (s *utxoStore) reload(ctx context.Context) error {
-	if err := recipeNativeUTXOCheckGeneration(); err != nil {
+	check := recipeNativeUTXOCheckGeneration
+	if s.generationCheck != nil {
+		check = s.generationCheck
+	}
+	if err := check(); err != nil {
 		return err
 	}
 	if e := updateapply.CheckPath(s.dir); e != nil {
 		return e
+	}
+	if s.originLoad != nil {
+		handled, err := s.originLoad(ctx)
+		if err != nil {
+			return err
+		}
+		if handled {
+			s.head = nil
+			return nil
+		}
 	}
 	var h utxoHead
 	e := utxoReadJSON(ctx, filepath.Join(s.dir, "head.json"), 256<<10, &h)
@@ -560,25 +581,38 @@ func (s *utxoStore) publishContext(ctx context.Context, c utxoCheckpoint, bounda
 	if e := s.hook("before_head"); e != nil {
 		return e
 	}
-	if err := checkIndexConsumerPublication(ctx, s.root, "utxo-state"); err != nil {
-		return err
+	publish := func() error {
+		if s.publicationCheck != nil {
+			if err := s.publicationCheck(ctx); err != nil {
+				return err
+			}
+		} else if err := checkIndexConsumerPublication(ctx, s.root, "utxo-state"); err != nil {
+			return err
+		}
+		if e := atomicWriteJSON(filepath.Join(s.dir, "head.json"), h); e != nil {
+			return e
+		}
+		if e := syncDirectory(s.dir); e != nil {
+			return e
+		}
+		if e := syncDirectory(filepath.Dir(s.dir)); e != nil {
+			return e
+		}
+		s.head = &h
+		if e := s.hook("after_head"); e != nil {
+			return e
+		}
+		// Source publication is authoritative; optional projection catch-up
+		// never rewinds it. Custom generations own their separate state only.
+		if s.skipAddressProjection {
+			return nil
+		}
+		return syncAddressStateContext(ctx, s, s.addressCommitHook)
 	}
-	if e := atomicWriteJSON(filepath.Join(s.dir, "head.json"), h); e != nil {
-		return e
+	if s.publicationGuard != nil {
+		return s.publicationGuard(publish)
 	}
-	if e := syncDirectory(s.dir); e != nil {
-		return e
-	}
-	if e := syncDirectory(filepath.Dir(s.dir)); e != nil {
-		return e
-	}
-	s.head = &h
-	if e := s.hook("after_head"); e != nil {
-		return e
-	}
-	// Source publication is authoritative. An optional address projection may
-	// catch up from saved recovery records; failure never rewinds this head.
-	return syncAddressStateContext(ctx, s, s.addressCommitHook)
+	return publish()
 }
 
 func (s *utxoStore) ApplyBlock(ctx context.Context, block blockView) error {
@@ -625,6 +659,9 @@ func (s *utxoStore) finishBlockEdit(ctx context.Context, block blockView, c utxo
 		}
 	}
 	c.Commitment = utxoCheckpointDigest(c)
+	if e = validateUTXOCheckpoint(c); e != nil {
+		return e
+	}
 	if e = s.writeRecord("commits", c.Commitment, c); e != nil {
 		return e
 	}
@@ -651,6 +688,12 @@ func (s *utxoStore) ReconcileSelected(ctx context.Context, selectedTipHeight int
 	defer utxoWriterMu.Unlock()
 	utxoStateMu.Lock()
 	defer utxoStateMu.Unlock()
+	return s.reconcileSnapshot(ctx, selectedTipHeight, canonical)
+}
+
+// Private snapshots may use a generation CAS publisher instead of native
+// global locks. The caller owns the instance and its immutable base view.
+func (s *utxoStore) reconcileSnapshot(ctx context.Context, selectedTipHeight int64, canonical func(context.Context, int64) (string, error)) error {
 	if e := s.reload(ctx); e != nil {
 		return e
 	}

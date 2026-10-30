@@ -19,6 +19,9 @@ func TestRecipeOrderedJSONStrictStructureAndTypedLiterals(t *testing.T) {
 		strings.Replace(valid, `"kind":"bool","bool":true`, `"kind":"uint","uint":9007199254740993`, 1),
 		strings.Replace(valid, `"kind":"bool","bool":true`, `"Kind":"bool","bool":true`, 1),
 		strings.Replace(valid, `"kind":"bool","bool":true`, `"kind":"bool","bool":true,"text":""`, 1),
+		strings.Replace(valid, `"kind":"bool","bool":true`, `"kind":"bool","bool":null`, 1),
+		strings.Replace(valid, `"kind":"bool","bool":true`, `"kind":"text","text":null`, 1),
+		strings.Replace(valid, `"kind":"bool","bool":true`, `"kind":"bytes","bytes":[1,2]`, 1),
 	} {
 		if _, err := parseOrderedRecipeProgram([]byte(raw), true); err == nil {
 			t.Fatalf("accepted ambiguous or invalid ordered JSON: %s", raw)

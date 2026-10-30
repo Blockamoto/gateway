@@ -12,12 +12,14 @@ import (
 var errRecipeConsumerReorg = errors.New("recipe saved anchor differs from selected chain; review reconciliation")
 
 type recipeConsumerWork struct {
+	StateCommitment  string `json:"state_commitment,omitempty"`
 	PlanID           string `json:"plan_id"`
 	Height           int64  `json:"height"`
 	CoverageRevision uint64 `json:"coverage_revision"`
 	ChainSnapshot    string `json:"chain_snapshot"`
 }
 type recipeConsumerProgress struct {
+	StateCommitment  string              `json:"state_commitment,omitempty"`
 	State            string              `json:"state"` // ready, range_complete, or no_work
 	Work             *recipeConsumerWork `json:"work,omitempty"`
 	CoverageRevision uint64              `json:"coverage_revision"`

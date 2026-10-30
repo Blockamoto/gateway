@@ -9,9 +9,13 @@ import (
 )
 
 type recipeSourceCapability struct {
-	ID        string                  `json:"id"`
-	Histories []string                `json:"histories"`
-	Fields    []recipeFieldCapability `json:"fields"`
+	Steps          []string                   `json:"steps,omitempty"`
+	Functions      []recipeFunctionCapability `json:"functions,omitempty"`
+	StateContracts []string                   `json:"state_contracts,omitempty"`
+	Events         []string                   `json:"events,omitempty"`
+	ID             string                     `json:"id"`
+	Histories      []string                   `json:"histories"`
+	Fields         []recipeFieldCapability    `json:"fields"`
 }
 
 type recipeCapabilityCatalogue struct {
@@ -25,7 +29,7 @@ type recipeCapabilityCatalogue struct {
 // recipeCatalogue is also the source of truth used by compiler checking. A
 // GUI may expose this value, but cannot infer support for anything absent.
 func recipeCatalogue() recipeCapabilityCatalogue {
-	return recipeCapabilityCatalogue{TableConflicts: []string{"", "identical"}, Version: 1, Sources: []recipeSourceCapability{{ID: "bitcoin.reveal", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.reveal")}, {ID: "bitcoin.transaction", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.transaction")}}, Functions: recipeFunctions(), Steps: []string{"let", "require", "write"}}
+	return recipeCapabilityCatalogue{TableConflicts: []string{"", "identical"}, Version: 1, Sources: []recipeSourceCapability{{ID: "bitcoin.reveal", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.reveal")}, {ID: "bitcoin.transaction", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.transaction")}, {ID: "bitcoin.ordered", Histories: []string{"ordered"}, Fields: recipeSourceFields("bitcoin.ordered"), Steps: recipeOrderedSteps(), Functions: recipeOrderedFunctions(), StateContracts: []string{recipeOrderedUTXOStorage}, Events: recipeOrderedEvents()}}, Functions: recipeFunctions(), Steps: []string{"let", "require", "write"}}
 }
 
 type recipeDiagnostic struct {

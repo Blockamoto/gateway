@@ -19,6 +19,8 @@ import (
 // recipeDefinition is an executable document, not a selector for a built-in
 // index. Presentation and dependency identities do not choose an algorithm.
 type recipeDefinition struct {
+	Ordered      json.RawMessage    `json:"ordered,omitempty"`
+	Storage      string             `json:"storage,omitempty"`
 	Format       string             `json:"format"`
 	Version      int                `json:"version"`
 	ID           string             `json:"id"`
@@ -29,7 +31,7 @@ type recipeDefinition struct {
 	Dependencies []recipeDependency `json:"dependencies"`
 	Exports      []recipeExport     `json:"exports,omitempty"`
 	Tables       []recipeTable      `json:"tables"`
-	Steps        []recipeStep       `json:"steps"`
+	Steps        []recipeStep       `json:"steps,omitempty"`
 }
 
 type recipeTable struct {
@@ -58,7 +60,10 @@ type recipeStep struct {
 	Row   map[string]recipeExpr `json:"row,omitempty"`
 }
 
-type recipeProgram struct{ definition recipeDefinition }
+type recipeProgram struct {
+	definition recipeDefinition
+	ordered    *recipeOrderedProgram
+}
 type recipeRows map[string]map[string]map[string]any
 
 const recipeMaxDefinitionBytes = 1 << 20
@@ -124,6 +129,9 @@ func parseRecipe(data []byte) (recipeDefinition, error) {
 	if len(data) > recipeMaxDefinitionBytes {
 		return d, fmt.Errorf("recipe exceeds byte limit")
 	}
+	if err := recipeCheckJSONShape(data, reflect.TypeOf(d), ""); err != nil {
+		return d, err
+	}
 	check := json.NewDecoder(bytes.NewReader(data))
 	check.UseNumber()
 	if err := recipeCheckJSONValue(check, 0); err != nil {
@@ -167,6 +175,12 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 	}
 	if d.Origin < 0 {
 		return nil, recipeDiagnosticAt("RECIPE_INVALID_ORIGIN", "/origin", "origin must be non-negative")
+	}
+	if d.Source == "bitcoin.ordered" {
+		return compileOrderedRecipe(d)
+	}
+	if len(d.Ordered) != 0 || d.Storage != "" {
+		return nil, recipeDiagnosticAt("RECIPE_UNEXPECTED_ORDERED_FIELDS", "/ordered", "ordered program/storage fields require the ordered source")
 	}
 	if d.Source != "bitcoin.reveal" && d.Source != "bitcoin.transaction" {
 		return nil, recipeDiagnosticAt("RECIPE_UNSUPPORTED_SOURCE", "/source", "unsupported source")

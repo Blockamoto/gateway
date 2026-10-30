@@ -51,8 +51,10 @@ native source/fact and physical profiles bind schema 2 to semantic fingerprint
 `b0c3c2ff4df3a9cd7cd2203aa70a914e779ac949d4be0991e21dc2e99e994d96`.
 An unmatched program/profile/schema fails closed and requires an explicit
 migration. Native checkpoint and journal bytes remain the compatibility test.
-Settings displays the actual JSON program read-only. Copying it into a runnable
-custom ordered draft awaits full ordered document/registry integration.
+Settings displays the complete executable JSON document and can copy it into
+a separate raw custom draft. The common compiler/registry validates that
+document. Runnable custom ordered scheduling and its guided editor remain in
+progress; saving a definition does not enable them.
 
 The opt-in paired `TestRecipeNativeUTXOApplyMeasurement` measures total apply
 cost on the same synthetic 2,048-output block and existing physical backend,

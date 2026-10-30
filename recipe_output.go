@@ -23,7 +23,7 @@ func (a *app) handleRecipeOutput(w http.ResponseWriter, r *http.Request) {
 	}
 	values := r.URL.Query()
 	for key, entries := range values {
-		if (key != "id" && key != "revision" && key != "semantic_hash" && key != "height" && key != "offset" && key != "limit" && key != "unit") || len(entries) != 1 {
+		if (key != "id" && key != "revision" && key != "semantic_hash" && key != "height" && key != "offset" && key != "cursor" && key != "limit" && key != "unit") || len(entries) != 1 {
 			jsonError(w, 400, fmt.Errorf("invalid recipe output query"))
 			return
 		}
@@ -48,11 +48,12 @@ func (a *app) handleRecipeOutput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token := values.Get("unit")
-	if offset > 0 && !recipeStoreHashValid(token) || token != "" && !recipeStoreHashValid(token) {
+	cursor := values.Get("cursor")
+	if (offset > 0 || cursor != "") && !recipeStoreHashValid(token) || token != "" && !recipeStoreHashValid(token) {
 		jsonError(w, 400, fmt.Errorf("a unit token is required for later pages"))
 		return
 	}
-	result, status, err := a.readRecipeOutput(r.Context(), id, revision, fingerprint, height, offset, limit, token)
+	result, status, err := a.readRecipeOutputPage(r.Context(), id, revision, fingerprint, height, offset, limit, token, cursor)
 	w.Header().Set("Cache-Control", "no-store")
 	if err != nil {
 		jsonError(w, status, err)
@@ -64,11 +65,24 @@ func (a *app) handleRecipeOutput(w http.ResponseWriter, r *http.Request) {
 // Capture a selected-local-header snapshot while holding the relevant locks;
 // the HTTP handler sends the resulting page only after those locks are released.
 func (a *app) readRecipeOutput(ctx context.Context, id, revision, fingerprint string, height int64, offset, limit int, token string) (map[string]any, int, error) {
+	return a.readRecipeOutputPage(ctx, id, revision, fingerprint, height, offset, limit, token, "")
+}
+
+func (a *app) readRecipeOutputPage(ctx context.Context, id, revision, fingerprint string, height int64, offset, limit int, token, cursor string) (map[string]any, int, error) {
 	// Resolve before taking header/registry locks: graph preparation itself
 	// reads the registry. The same identities are rechecked under the fence.
 	prepared, err := a.ResolveSavedRecipe(ctx, id, revision, fingerprint)
 	if err != nil {
 		return nil, 409, err
+	}
+	if prepared.Source == "bitcoin.ordered" {
+		if offset != 0 {
+			return nil, 400, fmt.Errorf("ordered state output uses a cursor")
+		}
+		return a.readOrderedRecipeOutput(ctx, prepared, height, limit, token, cursor)
+	}
+	if cursor != "" {
+		return nil, 400, fmt.Errorf("sparse output uses an offset")
 	}
 	var lineage *recipeLineagePlan
 	if len(prepared.Definition.Dependencies) != 0 {

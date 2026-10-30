@@ -205,9 +205,9 @@ func indexDefinitions() []indexDefinition {
 			}
 		}
 		if d.ID == "utxo-state" {
-			d.ExecutableRecipe = append(json.RawMessage(nil), builtinUTXOProgramJSON...)
+			d.ExecutableRecipe = append(json.RawMessage(nil), builtinUTXODefinitionJSON...)
 			if _, err := loadBuiltinUTXOProgram(); err == nil {
-				d.ExecutableRecipeHash = builtinUTXOSemantic
+				d.ExecutableRecipeHash = builtinUTXORecipeProgram.semanticHash()
 			}
 		}
 		if d.ID == "sat-state" {

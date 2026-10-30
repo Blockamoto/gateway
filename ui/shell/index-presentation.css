@@ -1,6 +1,6 @@
 .presentation-editor{margin-left:auto;font-size:11px;position:relative}
 .presentation-editor>summary{cursor:pointer;color:var(--text);padding:5px}
-.presentation-editor[open]{position:absolute;z-index:12;right:8px;top:38px;width:min(460px,95%);padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 24px #0003}
+.presentation-editor[open]{position:fixed;z-index:40;right:16px;bottom:16px;top:auto;width:min(460px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box;padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 24px #0003}
 .presentation-note,.presentation-status{font-size:11px;line-height:1.5;color:var(--muted)}
 .presentation-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}.presentation-fields label{display:grid;gap:4px}.presentation-fields input,.presentation-fields select{min-width:0;width:100%}
 .presentation-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.presentation-actions button{font-size:11px}

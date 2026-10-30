@@ -133,6 +133,26 @@ per call averaged 675.5 ms and 625.4 ms respectively. These limited measurements
 are noisy and do not establish production throughput or a reliable before/after
 percentage for the cache.
 
+An additional opt-in 4,100-key phase run on the same Windows host measured
+264.4 seconds for 33 append chunks, 38.9 seconds to verify them one at a time,
+and 43.9 seconds to verify them again with a 32-chunk budget. The second pass
+used the same immutable stage and a warmer OS cache; this single run does not
+establish a batching speedup. CPU-profile cumulative samples attributed 252.5
+seconds to append, 163.4 seconds to path checks and 213.8 seconds to page reads;
+these categories overlap. A discarded four-chunk append-cache prototype was
+slower on a 512-key fixture: individual versus batched appends averaged 2.43
+versus 3.99 seconds in one run and 3.53 versus 3.93 seconds in a repeat. These
+small sequential runs are noisy and do not establish a general speed ratio.
+The reproducible full-stage harness is `TestRecipeStageStressPhaseTimings`
+(`GATEWAY_STAGING_TIMING=1`).
+
+A possible next experiment is a new storage generation using bounded immutable
+page packs to reduce physical file opens. It would need to validate the path on
+each pack open, authenticate each referenced page, flush the pack and directory
+before checkpoint publication, and preserve bounded access and crash recovery.
+It has not been implemented or measured; no path, hash, durability or
+publication checks should be weakened to obtain a faster result.
+
 The private resumable AST executor binds its exact program and interpreter
 profiles to a content-hashed event sequence. Each bounded slice commits its AST
 path, local variables, loop stack and state writes in one private staged chunk;

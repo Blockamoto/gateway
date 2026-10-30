@@ -43,6 +43,9 @@ type ordinalTree struct {
 	memoryOnly       bool
 	dirtyDirectories map[string]bool
 	writeLocks       *[256]sync.Mutex
+	// Optional caller policy, applied to each physical page path. Existing
+	// callers retain their prior behavior when it is nil.
+	checkPath func(string) error
 }
 
 func newOrdinalTree(dir, root string) *ordinalTree {
@@ -86,6 +89,11 @@ func (t *ordinalTree) read(hash string) (ordinalPage, error) {
 		return ordinalPage{}, fmt.Errorf("ordinal state proof page is missing")
 	}
 	path := t.pagePath(hash)
+	if t.checkPath != nil {
+		if err := t.checkPath(path); err != nil {
+			return ordinalPage{}, err
+		}
+	}
 	f, e := os.Open(path)
 	if e != nil {
 		return ordinalPage{}, fmt.Errorf("ordinal state page unavailable (resume or rebuild required): %w", e)
@@ -174,6 +182,11 @@ func (t *ordinalTree) write(p ordinalPage) (string, error) {
 		}
 	}
 	path := t.pagePath(hash)
+	if t.checkPath != nil {
+		if err := t.checkPath(path); err != nil {
+			return "", err
+		}
+	}
 	if _, e = os.Stat(path); os.IsNotExist(e) {
 		if e = atomicWriteBytes(path, b); e != nil {
 			return "", e
@@ -284,12 +297,22 @@ func (t *ordinalTree) flush() (string, error) {
 	// Flush each changed directory once for the entire transaction. The root
 	// is not publishable until these new page entries and ancestors are durable.
 	for dir := range t.dirtyDirectories {
+		if t.checkPath != nil {
+			if e = t.checkPath(dir); e != nil {
+				return "", e
+			}
+		}
 		if e = syncDirectory(dir); e != nil {
 			return "", e
 		}
 	}
 	if len(t.dirtyDirectories) > 0 {
 		for dir, n := t.dir, 0; n < 4; n++ {
+			if t.checkPath != nil {
+				if e = t.checkPath(dir); e != nil {
+					return "", e
+				}
+			}
 			if e = syncDirectory(dir); e != nil {
 				return "", e
 			}

@@ -143,15 +143,21 @@ reject it and committed-state reads refuse to expose it as an indexed fact.
 The continuation currently occupies that namespace inside the staged tree,
 so its metadata still affects the internal root and journal. A future
 user-visible commitment and export must segregate control state or explicitly
-exclude it before publication. This is not a user-facing recipe format. Its source digest
-authenticates the supplied sequence as data, not its completeness or Bitcoin
-chain authority; a verified complete block-source adapter and publication
-authority are still required. This prototype materializes at most 50,000 events
-and 16 MiB, caps range loops at 4,096 iterations and checkpoints at 256 KiB,
-and rehashes the materialized source for every slice. Those limits and costs
-remain blockers to claiming full-block support.
-Full-block integration needs a verified immutable source receipt bound to the
-exact parsed block, event profile and complete event count, plus bounded,
-content-addressed event pages or equivalent proofs that authenticate each
-cursor. Reuse that receipt across slices instead of rehashing the whole source;
-a caller-supplied count alone cannot establish completeness.
+exclude it before publication. This is not a user-facing recipe format.
+
+The new private Bitcoin source reparses verified raw block bytes and writes
+ordered event pages with a content-addressed index. Its receipt binds the raw
+digest, block identity, parser and event profiles, complete event count and
+index root. Reopen reparses the raw block and checks the complete event
+inventory once; subsequent cursor reads authenticate just the requested page
+and index path. The existing parser still materializes the block's decoded
+transactions during that initial verification. Neither the receipt nor a
+caller-supplied count establishes selected-chain authority or complete Bitcoin
+consensus validation. The synthetic source path remains bounded to 50,000
+events and 16 MiB and rehashes its sequence for each slice.
+
+Even with verified event paging, range loops remain capped at 4,096 iterations,
+continuation checkpoints at 256 KiB, and staged state writes are chunk bounded.
+Resumable streaming, control-state separation, recovery, and publication under
+the selected-chain fence require further integration before full-block support
+or public execution can be claimed.

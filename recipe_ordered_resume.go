@@ -23,6 +23,7 @@ type recipeResumeSource struct {
 	Height                         int64
 	BlockHash, Profile, Commitment string
 	Events                         [][]byte
+	verified                       *recipeVerifiedSource
 }
 type recipeResumeFrame struct {
 	Kind         string
@@ -334,7 +335,10 @@ func recipeResumeSteps(p recipeOrderedProgram, path []int) ([]recipeOrderedInstr
 	}
 	return steps, nil
 }
-func recipeResumeEvent(source recipeResumeSource, cursor uint64) (map[string]recipeOrderedValue, error) {
+func recipeResumeEvent(ctx context.Context, source recipeResumeSource, cursor uint64) (map[string]recipeOrderedValue, error) {
+	if source.verified != nil {
+		return source.verified.event(ctx, cursor)
+	}
 	if cursor >= uint64(len(source.Events)) {
 		return nil, fmt.Errorf("source cursor out of range")
 	}
@@ -355,7 +359,18 @@ func recipeResumeBinding(s *recipeStageStore, st recipeStageCheckpoint, p recipe
 	if err := recipeResumeProgramValidate(p); err != nil {
 		return err
 	}
-	if source.Commitment != recipeResumeSourceHash(source) || !recipeStoreHashValid(source.Commitment) || st.SourceCommitment != source.Commitment || st.SourceTotal != uint64(len(source.Events)) || st.Height != source.Height || st.BlockHash != source.BlockHash || s.identity.Semantic != recipeResumeProgramID(p) {
+	total := uint64(len(source.Events))
+	if source.verified != nil {
+		r := source.verified.receipt
+		data, err := json.Marshal(r)
+		if err != nil || len(source.Events) != 0 || recipeStoreHash(data) != source.verified.id || source.Commitment != source.verified.id || source.Height != r.Height || source.BlockHash != r.BlockHash || source.Profile != r.EventProfile || !r.Complete {
+			return fmt.Errorf("verified source binding changed")
+		}
+		total = r.EventCount
+	} else if source.Commitment != recipeResumeSourceHash(source) {
+		return fmt.Errorf("resumable source content changed")
+	}
+	if !recipeStoreHashValid(source.Commitment) || st.SourceCommitment != source.Commitment || st.SourceTotal != total || st.Height != source.Height || st.BlockHash != source.BlockHash || s.identity.Semantic != recipeResumeProgramID(p) {
 		return fmt.Errorf("resumable program or source binding changed")
 	}
 	if st.Sealed {
@@ -420,6 +435,10 @@ func recipeResumeSlice(ctx context.Context, s *recipeStageStore, id string, expe
 		return zero, false, errRecipeStateBudget
 	}
 	owned := source
+	if source.verified != nil {
+		copySource := *source.verified
+		owned.verified = &copySource
+	}
 	owned.Events = make([][]byte, 0, len(source.Events))
 	used := 0
 	for _, event := range source.Events {
@@ -459,7 +478,7 @@ func recipeResumeSlice(ctx context.Context, s *recipeStageStore, id string, expe
 	machine := recipeOrderedMachine{ctx: ctx, vars: cp.Vars}
 	var event map[string]recipeOrderedValue
 	if cp.Active {
-		event, err = recipeResumeEvent(owned, cp.Cursor)
+		event, err = recipeResumeEvent(ctx, owned, cp.Cursor)
 		if err != nil {
 			return zero, false, err
 		}
@@ -476,7 +495,7 @@ func recipeResumeSlice(ctx context.Context, s *recipeStageStore, id string, expe
 				cp.Done = true
 				break
 			}
-			event, err = recipeResumeEvent(owned, cp.Cursor)
+			event, err = recipeResumeEvent(ctx, owned, cp.Cursor)
 			if err != nil {
 				return zero, false, err
 			}

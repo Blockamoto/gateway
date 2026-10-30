@@ -8,6 +8,12 @@ const recipeSatStorage = "bitcoin.sats.cow.v1"
 
 func recipeSatSourceFields() []recipeFieldCapability {
 	fields := append([]recipeFieldCapability{}, recipeOrderedSourceFields()...)
+	for i := range fields {
+		name := fields[i].Path[0]
+		if name != "kind" && name != "height" && name != "block" {
+			fields[i].Type.Optional = true
+		}
+	}
 	for _, group := range []struct {
 		names []string
 		kind  string

@@ -23,6 +23,9 @@ func TestRecipeCatalogueDescribesInstalledTypes(t *testing.T) {
 		t.Fatalf("catalogue: %+v", c)
 	}
 	projection := c.Sources[3]
+	if txid, ok := recipeFindField(recipeSatSource, []string{"txid"}); !ok || !txid.Type.Optional {
+		t.Fatal("FIFO block initialization has no transaction fields", txid)
+	}
 	if projection.ID != recipeUTXOProjectionSource || strings.Join(projection.Histories, ",") != "projection" || strings.Join(projection.StateContracts, ",") != recipeAddressProjectionStorage {
 		t.Fatal("checkpoint dependency contract missing", projection)
 	}

@@ -57,6 +57,9 @@ type indexHead struct {
 	Published          bool                        `json:"published"`
 }
 type indexStore struct {
+	recipeSatPrivate         bool
+	satRecipe                *recipeProgram
+	satPublish               func(indexHead, *indexCheckpoint) error
 	satCommitHook            func(string) error
 	retainOutputValues       bool
 	retainOutputScripts      bool

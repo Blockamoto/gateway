@@ -64,7 +64,7 @@ func recipeAdmissionCloneRequest(req indexRunRequest) (indexRunRequest, error) {
 func recipeAdmissionBuild(resolved resolvedSavedRecipe, req indexRunRequest, targetHeight int64, targetHash string) (recipeAdmissionPlan, error) {
 	var p recipeAdmissionPlan
 	sparse := recipeSparseSource(resolved.Source) && resolved.History == "sparse"
-	ordered := resolved.Source == "bitcoin.ordered" && resolved.History == "ordered" && resolved.Origin == 0
+	ordered := recipePrefixSource(resolved.Source) && resolved.History == "ordered" && resolved.Origin == 0
 	projection := resolved.Source == recipeUTXOProjectionSource && resolved.History == "projection" && resolved.Origin == 0
 	if resolved.ID == "" || !recipeStoreHashValid(resolved.Revision) || !recipeStoreHashValid(resolved.SemanticHash) || (!sparse && !ordered && !projection) || resolved.Origin < 0 {
 		return p, fmt.Errorf("unsupported recipe admission identity or capability")

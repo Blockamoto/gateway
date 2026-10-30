@@ -153,16 +153,20 @@ func (s *indexStore) validateSatRoots077(ctx context.Context, p satIndexSnapshot
 	return nil
 }
 func (s *indexStore) appendSat077Block(block blockView, from int64, retention string, prepared *inscriptionBlockResult) error {
-	satWriterMu.Lock()
-	defer satWriterMu.Unlock()
-	satStateMu.Lock()
-	defer satStateMu.Unlock()
-	ctx := s.ordinalContext()
-	latest, reloadErr := indexStoreHead(s.profileRoot, "sat-state")
-	if reloadErr != nil {
-		return reloadErr
+	if !s.recipeSatPrivate {
+		satWriterMu.Lock()
+		defer satWriterMu.Unlock()
+		satStateMu.Lock()
+		defer satStateMu.Unlock()
 	}
-	s.head, s.checkpoint = latest.head, latest.checkpoint
+	ctx := s.ordinalContext()
+	if !s.recipeSatPrivate {
+		latest, reloadErr := indexStoreHead(s.profileRoot, "sat-state")
+		if reloadErr != nil {
+			return reloadErr
+		}
+		s.head, s.checkpoint = latest.head, latest.checkpoint
+	}
 	if s.head.Mode == "" {
 		s.head.Mode = "lean"
 	}
@@ -214,13 +218,7 @@ func (s *indexStore) appendSat077Block(block blockView, from int64, retention st
 			return err
 		}
 	}
-	if err := checkIndexConsumerPublication(ctx, s.profileRoot, "sat-state"); err != nil {
-		return err
-	}
-	if err = atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); err != nil {
-		return err
-	}
-	if err = syncDirectory(s.dir); err != nil {
+	if err = s.publishSatCheckpointHead(ctx, head, &c); err != nil {
 		return err
 	}
 	s.head = head
@@ -228,15 +226,19 @@ func (s *indexStore) appendSat077Block(block blockView, from int64, retention st
 	return nil
 }
 func (s *indexStore) reconcileSatStateSelected(ctx context.Context, selectedTipHeight int64, hashAt func(int64) (string, error)) error {
-	satWriterMu.Lock()
-	defer satWriterMu.Unlock()
-	satStateMu.Lock()
-	defer satStateMu.Unlock()
-	latest, reloadErr := indexStoreHead(s.profileRoot, "sat-state")
-	if reloadErr != nil {
-		return reloadErr
+	if !s.recipeSatPrivate {
+		satWriterMu.Lock()
+		defer satWriterMu.Unlock()
+		satStateMu.Lock()
+		defer satStateMu.Unlock()
 	}
-	s.head, s.checkpoint = latest.head, latest.checkpoint
+	if !s.recipeSatPrivate {
+		latest, reloadErr := indexStoreHead(s.profileRoot, "sat-state")
+		if reloadErr != nil {
+			return reloadErr
+		}
+		s.head, s.checkpoint = latest.head, latest.checkpoint
+	}
 	if s.checkpoint == nil {
 		return nil
 	}
@@ -322,13 +324,7 @@ func (s *indexStore) reconcileSatStateSelected(ctx context.Context, selectedTipH
 			return err
 		}
 	}
-	if err := checkIndexConsumerPublication(ctx, s.profileRoot, "sat-state"); err != nil {
-		return err
-	}
-	if err := atomicWriteJSON(filepath.Join(s.dir, "head.json"), head); err != nil {
-		return err
-	}
-	if err := syncDirectory(s.dir); err != nil {
+	if err := s.publishSatCheckpointHead(ctx, head, &chosen.Checkpoint); err != nil {
 		return err
 	}
 	s.head = head

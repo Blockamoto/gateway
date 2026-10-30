@@ -91,7 +91,7 @@ func TestRecipeOrderedConsumerFiniteRestartAndObservedWork(t *testing.T) {
 	if err != nil || progress.State != "range_complete" || progress.VerifiedThrough == nil || *progress.VerifiedThrough != 1 || progress.VerifiedHash != blocks[1].Hash {
 		t.Fatal("ordered completion was not verified", progress, err)
 	}
-	state, err := c.generation.snapshot(ctx)
+	state, err := c.generation.(*recipeOrderedGeneration).snapshot(ctx)
 	if err != nil || state.head.Checkpoint.LiveOutputs != 1 {
 		t.Fatal("ordered durable state unavailable", err)
 	}
@@ -148,7 +148,7 @@ func TestRecipeOrderedConsumerRejectsPauseAndChangedTarget(t *testing.T) {
 			if err = c.Apply(ctx, *p.Work, blocks[0], nil); err == nil {
 				t.Fatal("changed authority published ordered state")
 			}
-			state, err := c.generation.snapshot(ctx)
+			state, err := c.generation.(*recipeOrderedGeneration).snapshot(ctx)
 			if err != nil || state.head != nil {
 				t.Fatal("rejected work advanced the ordered origin", err)
 			}
@@ -194,7 +194,7 @@ func TestRecipeOrderedConsumerLiveSyntheticLocalReorg(t *testing.T) {
 	if err != nil || p.Work == nil || p.Work.Height != 1 || p.VerifiedThrough == nil || *p.VerifiedThrough != 0 {
 		t.Fatal("ordered reorg did not recover to the real ancestor", p, err)
 	}
-	state, err := c.generation.snapshot(ctx)
+	state, err := c.generation.(*recipeOrderedGeneration).snapshot(ctx)
 	if err != nil || state.head.Checkpoint.Height != 0 || state.head.Checkpoint.LiveOutputs != 0 {
 		t.Fatal("disconnected state remained queryable", err)
 	}

@@ -63,7 +63,7 @@ func recipeResolveView(view recipeRegistryView) (resolvedSavedRecipe, error) {
 		return resolvedSavedRecipe{}, fmt.Errorf("saved recipe capability or identity is invalid")
 	}
 	execution := "independent_finite_and_live"
-	if recipeOrderedPublicEnabled && view.Recipe.Source == "bitcoin.ordered" && view.Recipe.History == "ordered" {
+	if recipeOrderedPublicEnabled && recipePrefixSource(view.Recipe.Source) && view.Recipe.History == "ordered" {
 		execution = "ordered_finite_and_live"
 	} else if recipeProjectionPublicEnabled && view.Recipe.Source == recipeUTXOProjectionSource {
 		execution = "checkpoint_finite_and_live"

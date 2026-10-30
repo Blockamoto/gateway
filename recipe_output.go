@@ -111,6 +111,12 @@ func (a *app) readRecipeOutputPage(ctx context.Context, id, revision, fingerprin
 	if err != nil {
 		return nil, 409, err
 	}
+	if prepared.Source == recipeSatSource {
+		if offset != 0 {
+			return nil, 400, fmt.Errorf("FIFO state output uses a cursor")
+		}
+		return a.readSatRecipeOutput(ctx, prepared, height, limit, token, cursor)
+	}
 	if prepared.Source == "bitcoin.ordered" && prepared.History == "ordered" {
 		if offset != 0 {
 			return nil, 400, fmt.Errorf("ordered state output uses a cursor")

@@ -180,6 +180,9 @@ func (s *indexStore) satLocationPoint077(ctx context.Context, p satIndexSnapshot
 	return o.Point, nil
 }
 func satRangePage077(ctx context.Context, dir string, o satIndexOutput, next uint64, limit int) ([]satRange, error) {
+	if limit < 1 || limit > 1000 || next > o.RangeCount {
+		return nil, fmt.Errorf("%w: invalid range page bounds", ErrSatStateCorrupt)
+	}
 	if o.RangesRoot == "" {
 		if o.RangeCount != uint64(len(o.Ranges)) {
 			return nil, fmt.Errorf("%w: inline range count", ErrSatStateCorrupt)
@@ -201,7 +204,8 @@ func satRangePage077(ctx context.Context, dir string, o satIndexOutput, next uin
 		var segment satRangeSegment077
 		have, err := t.get(satRangeKey(start), &segment)
 		chunk = segment.Ranges
-		if err != nil || !have || len(chunk) == 0 || len(chunk) > 256 || start+uint64(len(chunk)) > o.RangeCount {
+		expected := min(uint64(256), o.RangeCount-start)
+		if err != nil || !have || uint64(len(chunk)) != expected {
 			return nil, fmt.Errorf("%w: range segment (%v)", ErrSatStateCorrupt, err)
 		}
 		for i := int(next - start); i < len(chunk) && len(out) < limit; i++ {

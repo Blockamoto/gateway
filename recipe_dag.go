@@ -80,7 +80,7 @@ func recipeBuildDependencyGraph(ctx context.Context, root resolvedSavedRecipe, s
 			return fmt.Errorf("recipe dependency node limit exceeded")
 		}
 		projection := node.Source == recipeUTXOProjectionSource && node.History == "projection"
-		ordered := node.Source == "bitcoin.ordered" && node.History == "ordered"
+		ordered := recipePrefixSource(node.Source) && node.History == "ordered"
 		if projection || ordered {
 			if _, err := compileRecipe(node.Definition); err != nil {
 				return err

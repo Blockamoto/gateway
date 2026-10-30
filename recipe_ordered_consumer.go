@@ -17,7 +17,7 @@ type recipeOrderedRunConsumer struct {
 	a          *app
 	plan       recipeAdmissionPlan
 	binding    recipeRunBinding
-	generation *recipeOrderedGeneration
+	generation recipePrefixBackend
 	pending    *recipeConsumerWork
 }
 
@@ -47,7 +47,7 @@ func (a *app) openRecipeOrderedRunConsumer(ctx context.Context, plan recipeAdmis
 	if program.ordered == nil || program.semanticHash() != binding.Fingerprint {
 		return nil, fmt.Errorf("ordered program identity is unavailable")
 	}
-	generation, err := openRecipeOrderedGeneration(a.dataDir, program)
+	generation, err := openRecipePrefixBackend(a.dataDir, program)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func (a *app) openRecipeOrderedRunConsumer(ctx context.Context, plan recipeAdmis
 			return nil, err
 		}
 	}
-	_, initialized, err := generation.inspect(ctx)
+	_, initialized, err := generation.prefixSnapshot(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func (c *recipeOrderedRunConsumer) Next(ctx context.Context) (recipeConsumerProg
 	if err != nil {
 		return recipeConsumerProgress{}, err
 	}
-	state, initialized, err := c.generation.inspect(ctx)
+	state, initialized, err := c.generation.prefixSnapshot(ctx)
 	if err != nil {
 		return recipeConsumerProgress{}, err
 	}
@@ -243,25 +243,25 @@ func (c *recipeOrderedRunConsumer) Next(ctx context.Context) (recipeConsumerProg
 		}
 		return out, fmt.Errorf("ordered state is not initialized")
 	}
-	if state.head != nil {
+	if state.Height >= 0 {
 		err = c.generation.reconcile(ctx, tip, func(work context.Context, height int64) (string, error) {
 			return c.selectedAt(work, height, tip, tipHash)
 		}, c.recoveryGuard(ctx, tip, tipHash))
 		if err != nil {
 			return out, err
 		}
-		state, err = c.generation.snapshot(ctx)
+		state, _, err = c.generation.prefixSnapshot(ctx)
 		if err != nil {
 			return out, err
 		}
 	}
 	height := int64(-1)
-	token := c.generation.origin().Checksum
-	if state.head != nil {
-		height = state.head.Checkpoint.Height
-		token = state.head.Checksum
+	token := state.Token
+	if state.Height >= 0 {
+		height = state.Height
+		token = state.Token
 		hash, err := c.selectedAt(ctx, height, tip, tipHash)
-		if err != nil || hash != state.head.Checkpoint.BlockHash {
+		if err != nil || hash != state.BlockHash {
 			return out, fmt.Errorf("ordered checkpoint is not on the captured selected prefix: %v", err)
 		}
 		through := height

@@ -508,7 +508,7 @@ func prepareSharedBlockInventory(root string, p *indexRunPrepared, d indexRunDoc
 		recipeAdmitted := false
 		if c.Recipe && d.Run != nil && (d.Run.State == "running" || d.Run.State == "waiting") {
 			progress, ok := indexRunProgressFor(d.Run, c.Index)
-			recipeAdmitted = ok && progress.AdmissionState == "admitted" && progress.Recipe != nil && progress.Recipe.Source == "bitcoin.reveal"
+			recipeAdmitted = ok && progress.AdmissionState == "admitted" && progress.Recipe != nil && (progress.Recipe.Source == "bitcoin.reveal" || progress.Recipe.Source == recipeSatSource)
 		}
 		if c.Armed && (resolvedNeedsInventory(c.Index) || recipeAdmitted) && resolvedAdmissionAllowedForRoot(root, d, c.Index, p.block.Height) == nil {
 			needed = true

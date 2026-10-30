@@ -321,16 +321,9 @@ func (e *satEditor077) flush() error {
 }
 
 func (s *indexStore) deriveSat077Block(block blockView, prepared *inscriptionBlockResult) (*satIndexSnapshot, error) {
-	programs, err := builtinSatRecipes()
+	program, err := s.recipeSatProgram()
 	if err != nil {
 		return nil, err
-	}
-	if err = recipeSatCheckEquivalence(builtinSatSemantic, 1); err != nil {
-		return nil, err
-	}
-	program := programs[0]
-	if s.retainSatHistory {
-		program = programs[1]
 	}
 	ctx := s.ordinalContext()
 	if err := ctx.Err(); err != nil {
@@ -355,15 +348,26 @@ func (s *indexStore) deriveSat077Block(block blockView, prepared *inscriptionBlo
 	} else if block.Height != 0 {
 		return nil, fmt.Errorf("Sat identity requires genesis-first processing")
 	}
-	p.RetainHistory = s.retainSatHistory
+	p.RetainHistory = len(program.definition.Tables) == 2
 	p.Movements = nil
 	e := newSatEditor077(ctx, s, p)
-	refs, err := storeBlockOutputFactsContext(ctx, s.profileRoot, block)
+	var refs map[string]outputFactRef
+	if s.recipeSatPrivate {
+		refs, err = storeBlockOutputFactLayersUncachedContext(ctx, s.profileRoot, block, true, true)
+	} else {
+		refs, err = storeBlockOutputFactsContext(ctx, s.profileRoot, block)
+	}
 	if err != nil {
 		return nil, err
 	}
 	occurrences := map[string][]inscriptionOccurrence{}
 	var extraction inscriptionBlockResult
+	if s.recipeSatPrivate && prepared == nil && block.inscriptionExtraction != nil {
+		if err = validateCompleteInscriptionInventory(block, block.inscriptionExtraction); err != nil {
+			return nil, err
+		}
+		prepared = block.inscriptionExtraction
+	}
 	if prepared != nil {
 		if prepared.BlockHash != block.Hash || prepared.BlockHeight != block.Height || prepared.ParserProfile != inscriptionParserProfile {
 			return nil, fmt.Errorf("Sat inscription evidence context mismatch")

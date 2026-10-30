@@ -711,7 +711,7 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 			if e != nil {
 				return p, fmt.Errorf("saved recipe %q unavailable: %w", c.Index, e)
 			}
-			if resolved.Source == "bitcoin.ordered" && !recipeOrderedPublicEnabled {
+			if recipePrefixSource(resolved.Source) && !recipeOrderedPublicEnabled {
 				return p, fmt.Errorf("ordered recipe execution is not yet enabled")
 			}
 			if resolved.Source == recipeUTXOProjectionSource && !recipeProjectionPublicEnabled {
@@ -728,7 +728,7 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 				q.From = *req.In
 			}
 			q.State, q.AdmissionState = "ready", "admitted"
-			if resolved.Source == "bitcoin.ordered" && resolved.History == "ordered" {
+			if recipePrefixSource(resolved.Source) && resolved.History == "ordered" {
 				if e = a.planOrderedRecipeState(ctx, resolved, c, &q); e != nil {
 					return p, e
 				}

@@ -27,6 +27,9 @@ async function run(){
    calls.push({path:url.pathname,body});
    if(measurePolling&&url.pathname==='/api/v1/index/progress')pollTimes.status.push(performance.now());
    if(measurePolling&&url.pathname==='/api/v1/index/query')pollTimes.records.push(performance.now());
+   if(url.pathname==='/api/v1/index/layout/hierarchy'&&req.method()==='GET')return reply({revision:0,nodes:[]});
+   if(url.pathname==='/api/v1/index/recipes'&&req.method()==='GET')return reply([]);
+   if(url.pathname==='/api/v1/index/recipes/catalogue'&&req.method()==='GET')return reply({version:1,sources:[],functions:[],steps:[]});
    if(url.pathname==='/api/v1/index/run/prepare')return reply({schema:1,prepared:body});
    if(['/api/v1/index/status','/api/v1/index/progress'].includes(url.pathname))return reply({...url.pathname==='/api/v1/index/progress'?{observation:{mode:'progress',details_age_milliseconds:12000,details_refreshing:false},run:{schema:1,prepared:{consumers:[]},run:{state:'running',request:{consumers:[]},consumers:[{index:'inscriptions',commitment:'fixture-cadence-'+pollTimes.status.length}]}}}:{},definitions,instances,providers:definitions.map(d=>({id:d.id,provider:'fixture',queryable:true,coverage:[]})),live:[],job:active,jobs,sats,timeline:{tip_height:792500,tracks:[{id:'txio-sat-ranges',coverage:[{from:10,to:10}],coverage_complete:false}]}});
    if(url.pathname==='/api/v1/index/plan'){requests.push(body);return reply({definition:definitions.find(d=>d.id===body.index),from:body.from,to:body.to,retention:body.retention,dependencies:[],notes:['Only missing derived outputs are computed.'],outputs:(body.outputs||[]).map(index=>({index,reuse:[{from:0,to:10}],add:[{from:11,to:body.to}],reason:'Compatible fixture coverage reused.'})),storage_estimate:'Fixture',verification:'selected_chain'})}

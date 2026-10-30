@@ -425,7 +425,7 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 		if err != nil {
 			return v, err
 		}
-		if resolved.Source == "bitcoin.ordered" && resolved.History == "ordered" {
+		if recipePrefixSource(resolved.Source) && resolved.History == "ordered" {
 			if !recipeOrderedPublicEnabled {
 				return v, fmt.Errorf("ordered recipe execution is not yet enabled")
 			}
@@ -2238,11 +2238,16 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		owners := map[string]bool{}
 		for _, i := range eligible {
 			c := consumers[i]
-			if nexts[i] == h && c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.Source == "bitcoin.ordered" {
+			if nexts[i] == h && c.selection.Recipe && c.progress.Recipe != nil && recipePrefixSource(c.progress.Recipe.Source) {
 				if !p.orderedAttempted {
 					p.orderedAttempted = true
 					started := time.Now()
 					p.orderedSource, p.orderedErr = recipeOrderedSourceFromBlock(ctx, p.block)
+					if p.orderedErr == nil && p.extraction != nil && validateCompleteInscriptionInventory(p.orderedSource.block, p.extraction) == nil {
+						// Reuse only this admitted cohort's frozen inventory. The
+						// standalone raw-owned source never imports caller facts.
+						p.orderedSource.block.inscriptionExtraction = p.extraction
+					}
 					elapsed := time.Since(started).Milliseconds()
 					counts.SourceDecodeMilliseconds += elapsed
 					counts.SourceMilliseconds += elapsed
@@ -2345,7 +2350,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					result.err = p.transactionErr
 					return result.err
 				}
-				if p.orderedErr != nil && c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.Source == "bitcoin.ordered" {
+				if p.orderedErr != nil && c.selection.Recipe && c.progress.Recipe != nil && recipePrefixSource(c.progress.Recipe.Source) {
 					result.err = p.orderedErr
 					return result.err
 				}

@@ -12,16 +12,16 @@ func (a *app) planOrderedRecipeState(ctx context.Context, resolved resolvedSaved
 	if err != nil {
 		return err
 	}
-	g, err := openRecipeOrderedGeneration(a.dataDir, program)
+	g, err := openRecipePrefixBackend(a.dataDir, program)
 	if err != nil {
 		return err
 	}
 	q.RangeMode, q.RequiresGenesis = "complete_prefix", true
 	recipeOrderedGenerationMu.Lock()
 	token, err := g.reviewToken(ctx)
-	var s *utxoStore
+	s := recipePrefixPoint{Height: -1}
 	if err == nil && !choice.Rebuild {
-		s, _, err = g.inspect(ctx)
+		s, _, err = g.prefixSnapshot(ctx)
 	}
 	recipeOrderedGenerationMu.Unlock()
 	q.RecipeStateToken = token
@@ -33,8 +33,8 @@ func (a *app) planOrderedRecipeState(ctx context.Context, resolved resolvedSaved
 	next := int64(0)
 	if choice.Rebuild {
 		q.Reason = "Rebuild preserves the prior generation and its facts in an archive; the new state begins at genesis."
-	} else if s != nil && s.head != nil {
-		cp := s.head.Checkpoint
+	} else if s.Height >= 0 {
+		cp := s
 		q.Height, q.BlockHash, q.Commitment = cp.Height, cp.BlockHash, cp.Commitment
 		next = cp.Height + 1
 		header, err := a.readSelectedHeader(cp.Height)
@@ -44,7 +44,7 @@ func (a *app) planOrderedRecipeState(ctx context.Context, resolved resolvedSaved
 			selected = reverseHex(digest[:])
 		}
 		if selected != cp.BlockHash {
-			retained, err := s.retainedCheckpoints(ctx)
+			retained, err := g.prefixRetained(ctx)
 			if err != nil {
 				q.State, q.AdmissionState, q.Reason = "rebuild_required", "blocked", err.Error()
 				return ctx.Err()

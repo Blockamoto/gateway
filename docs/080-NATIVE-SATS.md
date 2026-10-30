@@ -1,8 +1,8 @@
 # Native Sat FIFO recipes
 
-This is an intermediate native migration. The complete 0.8.0 preview, saved Sat
-execution/query lifecycle, wider ordered contracts and remaining built-ins are
-still open.
+Native and saved Sat recipes now have their execution/query lifecycle. The
+complete 0.8.0 preview, wider ordered contracts and remaining built-ins are
+still open. This remains an intermediate increment.
 
 The actual `recipes/builtins/sat-state.json` and `sat-ranges.json` documents now
 control native Sat derivation through the common typed event interpreter.
@@ -48,9 +48,9 @@ The read-only native catalogue exposes both actual documents. Guided controls
 round-trip every instruction and field, edit range functions and exact interval
 literals, and add/remove the optional history table. A history declaration needs
 one original-row write for every source output; incomplete programs fail before
-publication. Saved copies validate under the same compiler but currently report
-`source_scheduling_unavailable`; their public lifecycle is the next integration
-step. That limitation must not be represented as a finished working preview.
+publication. Saved copies use the same compiler/interpreter with public
+`ordered_finite_and_live` execution. Their isolated generation and receipt
+head are described below.
 
 Physical differential checks compare complete batch/checkpoint/head identities
 with the frozen old derivation for current and retained history. They cover
@@ -66,3 +66,74 @@ follow-up passed in 6.669 seconds and the final production build passed.
 These are bounded deterministic fixtures and existing native recovery tests,
 not a full-chain replay or visible Chrome acceptance. Browser control still
 fails before initialization with a missing kernel-assets path.
+
+
+## Saved Sat prefix generations and queries
+
+Each saved Sat instance owns `indexes/recipe-sat-v1/<instance hash>/<semantic>/`
+with immutable recipe ownership and one atomic `prefix-head.json` receipt.
+Native COW, facts and checkpoints live beneath this private profile; no native
+Sat head is written there, and neither reading nor rebuilding it changes the
+profile's native Sat generation. Missing receipt metadata cannot become an
+empty generation. First initialization can finish only an exact owned empty
+origin; unexpected payload without ownership requires explicit recovery.
+
+The existing prefix scheduler now uses a small storage interface over the Coin
+and Sat adapters. Both bind exact saved revisions and compare the observed
+state token at publication. Sat staging uses its own compiled program. Native
+Sat writes keep their original mutex/authority/write/sync path, while saved Sat
+staging avoids native global locks and publishes only through its generation
+CAS inside the selected-header/run/registry fence. A source body is parsed once
+per cohort for ordered recipes; an admitted cohort's complete inscription
+inventory is shared by native and saved Sat consumers. Standalone source parsing
+continues to reject caller-edited decoded facts.
+
+Start review requires an explicit genesis prefix. A compatible prefix can be
+reused with no body reads. Finite and Live follow the common reviewed target,
+marked range, pause and restart behavior. Reorg recovery restores a retained
+selected Sat savepoint before replay. Expired recovery needs a reviewed rebuild.
+The shared persistent rebuild intent archives the entire prior private profile,
+including its receipt and facts; restarting the same job preserves replacement
+progress. Native data and other instances remain independent.
+
+Saved queries use the committed output route with a state cursor. The response
+labels its format `gateway-sat-output-range-fragments-v1`: current outputs then
+retained historical outputs, each in physical-key order and FIFO interval order.
+A row contains a bounded interval fragment, exact value/count/index/offset
+strings, positional output identity and state. Both row types use creation-position keys, so historical duplicate coinbase
+incarnations remain distinct. Current rows also identify their native outpoint. This is a range
+view, not a reproduction of every native query field. It does not repeat the
+locking script in each interval fragment. Large fragmented outputs therefore
+remain pageable. The cursor's interval index is checked against the saved row;
+its sats offset comes from authenticated segment prefixes.
+
+Tokens bind instance, requested revision, semantic identity and exact immutable
+checkpoint. A current or retained savepoint is queryable; an older intermediate
+point that is not retained is rejected even if an obsolete commit file remains.
+Unbuilt state is explicitly uncovered. Selected-header loss/forks, missing heads,
+changed ownership and corrupt facts/pages fail instead of supplying zero.
+The current checkpoint and newest two savepoints at each native cadence (12 and
+144 blocks) define this recovery/query boundary. There is no claim that every
+historical height remains a saved state snapshot.
+
+Maintenance authenticates retained metadata, fact pins and complete required
+fact payloads, then completes the checked native COW mark before any fact sweep.
+Damaged member subtrees or facts defer orphan deletion. Native bounded page
+collection, fact grace and commit pruning are reused within the private profile.
+Unrelated native data and archived generations remain untouched.
+
+Focused generation/guard/native parity and existing ordered-consumer checks
+passed in 14.332 seconds. Public mixed current/history/native runs, source and
+inventory sharing, body-free prefix reuse, rebuild archive, Live extension,
+local fork, pause and historical-revision restart passed with fragment queries
+and the existing ordered public tests in 30.276 seconds. The final focused
+Sat/ordered set passed in 29.466 seconds, including the actual HTTP query route,
+missing-head/fork rejection and corruption deferral before fact deletion. The
+four JavaScript checks and production build passed. The wider regression passed in 836.739 seconds. Final optional-field and
+malformed-segment checks passed with the Sat query suite in 30.946 seconds;
+duplicate-coinbase creation-key, public and fragment checks passed in 14.441
+seconds. The native range-page reader now rejects a short nonfinal segment
+immediately. The catalogue marks transaction fields optional during block
+initialization. The source-identical workspace and dedicated FIFO editor
+headless browser checks passed, with inspected wide/narrow captures. Visible
+Chrome acceptance is still blocked by browser-control initialization.

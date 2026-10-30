@@ -515,3 +515,45 @@ the final production build passed after the source-field follow-up. Saved Sat ex
 state contracts, remaining built-ins and visible complete-preview acceptance
 remain open. Browser initialization still fails with the missing kernel-assets
 path; no visible acceptance is claimed.
+
+
+### Saved Sat prefix execution, range fragments and owned maintenance
+
+Saved current/history Sat documents now have public finite/Live prefix execution
+and private generation ownership. Prefix scheduling is shared with the existing
+Coin path through an authenticated position/token interface, while each retains
+its native physical codec. The private Sat receipt head is the sole visibility
+boundary; staging writes no native head. Body parsing is shared across ordered
+cohorts, and native/saved Sat consumers reuse the admitted complete inscription
+inventory. Missing prefixes never start hidden work.
+
+Current/retained savepoint queries return bounded FIFO interval fragments with
+exact count/value/offset strings and checkpoint/revision tokens. Unbuilt state,
+lost heads, forks and unretained intermediate points stay distinct. Rebuild
+archives only the owned generation and preserves resumed replacement progress.
+Collection validates required facts and COW pages before fact deletion. Physical
+current/history parity, private CAS and lost ownership checks passed with the
+existing ordered-consumer suite in 14.332 seconds. Public mixed source sharing,
+prefix reuse, archived rebuild, Live/local-fork/pause/historical-restart checks
+passed with fragment queries and existing ordered public tests in 30.276 seconds.
+The final focused Sat/ordered set passed in 29.466 seconds, including HTTP reads,
+head/fork rejection and fact/member-child corruption deferral. The four
+JavaScript checks and production build passed. The broader recipe/native/state/
+run/Sat regression passed in 836.739 seconds. Final optional-field and malformed
+segment checks passed with the Sat query set in 30.946 seconds. A final duplicate
+coinbase creation-key, public and fragment set passed in 14.441 seconds. Current
+range-view rows use creation positions as keys and retain native outpoint
+identity separately, preserving duplicate incarnations. Short nonfinal native
+range segments now fail immediately; block-initialization transaction fields
+are explicitly optional in the capability catalogue. The final production build
+passed after these guards.
+
+The source-identical headless workspace check passed after updating its fixture
+for read-only hierarchy and recipe endpoints introduced by earlier increments.
+A dedicated real-DOM FIFO editor check passed for both actual documents,
+history declaration, exact interval controls, source-based range composition,
+Apply, narrow layout and no network work. Wide/narrow captures were inspected.
+This is headless fixture evidence, not visible Chrome acceptance. Browser control
+still fails before initialization. `080-PARITY-MATRIX.md` records the remaining
+families and prevents these increments from being mistaken for full-preview
+completion.

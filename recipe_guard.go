@@ -77,16 +77,24 @@ func recipeBindRun(run *indexRunRecord, id, fingerprint, revision string) (recip
 	return recipeRunBinding{RunID: run.ID, Index: id, Fingerprint: fingerprint, Revision: revision, TrackRevision: progress.ConfigurationRevision, SelectionHash: indexDigest(selection), RangeHash: recipeRunRangeHash(run, progress)}, nil
 }
 
-func recipeCheckRunBinding(run *indexRunRecord, b recipeRunBinding, height, origin int64) error {
+func recipeCheckRunIdentity(run *indexRunRecord, b recipeRunBinding) (indexRunSelection, indexRunProgress, error) {
 	if run == nil || run.ID != b.RunID || (run.State != "running" && run.State != "waiting") {
-		return errIndexRunConsumerStopped
+		return indexRunSelection{}, indexRunProgress{}, errIndexRunConsumerStopped
 	}
 	selection, progress, err := recipeRunMember(run, b.Index)
 	if err != nil {
-		return errIndexRunConsumerStopped
+		return indexRunSelection{}, indexRunProgress{}, errIndexRunConsumerStopped
 	}
 	if b.TrackRevision == 0 || progress.ConfigurationRevision != b.TrackRevision || indexDigest(selection) != b.SelectionHash || recipeRunRangeHash(run, progress) != b.RangeHash || progress.ProfileHash != recipeAdmissionProfile(b.Index, b.Fingerprint, b.Revision) {
-		return errIndexRunAdmissionChanged
+		return indexRunSelection{}, indexRunProgress{}, errIndexRunAdmissionChanged
+	}
+	return selection, progress, nil
+}
+
+func recipeCheckRunBinding(run *indexRunRecord, b recipeRunBinding, height, origin int64) error {
+	selection, progress, err := recipeCheckRunIdentity(run, b)
+	if err != nil {
+		return err
 	}
 	if height < 0 || height < origin || height < progress.From || progress.EffectiveFrom != nil && height < *progress.EffectiveFrom || run.Request.In != nil && height < *run.Request.In {
 		return fmt.Errorf("recipe block precedes admitted origin or start")

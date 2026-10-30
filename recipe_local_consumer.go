@@ -3,15 +3,21 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync"
 )
 
 // A local adapter owns a freshly opened consumer. Its coverage cache must not
 // be populated through the generic caller-supplied selectedHash API: a token
 // alone cannot authenticate such an observation.
 type recipeLocalConsumer struct {
-	a        *app
-	consumer *recipeSparseConsumer
-	binding  recipeRunBinding
+	mu            sync.Mutex
+	audited       bool
+	auditRevision uint64
+	auditThrough  int64
+	auditSnapshot string
+	a             *app
+	consumer      *recipeSparseConsumer
+	binding       recipeRunBinding
 }
 
 func (a *app) openRecipeLocalConsumer(ctx context.Context, plan recipeAdmissionPlan, binding recipeRunBinding) (*recipeLocalConsumer, error) {
@@ -29,14 +35,124 @@ func (c *recipeLocalConsumer) Next(ctx context.Context) (recipeConsumerProgress,
 	if c == nil || c.a == nil {
 		return recipeConsumerProgress{}, fmt.Errorf("missing local recipe consumer")
 	}
-	return c.a.recipeLocalNext(ctx, c.consumer)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for attempt := 0; attempt < 3; attempt++ {
+		if err := c.reconcileSelected(ctx); err != nil {
+			return recipeConsumerProgress{}, err
+		}
+		progress, err := c.a.recipeLocalNext(ctx, c.consumer)
+		if err != nil {
+			return progress, err
+		}
+		if progress.State == "no_work" || progress.CoverageRevision == c.auditRevision {
+			return progress, nil
+		}
+		c.audited = false
+	}
+	return recipeConsumerProgress{}, fmt.Errorf("recipe coverage changed repeatedly during reconciliation")
+}
+
+// Rebind checks the current local target and the previously authenticated
+// prefix under the header/run fence. No registry revision or range changes.
+func (c *recipeLocalConsumer) Rebind(ctx context.Context, height int64, hash string) error {
+	if c == nil || c.a == nil || c.consumer == nil || ctx == nil || height < 0 || !recipeStoreHashValid(hash) {
+		return fmt.Errorf("invalid Live recipe target")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	consumer := c.consumer
+	consumer.mu.Lock()
+	defer consumer.mu.Unlock()
+	if err := c.a.lockSelectedHeaders051(); err != nil {
+		return err
+	}
+	defer c.a.headerChainMu.RUnlock()
+	header, err := readHeaderAt(c.a.headersPath, height)
+	if err != nil {
+		return err
+	}
+	digest := hash256(header)
+	if reverseHex(digest[:]) != hash {
+		return fmt.Errorf("Live target differs from selected local header")
+	}
+	c.a.indexRunMu.Lock()
+	defer c.a.indexRunMu.Unlock()
+	if err = c.a.loadIndexRunLocked(); err != nil {
+		return err
+	}
+	run := c.a.indexRunState.Run
+	selection, _, err := recipeCheckRunIdentity(run, c.binding)
+	if err != nil {
+		return err
+	}
+	if selection.Live && run.Request.Out == nil {
+		if run.TargetHeight != height || run.TargetHash != hash {
+			return fmt.Errorf("Live target is no longer admitted")
+		}
+	} else if height != run.InitialTargetHeight {
+		return fmt.Errorf("finite target height changed")
+	}
+	if err := c.a.recipeLocalMarksLocked(run.Request); err != nil {
+		return err
+	}
+	old := consumer.plan
+	if old.TargetHeight == height && old.TargetHash == hash {
+		return nil
+	}
+	unchanged := false
+	if height >= old.TargetHeight && old.TargetHeight >= 0 {
+		if oldHeader, e := readHeaderAt(c.a.headersPath, old.TargetHeight); e == nil {
+			oldDigest := hash256(oldHeader)
+			unchanged = reverseHex(oldDigest[:]) == old.TargetHash
+		}
+	}
+	ownedRequest, err := recipeAdmissionCloneRequest(run.Request)
+	if err != nil {
+		return err
+	}
+	newPlan := old
+	newPlan.TargetHeight, newPlan.TargetHash = height, hash
+	newPlan.Request = ownedRequest
+	newPlan.NoWork = newPlan.EffectiveFrom > height
+	newPlan.PlanID = recipeAdmissionDigest(newPlan)
+	consumer.pending = nil
+	if unchanged && c.audited && c.auditSnapshot == recipeLocalSnapshotToken(old.TargetHeight, old.TargetHash) {
+		c.auditSnapshot = recipeLocalSnapshotToken(height, hash)
+	} else {
+		c.audited = false
+	}
+	if unchanged && consumer.haveObservation && consumer.observedChain == recipeLocalSnapshotToken(old.TargetHeight, old.TargetHash) {
+		consumer.observedChain = recipeLocalSnapshotToken(height, hash)
+		if consumer.complete && height > old.TargetHeight {
+			consumer.cursor = old.TargetHeight + 1
+			consumer.complete = false
+		}
+	} else {
+		consumer.cursor, consumer.complete, consumer.haveObservation = newPlan.EffectiveFrom, false, false
+	}
+	consumer.planMu.Lock()
+	consumer.plan = newPlan
+	consumer.planMu.Unlock()
+	return nil
 }
 
 func (c *recipeLocalConsumer) Apply(ctx context.Context, work recipeConsumerWork, block blockView, extraction *inscriptionBlockResult) error {
 	if c == nil || c.a == nil {
 		return fmt.Errorf("missing local recipe consumer")
 	}
-	return c.a.recipeLocalApply(ctx, c.consumer, c.binding, work, block, extraction)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	err := c.a.recipeLocalApply(ctx, c.consumer, c.binding, work, block, extraction)
+	if err == nil {
+		c.consumer.mu.Lock()
+		c.auditRevision = c.consumer.observedRevision
+		c.consumer.mu.Unlock()
+	}
+	return err
 }
 
 // A selected header's hash commits its ancestry. The token is stable across
@@ -118,7 +234,9 @@ func (a *app) recipeLocalNextObserved(ctx context.Context, consumer *recipeSpars
 	if consumer == nil || consumer.a != a {
 		return recipeConsumerProgress{}, fmt.Errorf("recipe consumer belongs to another app")
 	}
-	plan := consumer.plan // immutable after construction
+	consumer.planMu.RLock()
+	plan := consumer.plan
+	consumer.planMu.RUnlock()
 	token, _, err := a.recipeLocalObserve(ctx, plan, "", nil)
 	if err != nil {
 		return recipeConsumerProgress{}, err
@@ -134,11 +252,32 @@ func (a *app) recipeLocalNextObserved(ctx context.Context, consumer *recipeSpars
 	if err != nil {
 		return recipeConsumerProgress{}, err
 	}
+	consumer.planMu.RLock()
+	unchanged := consumer.plan.PlanID == plan.PlanID
+	consumer.planMu.RUnlock()
+	if !unchanged {
+		return recipeConsumerProgress{}, fmt.Errorf("recipe target changed during observation")
+	}
 	if _, _, err = a.recipeLocalObserve(ctx, plan, token, nil); err != nil {
 		return recipeConsumerProgress{}, err
 	}
 	if progress.Evidence != "none_no_work" {
 		progress.Evidence = "selected_local_headers_as_of_snapshot"
+		var through *int64
+		if progress.State == "range_complete" {
+			h := plan.TargetHeight
+			through = &h
+		} else if progress.Work != nil && progress.Work.Height > plan.EffectiveFrom {
+			h := progress.Work.Height - 1
+			through = &h
+		}
+		if through != nil {
+			_, hash, e := a.recipeLocalObserve(ctx, plan, token, through)
+			if e != nil {
+				return recipeConsumerProgress{}, e
+			}
+			progress.VerifiedThrough, progress.VerifiedHash = through, hash
+		}
 	}
 	return progress, nil
 }
@@ -154,6 +293,9 @@ func (a *app) recipeLocalConsumerGuard(ctx context.Context, binding recipeRunBin
 		return a.recipeLocalPublicationGuard(ctx, binding, block.Height, block.Hash)(func() error {
 			token, err := a.recipeLocalSnapshotLocked(plan)
 			if err != nil {
+				return err
+			}
+			if err := a.recipeLocalMarksLocked(plan.Request); err != nil {
 				return err
 			}
 			if token != work.ChainSnapshot {
@@ -186,8 +328,8 @@ func (a *app) recipeLocalConsumerGuard(ctx context.Context, binding recipeRunBin
 				return fmt.Errorf("recipe plan start differs from admitted track")
 			}
 			if selection.Live && run.Request.Out == nil {
-				if plan.TargetHeight > run.TargetHeight {
-					return fmt.Errorf("recipe plan exceeds admitted Live target")
+				if plan.TargetHeight != run.TargetHeight || plan.TargetHash != run.TargetHash {
+					return fmt.Errorf("recipe plan differs from admitted Live target")
 				}
 			} else if plan.TargetHeight != run.InitialTargetHeight {
 				return fmt.Errorf("recipe plan target differs from admitted finite target")

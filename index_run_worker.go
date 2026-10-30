@@ -405,9 +405,6 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 		if p.Recipe == nil || p.RecipeRevision != p.Recipe.Revision || p.RecipeSemanticHash != p.Recipe.SemanticHash {
 			return v, fmt.Errorf("recipe track lacks its admitted binding")
 		}
-		if c.Live && r.Request.Out == nil {
-			return v, fmt.Errorf("recipe Live target rebinding is not integrated")
-		}
 		plan := p.Recipe.expand(r.Request)
 		resolved, err := a.ResolveSavedRecipe(ctx, c.Index, plan.Revision, plan.SemanticHash)
 		if err != nil {
@@ -1474,6 +1471,21 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		if record.Request.Out == nil && anyLive && authority.Height >= 0 {
 			target, targetHash = authority.Height, authority.Hash
 		}
+		// A Live recipe publication fences against this durable target; install
+		// target changes before deriving any new work under it.
+		if record.Request.Out == nil && (record.TargetHeight != target || record.TargetHash != targetHash) {
+			liveRecipe := false
+			for _, selection := range record.Request.Consumers {
+				liveRecipe = liveRecipe || selection.Recipe && selection.Armed && selection.Live
+			}
+			if liveRecipe {
+				if err := a.saveRunProgress(id, "running", "", consumers, counts, target, targetHash); err != nil {
+					finish("failed", err.Error())
+					return
+				}
+				continue
+			}
+		}
 		nexts := map[int]int64{}
 		eligible := []int{}
 		failed, waiting := false, false
@@ -1499,6 +1511,12 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				continue
 			}
 			c.selection.Live = selection.Live
+			if selection.Recipe {
+				// Until the selected snapshot is rechecked, the previous
+				// height is historical rather than current coverage.
+				c.progress.Height, c.progress.BlockHash = -1, ""
+				c.progress.NextRequiredHeight = nil
+			}
 			if selection.Live && record.Request.Out == nil {
 				consumerTarget = target
 			}
@@ -1655,6 +1673,25 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 			var h int64
 			if c.recipe != nil {
+				recipeTarget, recipeHash := record.TargetHeight, record.TargetHash
+				if !selection.Live || record.Request.Out != nil {
+					recipeTarget = record.InitialTargetHeight
+					header, e := a.readSelectedHeader(recipeTarget)
+					if e != nil {
+						c.progress.State, c.progress.Reason = "waiting", e.Error()
+						waiting = true
+						continue
+					}
+					digest := hash256(header)
+					recipeHash = reverseHex(digest[:])
+				}
+				if e := c.recipe.Rebind(consumerCtx, recipeTarget, recipeHash); e != nil {
+					c.recipeWork = nil
+					c.progress.State, c.progress.Reason = "waiting", e.Error()
+					c.retryAfter = time.Now().Add(time.Second)
+					waiting = true
+					continue
+				}
 				observation, e := c.recipe.Next(consumerCtx)
 				if e != nil {
 					c.recipeWork = nil
@@ -1664,6 +1701,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 						waiting = true
 					}
 					continue
+				}
+				if observation.VerifiedThrough != nil {
+					c.progress.Height, c.progress.BlockHash = *observation.VerifiedThrough, observation.VerifiedHash
 				}
 				if observation.State == "range_complete" || observation.State == "no_work" {
 					c.recipeWork = nil
@@ -1778,6 +1818,27 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 			if queueParcelValidation(c, validationTarget, authority) || c.parcelBusy || c.progress.State == "waiting" && c.progress.ParcelValidationState != "blocked" {
 				waiting = true
+			}
+		}
+		if len(eligible) > 0 {
+			// Persist a changed recipe frontier before source acquisition can
+			// wait indefinitely; stale historical heights are not coverage.
+			dirty := false
+			for _, c := range consumers {
+				if !c.selection.Recipe {
+					continue
+				}
+				old, ok := indexRunProgressFor(record, c.selection.Index)
+				if !ok || old.Height != c.progress.Height || old.BlockHash != c.progress.BlockHash || indexDigest(old.NextRequiredHeight) != indexDigest(c.progress.NextRequiredHeight) || old.State != c.progress.State {
+					dirty = true
+					break
+				}
+			}
+			if dirty {
+				if err := a.saveRunProgress(id, "running", "", consumers, counts, target, targetHash); err != nil {
+					finish("failed", err.Error())
+					return
+				}
 			}
 		}
 		if len(eligible) == 0 {

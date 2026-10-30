@@ -137,12 +137,12 @@ func recipeRegistryCompile(raw []byte) (recipeRegistryView, []byte, error) {
 }
 
 // Runnable indicates the currently supported execution shape, not readiness or coverage.
-// Actual runs always require admission and a reviewed finite plan.
+// Actual runs always require admission and a reviewed plan.
 func recipeRegistryCapabilityNote(d recipeDefinition) string {
 	if len(d.Dependencies) != 0 {
 		return "Definition validated. Recipe dependencies are not available for execution."
 	}
-	return "Definition validated. Finite execution requires a reviewed plan and an explicit Out; Live is unavailable."
+	return "Definition validated. Finite and Live execution require a reviewed plan; Out caps either choice."
 }
 
 func recipeRegistryRead(root, id, revision string) (recipeRegistryView, error) {

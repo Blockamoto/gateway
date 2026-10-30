@@ -706,10 +706,7 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 				q.From = *req.In
 			}
 			q.State, q.AdmissionState = "ready", "admitted"
-			if req.Out == nil || c.Live {
-				q.State, q.AdmissionState = "blocked", "blocked"
-				q.Reason = "Saved recipes currently require a finite Out with Live Off."
-			} else if len(resolved.Definition.Dependencies) != 0 {
+			if len(resolved.Definition.Dependencies) != 0 {
 				q.State, q.AdmissionState = "blocked", "blocked"
 				q.Reason = "Dependency-backed recipe execution is not integrated with the index scheduler."
 			}
@@ -1337,11 +1334,6 @@ func (a *app) resumeIndexRun(ctx context.Context, r *indexRunRecord) (indexRunDo
 	})
 	if err != nil {
 		return indexRunDocument{}, err
-	}
-	for _, selection := range resumeRequest.Consumers {
-		if selection.Recipe && selection.Armed && r.Request.Out != nil && (plan.TargetHeight != r.InitialTargetHeight || plan.TargetHash != r.TargetHash) {
-			return indexRunDocument{}, fmt.Errorf("the admitted finite target changed; review the selected chain before resuming")
-		}
 	}
 	if !plan.Ready {
 		return indexRunDocument{}, indexRunPlanBlockedError{plan}

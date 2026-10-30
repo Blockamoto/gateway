@@ -188,9 +188,11 @@ func TestRecipeLocalConsumerDoesNotAdoptUntrustedCoverageCache(t *testing.T) {
 	if err != nil || claimed.Work == nil || claimed.Work.Height != 1 {
 		t.Fatalf("untrusted setup: %+v %v", claimed, err)
 	}
-	if _, err = local.Next(ctx); !errors.Is(err, errRecipeConsumerReorg) {
-		t.Fatalf("untrusted cache was adopted: %v", err)
+	checked, err := local.Next(ctx)
+	if err != nil || checked.Work == nil || checked.Work.Height != 0 {
+		t.Fatalf("untrusted cache was adopted: %+v %v", checked, err)
 	}
+	recipeGuardUncovered(t, local.consumer.store, 0)
 }
 
 func TestRecipeLocalNextDetectsSnapshotChangeWithEmptyCoverage(t *testing.T) {
@@ -268,5 +270,93 @@ func TestRecipeLocalNextDoesNotHoldHeaderWhileWaitingForConsumer(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Next did not finish")
+	}
+}
+
+func TestRecipeLiveRebindReusesOnlyUnchangedPrefix(t *testing.T) {
+	ctx := context.Background()
+	a, _, req := savedRecipeRunFixture(t)
+	req.Out = nil
+	req.Consumers[0].Live = true
+	a.setStatus(func(st *appStatus) { st.HeaderHeight = 0; st.HeaderCount = 1; st.TipHash = genesisHashDisplay })
+	plan, err := a.planIndexRun(ctx, req)
+	if err != nil || !plan.Ready {
+		t.Fatalf("plan: %+v %v", plan, err)
+	}
+	installRecipeCoordinatorFixture(t, a, plan)
+	snap := a.indexRunSnapshot()
+	binding, err := recipeBindRun(snap.Run, "custom-one", plan.Consumers[0].RecipeSemanticHash, plan.Consumers[0].RecipeRevision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	local, err := a.openRecipeLocalConsumer(ctx, plan.Consumers[0].Recipe.expand(plan.Request), binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, inventory := recipeConsumerGenesis(t)
+	first, err := local.Next(ctx)
+	if err != nil || first.Work == nil {
+		t.Fatalf("next: %+v %v", first, err)
+	}
+	if err = local.Apply(ctx, *first.Work, block, inventory); err != nil {
+		t.Fatal(err)
+	}
+	complete, err := local.Next(ctx)
+	if err != nil || complete.State != "range_complete" {
+		t.Fatalf("complete: %+v %v", complete, err)
+	}
+	header, err := a.readSelectedHeader(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := hash256(header)
+	nextHash := reverseHex(digest[:])
+	a.indexRunMu.Lock()
+	a.indexRunState.Run.TargetHeight = 1
+	a.indexRunState.Run.TargetHash = nextHash
+	a.indexRunMu.Unlock()
+	if err = local.Rebind(ctx, 1, nextHash); err != nil {
+		t.Fatal(err)
+	}
+	local.consumer.mu.Lock()
+	cursor, observed, has := local.consumer.cursor, local.consumer.observedChain, local.consumer.haveObservation
+	local.consumer.mu.Unlock()
+	if cursor != 1 || !has || observed != recipeLocalSnapshotToken(1, nextHash) {
+		t.Fatalf("unchanged prefix discarded: %d %t %s", cursor, has, observed)
+	}
+	next, err := local.Next(ctx)
+	if err != nil || next.Work == nil || next.Work.Height != 1 {
+		t.Fatalf("extended next: %+v %v", next, err)
+	}
+	// Corrupt the old prefix while leaving the current endpoint untouched. Force
+	// a new target identity so rebind cannot retain the previous cached prefix.
+	a.headerChainMu.Lock()
+	f, e := os.OpenFile(a.headersPath, os.O_WRONLY, 0)
+	if e == nil {
+		_, e = f.WriteAt(header, 0)
+		_ = f.Close()
+	}
+	a.headerChainMu.Unlock()
+	if e != nil {
+		t.Fatal(e)
+	}
+	a.indexRunMu.Lock()
+	a.indexRunState.Run.TargetHeight = 0
+	a.indexRunState.Run.TargetHash = nextHash
+	a.indexRunMu.Unlock()
+	if err = local.Rebind(ctx, 0, nextHash); err != nil {
+		t.Fatal(err)
+	}
+	blockOne := recipeCoordinatorSource(t)[1]
+	if err = local.Apply(ctx, *next.Work, blockOne, inventory); err == nil {
+		t.Fatal("stale work survived target rebind")
+	}
+	recipeGuardUncovered(t, local.consumer.store, 1)
+	if _, err = a.recipeLocalNext(ctx, local.consumer); !errors.Is(err, errRecipeConsumerReorg) {
+		t.Fatalf("changed prefix not detected: %v", err)
+	}
+	recovered, err := local.Next(ctx)
+	if err != nil || recovered.Work == nil || recovered.Work.Height != 0 {
+		t.Fatalf("changed prefix did not reconcile: %+v %v", recovered, err)
 	}
 }

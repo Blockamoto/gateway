@@ -23,6 +23,8 @@ type recipeConsumerProgress struct {
 	CoverageRevision uint64              `json:"coverage_revision"`
 	ChainSnapshot    string              `json:"chain_snapshot"`
 	Evidence         string              `json:"evidence"` // caller-supplied, not independent chain proof
+	VerifiedThrough  *int64              `json:"verified_through,omitempty"`
+	VerifiedHash     string              `json:"verified_hash,omitempty"`
 }
 
 // The guard must synchronously invoke publish while holding the authority for
@@ -32,6 +34,7 @@ type recipeConsumerGuard func(plan recipeAdmissionPlan, work recipeConsumerWork,
 
 type recipeSparseConsumer struct {
 	mu               sync.Mutex
+	planMu           sync.RWMutex // permits snapshot inspection without waiting for a running consumer
 	a                *app
 	plan             recipeAdmissionPlan
 	program          *recipeProgram

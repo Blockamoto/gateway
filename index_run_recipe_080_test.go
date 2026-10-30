@@ -220,7 +220,7 @@ func TestSavedRecipeRunBindingSurvivesUnrelatedAmendment(t *testing.T) {
 	}
 }
 
-func TestSavedRecipeFinitePlanBlocksLiveAndDependencies(t *testing.T) {
+func TestSavedRecipePlanSupportsLiveAndBlocksDependencies(t *testing.T) {
 	ctx := context.Background()
 	a, view, req := savedRecipeRunFixture(t)
 	req.Consumers[0].Live = true
@@ -228,8 +228,8 @@ func TestSavedRecipeFinitePlanBlocksLiveAndDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Ready || plan.Consumers[0].AdmissionState != "blocked" {
-		t.Fatal("Live recipe admitted")
+	if !plan.Ready || plan.Consumers[0].AdmissionState != "admitted" {
+		t.Fatal("bounded Live recipe blocked")
 	}
 	req.Consumers[0].Live = false
 	req.Out = nil
@@ -237,8 +237,8 @@ func TestSavedRecipeFinitePlanBlocksLiveAndDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Ready || plan.Consumers[0].AdmissionState != "blocked" {
-		t.Fatal("unbounded recipe admitted")
+	if !plan.Ready || plan.Consumers[0].AdmissionState != "admitted" {
+		t.Fatal("finite snapshot recipe blocked")
 	}
 	childJSON := fmt.Sprintf(`{"format":"gateway-recipe","version":1,"id":"child","name":"Child","source":"bitcoin.reveal","origin":0,"history":"sparse","dependencies":[{"name":"parent","instance":"custom-one","revision":%q,"semantic_hash":%q,"export":"kind","coverage":"same_block","type":"text"}],"tables":[{"name":"items","key":"ref"}],"steps":[{"op":"write","table":"items","row":{"ref":{"field":["ref"]}}}]}`, view.Revision, view.SemanticHash)
 	registryView(t, indexInterfaceCall(indexInterfaceHandler(a), "POST", "/api/v1/index/recipes", registryPayload(childJSON, "")))

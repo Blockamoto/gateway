@@ -62,7 +62,7 @@ func recipeResolveView(view recipeRegistryView) (resolvedSavedRecipe, error) {
 	if !supported || !recipeStoreHashValid(view.Revision) || !recipeStoreHashValid(view.SemanticHash) {
 		return resolvedSavedRecipe{}, fmt.Errorf("saved recipe capability or identity is invalid")
 	}
-	execution := "finite_independent"
+	execution := "independent_finite_and_live"
 	if len(view.Recipe.Dependencies) != 0 {
 		execution = "dependency_scheduling_unavailable"
 	}

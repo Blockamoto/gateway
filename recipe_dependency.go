@@ -171,6 +171,9 @@ func (a *app) recipeDependencyInputs(ctx context.Context, d recipeDefinition, he
 // Caller holds recipeStoreMutex.
 func recipeDependencyReadLocked(ctx context.Context, store *recipeStore, height int64) (recipeStoreUnit, recipeStoreRef, bool, error) {
 	var ref recipeStoreRef
+	if err := store.rejectReconcileFenceLocked(); err != nil {
+		return recipeStoreUnit{}, ref, false, err
+	}
 	h, err := store.head()
 	if err != nil {
 		return recipeStoreUnit{}, ref, false, err

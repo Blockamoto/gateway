@@ -360,6 +360,9 @@ func (s *recipeStore) publish(ctx context.Context, u recipeStoreUnit, expectedRe
 	return recipeStoreGuarded(guard, func() error {
 		recipeStoreMutex.Lock()
 		defer recipeStoreMutex.Unlock()
+		if err := s.rejectReconcileFenceLocked(); err != nil {
+			return err
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -428,6 +431,9 @@ func (s *recipeStore) Read(ctx context.Context, height int64) (recipeStoreUnit, 
 	}
 	recipeStoreMutex.Lock()
 	defer recipeStoreMutex.Unlock()
+	if err := s.rejectReconcileFenceLocked(); err != nil {
+		return u, false, err
+	}
 	h, err := s.head()
 	if err != nil {
 		return u, false, err
@@ -451,7 +457,7 @@ func (s *recipeStore) Read(ctx context.Context, height int64) (recipeStoreUnit, 
 // atomically. It rejects stale or missing pairs and preserves all old units and
 // pages. The guard must hold the chain/admission fence over the whole commit.
 func (s *recipeStore) Reconcile(ctx context.Context, anchors map[int64]string, guard recipeStoreGuard) error {
-	return s.reconcile(ctx, 0, anchors, guard)
+	return s.reconcile(ctx, 0, anchors, guard, false)
 }
 
 // ReconcileAtRevision fences an enumeration/reorg plan against concurrent
@@ -461,10 +467,10 @@ func (s *recipeStore) ReconcileAtRevision(ctx context.Context, revision uint64, 
 	if revision == 0 {
 		return fmt.Errorf("missing recipe plan revision")
 	}
-	return s.reconcile(ctx, revision, anchors, guard)
+	return s.reconcile(ctx, revision, anchors, guard, false)
 }
 
-func (s *recipeStore) reconcile(ctx context.Context, revision uint64, anchors map[int64]string, guard recipeStoreGuard) error {
+func (s *recipeStore) reconcile(ctx context.Context, revision uint64, anchors map[int64]string, guard recipeStoreGuard, journal bool) error {
 	if ctx == nil || len(anchors) == 0 || len(anchors) > 100000 {
 		return fmt.Errorf("invalid recipe reconciliation")
 	}
@@ -476,6 +482,19 @@ func (s *recipeStore) reconcile(ctx context.Context, revision uint64, anchors ma
 	return recipeStoreGuarded(guard, func() error {
 		recipeStoreMutex.Lock()
 		defer recipeStoreMutex.Unlock()
+		if journal {
+			fence, err := s.readReconcileFenceLocked()
+			if err != nil {
+				return err
+			}
+			for height := range anchors {
+				if height < fence.From || height > fence.To {
+					return fmt.Errorf("reconciliation batch exceeds fenced range")
+				}
+			}
+		} else if err := s.rejectReconcileFenceLocked(); err != nil {
+			return err
+		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -541,6 +560,9 @@ const recipeCoverageMaxTreePages = 16384
 // A successful empty page means only that this committed store snapshot has no
 // units in this interval; callers still need selected-chain authority.
 func (s *recipeStore) Coverage(ctx context.Context, from, to int64, after *int64, expectedRevision uint64, limit int) (recipeCoveragePage, error) {
+	return s.coverage(ctx, from, to, after, expectedRevision, limit, false)
+}
+func (s *recipeStore) coverage(ctx context.Context, from, to int64, after *int64, expectedRevision uint64, limit int, journal bool) (recipeCoveragePage, error) {
 	var result recipeCoveragePage
 	if ctx == nil || from < 0 || to < from || limit < 1 || limit > recipeCoverageMaxPage || after != nil && (*after < from || *after > to || expectedRevision == 0) {
 		return result, fmt.Errorf("invalid recipe coverage request")
@@ -550,6 +572,17 @@ func (s *recipeStore) Coverage(ctx context.Context, from, to int64, after *int64
 	}
 	recipeStoreMutex.Lock()
 	defer recipeStoreMutex.Unlock()
+	if journal {
+		fence, err := s.readReconcileFenceLocked()
+		if err != nil {
+			return result, err
+		}
+		if from < fence.From || to > fence.To {
+			return result, fmt.Errorf("reconciliation coverage exceeds fenced range")
+		}
+	} else if err := s.rejectReconcileFenceLocked(); err != nil {
+		return result, err
+	}
 	h, err := s.head()
 	if err != nil {
 		return result, err

@@ -193,11 +193,12 @@ window.GatewayIndexTransport = (() => {
       changed(Object.hasOwn(patch,'armed')||Object.hasOwn(patch,'live')||Object.hasOwn(patch,'parcel_evidence_route')?[id]:[]);
       if(!wasArmed&&c.armed&&Object.hasOwn(patch,'armed'))offerLocatorCompanion([id],trigger);return copy(c);
     }
-    function setRecipeSelection(id,armed){
+    function setRecipeSelection(id,armed,live){
       if(!initialized) throw Error('Run controls are still loading. Refresh recipes and try again.');
       if(!id || (armed&&deferredBitmap(id)) || (snapshot.definitions||[]).some(d=>d.id===id)) throw Error('This recipe ID conflicts with an existing index.');
       const existing=consumers.get(id);if(existing && existing.recipe!==true) throw Error('This ID already belongs to an index selection.');
-      consumers.set(id,{...(existing||{}),index:id,recipe:true,armed:!!armed,mode:'lean',live:false});changed([id]);
+      if(live!==undefined&&!armed) throw Error('Arm this recipe before changing Live.');
+      consumers.set(id,{...(existing||{}),index:id,recipe:true,armed:!!armed,mode:'lean',live:live===undefined?!!existing?.live:!!live});changed([id]);
     }
     function currentPoint(){return hasResource?lastPoint:point(timeline.getNavigationPoint());}
     function setMark(edge,value=currentPoint()){const p=point(value);if(!p){notify?.('This resource has no established timeline position. Select a known block or output location first.',true);return false;}const candidate={...marks,[edge]:p},range=project(candidate);if(!range.valid){notify?.(range.reason,true);return false;}marks=candidate;changed();return true;}
@@ -386,7 +387,7 @@ window.GatewayIndexTransport = (() => {
     function shortcut(event){if(event.defaultPrevented||event.isComposing||event.repeat||event.ctrlKey||event.metaKey||event.altKey)return;const target=event.target;if(target?.closest?.('.index-help-trigger,.index-help-popover,input,textarea,select,[contenteditable]:not([contenteditable="false"]),dialog,[role="dialog"],[role="menu"]'))return;if(!root.contains(target)&&target!==doc.body)return;const key=String(event.key).toLowerCase();if(key!=='i'&&key!=='o')return;event.preventDefault();event.stopPropagation();setMark(key==='i'?'in':'out');}
     doc.addEventListener('keydown',shortcut,true);
     doc.addEventListener('gateway:timeline-options',event=>{if(event.detail?.index)setConsumerOptions(event.detail.index,event.detail.options||{});});
-    const result={update,paint,setRecipeSelection,getRecipeSelection:id=>!!consumers.get(id)?.recipe&&!!consumers.get(id)?.armed,getRunDraft:()=>copy(request()),showRunStatus:showStatus,setConsumerOptions,acceptGlobalResource,setGlobalRange,setMark,getGlobalMarks:()=>copy(marks),getGlobalRanges:()=>{const r=project(marks);return r.valid&&integer(r.in)&&integer(r.out)?[{from:r.in,to:r.out}]:[];},inspectIndex:(id,options)=>inspect?.(id,options),teardown(){dead=true;closeLocatorPrompt();closeUTXOPrompt();closeStartReview();win.clearTimeout(headerExpiryTimer);headerHost.removeEventListener('gateway:network-status',repaintHeaders);doc.removeEventListener('keydown',shortcut,true);toolbar.remove();for(const layer of layers.values())layer.remove();}};
+    const result={update,paint,setRecipeSelection,getRecipeSelection:id=>!!consumers.get(id)?.recipe&&!!consumers.get(id)?.armed,getRecipeLive:id=>!!consumers.get(id)?.recipe&&!!consumers.get(id)?.live,getRunDraft:()=>copy(request()),showRunStatus:showStatus,setConsumerOptions,acceptGlobalResource,setGlobalRange,setMark,getGlobalMarks:()=>copy(marks),getGlobalRanges:()=>{const r=project(marks);return r.valid&&integer(r.in)&&integer(r.out)?[{from:r.in,to:r.out}]:[];},inspectIndex:(id,options)=>inspect?.(id,options),teardown(){dead=true;closeLocatorPrompt();closeUTXOPrompt();closeStartReview();win.clearTimeout(headerExpiryTimer);headerHost.removeEventListener('gateway:network-status',repaintHeaders);doc.removeEventListener('keydown',shortcut,true);toolbar.remove();for(const layer of layers.values())layer.remove();}};
     update(getSnapshot?.()||{});return result;
   }
   return {point,compare,project,owner,parcelDefinition,parcelEvidenceOptions,processingAvailable,visibleSnapshot,includeConsumer,executionRequest,rangePolicy,utxoLeadIn,startReviewChoices,startReviewOutcome,stagedProgressText,headerControlState,mount};

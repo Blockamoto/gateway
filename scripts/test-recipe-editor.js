@@ -19,6 +19,32 @@ const traitGuided={...guided,filterMode:'trait',filterKey:'eye.color',filterValu
 const traitRecipe=JSON.parse(JSON.stringify(editor.fromGuided(traitGuided)));
 assert.deepEqual(traitRecipe.steps[0].test.args[0].args[0],{field:['properties','attributes','traits','eye.color']});
 assert.deepEqual(editor.toGuided(traitRecipe),traitGuided);
+const parentGuided={...guided,id:'parent',name:'Parent',valueColumn:'kind',valuePath:'content_type',exportName:'kind',exportColumn:'kind',exportType:'text'};
+const parentRecipe=JSON.parse(JSON.stringify(editor.fromGuided(parentGuided)));
+assert.deepEqual(parentRecipe.exports,[{name:'kind',kind:'same_block',table:'reveals',column:'kind',type:'text'}]);
+assert.deepEqual(editor.toGuided(parentRecipe),parentGuided);
+const childGuided={...guided,id:'child',name:'Child',dependencyName:'parent',dependencyInstance:'parent',dependencyRevision:'a'.repeat(64),dependencySemanticHash:'b'.repeat(64),dependencyExport:'kind',dependencyType:'text',lookupColumn:'kind'};
+const childRecipe=JSON.parse(JSON.stringify(editor.fromGuided(childGuided)));
+assert.deepEqual(childRecipe.dependencies,[{name:'parent',instance:'parent',revision:'a'.repeat(64),semantic_hash:'b'.repeat(64),export:'kind',coverage:'same_block',type:'text'}]);
+assert.deepEqual(childRecipe.steps,[{op:'let',as:'dependency_value',value:{call:'dependency.lookup',args:[{literal:'parent'},{field:['ref']}]}},{op:'require',test:{call:'valid',args:[{variable:'dependency_value'}]}},{op:'write',table:'reveals',row:{id:{field:['ref']},kind:{variable:'dependency_value'}}}]);
+assert.deepEqual(editor.toGuided(childRecipe),childGuided);
+assert.throws(()=>editor.fromGuided({...childGuided,dependencyInstance:'child'}),/different parent/);
+assert.equal(editor.toGuided(editor.fromGuided({...childGuided,filterPath:'txid',filterValue:'"x"'})).filterPath,'txid');
+assert.throws(()=>editor.fromGuided({...parentGuided,exportColumn:'missing'}),/existing output column/);
+for(const mutate of [d=>d.dependencies[0].coverage='snapshot',d=>d.dependencies[0].extra=true,d=>d.steps[1].test.call='present',d=>d.steps.push(d.steps[2]),d=>d.exports=[]]){const d=structuredClone(childRecipe);mutate(d);const raw=JSON.stringify(d);assert.equal(editor.toGuided(d),null);assert.equal(JSON.stringify(d),raw,'unsupported dependency forms remain untouched');}
+const composite={...guided,filterPath:'metaprotocol',filterValue:'"labitbu"',extraFilters:[{mode:'metadata',path:'',key:'name',value:'"sats"'},{mode:'trait',path:'',key:'eye.color',value:'"blue"'},{mode:'trait',path:'',key:'hat',value:'true'},{mode:'metadata',path:'',key:'other',value:'null'}],valueColumn:'txid',valuePath:'txid',extraColumns:[{name:'block',path:'block_hash'},{name:'mime',path:'content_type'}]};
+const compositeRecipe=JSON.parse(JSON.stringify(editor.fromGuided(composite)));
+assert.equal(compositeRecipe.steps.filter(s=>s.op==='require').length,5);
+assert.deepEqual(compositeRecipe.steps.filter(s=>s.op==='let').map(s=>s.as),['metadata_value','metadata_value_2']);
+assert.deepEqual(Object.keys(compositeRecipe.steps.at(-1).row),['id','txid','block','mime']);
+assert.deepEqual(editor.toGuided(compositeRecipe),composite,'all guided filters and projections round-trip');
+assert.deepEqual(JSON.parse(JSON.stringify(editor.fromGuided(editor.toGuided(compositeRecipe)))),compositeRecipe,'guided JSON structure round-trips');
+const childComposite={...childGuided,filterPath:'metaprotocol',filterValue:'"labitbu"',extraFilters:[{mode:'trait',path:'',key:'hat',value:'true'}],valueColumn:'txid',valuePath:'txid',extraColumns:[{name:'mime',path:'content_type'}]};
+assert.deepEqual(editor.toGuided(editor.fromGuided(childComposite)),childComposite,'parent lookup composes with filters and columns');
+assert.throws(()=>editor.fromGuided({...composite,extraColumns:[{name:'id',path:'txid'}]}),/distinct/);
+assert.throws(()=>editor.fromGuided({...composite,extraFilters:[{mode:'trait',path:'',key:'hat',value:'1.5'}]}),/support text/);
+assert.throws(()=>editor.fromGuided({...guided,extraFilters:[{mode:'field',path:'txid',key:'',value:'"x"'}]}),/first filter/);
+for(const mutate of [d=>d.steps[1].as='other',d=>d.steps[0].test.call='or',d=>d.steps.at(-1).row.txid={literal:'x'}]){const d=structuredClone(compositeRecipe);mutate(d);const raw=JSON.stringify(d);assert.equal(editor.toGuided(d),null);assert.equal(JSON.stringify(d),raw,'unsupported compositional forms remain untouched');}
 assert.deepEqual(editor.cataloguePaths({version:1,sources:[{id:'bitcoin.reveal',fields:[{path:['ref']},{path:['properties','status']},{path:['properties','attributes','traits'],dynamic_tail:true}]}]}),['ref','properties.status']);
 assert.deepEqual(editor.cataloguePaths({version:2,sources:[]}),[]);
 
@@ -35,12 +61,19 @@ assert.throws(()=>editor.fromGuided({...g,origin:'1.5'}),/whole block/);
 assert.throws(()=>editor.fromGuided({...g,keyPath:'x..y'}),/field path/);
 const strange=editor.fromGuided({...guided,key:'__proto__'}); assert.equal(Object.hasOwn(strange.steps[0].row,'__proto__'),true);
 (async()=>{
- const names=['raw','status','guided','id','name','origin','table','key','keyPath','filterMode','filterPath','filterKey','filterValue','valueColumn','valuePath','apply','reset','import','export','validate','save','refresh','load','saved','save-note','field-list'];
- const nodes=Object.fromEntries(names.map(name=>[name,{value:'',textContent:'',disabled:false,events:{},addEventListener(type,fn){this.events[type]=fn;},replaceChildren(...children){this.children=children;}}]));
+ class FakeNode {constructor(){this.value='';this.textContent='';this.disabled=false;this.events={};this.children=[];}addEventListener(type,fn){this.events[type]=fn;}replaceChildren(...children){this.children=children;}append(...children){this.children.push(...children);}setAttribute() {}}
+ const names=['raw','status','guided','id','name','origin','table','key','keyPath','filterMode','filterPath','filterKey','filterValue','valueColumn','valuePath','exportName','exportColumn','exportType','dependencyName','dependencyInstance','dependencyRevision','dependencySemanticHash','dependencyExport','dependencyType','lookupColumn','parentChoice','parentExportChoice','parentRefresh','parentUse','parentStatus','extraFilters','extraColumns','addFilter','addColumn','apply','reset','import','export','validate','save','refresh','load','saved','save-note','field-list'];
+ const nodes=Object.fromEntries(names.map(name=>[name,new FakeNode()]));
  const calls=[];let handler=async()=>({});
- const root={ownerDocument:{createElement(){return {value:'',textContent:''};}},querySelector(selector){return nodes[selector.match(/"([^"]+)"/)[1]];}};
+ const root={ownerDocument:{createElement(){return new FakeNode();}},querySelector(selector){return nodes[selector.match(/"([^"]+)"/)[1]];}};
  editor.mount(root,{request:async(action,body)=>{calls.push({action,body});return handler(action,body);}});
  await Promise.resolve(); await Promise.resolve();
+ nodes.filterPath.value='metaprotocol';nodes.filterValue.value='"labitbu"';nodes.addFilter.events.click();
+ let filterRow=nodes.extraFilters.children[0],extraMode=filterRow.children[0].children[0],extraKey=filterRow.children[2].children[0],extraValue=filterRow.children[3].children[0];
+ extraMode.value='trait';extraMode.events.input();extraKey.value='hat';extraKey.events.input();extraValue.value='true';extraValue.events.input();
+ nodes.valueColumn.value='txid';nodes.valuePath.value='txid';nodes.addColumn.events.click();const columnRow=nodes.extraColumns.children[0],columnName=columnRow.children[0].children[0],columnPath=columnRow.children[1].children[0];columnName.value='mime';columnName.events.input();columnPath.value='content_type';columnPath.events.input();nodes.apply.events.click();
+ let built=JSON.parse(nodes.raw.value);assert.equal(built.steps.length,3);assert.equal(built.steps[1].test.args[0].args[0].field[3],'hat');assert.equal(built.steps[2].row.mime.field[0],'content_type');assert.equal(nodes.extraFilters.children.length,1);assert.equal(nodes.extraColumns.children.length,1);
+ filterRow=nodes.extraFilters.children[0];filterRow.children.at(-1).events.click();assert.equal(nodes.extraFilters.children.length,0);nodes.extraColumns.children[0].children.at(-1).events.click();assert.equal(nodes.extraColumns.children.length,0);nodes.reset.events.click();
  nodes.filterMode.value='metadata';nodes.filterMode.events.input();nodes.filterKey.value='name';nodes.filterValue.value='"sats"';nodes.apply.events.click();assert.deepEqual(JSON.parse(nodes.raw.value).steps,metadataRecipe.steps);
  nodes.filterMode.value='trait';nodes.filterMode.events.input();nodes.filterKey.value='eye.color';nodes.filterValue.value='"blue"';nodes.apply.events.click();assert.deepEqual(JSON.parse(nodes.raw.value).steps,traitRecipe.steps);
  nodes.filterMode.value='field';nodes.filterMode.events.input(); nodes.filterPath.value='metaprotocol';nodes.filterValue.value='"ord"';nodes.apply.events.click();
@@ -86,5 +119,17 @@ const strange=editor.fromGuided({...guided,key:'__proto__'}); assert.equal(Objec
  globalThis.document=priorDocument;globalThis.Blob=priorBlob;URL.createObjectURL=priorCreate;URL.revokeObjectURL=priorRevoke;
 
 
+ // Parent export discovery never changes the draft and cannot attach a stale result.
+ nodes.reset.events.click();const beforeParent=nodes.raw.value;let finishParent;
+ handler=async(action)=>{if(action==='')return [{recipe:{id:'parent',name:'Parent'},validated:true}];if(action==='?id=parent')return new Promise(resolve=>finishParent=resolve);return {};};
+ await nodes.parentRefresh.events.click();nodes.parentChoice.value='parent';const fetching=nodes.parentChoice.events.change();nodes.name.value='newer';nodes.name.events.input();finishParent({recipe:parentRecipe,validated:true,revision:'a'.repeat(64),semantic_hash:'b'.repeat(64)});await fetching;
+ assert.equal(nodes.parentExportChoice.children.length,1,'late parent fetch is discarded after draft edit');assert.equal(nodes.raw.value,beforeParent,'discovery never mutates raw recipe');
+ let pendingParent={};handler=action=>new Promise(resolve=>pendingParent[action]=resolve);
+ nodes.parentChoice.value='parent';const firstParent=nodes.parentChoice.events.change();nodes.parentChoice.value='other';const secondParent=nodes.parentChoice.events.change();
+ pendingParent['?id=parent']({recipe:parentRecipe,validated:true,revision:'a'.repeat(64),semantic_hash:'b'.repeat(64)});await firstParent;assert.equal(nodes.parentExportChoice.children.length,1,'old parent cannot populate the new selection');
+ pendingParent['?id=other']({recipe:{...parentRecipe,id:'other'},validated:true,revision:'c'.repeat(64),semantic_hash:'d'.repeat(64)});await secondParent;assert.equal(nodes.parentExportChoice.children[1].value,'kind');
+ nodes.parentChoice.value='parent';handler=async()=>({recipe:parentRecipe,validated:true,revision:'a'.repeat(64),semantic_hash:'b'.repeat(64)});await nodes.parentChoice.events.change();nodes.parentExportChoice.value='kind';nodes.parentUse.events.click();
+ assert.equal(nodes.dependencyRevision.value,'a'.repeat(64));assert.equal(nodes.dependencySemanticHash.value,'b'.repeat(64));assert.equal(nodes.dependencyType.value,'text');assert.match(nodes.parentStatus.textContent,/execution remains unavailable/);assert.equal(nodes.raw.value,beforeParent,'explicit pin waits for Apply');
+ nodes.lookupColumn.value='kind';nodes.apply.events.click();assert.equal(JSON.parse(nodes.raw.value).dependencies[0].revision,'a'.repeat(64));
  console.log('Recipe draft editor PASS: guided/JSON round-trip, safe unsupported forms, validation, registry concurrency and stale-response handling.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

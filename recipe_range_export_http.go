@@ -47,7 +47,7 @@ func (a *app) handleRecipeRangeExport(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 409, err)
 		return
 	}
-	if root.History != "sparse" || (root.Source != "bitcoin.reveal" && root.Source != "bitcoin.transaction") {
+	if root.History != "sparse" || !recipeSparseSource(root.Source) {
 		jsonError(w, 400, fmt.Errorf("row range export requires a sparse recipe"))
 		return
 	}

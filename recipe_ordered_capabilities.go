@@ -19,7 +19,9 @@ func recipeOrderedFunctions() []recipeFunctionCapability {
 		function("add_money", "uint", arg("left", "uint"), arg("right", "uint")), function("sub_money", "uint", arg("left", "uint"), arg("right", "uint")),
 		function("less_equal", "bool", arg("left", "uint"), arg("right", "uint")),
 		function("outpoint", "text", arg("txid", "text"), arg("vout", "uint")),
+		function("output_ref", "text", arg("height", "uint"), arg("tx_index", "uint"), arg("vout", "uint")),
 		function("destination", "object", arg("script", "bytes")), function("retains", "bool", arg("height", "uint"), arg("script", "bytes")),
+		function("payment_destination", "object", arg("script", "bytes")),
 		function("bip30_exception", "bool", arg("height", "uint"), arg("block", "text"), arg("coinbase", "bool")),
 		function("get", "any", arg("object", "object"), arg("key", "text")),
 	}

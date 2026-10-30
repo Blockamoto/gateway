@@ -207,7 +207,7 @@ func recipeOrderedProgramValidate(p recipeOrderedProgram, allowEmit bool) error 
 			return fmt.Errorf("invalid resumable expression")
 		}
 		if e.Call != "" {
-			arity := map[string]int{"eq": 2, "not": 1, "present": 1, "add_money": 2, "sub_money": 2, "less_equal": 2, "outpoint": 2, "retains": 2, "bip30_exception": 3, "get": 2, "destination": 1}
+			arity := map[string]int{"eq": 2, "not": 1, "present": 1, "add_money": 2, "sub_money": 2, "less_equal": 2, "outpoint": 2, "output_ref": 3, "retains": 2, "bip30_exception": 3, "get": 2, "destination": 1, "payment_destination": 1}
 			want, ok := arity[e.Call]
 			if !ok || len(e.Args) != want {
 				return fmt.Errorf("unsupported resumable function: %s", e.Call)

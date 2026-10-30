@@ -725,7 +725,7 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 				q.From = *req.In
 			}
 			q.State, q.AdmissionState = "ready", "admitted"
-			if resolved.Source == "bitcoin.ordered" {
+			if resolved.Source == "bitcoin.ordered" && resolved.History == "ordered" {
 				if e = a.planOrderedRecipeState(ctx, resolved, c, &q); e != nil {
 					return p, e
 				}

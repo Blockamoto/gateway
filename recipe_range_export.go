@@ -155,7 +155,7 @@ func (e *recipeRangeExportEvidence) checkUnit(ctx context.Context, height int64,
 }
 
 func (a *app) writeRecipeRangeExport(ctx context.Context, root resolvedSavedRecipe, from, to int64, destination io.Writer) (meta recipeRangeExportMetadata, err error) {
-	if ctx == nil || destination == nil || from < 0 || to < from || to > (int64(^uint64(0)>>1)/80)-1 || root.History != "sparse" || (root.Source != "bitcoin.transaction" && root.Source != "bitcoin.reveal") {
+	if ctx == nil || destination == nil || from < 0 || to < from || to > (int64(^uint64(0)>>1)/80)-1 || root.History != "sparse" || !recipeSparseSource(root.Source) {
 		return meta, fmt.Errorf("range export needs a sparse recipe and a valid inclusive header range")
 	}
 	if err = ctx.Err(); err != nil {

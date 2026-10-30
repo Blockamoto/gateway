@@ -1,0 +1,43 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "output-destinations",
+  "name": "Output destinations",
+  "source": "bitcoin.ordered",
+  "origin": 0,
+  "history": "sparse",
+  "storage": "rows.json.v1",
+  "dependencies": [],
+  "exports": [{"name":"destination","kind":"same_block","table":"outputs","column":"destination","type":"text"}],
+  "tables": [{"name":"outputs","key":"ref"}],
+  "ordered": {
+    "steps": [{
+      "op": "for_events",
+      "body": [{
+        "op": "if",
+        "expr": {"call":"eq","args":[{"field":"kind"},{"literal":{"kind":"text","text":"output"}}]},
+        "body": [{
+          "op": "let", "name": "destination",
+          "expr": {"call":"destination","args":[{"field":"script"}]}
+        }, {
+          "op": "if",
+          "expr": {"call":"get","args":[{"var":"destination"},{"literal":{"kind":"text","text":"supported"}}]},
+          "body": [{
+            "op": "let", "name": "ref",
+            "expr": {"call":"output_ref","args":[{"field":"height"},{"field":"tx_index"},{"field":"vout"}]}
+          }, {
+            "op": "emit", "table": "outputs", "key": {"var":"ref"},
+            "expr": {"object": {
+              "ref": {"var":"ref"},
+              "destination": {"call":"get","args":[{"var":"destination"},{"literal":{"kind":"text","text":"destination"}}]},
+              "script_type": {"call":"get","args":[{"var":"destination"},{"literal":{"kind":"text","text":"kind"}}]},
+              "value_sats": {"field":"value"},
+              "script": {"field":"script"},
+              "block_hash": {"field":"block"}
+            }}
+          }]
+        }]
+      }]
+    }]
+  }
+}

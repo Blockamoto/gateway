@@ -154,6 +154,12 @@ func (p *recipeProgram) semanticHash() string {
 	d := p.definition
 	d.ID, d.Name = "", ""
 	if d.Source == "bitcoin.ordered" {
+		if d.History == "sparse" {
+			return indexDigest(struct {
+				Document, Interpreter, Stream, Source, Physical string
+				Definition                                      recipeDefinition
+			}{recipeOrderedDocumentProfile, recipeOrderedProfile, recipeOrderedStreamProfile, recipeOrderedSourceProfile, recipeOrderedSparseStorage, d})
+		}
 		return indexDigest(struct {
 			Document, Interpreter, Stream, Source, Bitcoin, Physical string
 			Definition                                               recipeDefinition

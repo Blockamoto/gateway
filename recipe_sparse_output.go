@@ -150,7 +150,7 @@ func recipeOutputDownloadURL(prepared resolvedSavedRecipe, height int64, offset 
 	return "/api/v1/index/recipes/output?" + q.Encode()
 }
 func (a *app) downloadRecipeSparseOutput(w http.ResponseWriter, r *http.Request, prepared resolvedSavedRecipe, height int64, offset int, token, kind string) {
-	if prepared.Source == "bitcoin.ordered" || (kind != "row" && kind != "unit") || !recipeStoreHashValid(token) {
+	if prepared.History == "ordered" || (kind != "row" && kind != "unit") || !recipeStoreHashValid(token) {
 		jsonError(w, 400, fmt.Errorf("download needs a sparse unit token and row or unit selection"))
 		return
 	}

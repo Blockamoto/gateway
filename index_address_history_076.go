@@ -156,6 +156,9 @@ func (s *addressHistoryStore) readJSON(ctx context.Context, path string, target 
 	return ctx.Err()
 }
 func openAddressHistoryStoreContext(ctx context.Context, root string) (*addressHistoryStore, error) {
+	if err := recipeAddressHistoryCheckNative(); err != nil {
+		return nil, err
+	}
 	s := &addressHistoryStore{root: root, dir: filepath.Join(root, "indexes", "address-history"), head: addressHistoryHead{Schema: addressHistorySchema, Height: -1, LastHeight: -1, Coverage: []heightInterval{}}}
 	var pointer struct {
 		Commitment string `json:"commitment"`
@@ -333,23 +336,23 @@ func (s *addressHistoryStore) visitBlockFacts(ctx context.Context, b addressHist
 		if p.Height != b.Height || p.BlockHash != b.BlockHash || !p.Values || !p.Scripts {
 			return fmt.Errorf("incomplete or mismatched address fact page")
 		}
-		for i, row := range p.Rows {
-			script, e := hex.DecodeString(*row.Script)
-			if e != nil {
-				return e
+		err := recipeAddressHistoryVisit(ctx, b.DestinationVersion, func(emit func(outputFactRef, outputFact) error) error {
+			for i, row := range p.Rows {
+				fact := outputFact{Height: b.Height, BlockHash: b.BlockHash, TxIndex: row.TxIndex, Vout: row.Vout, ValueSats: *row.Value, ScriptPubKey: *row.Script, Coinbase: row.TxIndex == 0}
+				if err := emit(outputFactRef{hash, uint32(i)}, fact); err != nil {
+					return err
+				}
 			}
-			typ, address := describeScript(script)
-			if b.DestinationVersion == 1 {
-				typ, address = describeDestinationScript(script)
-			}
-			if address == "" {
-				continue
-			}
-			f := outputFact{Height: b.Height, BlockHash: b.BlockHash, TxIndex: row.TxIndex, Vout: row.Vout, ValueSats: *row.Value, ScriptPubKey: *row.Script, Coinbase: row.TxIndex == 0}
-			if e = visit(address, typ, outputFactRef{hash, uint32(i)}, f); e != nil {
-				return e
+			return nil
+		}, func(address, kind string, ref outputFactRef, fact outputFact) error {
+			if err := visit(address, kind, ref, fact); err != nil {
+				return err
 			}
 			count++
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 	if count != b.AddressOutputs {
@@ -453,18 +456,27 @@ func (s *addressHistoryStore) commitFacts(ctx context.Context, height int64, has
 			return fmt.Errorf("address source fact identity mismatch")
 		}
 		addressed := false
-		for i, r := range p.Rows {
-			pos := outputCoordinate(int(r.Vout), r.TxIndex, height)
-			if ref, ok := refs[pos]; !ok || ref != (outputFactRef{page, uint32(i)}) {
-				return fmt.Errorf("incomplete address source fact mapping")
+		err := recipeAddressHistoryVisit(ctx, 1, func(emit func(outputFactRef, outputFact) error) error {
+			for i, row := range p.Rows {
+				position := outputCoordinate(int(row.Vout), row.TxIndex, height)
+				ref := outputFactRef{page, uint32(i)}
+				if got, ok := refs[position]; !ok || got != ref {
+					return fmt.Errorf("incomplete address source fact mapping")
+				}
+				matched++
+				fact := outputFact{Height: height, BlockHash: hash, TxIndex: row.TxIndex, Vout: row.Vout, ValueSats: *row.Value, ScriptPubKey: *row.Script, Coinbase: row.TxIndex == 0}
+				if err := emit(ref, fact); err != nil {
+					return err
+				}
 			}
-			matched++
-			script, _ := hex.DecodeString(*r.Script)
-			_, address := describeDestinationScript(script)
-			if address != "" {
-				addressed = true
-				b.AddressOutputs++
-			}
+			return nil
+		}, func(string, string, outputFactRef, outputFact) error {
+			addressed = true
+			b.AddressOutputs++
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 		if addressed {
 			b.FactPages = append(b.FactPages, page)

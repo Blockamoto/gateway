@@ -15,6 +15,9 @@ const recipeOrderedPublicEnabled = true
 // state/undo. Its fixed table shapes are storage bindings, not an executor for
 // an index ID. The executable program still derives every ordered mutation.
 func compileOrderedRecipe(d recipeDefinition) (*recipeProgram, error) {
+	if d.History == "sparse" {
+		return compileOrderedSparseRecipe(d)
+	}
 	if d.History != "ordered" {
 		return nil, recipeDiagnosticAt("RECIPE_ORDERED_HISTORY", "/history", "ordered source requires ordered history")
 	}

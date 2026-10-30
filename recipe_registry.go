@@ -143,10 +143,10 @@ func recipeRegistryRunnable(d recipeDefinition) bool {
 // Runnable indicates the currently supported execution shape, not readiness or coverage.
 // Actual runs always require admission and a reviewed plan.
 func recipeRegistryCapabilityNote(d recipeDefinition) string {
-	if recipeOrderedPublicEnabled && d.Source == "bitcoin.ordered" {
+	if recipeOrderedPublicEnabled && d.Source == "bitcoin.ordered" && d.History == "ordered" {
 		return "Definition validated. Ordered state requires an explicitly admitted genesis prefix. Finite and Live execution require a reviewed plan; Out caps either choice. Rebuild archives the prior generation."
 	}
-	if d.Source != "bitcoin.reveal" && d.Source != "bitcoin.transaction" {
+	if !recipeSparseSource(d.Source) {
 		return "Definition validated. This source is not yet integrated with the scheduler."
 	}
 	if len(d.Dependencies) != 0 {

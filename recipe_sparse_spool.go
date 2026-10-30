@@ -52,7 +52,7 @@ type recipeSparseSpool struct {
 func (s *recipeSparseSpool) rowContext() context.Context { return s.ctx }
 
 func newRecipeSparseSpool(ctx context.Context, base string, program *recipeProgram) (result *recipeSparseSpool, err error) {
-	if ctx == nil || program == nil || program.ordered != nil || program.definition.History != "sparse" {
+	if ctx == nil || program == nil || program.definition.History != "sparse" {
 		return nil, fmt.Errorf("sparse spool requires a compiled sparse program and context")
 	}
 	if err = ctx.Err(); err != nil {

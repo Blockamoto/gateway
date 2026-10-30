@@ -4,7 +4,7 @@ Last updated: 2026-10-30. Baseline: 0.7.9 `76cc8d5efa3c3d75a1531774fc2af1dff44db
 
 ## Current implementation boundary
 
-The initial interpreter evaluates sparse reveal recipes against complete verified extraction. Independent recipes can be saved, armed, reviewed, run over a finite range or Live and queried through the existing coordinator and a selected-local-header check. Live target rebinding and journalled sparse reorg reconciliation have focused backend tests. A visible isolated Live test followed a real new block and paused; Computer Use stopped after restart because it could not establish Chrome's current URL, so visual Resume remains unverified. This is **not a complete indexing release**: a narrow sparse same-block dependency path is implemented for reveal and transaction sources, while in-run re-admission and broader dependency forms remain open. The language cannot yet describe all built-ins or their ordered mutable state. Native TX ID Locators, UTXO transitions, Lean/Full inscription retention and optional/saved inscription locators now derive through actual JSON compositions with explicit native semantic-equivalence bindings. Custom ordered Coin/count recipes reuse isolated native-format generations through guided authoring, reviewed finite/Live runs, query, rebuild and maintenance. Other built-ins retain their original derivation; the complete baseline matrix and wider custom contracts remain open. Legacy native equivalence does not relabel a custom generation.
+The initial interpreter evaluates sparse reveal recipes against complete verified extraction. Independent recipes can be saved, armed, reviewed, run over a finite range or Live and queried through the existing coordinator and a selected-local-header check. Live target rebinding and journalled sparse reorg reconciliation have focused backend tests. A visible isolated Live test followed a real new block and paused; Computer Use stopped after restart because it could not establish Chrome's current URL, so visual Resume remains unverified. This is **not a complete indexing release**: a narrow sparse same-block dependency path is implemented for reveal and transaction sources, while in-run re-admission and broader dependency forms remain open. The language cannot yet describe all built-ins or their ordered mutable state. Native TX ID Locators, UTXO transitions, Lean/Full inscription retention, optional/saved inscription locators and Address History destination rows now derive through actual JSON compositions with explicit native semantic-equivalence bindings. Custom ordered Coin/count recipes reuse isolated native-format generations through guided authoring, reviewed finite/Live runs, query, rebuild and maintenance. Other built-ins retain their original derivation; the complete baseline matrix and wider custom contracts remain open. Legacy native equivalence does not relabel a custom generation.
 
 The CBOR reader retains typed data and duplicate entries. The initial Ord properties adapter handles uncompressed and bounded Brotli data; malformed/unknown-field equivalence against the pinned Ord implementation remains unproven. Definitions that use interpreted properties receive a new semantic profile for Brotli; prior property generations remain retained and need an explicit new generation rather than being silently relabelled. Synthetic tests cover metadata and properties. The real Bitcoin genesis fixture proves only the verified empty-reveal case. An optional raw block at height 908657 verifies one real reveal with metadata and metaprotocol, including a changed-predicate check; its standalone header is not authenticated as selected chain. Broad differential parity remains outstanding. The prototype's narrowly supported operators are not a release-scope reduction; extend or replace them to satisfy the full matrix below.
 
@@ -343,3 +343,35 @@ and final production build also passed. The wider recipe/saved-recipe/ordinal/
 UTXO/run suite passed in 787.730 seconds before the export route was added. Remaining built-ins, wider
 ordered contracts, maintenance and visible complete-preview acceptance remain
 open. See `080-HISTORICAL-RANGES.md` for the artifact protocol and authority.
+
+### Stateless typed output projections and native Address History
+
+The typed event source now supports sparse `rows.json.v1` projections with an
+arbitrary origin, existing spooled receipts and outgoing same-block exports.
+It shares the raw-owned cohort source and does not borrow UTXO state. Guided
+controls support output declarations, exports and typed event composition;
+state reads/writes and incoming typed lookup expressions fail explicitly for
+this contract. Focused public checks passed in 6.360 seconds, and the wider
+ordered/admission/resolution/DAG/output/range set passed in 192.711 seconds.
+
+Native Address History now selects destinations through actual current and
+legacy-payment JSON documents in the same interpreter, using its existing
+complete retained fact source. Its physical reverse rows, counters, COW roots,
+coverage/pins and publication paths remain intact. Frozen semantic bundle
+checks protect schema-1 native data. Exact small physical differentials,
+reapplication, retained P2PK/payment rules and native mapping checks passed in
+7.952 seconds. The broader address suite and real block-792435 fact/raw differentials passed
+in 141.628 seconds; both legacy/current JSON compositions matched retained facts
+and owned raw source. The production build and four JavaScript checks passed. See `080-NATIVE-ADDRESS-HISTORY.md`.
+Current Addresses, broader ordered contracts and dependencies, other remaining
+built-ins, maintenance and complete visible preview acceptance remain open.
+
+Final checks for this increment: the broader address/real-reference suite
+passed in 141.628 seconds; the ordered/native-UTXO/address-recipe regression
+passed in 265.475 seconds. The real block-792435 retained-fact/public raw JSON
+differential passed for both destination policies. A typed >16-MiB row with a
+9,000-byte key passed staging, publication and lookup in 6.588 seconds, alongside
+individual field/work-budget rejection. Complex fields stream separately and
+repeated byte values share encoding. The final production build and four
+JavaScript checks passed. This does not close Current Addresses, broader
+ordered dependencies, remaining built-ins or visible full-preview acceptance.

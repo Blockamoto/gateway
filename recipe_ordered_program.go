@@ -94,16 +94,17 @@ type recipeOrderedInstruction struct {
 }
 type recipeOrderedProgram struct{ Steps []recipeOrderedInstruction }
 type recipeOrderedMachine struct {
-	ctx          context.Context
-	state        *recipeStateTxn
-	orderedState recipeOrderedState
-	events       []map[string]recipeOrderedValue
-	event        map[string]recipeOrderedValue
-	vars         map[string]recipeOrderedValue
-	work         int
-	source       func(func(map[string]recipeOrderedValue) error) error
-	emit         func(string, string, recipeOrderedValue) error
-	streaming    bool
+	ctx            context.Context
+	state          *recipeStateTxn
+	orderedState   recipeOrderedState
+	events         []map[string]recipeOrderedValue
+	event          map[string]recipeOrderedValue
+	vars           map[string]recipeOrderedValue
+	work           int
+	source         func(func(map[string]recipeOrderedValue) error) error
+	emit           func(string, string, recipeOrderedValue) error
+	streaming      bool
+	unboundedEmits bool
 }
 
 func rovText(v string) recipeOrderedValue { return recipeOrderedValue{Kind: "text", Text: v} }
@@ -129,6 +130,14 @@ func (m *recipeOrderedMachine) tick(depth int) error {
 	return nil
 }
 func recipeOrderedCheck(v recipeOrderedValue, depth int) error {
+	remaining := recipeOrderedMaxWork
+	return recipeOrderedCheckWork(v, depth, &remaining)
+}
+func recipeOrderedCheckWork(v recipeOrderedValue, depth int, remaining *int) error {
+	*remaining--
+	if *remaining < 0 {
+		return errRecipeStateBudget
+	}
 	if depth > recipeOrderedMaxDepth {
 		return errRecipeStateBudget
 	}
@@ -151,7 +160,7 @@ func recipeOrderedCheck(v recipeOrderedValue, depth int) error {
 			if !utf8.ValidString(name) {
 				return fmt.Errorf("invalid ordered field name")
 			}
-			if err := recipeOrderedCheck(x, depth+1); err != nil {
+			if err := recipeOrderedCheckWork(x, depth+1, remaining); err != nil {
 				return err
 			}
 		}
@@ -284,13 +293,23 @@ func (m *recipeOrderedMachine) eval(e recipeOrderedExpr, depth int) (recipeOrder
 		}
 		s, err := recipeBitcoinOutpoint(args[0].Text, uint32(args[1].Uint))
 		return rovText(s), err
-	case "destination":
+	case "output_ref":
+		if len(args) != 3 || args[0].Kind != "uint" || args[1].Kind != "uint" || args[2].Kind != "uint" || args[0].Uint > uint64(^uint64(0)>>1) || args[1].Uint > uint64(^uint32(0)) || args[2].Uint > uint64(^uint32(0)) {
+			return fail()
+		}
+		return rovText(outputCoordinate(int(args[2].Uint), int(args[1].Uint), int64(args[0].Uint))), nil
+	case "destination", "payment_destination":
 		if len(args) != 1 || args[0].Kind != "bytes" {
 			return fail()
 		}
 		// This classifies the exact locking script; a public key is not
 		// interchangeable with its P2PKH address or another SEC encoding.
-		kind, destination := describeDestinationScript(args[0].Bytes)
+		var kind, destination string
+		if e.Call == "payment_destination" {
+			kind, destination = describeScript(args[0].Bytes)
+		} else {
+			kind, destination = describeDestinationScript(args[0].Bytes)
+		}
 		return recipeOrderedValue{Kind: "object", Object: map[string]recipeOrderedValue{
 			"kind": rovText(kind), "destination": rovText(destination),
 			"supported": rovBool(destination != ""),
@@ -431,14 +450,19 @@ func (m *recipeOrderedMachine) exec(steps []recipeOrderedInstruction, depth int)
 			if key.Kind != "text" || key.Text == "" || value.Kind == "missing" {
 				return fmt.Errorf("invalid ordered output row")
 			}
-			if err = recipeStateCheckKey(recipeStateKey{Table: s.Table, Key: key.Text}); err != nil {
-				return err
+			if !m.unboundedEmits {
+				if err = recipeStateCheckKey(recipeStateKey{Table: s.Table, Key: key.Text}); err != nil {
+					return err
+				}
 			}
 			if err = recipeOrderedCheck(value, 0); err != nil {
 				return err
 			}
 			remaining := recipeStateHardValueBytes
-			if err = recipeResumeValueBudget(value, 0, &remaining); err != nil {
+			if !m.unboundedEmits {
+				err = recipeResumeValueBudget(value, 0, &remaining)
+			}
+			if err != nil {
 				return err
 			}
 			if err = m.emit(s.Table, key.Text, value); err != nil {

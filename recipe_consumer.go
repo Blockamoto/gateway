@@ -220,7 +220,9 @@ func (c *recipeSparseConsumer) Apply(ctx context.Context, work recipeConsumerWor
 		return err
 	}
 	defer spool.Close()
-	if c.program.definition.Source == "bitcoin.transaction" {
+	if c.program.definition.Source == "bitcoin.ordered" {
+		err = c.program.evaluateOrderedSparseInto(ctx, block, spool.Add)
+	} else if c.program.definition.Source == "bitcoin.transaction" {
 		var source *recipeTransactionSource
 		if len(transactionSources) > 1 {
 			return fmt.Errorf("multiple transaction sources")

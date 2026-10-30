@@ -210,6 +210,13 @@ func indexDefinitions() []indexDefinition {
 				d.ExecutableRecipeHash = builtinUTXORecipeProgram.semanticHash()
 			}
 		}
+		if d.ID == "address-history" {
+			d.ExecutableRecipe = append(json.RawMessage(nil), builtinAddressHistoryJSON...)
+			if programs, err := builtinAddressHistoryRecipes(); err == nil {
+				d.ExecutableRecipeHash = programs[1].semanticHash()
+				d.ExecutableRecipeVariants = []indexExecutableRecipe{{Name: "Current destination rules", Definition: append(json.RawMessage(nil), builtinAddressHistoryJSON...), SemanticHash: programs[1].semanticHash()}, {Name: "Legacy payment-only rules", Definition: append(json.RawMessage(nil), builtinAddressHistoryLegacyJSON...), SemanticHash: programs[0].semanticHash()}}
+			}
+		}
 		if d.ID == "sat-state" {
 			// The authenticated recipe above is frozen. Display terminology can
 			// change without rewriting existing checkpoints or its profile ID.

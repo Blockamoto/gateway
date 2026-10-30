@@ -4,7 +4,7 @@
   const object=value=>!!value&&typeof value==='object'&&!Array.isArray(value);
   const keys=(value,allowed)=>object(value)&&Object.keys(value).every(key=>allowed.includes(key));
   const fields=['kind','block','txid','height','tx_index','output_count','coinbase','prev_txid','input_ref','fact_page','prev_vout','input_index','vout','value','fact_row','script'];
-  const arities={eq:2,not:1,present:1,add_money:2,sub_money:2,less_equal:2,outpoint:2,destination:1,retains:2,bip30_exception:3,get:2};
+  const arities={eq:2,not:1,present:1,add_money:2,sub_money:2,less_equal:2,outpoint:2,output_ref:3,destination:1,payment_destination:1,retains:2,bip30_exception:3,get:2};
   const operations={let:['name','expr'],read:['name','table','key'],put:['table','key','expr'],delete:['table','key'],if:['expr','body','else'],require:['name','expr'],emit:['table','key','expr'],for_range:['name','expr','body'],for_events:['body']};
   const uint=text=>typeof text==='string'&&/^(0|[1-9][0-9]*)$/.test(text)&&(text.length<20||text.length===20&&text<='18446744073709551615');
   function valueSupported(value,depth=0){
@@ -28,26 +28,35 @@
     if(mode==='call')return Object.hasOwn(arities,expr.call)&&Array.isArray(expr.args)&&expr.args.length===arities[expr.call]&&expr.args.every(arg=>expressionSupported(arg,depth+1));
     return object(expr.object)&&Object.keys(expr.object).length<=64&&Object.values(expr.object).every(arg=>expressionSupported(arg,depth+1));
   }
-  function stepsSupported(steps,depth=0){
+  function stepsSupported(steps,depth=0,scope=null){
     return depth<=32&&Array.isArray(steps)&&steps.length<=512&&steps.every(step=>{
-      if(!Object.hasOwn(operations,step?.op))return false;
+      if(!Object.hasOwn(operations,step?.op)||scope?.sparse&&['read','put','delete'].includes(step.op))return false;
       const allowed=operations[step.op];if(step.op==='for_events'&&depth!==0||!keys(step,['op',...allowed]))return false;
       if(Object.hasOwn(step,'name')&&(typeof step.name!=='string'||!step.name))return false;
-      if(Object.hasOwn(step,'table')&&!(step.op==='emit'?['prevouts']:['coins','counts']).includes(step.table))return false;
+      if(Object.hasOwn(step,'table')&&!(step.op==='emit'?(scope?.sparse?scope.tables:['prevouts']):['coins','counts']).includes(step.table))return false;
       if(['let','read','for_range'].includes(step.op)&&!step.name)return false;
       if(['read','put','delete','emit'].includes(step.op)&&!expressionSupported(step.key))return false;
       if(['let','put','if','require','emit','for_range'].includes(step.op)&&!expressionSupported(step.expr))return false;
-      if(['if','for_range','for_events'].includes(step.op)&&!stepsSupported(step.body,depth+1))return false;
-      if(Object.hasOwn(step,'else')&&!stepsSupported(step.else,depth+1))return false;
+      if(['if','for_range','for_events'].includes(step.op)&&!stepsSupported(step.body,depth+1,scope))return false;
+      if(Object.hasOwn(step,'else')&&!stepsSupported(step.else,depth+1,scope))return false;
       return true;
     });
   }
   function toGuided(definition){
     const d=definition;
-    if(!keys(d,['format','version','id','name','source','origin','history','storage','dependencies','exports','tables','ordered'])||d.format!=='gateway-recipe'||d.version!==1||typeof d.id!=='string'||typeof d.name!=='string'||d.source!=='bitcoin.ordered'||d.origin!==0||d.history!=='ordered'||d.storage!=='bitcoin.utxo.cow.v2')return null;
-    if(Object.hasOwn(d,'dependencies')&&(!Array.isArray(d.dependencies)||d.dependencies.length)||Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length))return null;
-    if(!Array.isArray(d.tables)||d.tables.length!==2||!d.tables.every(t=>keys(t,['name','key'])&&((t.name==='coins'&&t.key==='outpoint')||(t.name==='counts'&&t.key==='txid')))||new Set(d.tables.map(t=>t.name)).size!==2)return null;
-    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps)||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
+    if(!keys(d,['format','version','id','name','source','origin','history','storage','dependencies','exports','tables','ordered'])||d.format!=='gateway-recipe'||d.version!==1||typeof d.id!=='string'||typeof d.name!=='string'||d.source!=='bitcoin.ordered'||!Number.isSafeInteger(d.origin)||d.origin<0)return null;
+    const sparse=d.history==='sparse'&&d.storage==='rows.json.v1';
+    if(!sparse&&(d.origin!==0||d.history!=='ordered'||d.storage!=='bitcoin.utxo.cow.v2'))return null;
+    if(Object.hasOwn(d,'dependencies')&&(!Array.isArray(d.dependencies)||d.dependencies.length))return null;
+    if(!Array.isArray(d.tables)||!d.tables.length||new Set(d.tables.map(t=>t.name)).size!==d.tables.length)return null;
+    if(sparse){
+      if(d.tables.length>64||!d.tables.every(t=>keys(t,['name','key','on_conflict'])&&typeof t.name==='string'&&!!t.name&&typeof t.key==='string'&&!!t.key&&(!Object.hasOwn(t,'on_conflict')||['','identical'].includes(t.on_conflict))))return null;
+      if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||!d.exports.every(e=>keys(e,['name','kind','table','column','type'])&&typeof e.name==='string'&&!!e.name&&e.kind==='same_block'&&d.tables.some(t=>t.name===e.table)&&typeof e.column==='string'&&!!e.column&&['text','bool','integer','null'].includes(e.type))))return null;
+    }else{
+      if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length))return null;
+      if(d.tables.length!==2||!d.tables.every(t=>keys(t,['name','key'])&&((t.name==='coins'&&t.key==='outpoint')||(t.name==='counts'&&t.key==='txid'))))return null;
+    }
+    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{sparse,tables:d.tables.map(t=>t.name)})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
     return copy(d);
   }
   function fromGuided(definition){
@@ -72,6 +81,8 @@
     const label=(text,input)=>{const node=el('label',text);input.setAttribute('aria-label',text);node.append(input);return node;};
     const button=(text,action)=>{const node=el('button',text);node.type='button';node.addEventListener('click',action);return node;};
     const changed=()=>onChange();
+    const availableOperations=()=>Object.keys(operations).filter(op=>op!=='for_events'&&!(model?.history==='sparse'&&['read','put','delete'].includes(op)));
+    const newInstruction=op=>{const value=instruction(op);if(op==='emit'&&model?.history==='sparse')value.table=model.tables[0].name;return value;};
     function textInput(title,value,set){const input=el('input');input.type='text';input.value=value||'';input.addEventListener('input',()=>{set(input.value);changed();});return label(title,input);}
     function select(title,choices,value,set){const input=el('select');for(const choice of choices){const [key,name]=Array.isArray(choice)?choice:[choice,choice],option=el('option',name);option.value=key;input.append(option);}input.value=value;input.addEventListener('change',()=>{set(input.value);changed();});return label(title,input);}
     function lazy(title,render){const node=el('details'),summary=el('summary',title),body=el('div');body.className='ordered-editor-body';let drawn=false;node.append(summary,body);node.addEventListener('toggle',()=>{if(node.open&&!drawn){drawn=true;render(body);}});return node;}
@@ -123,10 +134,10 @@
       function paint(){rows.replaceChildren();steps.forEach((step,index)=>{
         const details=lazy((index+1)+'. '+step.op+(step.name?' '+step.name:''),body=>{
           const fields=el('div');fields.className='ordered-editor-fields';
-          fields.append(select('Instruction',Object.keys(operations).filter(op=>op!=='for_events'),step.op,op=>{steps[index]=instruction(op);paint();}));
+          fields.append(select('Instruction',availableOperations(),step.op,op=>{steps[index]=newInstruction(op);paint();}));
           if(['let','read','for_range'].includes(step.op))fields.append(textInput('Bind variable',step.name,value=>{step.name=value;}));
           if(step.op==='require')fields.append(textInput('Assertion name',step.name,value=>{if(value)step.name=value;else delete step.name;}));
-          if(['read','put','delete','emit'].includes(step.op))fields.append(select('Table',step.op==='emit'?['prevouts']:['coins','counts'],step.table,value=>{step.table=value;}));
+          if(['read','put','delete','emit'].includes(step.op))fields.append(select('Table',step.op==='emit'?(model?.history==='sparse'?model.tables.map(t=>t.name):['prevouts']):['coins','counts'],step.table,value=>{step.table=value;}));
           body.append(fields);
           if(step.key)body.append(lazy('State or emitted key',child=>expressionEditor(child,step.key,value=>{step.key=value;})));
           if(step.expr)body.append(lazy(step.op==='if'||step.op==='require'?'Condition':step.op==='for_range'?'Exclusive range end':'Value',child=>expressionEditor(child,step.expr,value=>{step.expr=value;})));
@@ -137,11 +148,26 @@
           controls.append(up,down,button('Remove instruction',()=>{steps.splice(index,1);paint();changed();}));body.append(controls);
         });rows.append(details);
       });}
-      actions.className='actions';actions.append(select('Add instruction type',Object.keys(operations).filter(op=>op!=='for_events'),selected,value=>{selected=value;}),button('Add instruction',()=>{steps.push(instruction(selected));paint();changed();}));host.append(rows,actions);paint();
+      actions.className='actions';actions.append(select('Add instruction type',availableOperations(),selected,value=>{selected=value;}),button('Add instruction',()=>{steps.push(newInstruction(selected));paint();changed();}));host.append(rows,actions);paint();
+    }
+    function declarationsEditor(host){
+      const box=el('fieldset');host.append(box);box.append(el('legend','Output declarations'));
+      for(const [index,table] of model.tables.entries()){
+        const row=el('div');row.append(textInput('Output table name',table.name,value=>{table.name=value;}),textInput('Output key column',table.key,value=>{table.key=value;}),select('Duplicate output keys',['','identical'],table.on_conflict||'',value=>{if(value)table.on_conflict=value;else delete table.on_conflict;}));
+        const remove=button('Remove output table',()=>{model.tables.splice(index,1);render();changed();});
+        const references=steps=>steps.some(step=>step.table===table.name||references(step.body||[])||references(step.else||[]));
+        remove.disabled=model.tables.length===1||references(model.ordered.steps)||(model.exports||[]).some(entry=>entry.table===table.name);remove.title='Remove its instructions and exports before removing a referenced table.';row.append(remove);box.append(row);
+      }
+      const add=button('Add output table',()=>{let name='outputs';while(model.tables.some(table=>table.name===name))name='outputs_'+(++sequence);model.tables.push({name,key:'ref'});render();changed();});add.disabled=model.tables.length>=64;box.append(add);
+      for(const [index,entry] of (model.exports||[]).entries()){
+        const row=el('div');row.append(textInput('Export name',entry.name,value=>{entry.name=value;}),select('Export table',model.tables.map(table=>table.name),entry.table,value=>{entry.table=value;}),textInput('Export column',entry.column,value=>{entry.column=value;}),select('Export type',['text','bool','integer','null'],entry.type,value=>{entry.type=value;}),button('Remove export',()=>{model.exports.splice(index,1);render();changed();}));box.append(row);
+      }
+      const addExport=button('Add same-block export',()=>{if(!model.exports)model.exports=[];let name='value';while(model.exports.some(entry=>entry.name===name))name='value_'+(++sequence);model.exports.push({name,kind:'same_block',table:model.tables[0].name,column:model.tables[0].key,type:'text'});render();changed();});addExport.disabled=(model.exports||[]).length>=64;box.append(addExport);
     }
     function render(){root.replaceChildren();if(!model)return;const legend=el('legend','Guided ordered draft'),header=el('div');header.className='recipe-fields';
       header.append(textInput('Ordered recipe ID',model.id,value=>{model.id=value;}),textInput('Ordered recipe name',model.name,value=>{model.name=value;}));
-      root.append(legend,el('p','Process transaction events in order from genesis. Coins are keyed by outpoint; counts by transaction ID. Expand an instruction to edit its expressions, branches or nested instructions.'),header);
+      root.append(legend,el('p',model.history==='sparse'?'Project complete transaction events into per-block rows from the chosen origin. Empty evaluated blocks are retained; no UTXO prefix is required.':'Process transaction events in order from genesis. Coins are keyed by outpoint; counts by transaction ID. Expand an instruction to edit its expressions, branches or nested instructions.'),header);
+      if(model.history==='sparse'){header.append(textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));declarationsEditor(root);}
       stepsEditor(root,model.ordered.steps[0].body);root.append(button('Apply ordered changes',onApply));
     }
     return {load(definition){model=toGuided(definition);root.hidden=!model;render();return !!model;},definition(){return fromGuided(model);}};

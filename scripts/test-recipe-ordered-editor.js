@@ -43,5 +43,11 @@ let result=mounted.definition();assert.equal(result.ordered.steps[0].body[0].exp
 // Reorder and remove use the currently displayed list, preserving subtrees.
 button('Move earlier',step.children[1].children.at(-1)).events.click();assert.equal(mounted.definition().ordered.steps[0].body[0].op,'if');
 step=expand('1. if');button('Remove instruction',step.children[1].children.at(-1)).events.click();assert.equal(mounted.definition().ordered.steps[0].body.length,1);
+for(const file of ['address-history.json','address-history-payment-legacy.json']){const actual=JSON.parse(fs.readFileSync('recipes/builtins/'+file,'utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(actual)),actual,'actual address-history composition round-trips');}
+const sparse=JSON.parse(fs.readFileSync('recipes/output-destinations.json','utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(sparse)),sparse,'stateless output projections and exports round-trip');
+assert(mounted.load(sparse));let origin=control('Origin height');origin.value='100';origin.events.input();assert.equal(mounted.definition().origin,100);
+button('Add output table').events.click();assert.equal(mounted.definition().tables.length,2);button('Add same-block export').events.click();assert.equal(mounted.definition().exports.length,2);
+const sparseAdd=control('Add instruction type');assert(!sparseAdd.children.some(option=>['read','put','delete'].includes(option.value)),'stateless controls offer output instructions only');
+sparseAdd.value='emit';sparseAdd.events.change();button('Add instruction').events.click();let added=expand('2. emit');assert.equal(control('Table',added).value,'outputs');
 mounted.load({...original,storage:'unsupported'});assert.equal(root.hidden,true);assert.throws(()=>mounted.definition(),/unsupported shape/);
 console.log('Ordered recipe editor PASS: actual built-in round-trip, owned drafts, exact uints, unsupported preservation, typed expressions, nested instructions and reordering.');

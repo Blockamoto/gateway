@@ -88,7 +88,7 @@ func (a *app) readRecipeOutputPage(ctx context.Context, id, revision, fingerprin
 	if err != nil {
 		return nil, 409, err
 	}
-	if prepared.Source == "bitcoin.ordered" {
+	if prepared.Source == "bitcoin.ordered" && prepared.History == "ordered" {
 		if offset != 0 {
 			return nil, 400, fmt.Errorf("ordered state output uses a cursor")
 		}

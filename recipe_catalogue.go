@@ -29,7 +29,7 @@ type recipeCapabilityCatalogue struct {
 // recipeCatalogue is also the source of truth used by compiler checking. A
 // GUI may expose this value, but cannot infer support for anything absent.
 func recipeCatalogue() recipeCapabilityCatalogue {
-	return recipeCapabilityCatalogue{TableConflicts: []string{"", "identical"}, Version: 1, Sources: []recipeSourceCapability{{ID: "bitcoin.reveal", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.reveal")}, {ID: "bitcoin.transaction", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.transaction")}, {ID: "bitcoin.ordered", Histories: []string{"ordered"}, Fields: recipeSourceFields("bitcoin.ordered"), Steps: recipeOrderedSteps(), Functions: recipeOrderedFunctions(), StateContracts: []string{recipeOrderedUTXOStorage}, Events: recipeOrderedEvents()}}, Functions: recipeFunctions(), Steps: []string{"let", "require", "write"}}
+	return recipeCapabilityCatalogue{TableConflicts: []string{"", "identical"}, Version: 1, Sources: []recipeSourceCapability{{ID: "bitcoin.reveal", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.reveal")}, {ID: "bitcoin.transaction", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.transaction")}, {ID: "bitcoin.ordered", Histories: []string{"ordered", "sparse"}, Fields: recipeSourceFields("bitcoin.ordered"), Steps: recipeOrderedSteps(), Functions: recipeOrderedFunctions(), StateContracts: []string{recipeOrderedUTXOStorage, recipeOrderedSparseStorage}, Events: recipeOrderedEvents()}}, Functions: recipeFunctions(), Steps: []string{"let", "require", "write"}}
 }
 
 type recipeDiagnostic struct {

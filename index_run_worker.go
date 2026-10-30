@@ -425,7 +425,7 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 		if err != nil {
 			return v, err
 		}
-		if resolved.Source == "bitcoin.ordered" {
+		if resolved.Source == "bitcoin.ordered" && resolved.History == "ordered" {
 			if !recipeOrderedPublicEnabled {
 				return v, fmt.Errorf("ordered recipe execution is not yet enabled")
 			}

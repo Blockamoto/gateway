@@ -82,7 +82,7 @@ func (a *app) readRecipeRangeCoverage(ctx context.Context, id, revision, semanti
 	if err != nil {
 		return empty, err
 	}
-	if (root.Source != "bitcoin.reveal" && root.Source != "bitcoin.transaction") || root.History != "sparse" {
+	if !recipeSparseSource(root.Source) || root.History != "sparse" {
 		return empty, fmt.Errorf("range coverage requires sparse recipe receipts")
 	}
 	lineage, err := a.prepareRecipeLineage(ctx, root)

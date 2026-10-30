@@ -87,11 +87,11 @@ func TestRecipeDAGExecutorRealBlockTransitiveAndAtomic(t *testing.T) {
 		}
 		return commit()
 	}
-	coverage, err := a.recipeDAGCoverage(ctx, child, childStore, block.Height, block.Height, nil, 0, 1, coverageGuard)
+	coverage, err := a.recipeDAGCoverage(ctx, child, childStore, block.Height, block.Height, nil, 0, 1, "", coverageGuard)
 	if err != nil || len(coverage.Anchors) != 1 {
 		t.Fatalf("verified DAG coverage: %+v %v", coverage, err)
 	}
-	if _, err = a.recipeDAGCoverage(ctx, child, childStore, block.Height, block.Height, nil, 0, 1, func([]recipeCoverageAnchor, func() error) error { return fmt.Errorf("authority denied") }); err == nil {
+	if _, err = a.recipeDAGCoverage(ctx, child, childStore, block.Height, block.Height, nil, 0, 1, "", func([]recipeCoverageAnchor, func() error) error { return fmt.Errorf("authority denied") }); err == nil {
 		t.Fatal("denied coverage authority accepted")
 	}
 	raceGuard := func(_ []recipeCoverageAnchor, commit func() error) error {
@@ -100,7 +100,7 @@ func TestRecipeDAGExecutorRealBlockTransitiveAndAtomic(t *testing.T) {
 		}
 		return commit()
 	}
-	raced, err := a.recipeDAGCoverage(ctx, child, childStore, block.Height, block.Height, nil, 0, 1, raceGuard)
+	raced, err := a.recipeDAGCoverage(ctx, child, childStore, block.Height, block.Height, nil, 0, 1, "", raceGuard)
 	if !errors.Is(err, errRecipeDependencyUnavailable) || len(raced.Anchors) != 0 {
 		t.Fatalf("racing grandparent leaked coverage: %+v %v", raced, err)
 	}
@@ -127,7 +127,7 @@ func TestRecipeDAGExecutorRealBlockTransitiveAndAtomic(t *testing.T) {
 	if _, found, err = a.recipeReadDAGUnit(ctx, child, childStore, block.Height, block.Hash, recipeTestGuard); found || !errors.Is(err, errRecipeDependencyUnavailable) {
 		t.Fatalf("stale child served: %v %v", found, err)
 	}
-	coverage, err = a.recipeDAGCoverage(ctx, child, childStore, block.Height, block.Height, nil, 0, 1, coverageGuard)
+	coverage, err = a.recipeDAGCoverage(ctx, child, childStore, block.Height, block.Height, nil, 0, 1, "", coverageGuard)
 	if !errors.Is(err, errRecipeDependencyUnavailable) || len(coverage.Anchors) != 0 {
 		t.Fatalf("missing ancestor treated as coverage: %+v %v", coverage, err)
 	}

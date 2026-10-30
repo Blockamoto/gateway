@@ -13,11 +13,18 @@ const recipeDAGCoverageMaxPage = 32
 const recipeDAGCoverageMaxRefs = 4096
 
 type recipeDAGCoverageGuard func([]recipeCoverageAnchor, func() error) error
+type recipeDAGCoveragePage struct {
+	recipeCoveragePage
+	LineageToken string `json:"lineage_token"`
+}
 
-func (a *app) recipeDAGCoverage(ctx context.Context, root resolvedSavedRecipe, store *recipeStore, from, to int64, after *int64, revision uint64, limit int, guard recipeDAGCoverageGuard) (recipeCoveragePage, error) {
-	var empty recipeCoveragePage
+func (a *app) recipeDAGCoverage(ctx context.Context, root resolvedSavedRecipe, store *recipeStore, from, to int64, after *int64, revision uint64, limit int, expectedLineage string, guard recipeDAGCoverageGuard) (recipeDAGCoveragePage, error) {
+	var empty recipeDAGCoveragePage
 	if ctx == nil || store == nil || guard == nil || limit < 1 || limit > recipeDAGCoverageMaxPage || len(root.Definition.Dependencies) == 0 || store.instance != root.ID || store.fingerprint != root.SemanticHash {
 		return empty, fmt.Errorf("invalid dependent DAG coverage request")
+	}
+	if after != nil && !recipeStoreHashValid(expectedLineage) || expectedLineage != "" && !recipeStoreHashValid(expectedLineage) {
+		return empty, fmt.Errorf("dependent coverage continuation requires a lineage token")
 	}
 	plan, err := a.prepareRecipeLineage(ctx, root)
 	if err != nil {
@@ -50,6 +57,7 @@ func (a *app) recipeDAGCoverage(ctx context.Context, root resolvedSavedRecipe, s
 		snapshot.direct = nil
 		snapshots = append(snapshots, snapshot)
 	}
+	lineageToken := ""
 	guardAnchors := append([]recipeCoverageAnchor(nil), page.Anchors...)
 	err = recipeStoreGuarded(func(commit func() error) error { return guard(guardAnchors, commit) }, func() error {
 		recipeStoreMutex.Lock()
@@ -66,6 +74,13 @@ func (a *app) recipeDAGCoverage(ctx context.Context, root resolvedSavedRecipe, s
 		}
 		if head.Revision != page.Revision {
 			return fmt.Errorf("dependent coverage changed during proof")
+		}
+		lineageToken, err = plan.headTokenLocked(ctx)
+		if err != nil {
+			return err
+		}
+		if expectedLineage != "" && expectedLineage != lineageToken {
+			return fmt.Errorf("dependent lineage changed during pagination")
 		}
 		for i, anchor := range page.Anchors {
 			unit, found, e := plan.readChildLocked(ctx, snapshots[i], anchor.Height, anchor.BlockHash)
@@ -86,5 +101,5 @@ func (a *app) recipeDAGCoverage(ctx context.Context, root resolvedSavedRecipe, s
 	if err != nil {
 		return empty, err
 	}
-	return page, nil
+	return recipeDAGCoveragePage{recipeCoveragePage: page, LineageToken: lineageToken}, nil
 }

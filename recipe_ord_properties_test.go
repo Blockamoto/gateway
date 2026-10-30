@@ -78,8 +78,8 @@ func TestRecipeOrdPropertiesStatusesAndInvalidValues(t *testing.T) {
 	fields := recipeOrdTestFields([]byte{0xa0})
 	fields["13"] = []string{hex.EncodeToString([]byte("br"))}
 	result, err = recipeOrdDecodeProperties(fields)
-	if err != nil || result.Status != recipeOrdPropertiesUnsupported {
-		t.Fatal("Brotli must be unsupported", result, err)
+	if err != nil || result.Status != recipeOrdPropertiesInvalid {
+		t.Fatal("invalid Brotli must be reported", result, err)
 	}
 	fields["13"] = []string{hex.EncodeToString([]byte("gzip")), hex.EncodeToString([]byte("br"))}
 	result, err = recipeOrdDecodeProperties(fields)

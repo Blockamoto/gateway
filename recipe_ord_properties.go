@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"strings"
+
+	"./internal/brotli"
 )
 
 // These results describe the interpretation separately from raw tag presence.
@@ -50,24 +55,60 @@ type recipeOrdPropertiesResult struct {
 // The reference consumes the first encoding and all property chunks in order.
 // Returned slices and CBOR values must be treated as read-only.
 //
-// The pinned Ord implementation supports Brotli. This portable build has no
-// Brotli implementation yet, so compressed input is explicitly unsupported,
-// never an absent or validated empty result. The local CBOR resource budget is
-// an operational error, not a protocol-invalid value.
+// Brotli output obeys the pinned Ord size and expansion limits. Local CBOR
+// resource budgets and cancellation remain operational errors, not protocol
+// invalidity.
 func recipeOrdDecodeProperties(fields map[string][]string) (recipeOrdPropertiesResult, error) {
+	return recipeOrdDecodePropertiesContext(context.Background(), fields)
+}
+
+type recipeContextReader struct {
+	ctx    context.Context
+	source io.Reader
+}
+
+// Standard Brotli windows can allocate up to 16 MiB inside the decoder before
+// producing output. Bound concurrent decoders as well as their output; this is
+// a memory/backpressure limit, not a limit on the number of records processed.
+var recipeBrotliSlots = make(chan struct{}, 2)
+
+func (r recipeContextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.source.Read(p)
+}
+
+func recipeOrdDecodePropertiesContext(ctx context.Context, fields map[string][]string) (recipeOrdPropertiesResult, error) {
+	if ctx == nil {
+		return recipeOrdPropertiesResult{}, fmt.Errorf("properties context required")
+	}
+	if err := ctx.Err(); err != nil {
+		return recipeOrdPropertiesResult{}, err
+	}
 	chunks := fields["11"]
 	if len(chunks) == 0 {
 		return recipeOrdPropertiesResult{Status: recipeOrdPropertiesAbsent}, nil
 	}
+	compressed := false
 	if encoding := fields["13"]; len(encoding) > 0 {
 		b, err := hex.DecodeString(encoding[0])
 		if err != nil {
 			return recipeOrdPropertiesResult{}, fmt.Errorf("invalid raw property encoding: %w", err)
 		}
 		if string(b) == "br" {
-			return recipeOrdPropertiesResult{Status: recipeOrdPropertiesUnsupported, Diagnostic: "Brotli properties decoding is unavailable"}, nil
+			compressed = true
+		} else {
+			return recipeOrdPropertiesResult{Status: recipeOrdPropertiesInvalid, Diagnostic: "unsupported Ord property encoding"}, nil
 		}
-		return recipeOrdPropertiesResult{Status: recipeOrdPropertiesInvalid, Diagnostic: "unsupported Ord property encoding"}, nil
+	}
+	if compressed {
+		select {
+		case recipeBrotliSlots <- struct{}{}:
+		case <-ctx.Done():
+			return recipeOrdPropertiesResult{}, ctx.Err()
+		}
+		defer func() { <-recipeBrotliSlots }()
 	}
 	var length int
 	for _, chunk := range chunks {
@@ -86,6 +127,22 @@ func recipeOrdDecodeProperties(fields map[string][]string) (recipeOrdPropertiesR
 			return recipeOrdPropertiesResult{}, fmt.Errorf("invalid raw properties hex: %w", err)
 		}
 		data = append(data, b...)
+	}
+	if compressed {
+		limit := len(data) * 30
+		if limit > recipeCBORMaxBytes {
+			limit = recipeCBORMaxBytes
+		}
+		reader := brotli.NewReaderWithOptions(recipeContextReader{ctx: ctx, source: bytes.NewReader(data)}, brotli.ReaderOptions{EagerOutput: true})
+		decoded, decodeErr := io.ReadAll(io.LimitReader(recipeContextReader{ctx: ctx, source: reader}, int64(limit)+1))
+		closeErr := reader.Close()
+		if err := ctx.Err(); err != nil {
+			return recipeOrdPropertiesResult{}, err
+		}
+		if decodeErr != nil || closeErr != nil || len(decoded) > limit {
+			return recipeOrdPropertiesResult{Status: recipeOrdPropertiesInvalid, Diagnostic: "invalid Brotli properties or expansion limit exceeded"}, nil
+		}
+		data = decoded
 	}
 	// Ord's minicbor::decode reads the first value and does not require EOF.
 	// Keep that protocol behavior here; the general metadata decoder remains

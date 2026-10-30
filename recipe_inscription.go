@@ -15,6 +15,7 @@ const recipeMaxBlockOutputBytes = 64 << 20
 // Decode only when the recipe uses properties. An unrelated inscription
 // recipe must not fail because an optional property payload exceeds a bound.
 type recipeDeferredProperties struct {
+	ctx    context.Context
 	fields map[string][]string
 	value  map[string]any
 	err    error
@@ -55,7 +56,7 @@ func (d *recipeDeferredProperties) resolve() (map[string]any, error) {
 		return d.value, d.err
 	}
 	d.done = true
-	r, err := recipeOrdDecodeProperties(d.fields)
+	r, err := recipeOrdDecodePropertiesContext(d.ctx, d.fields)
 	if err != nil {
 		d.err = err
 		return nil, err
@@ -77,10 +78,36 @@ func (d *recipeDeferredProperties) resolve() (map[string]any, error) {
 
 // Bump the relevant profile whenever its observable interpretation changes;
 // definitions with older profiles must retain their own storage generations.
-// The properties profile explicitly denotes the current uncompressed subset.
 const recipeInterpreterProfile = "gateway-recipe-interpreter-v4"
 const recipeCBORProfile = "gateway-recipe-cbor-v1"
 const recipePropertiesProfile = "gateway-ord-properties-b7ccfcf6-uncompressed-v1"
+const recipePropertiesBrotliProfile = "gateway-ord-properties-b7ccfcf6-brotli-v2"
+
+func recipeUsesProperties(d recipeDefinition) bool {
+	var uses func(recipeExpr) bool
+	uses = func(e recipeExpr) bool {
+		if len(e.Field) > 0 && e.Field[0] == "properties" {
+			return true
+		}
+		for _, arg := range e.Args {
+			if uses(arg) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, step := range d.Steps {
+		if step.Test != nil && uses(*step.Test) || step.Value != nil && uses(*step.Value) {
+			return true
+		}
+		for _, value := range step.Row {
+			if uses(value) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // semanticHash excludes presentation identity, while retaining every current
 // execution field and its interpreter/parser profiles. It is not a claim of
@@ -88,6 +115,10 @@ const recipePropertiesProfile = "gateway-ord-properties-b7ccfcf6-uncompressed-v1
 func (p *recipeProgram) semanticHash() string {
 	d := p.definition
 	d.ID, d.Name = "", ""
+	propertiesProfile := recipePropertiesProfile
+	if recipeUsesProperties(d) {
+		propertiesProfile = recipePropertiesBrotliProfile
+	}
 	lookupProfile := ""
 	if len(d.Dependencies) != 0 || len(d.Exports) != 0 {
 		lookupProfile = "gateway-sparse-same-anchor-lookup-v1"
@@ -101,7 +132,7 @@ func (p *recipeProgram) semanticHash() string {
 		Properties      string           `json:"properties"`
 		Lookup          string           `json:"lookup,omitempty"`
 		Definition      recipeDefinition `json:"definition"`
-	}{recipeInterpreterProfile, inscriptionParserProfile, inscriptionReferenceCommit, ordInterpretationProfile, recipeCBORProfile, recipePropertiesProfile, lookupProfile, d})
+	}{recipeInterpreterProfile, inscriptionParserProfile, inscriptionReferenceCommit, ordInterpretationProfile, recipeCBORProfile, propertiesProfile, lookupProfile, d})
 }
 
 // commitInscriptionBlock links the interpreter to its independent sparse store.
@@ -137,6 +168,10 @@ func (p *recipeProgram) commitInscriptionBlock(ctx context.Context, store *recip
 // fields are absent, rather than empty. Invalid UTF-8 is exposed as raw bytes
 // and a diagnostic, not silently replaced by Unicode replacement characters.
 func recipeRevealEvent(o inscriptionOccurrence) (map[string]any, error) {
+	return recipeRevealEventContext(context.Background(), o)
+}
+
+func recipeRevealEventContext(ctx context.Context, o inscriptionOccurrence) (map[string]any, error) {
 	e := map[string]any{
 		"ref":  inscriptionCoordinate(uint32(o.TxIndex), o.Index, o.BlockHeight),
 		"txid": o.TxID, "block_hash": o.BlockHash,
@@ -148,7 +183,7 @@ func recipeRevealEvent(o inscriptionOccurrence) (map[string]any, error) {
 		"incomplete_fields": o.Envelope.Incomplete,
 		"duplicate_fields":  o.Envelope.Duplicate,
 		"payload_hex":       append([]string{}, o.PayloadHex...),
-		"properties":        &recipeDeferredProperties{fields: o.Envelope.Fields},
+		"properties":        &recipeDeferredProperties{ctx: ctx, fields: o.Envelope.Fields},
 	}
 	for _, field := range []struct{ tag, name string }{{"05", "metadata"}, {"11", "properties"}} {
 		chunks, present := o.Envelope.Fields[field.tag]
@@ -211,7 +246,7 @@ func (p *recipeProgram) evaluateInscriptionBlockWithLookup(ctx context.Context, 
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		event, err := recipeRevealEvent(occurrence)
+		event, err := recipeRevealEventContext(ctx, occurrence)
 		if err != nil {
 			return nil, err
 		}

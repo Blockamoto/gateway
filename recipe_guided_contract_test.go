@@ -26,7 +26,7 @@ func TestRecipeGuidedPropertyTraitOutcomes(t *testing.T) {
 		{"different", map[string][]string{"11": {"a101a101a16472617265f4"}}, false, false},
 		{"absent", nil, false, false},
 		{"invalid", map[string][]string{"11": {"ff"}}, false, false},
-		{"unsupported", map[string][]string{"11": {"a0"}, "13": {"6272"}}, false, true},
+		{"compressed", map[string][]string{"11": {"0b0580a101a101a16472617265f503"}, "13": {"6272"}}, true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

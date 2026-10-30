@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build the same Gateway Client payload for portable and installer releases.
-Requires Python 3 and Go 1.23+; no third-party Go packages or network fetches.
+Requires Python 3 and Go 1.23+; dependencies are local and no network fetches are needed.
 """
 from __future__ import annotations
 import argparse, base64, datetime, hashlib, json, os, re, shutil, subprocess, sys, tempfile

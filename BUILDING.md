@@ -1,6 +1,6 @@
 # Building Gateway
 
-Gateway uses Go's standard library, with `GO111MODULE=off`. Go 1.23 or newer and Python 3 are required for builds; Node is used for helper tests. Browser tests use Playwright and Chromium. These test dependencies are not shipped with Gateway.
+Gateway builds with `GO111MODULE=off`, using the Go standard library and the pinned, locally vendored Brotli decoder in `internal/brotli`; no dependency fetch is needed. Go 1.23 or newer and Python 3 are required for builds; Node is used for helper tests. Browser tests use Playwright and Chromium. These test dependencies are not shipped with Gateway.
 
 ## Development build
 

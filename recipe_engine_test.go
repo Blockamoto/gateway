@@ -248,11 +248,13 @@ func TestRecipePropertyProjectionAndTypedCBORKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err = recipeEvaluateExpr(recipeExpr{Field: []string{"properties", "status"}}, event, nil)
-	if err != nil || got != "unsupported" {
+	if err != nil || got != "invalid" {
 		t.Fatalf("compression status: %#v %v", got, err)
 	}
-	if _, err = recipeEvaluateExpr(expr, event, nil); err == nil || !strings.Contains(err.Error(), "unsupported") {
-		t.Fatalf("unsupported properties treated as absent: %v", err)
+	if value, err := recipeEvaluateExpr(expr, event, nil); err != nil {
+		t.Fatalf("invalid properties lookup: %v", err)
+	} else if _, missing := value.(recipeMissing); !missing {
+		t.Fatalf("invalid properties unexpectedly yielded a trait: %#v", value)
 	}
 	for _, tc := range []struct {
 		key  string

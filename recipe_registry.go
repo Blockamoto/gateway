@@ -137,7 +137,7 @@ func recipeRegistryCompile(raw []byte) (recipeRegistryView, []byte, error) {
 }
 
 func recipeRegistryRunnable(d recipeDefinition) bool {
-	return d.Source == "bitcoin.reveal" || d.Source == "bitcoin.transaction" && len(d.Dependencies) == 0
+	return d.Source == "bitcoin.reveal" || d.Source == "bitcoin.transaction"
 }
 
 // Runnable indicates the currently supported execution shape, not readiness or coverage.
@@ -147,10 +147,7 @@ func recipeRegistryCapabilityNote(d recipeDefinition) string {
 		return "Definition validated. This source is not yet integrated with the scheduler."
 	}
 	if len(d.Dependencies) != 0 {
-		if d.Source != "bitcoin.reveal" {
-			return "Definition validated. Transaction recipe dependencies are not available for execution."
-		}
-		return "Definition validated. Same-block reveal dependencies require a reviewed plan and matching selected or saved parent coverage; saved-only parents are not started automatically."
+		return "Definition validated. Same-block dependencies require a reviewed plan and matching selected or saved parent coverage; saved-only parents are not started automatically."
 	}
 	return "Definition validated. Finite and Live execution require a reviewed plan; Out caps either choice."
 }

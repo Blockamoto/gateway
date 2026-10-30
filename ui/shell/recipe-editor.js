@@ -17,7 +17,7 @@
   const scalar=value=>value===null || typeof value==='string' || typeof value==='boolean' || typeof value==='number' && Number.isSafeInteger(value);
   const comparable=scalar;
   function toGuided(d) {
-    if (!keys(d,['format','version','id','name','source','origin','history','dependencies','exports','tables','steps']) || d.format!=='gateway-recipe' || d.version!==1 || d.source!=='bitcoin.reveal' || d.history!=='sparse' || !Array.isArray(d.dependencies) || d.dependencies.length>1 || (Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length!==1)) || (d.dependencies.length&&d.exports?.length) || !Array.isArray(d.tables) || d.tables.length!==1 || !Array.isArray(d.steps)) return null;
+    if (!keys(d,['format','version','id','name','source','origin','history','dependencies','exports','tables','steps']) || d.format!=='gateway-recipe' || d.version!==1 || !['bitcoin.reveal','bitcoin.transaction'].includes(d.source) || d.history!=='sparse' || !Array.isArray(d.dependencies) || d.dependencies.length>1 || (Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length!==1)) || (d.dependencies.length&&d.exports?.length) || !Array.isArray(d.tables) || d.tables.length!==1 || !Array.isArray(d.steps)) return null;
     const table=d.tables[0];
     if (!keys(table,['name','key']) || typeof table.name!=='string' || typeof table.key!=='string' || !table.name || !table.key) return null;
     const dep=d.dependencies[0], exp=d.exports?.[0];
@@ -59,9 +59,12 @@
     const columns=[];for(const name of cols){if(name===table.key||name===lookupColumn)continue;const fieldPath=path(write.row[name]);if(!fieldPath)return null;columns.push({name,path:fieldPath});}
     if(typeof d.id!=='string'||typeof d.name!=='string'||!Number.isSafeInteger(d.origin)||d.origin<0)return null;
     const first=filters[0]||{mode:'field',path:'',key:'',value:''},column=columns[0]||{name:'',path:''};
-    return {id:d.id,name:d.name,origin:String(d.origin),table:table.name,key:table.key,keyPath,filterMode:first.mode,filterPath:first.path,filterKey:first.key,filterValue:first.value,extraFilters:filters.slice(1),valueColumn:column.name,valuePath:column.path,extraColumns:columns.slice(1),exportName:exp?.name||'',exportColumn:exp?.column||'',exportType:exp?.type||'',dependencyName:dep?.name||'',dependencyInstance:dep?.instance||'',dependencyRevision:dep?.revision||'',dependencySemanticHash:dep?.semantic_hash||'',dependencyExport:dep?.export||'',dependencyType:dep?.type||'',lookupColumn};
+    if(d.source==='bitcoin.transaction'&&filters.some(f=>f.mode!=='field'))return null;
+    return {source:d.source,id:d.id,name:d.name,origin:String(d.origin),table:table.name,key:table.key,keyPath,filterMode:first.mode,filterPath:first.path,filterKey:first.key,filterValue:first.value,extraFilters:filters.slice(1),valueColumn:column.name,valuePath:column.path,extraColumns:columns.slice(1),exportName:exp?.name||'',exportColumn:exp?.column||'',exportType:exp?.type||'',dependencyName:dep?.name||'',dependencyInstance:dep?.instance||'',dependencyRevision:dep?.revision||'',dependencySemanticHash:dep?.semantic_hash||'',dependencyExport:dep?.export||'',dependencyType:dep?.type||'',lookupColumn};
   }
   function fromGuided(g) {
+    const source=g.source||'bitcoin.reveal';
+    if(!['bitcoin.reveal','bitcoin.transaction'].includes(source))throw new Error('Choose a supported source.');
     const origin=Number(g.origin),mode=g.filterMode||'field',extras=g.extraFilters||[],extraColumns=g.extraColumns||[];
     if (!g.id.trim() || !g.name.trim()) throw new Error('ID and name are required.');
     if (!/^\d+$/.test(g.origin) || !Number.isSafeInteger(origin)) throw new Error('Origin must be a non-negative whole block height.');
@@ -71,6 +74,7 @@
     const firstFilter={mode,path:g.filterPath||'',key:g.filterKey||'',value:g.filterValue||''},subject=f=>f.mode==='field'?f.path:f.key;
     if(extras.length&&!subject(firstFilter)&&!firstFilter.value)throw new Error('Complete the first filter before adding more filters.');
     const filters=(subject(firstFilter)||firstFilter.value)?[firstFilter,...extras]:[];
+    if(source==='bitcoin.transaction'&&filters.some(f=>f.mode!=='field'))throw new Error('Metadata and property filters require the reveal source.');
     const columns=(g.valueColumn||g.valuePath)?[{name:g.valueColumn,path:g.valuePath},...extraColumns]:[];
     if(extraColumns.length&&!columns.length)throw new Error('Complete the first output column before adding more columns.');
     const row=Object.create(null);row[g.key]=fromPath(g.keyPath,'Key field');
@@ -105,7 +109,7 @@
     if(hasDep){steps.push({op:'let',as:'dependency_value',value:call('dependency.lookup',literal(g.dependencyName),row[g.key])});steps.push({op:'require',test:call('valid',variable('dependency_value'))});row[g.lookupColumn]=variable('dependency_value');}
     steps.push({op:'write',table:g.table,row});
     const dependencies=hasDep?[{name:g.dependencyName,instance:g.dependencyInstance,revision:g.dependencyRevision,semantic_hash:g.dependencySemanticHash,export:g.dependencyExport,coverage:'same_block',type:g.dependencyType}]:[];
-    const result={format:'gateway-recipe',version:1,id:g.id,name:g.name,source:'bitcoin.reveal',origin,history:'sparse',dependencies,tables:[{name:g.table,key:g.key}],steps};
+    const result={format:'gateway-recipe',version:1,id:g.id,name:g.name,source,origin,history:'sparse',dependencies,tables:[{name:g.table,key:g.key}],steps};
     if(hasExport)result.exports=[{name:g.exportName,kind:'same_block',table:g.table,column:g.exportColumn,type:g.exportType}];return result;
   }
 
@@ -134,17 +138,18 @@
     }
     try {value(0);ws();return i===text.length;} catch {return false;}
   }
-  function cataloguePaths(catalogue) {
+  function cataloguePaths(catalogue,sourceID='bitcoin.reveal') {
     if (catalogue?.version!==1 || !Array.isArray(catalogue.sources)) return [];
-    const source=catalogue.sources.find(x=>x?.id==='bitcoin.reveal');
+    const source=catalogue.sources.find(x=>x?.id===sourceID);
     if (!Array.isArray(source?.fields)) return [];
     return [...new Set(source.fields.filter(f=>!f.dynamic_tail && Array.isArray(f.path) && f.path.length && f.path.every(p=>typeof p==='string' && p && !p.includes('.'))).map(f=>f.path.join('.')))];
   }
   function mount(root, {request=defaultRequest}={}) {
     if (!root) return;
-    const q=id=>root.querySelector('[data-recipe="'+id+'"]'), names=['id','name','origin','table','key','keyPath','filterMode','filterPath','filterKey','filterValue','valueColumn','valuePath','exportName','exportColumn','exportType','dependencyName','dependencyInstance','dependencyRevision','dependencySemanticHash','dependencyExport','dependencyType','lookupColumn'];
+    const q=id=>root.querySelector('[data-recipe="'+id+'"]'), names=['source','id','name','origin','table','key','keyPath','filterMode','filterPath','filterKey','filterValue','valueColumn','valuePath','exportName','exportColumn','exportType','dependencyName','dependencyInstance','dependencyRevision','dependencySemanticHash','dependencyExport','dependencyType','lookupColumn'];
     const raw=q('raw'), status=q('status'), guided=q('guided'), saveNote=q('save-note');
-    let model=initial(), revision=0, base=null, pendingGuided=false, busy=false, importing=false, importEpoch=0, requestEpoch=0, parentEpoch=0, parentSnapshot=null, extraFilters=[], extraColumns=[];
+    let model=initial(), revision=0, base=null, pendingGuided=false, busy=false, importing=false, importEpoch=0, requestEpoch=0, parentEpoch=0, parentSnapshot=null, extraFilters=[], extraColumns=[], catalogue=null;
+    function sourceFields(){const paths=cataloguePaths(catalogue,q('source').value);if(!paths.length)return;const doc=root.ownerDocument;q('field-list').replaceChildren(...paths.map(path=>{const option=doc.createElement('option');option.value=path;return option;}));}
     const workButtons=['validate','save','load','refresh'];
     function paintBusy() { for (const name of workButtons) q(name).disabled=busy||importing; }
     function setBusy(value) { busy=value; paintBusy(); }
@@ -180,10 +185,10 @@
     function filterControls() { const mode=q('filterMode').value; q('filterPath').disabled=mode!=='field'; q('filterKey').disabled=mode==='field'; }
     function showGuided() {
       const g=guidableJSON(raw.value) ? toGuided(model) : null; guided.disabled=!g;
-      if (g) { for (const name of names) q(name).value=g[name]; extraFilters=g.extraFilters.map(f=>({...f}));extraColumns=g.extraColumns.map(c=>({...c}));filterControls();renderExtras(); }
+      if (g) { for (const name of names) q(name).value=g[name]; extraFilters=g.extraFilters.map(f=>({...f}));extraColumns=g.extraColumns.map(c=>({...c}));filterControls();sourceFields();renderExtras(); }
       status.textContent=g ? 'Guided controls represent this draft. Apply guided changes to update JSON.' : 'This JSON cannot be represented safely by the guided controls. Its original text is preserved.';
     }
-    for (const name of names) q(name).addEventListener('input',()=>{guidedChanged();if(name==='filterMode')filterControls();});
+    for (const name of names) q(name).addEventListener('input',()=>{guidedChanged();if(name==='filterMode')filterControls();if(name==='source')sourceFields();});
     raw.addEventListener('input',()=>{ cancelImport(); revision++; pendingGuided=false; try { const d=JSON.parse(raw.value); if (!d || typeof d!=='object' || Array.isArray(d)) throw new Error('A recipe must be an object.'); model=d; showGuided(); } catch(e) { guided.disabled=true; status.textContent='JSON: '+e.message; } });
     q('apply').addEventListener('click',()=>{ cancelImport(); revision++; try { const g={}; for (const name of names) g[name]=q(name).value;g.extraFilters=extraFilters.map(f=>({...f}));g.extraColumns=extraColumns.map(c=>({...c}));model=fromGuided(g); showModel(); status.textContent='Guided changes applied to the JSON draft.'; } catch(e) { status.textContent=e.message; } });
     q('reset').addEventListener('click',()=>{ cancelImport(); revision++; base=null; model=initial(); showModel(); });
@@ -198,7 +203,7 @@
     q('validate').addEventListener('click',async()=>{
       if (busy || importing) return; let value; try { value=draft(); } catch(e) { status.textContent=e.message; return; }
       const started=revision; ++requestEpoch; setBusy(true);
-      try { await request('/validate',{recipe_json:raw.value}); if (started===revision) status.textContent='Validated by the recipe compiler. Finite and Live runs require a reviewed plan; Out caps either choice. Same-block reveal dependencies require a reviewed plan and matching parent coverage; saved-only parents are not started automatically. Transaction recipe dependencies remain unavailable.'; }
+      try { await request('/validate',{recipe_json:raw.value}); if (started===revision) status.textContent='Validated by the recipe compiler. Finite and Live runs require a reviewed plan; Out caps either choice. Same-block dependencies require a reviewed plan and matching parent coverage; saved-only parents are not started automatically.'; }
       catch(e) { if (started===revision) status.textContent='Validation: '+e.message; }
       finally { setBusy(false); }
     });
@@ -209,7 +214,7 @@
       setBusy(true);
       try {
         const result=await request('',body);
-        if (started===revision) { base={id:value.id,revision:result.revision,semanticHash:result.semantic_hash}; status.textContent='Draft saved and validated. Finite and Live runs require a reviewed plan; Out caps either choice. Same-block reveal dependencies require a reviewed plan and matching parent coverage; saved-only parents are not started automatically. Transaction recipe dependencies remain unavailable.'; }
+        if (started===revision) { base={id:value.id,revision:result.revision,semanticHash:result.semantic_hash}; status.textContent='Draft saved and validated. Finite and Live runs require a reviewed plan; Out caps either choice. Same-block dependencies require a reviewed plan and matching parent coverage; saved-only parents are not started automatically.'; }
         else { if (base?.id===value.id) base=null; saveNote.textContent='An earlier version of '+value.id+' was saved. Export newer edits, then reload the saved draft before saving this ID again.'; }
       } catch(e) { if (started===revision) status.textContent='Save: '+e.message; }
       finally { setBusy(false); }
@@ -233,7 +238,7 @@
         if (started!==revision) return;
         if (typeof result.recipe_json!=='string') throw new Error('Saved recipe text is unavailable.');
         const loaded=JSON.parse(result.recipe_json); model=loaded; base={id:loaded.id,revision:result.revision,semanticHash:result.semantic_hash}; revision++; pendingGuided=false; raw.value=result.recipe_json; showGuided(); saveNote.textContent='';
-        status.textContent=result.validated===false ? (result.note||'Saved draft is not validated by the current interpreter.') : 'Saved draft loaded. Finite and Live runs require a reviewed plan; Out caps either choice. Same-block reveal dependencies require a reviewed plan and matching parent coverage; saved-only parents are not started automatically. Transaction recipe dependencies remain unavailable.';
+        status.textContent=result.validated===false ? (result.note||'Saved draft is not validated by the current interpreter.') : 'Saved draft loaded. Finite and Live runs require a reviewed plan; Out caps either choice. Same-block dependencies require a reviewed plan and matching parent coverage; saved-only parents are not started automatically.';
       } catch(e) { if (started===revision) status.textContent='Load: '+e.message; }
       finally { setBusy(false); }
     });
@@ -250,7 +255,7 @@
     parentChoice.addEventListener('change',async()=>{
       const id=parentChoice.value,ticket=++parentEpoch,started=revision;clearParent();if(!id){parentStatus.textContent='Choose a saved parent.';return;}parentStatus.textContent='Reading immutable parent definition…';
       try{const v=await request('?id='+encodeURIComponent(id));if(ticket!==parentEpoch||parentChoice.value!==id)return;if(started!==revision){parentStatus.textContent='Draft changed; select the parent again.';return;}
-        const d=v?.recipe;if(!v?.validated||d?.id!==id||d.source!=='bitcoin.reveal'||d.history!=='sparse'||(d.dependencies!=null&&(!Array.isArray(d.dependencies)||d.dependencies.length))||!Array.isArray(d.exports)||!d.exports.length||!(/^[0-9a-f]{64}$/.test(v.revision||'')&&/^[0-9a-f]{64}$/.test(v.semantic_hash||'')))throw new Error('No validated independent same-block exports are available.');
+        const d=v?.recipe;if(!v?.validated||d?.id!==id||!['bitcoin.reveal','bitcoin.transaction'].includes(d.source)||d.history!=='sparse'||(d.dependencies!=null&&(!Array.isArray(d.dependencies)||d.dependencies.length))||!Array.isArray(d.exports)||!d.exports.length||!(/^[0-9a-f]{64}$/.test(v.revision||'')&&/^[0-9a-f]{64}$/.test(v.semantic_hash||'')))throw new Error('No validated independent same-block exports are available.');
         const exports=d.exports.filter(e=>e?.kind==='same_block'&&['text','bool','integer','null'].includes(e.type)&&typeof e.name==='string'&&e.name);if(!exports.length)throw new Error('No supported same-block exports are available.');
         parentSnapshot={id,revision:v.revision,semanticHash:v.semantic_hash,exports};parentExportChoice.replaceChildren(option('','Choose export'),...exports.map(e=>option(e.name,e.name+' · '+e.type+' · '+e.table+'.'+e.column)));parentStatus.textContent='Choose an export, then use it to pin this exact revision. Parent coverage is checked during a reviewed run; saved-only parents are not started automatically.';
       }catch(e){if(ticket===parentEpoch&&started===revision&&parentChoice.value===id)parentStatus.textContent='Parent: '+e.message;}
@@ -269,10 +274,8 @@
     showModel();
     // Suggestions are independent of draft state. If the catalogue is absent
     // or invalid, retain the static HTML options; no saved text is changed.
-    Promise.resolve().then(()=>request('/catalogue')).then(catalogue=>{
-      const paths=cataloguePaths(catalogue); if (!paths.length) return;
-      const doc=root.ownerDocument, options=paths.map(path=>{const option=doc.createElement('option');option.value=path;return option;});
-      q('field-list').replaceChildren(...options);
+    Promise.resolve().then(()=>request('/catalogue')).then(value=>{
+      catalogue=value;sourceFields();
     }).catch(()=>{});
   }
   global.GatewayRecipeEditor={initial,toGuided,fromGuided,guidableJSON,cataloguePaths,mount};

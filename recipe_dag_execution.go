@@ -55,8 +55,8 @@ func (p *recipeLineagePlan) lookupInputs(snapshot *recipeLineageSnapshot) (*reci
 	return inputs, nil
 }
 
-func (a *app) recipeExecuteDAGBlock(ctx context.Context, root resolvedSavedRecipe, store *recipeStore, block blockView, inventory *inscriptionBlockResult, revision uint64, guard recipeStoreGuard) error {
-	if ctx == nil || store == nil || guard == nil || root.Source != "bitcoin.reveal" || root.Definition.Source != "bitcoin.reveal" || store.instance != root.ID || store.fingerprint != root.SemanticHash || len(root.Definition.Dependencies) == 0 {
+func (a *app) recipeExecuteDAGBlock(ctx context.Context, root resolvedSavedRecipe, store *recipeStore, block blockView, inventory *inscriptionBlockResult, revision uint64, guard recipeStoreGuard, transactionSources ...*recipeTransactionSource) error {
+	if ctx == nil || store == nil || guard == nil || (root.Source != "bitcoin.reveal" && root.Source != "bitcoin.transaction") || root.Definition.Source != root.Source || store.instance != root.ID || store.fingerprint != root.SemanticHash || len(root.Definition.Dependencies) == 0 || len(transactionSources) > 1 {
 		return fmt.Errorf("invalid dependent DAG execution")
 	}
 	if !integrityVerified(block) {
@@ -87,7 +87,22 @@ func (a *app) recipeExecuteDAGBlock(ctx context.Context, root resolvedSavedRecip
 	if err != nil {
 		return err
 	}
-	rows, err := program.evaluateInscriptionBlockWithLookup(ctx, block, inventory, inputs.lookup)
+	var rows recipeRows
+	if root.Source == "bitcoin.transaction" {
+		var source *recipeTransactionSource
+		if len(transactionSources) == 1 {
+			source = transactionSources[0]
+		}
+		if source == nil {
+			source, err = recipeTransactionSourceFromBlock(ctx, block)
+			if err != nil {
+				return err
+			}
+		}
+		rows, err = program.evaluateTransactionSourceWithLookup(ctx, block, source, inputs.lookup)
+	} else {
+		rows, err = program.evaluateInscriptionBlockWithLookup(ctx, block, inventory, inputs.lookup)
+	}
 	if err != nil {
 		return err
 	}

@@ -63,6 +63,10 @@ func (p *recipeProgram) evaluateTransactionBlock(ctx context.Context, block bloc
 }
 
 func (p *recipeProgram) evaluateTransactionSource(ctx context.Context, block blockView, source *recipeTransactionSource) (recipeRows, error) {
+	return p.evaluateTransactionSourceWithLookup(ctx, block, source, nil)
+}
+
+func (p *recipeProgram) evaluateTransactionSourceWithLookup(ctx context.Context, block blockView, source *recipeTransactionSource, lookup func(string, string) (any, error)) (recipeRows, error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("missing recipe context")
 	}
@@ -72,7 +76,7 @@ func (p *recipeProgram) evaluateTransactionSource(ctx context.Context, block blo
 	if p.definition.Source != "bitcoin.transaction" {
 		return nil, fmt.Errorf("recipe source is not bitcoin.transaction")
 	}
-	if len(p.definition.Dependencies) != 0 {
+	if len(p.definition.Dependencies) != 0 && lookup == nil {
 		return nil, errRecipeDependencyUnavailable
 	}
 	if block.Height < p.definition.Origin || block.Height < 0 {
@@ -91,7 +95,7 @@ func (p *recipeProgram) evaluateTransactionSource(ctx context.Context, block blo
 			return nil, err
 		}
 		event := map[string]any{"ref": txCoordinate(i, source.height), "txid": id, "block_hash": source.hash, "height": json.Number(fmt.Sprint(source.height)), "tx_index": json.Number(fmt.Sprint(i))}
-		rows, err := p.evaluate(event)
+		rows, err := p.evaluateWithLookup(event, lookup)
 		if err != nil {
 			return nil, err
 		}

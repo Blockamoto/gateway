@@ -66,7 +66,7 @@ func recipeBuildDependencyGraph(ctx context.Context, root resolvedSavedRecipe, s
 			return fmt.Errorf("recipe dependency depth exceeds limit")
 		}
 		id := recipeGraphID(node)
-		if !recipeRegistryID.MatchString(id.Instance) || !recipeStoreHashValid(id.Revision) || !recipeStoreHashValid(id.SemanticHash) || node.Definition.ID != node.ID || node.Definition.Source != node.Source || node.Definition.History != node.History || node.Definition.Origin != node.Origin || node.Source != "bitcoin.reveal" || node.History != "sparse" || node.Origin < 0 {
+		if !recipeRegistryID.MatchString(id.Instance) || !recipeStoreHashValid(id.Revision) || !recipeStoreHashValid(id.SemanticHash) || node.Definition.ID != node.ID || node.Definition.Source != node.Source || node.Definition.History != node.History || node.Definition.Origin != node.Origin || (node.Source != "bitcoin.reveal" && node.Source != "bitcoin.transaction") || node.History != "sparse" || node.Origin < 0 {
 			return fmt.Errorf("invalid saved recipe dependency identity")
 		}
 		if color[id] == 1 {
@@ -97,7 +97,7 @@ func recipeBuildDependencyGraph(ctx context.Context, root resolvedSavedRecipe, s
 				resolved[wanted] = parent
 			}
 			parentID := recipeGraphID(parent)
-			if parentID != (recipeGraphIdentity{dep.Instance, dep.Revision, dep.SemanticHash}) || parent.Source != node.Source || parent.History != "sparse" {
+			if parentID != (recipeGraphIdentity{dep.Instance, dep.Revision, dep.SemanticHash}) || parent.History != "sparse" {
 				return fmt.Errorf("dependency %q resolved to an incompatible identity or source", dep.Name)
 			}
 			found := false

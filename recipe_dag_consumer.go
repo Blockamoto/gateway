@@ -334,7 +334,7 @@ func (c *recipeDAGRunConsumer) Apply(ctx context.Context, work recipeConsumerWor
 	}
 	c.pending = nil
 	guard := c.a.recipeLocalDAGExecutionGuard(ctx, c.local.binding, plan, work, block, c.lineage)
-	if err := c.a.recipeExecuteDAGBlock(ctx, c.root, c.store, block, inventory, work.CoverageRevision, guard); err != nil {
+	if err := c.a.recipeExecuteDAGBlock(ctx, c.root, c.store, block, inventory, work.CoverageRevision, guard, transactionSources...); err != nil {
 		return err
 	}
 	expected := work.CoverageRevision + 1

@@ -44,12 +44,6 @@ func recipeOrderSelectedDAG(ctx context.Context, selected []resolvedSavedRecipe,
 	edges := make([]map[int]bool, len(selected))
 	indegree := make([]int, len(selected))
 	for childIndex, root := range selected {
-		if root.Source == "bitcoin.transaction" {
-			if len(root.Definition.Dependencies) != 0 {
-				return nil, fmt.Errorf("transaction recipe dependencies are not supported")
-			}
-			continue // independent transaction writers are unrelated leaves
-		}
 		graph, err := recipeBuildDependencyGraph(ctx, root, byInstance, memoResolve)
 		if err != nil {
 			return nil, err

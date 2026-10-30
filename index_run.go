@@ -721,20 +721,15 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 			}
 			q.State, q.AdmissionState = "ready", "admitted"
 			if len(resolved.Definition.Dependencies) != 0 {
-				if resolved.Source == "bitcoin.transaction" {
-					q.State, q.AdmissionState = "blocked", "blocked"
-					q.Reason = "Same-block dependencies are not supported for transaction recipes."
-				} else {
-					q.Dependencies, e = a.recipePlanDependencies(ctx, resolved, req, q.From, p.TargetHeight, resolve)
-					if e != nil {
-						if ctx.Err() != nil {
-							return p, ctx.Err()
-						}
-						q.State, q.AdmissionState = "blocked", "blocked"
-						q.Reason = "Recipe dependencies cannot be admitted: " + e.Error()
-					} else {
-						q.Reason = "Same-block parent coverage is checked at each block; unavailable evidence waits."
+				q.Dependencies, e = a.recipePlanDependencies(ctx, resolved, req, q.From, p.TargetHeight, resolve)
+				if e != nil {
+					if ctx.Err() != nil {
+						return p, ctx.Err()
 					}
+					q.State, q.AdmissionState = "blocked", "blocked"
+					q.Reason = "Recipe dependencies cannot be admitted: " + e.Error()
+				} else {
+					q.Reason = "Same-block parent coverage is checked at each block; unavailable evidence waits."
 				}
 			}
 			if p.TargetHeight >= 0 && recipeStoreHashValid(p.TargetHash) {

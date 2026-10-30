@@ -423,9 +423,6 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 			return v, err
 		}
 		if len(resolved.Definition.Dependencies) != 0 {
-			if resolved.Source != "bitcoin.reveal" {
-				return v, fmt.Errorf("same-block dependencies are not supported for this recipe source")
-			}
 			consumer, e := a.openRecipeDAGRunConsumer(ctx, plan, binding)
 			if e != nil {
 				return v, e

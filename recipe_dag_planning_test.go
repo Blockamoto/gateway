@@ -78,7 +78,7 @@ func TestRecipeDAGPlanningRejectsParentOriginAfterRequestedStart(t *testing.T) {
 	}
 }
 
-func TestRecipeTransactionDependencyRemainsExplicitlyBlocked(t *testing.T) {
+func TestRecipeTransactionDependencyPlansUnknownSavedCoverage(t *testing.T) {
 	ctx := context.Background()
 	a := runTestApp(t)
 	parent := recipeDAGExecutionFixtureRecipe(t, a, "txdep-parent", nil)
@@ -103,10 +103,7 @@ func TestRecipeTransactionDependencyRemainsExplicitlyBlocked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Ready || len(plan.Consumers) != 1 || plan.Consumers[0].AdmissionState != "blocked" || !strings.Contains(plan.Consumers[0].Reason, "transaction") {
-		t.Fatalf("transaction dependency not explicitly blocked: %+v", plan)
-	}
-	if _, err = a.startIndexRun(ctx, req, plan.PlanID); err == nil {
-		t.Fatal("transaction dependency started")
+	if !plan.Ready || len(plan.Consumers) != 1 || plan.Consumers[0].AdmissionState != "admitted" || len(plan.Consumers[0].Dependencies) != 1 || plan.Consumers[0].Dependencies[0].State != "saved_coverage_unknown" {
+		t.Fatalf("transaction parent coverage was not unknown: %+v", plan)
 	}
 }

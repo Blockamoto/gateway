@@ -473,3 +473,16 @@ explicitly disabled. It is not the finished preview and still carries the base
 changed. Both browser-control runtimes failed to initialize with
 `failed to write kernel assets: The system cannot find the path specified`,
 including after a kernel reset. No visible Chrome acceptance is claimed.
+
+
+### Custom checkpoint destination lookup
+
+Saved Current Addresses projections now expose direct destination-bucket lookup
+through the committed output route and track controls. Mainnet addresses,
+SEC public keys and exact supported scripts resolve to a canonical script key.
+The recipe/source-relative scope, exact count/balance strings, cursor identity,
+covered zero, source loss, filter changes and stale GUI responses are explicit.
+No scan or parent work starts on lookup. Focused projection query checks passed
+in 8.237 seconds; all four recipe/workspace JavaScript checks and production
+build passed. General state contracts, remaining built-ins and complete visible
+preview acceptance are still open. Details are in `080-NATIVE-CURRENT-ADDRESSES.md`.

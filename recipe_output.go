@@ -23,7 +23,7 @@ func (a *app) handleRecipeOutput(w http.ResponseWriter, r *http.Request) {
 	}
 	values := r.URL.Query()
 	for key, entries := range values {
-		if (key != "id" && key != "revision" && key != "semantic_hash" && key != "height" && key != "offset" && key != "cursor" && key != "limit" && key != "unit" && key != "download") || len(entries) != 1 {
+		if (key != "id" && key != "revision" && key != "semantic_hash" && key != "height" && key != "offset" && key != "cursor" && key != "limit" && key != "unit" && key != "download" && key != "destination") || len(entries) != 1 {
 			jsonError(w, 400, fmt.Errorf("invalid recipe output query"))
 			return
 		}
@@ -51,6 +51,29 @@ func (a *app) handleRecipeOutput(w http.ResponseWriter, r *http.Request) {
 	cursor := values.Get("cursor")
 	if (offset > 0 || cursor != "") && !recipeStoreHashValid(token) || token != "" && !recipeStoreHashValid(token) {
 		jsonError(w, 400, fmt.Errorf("a unit token is required for later pages"))
+		return
+	}
+	if destination := values.Get("destination"); values.Has("destination") {
+		if offset != 0 || values.Get("download") != "" {
+			jsonError(w, 400, fmt.Errorf("destination lookup uses state cursor pages"))
+			return
+		}
+		prepared, err := a.ResolveSavedRecipe(r.Context(), id, revision, fingerprint)
+		if err != nil {
+			jsonError(w, 409, err)
+			return
+		}
+		if !recipeProjectionPublicEnabled || prepared.Source != recipeUTXOProjectionSource {
+			jsonError(w, 400, fmt.Errorf("destination lookup requires checkpoint address storage"))
+			return
+		}
+		result, status, err := a.readProjectionRecipeDestination(r.Context(), prepared, height, limit, token, cursor, destination)
+		w.Header().Set("Cache-Control", "no-store")
+		if err != nil {
+			jsonError(w, status, err)
+			return
+		}
+		writeJSON(w, result)
 		return
 	}
 	if kind := values.Get("download"); kind != "" {

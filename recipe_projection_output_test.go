@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,6 +128,42 @@ func TestRecipeProjectionOutputPinnedPagesAndParentAuthority(t *testing.T) {
 	if len(seen) != 4 || cursor == "" {
 		t.Fatal("member traversal lost outputs", seen)
 	}
+	filtered, _, err := a.readProjectionRecipeDestination(ctx, resolved, 2, 1, "", "", address076P2PKH)
+	if err != nil || filtered["balance_sats"] != "8" || filtered["output_count"] != "2" || filtered["scope"] != "recipe_members" || filtered["complete"] != true || len(filtered["rows"].([]recipeStoreRow)) != 1 || filtered["next_cursor"] == nil {
+		t.Fatal("direct reverse destination lookup", filtered, err)
+	}
+	filteredUnit, filteredCursor := filtered["unit"].(string), filtered["next_cursor"].(string)
+	_, paymentAddress, err := addressStateScript(address076P2PKH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last, _, err := a.readProjectionRecipeDestination(ctx, resolved, 2, 1, filteredUnit, filteredCursor, paymentAddress)
+	if err != nil || len(last["rows"].([]recipeStoreRow)) != 1 || last["next_cursor"] != nil || last["unit"] != filteredUnit {
+		t.Fatal("address and exact script did not share a pinned identity", last, err)
+	}
+	if _, code, err := a.readProjectionRecipeDestination(ctx, resolved, 2, 1, filteredUnit, filteredCursor, address076P2SH); err == nil || code != 409 {
+		t.Fatal("destination continuation crossed scripts", code, err)
+	}
+	if _, code, err := read(2, filteredUnit, filteredCursor); err == nil || code != 409 {
+		t.Fatal("filtered token was accepted as an unfiltered page", code, err)
+	}
+	absent, _, err := a.readProjectionRecipeDestination(ctx, resolved, 2, 1, "", "", "0014"+strings.Repeat("44", 20))
+	if err != nil || absent["state"] != "covered" || absent["output_count"] != "0" || absent["balance_sats"] != "0" || len(absent["rows"].([]recipeStoreRow)) != 0 {
+		t.Fatal("known absent destination was not an evaluated zero", absent, err)
+	}
+	params := url.Values{"id": {resolved.ID}, "revision": {resolved.Revision}, "semantic_hash": {resolved.SemanticHash}, "height": {"2"}, "destination": {paymentAddress}, "limit": {"1"}}
+	response := indexInterfaceCall(indexInterfaceHandler(a), "GET", "/api/v1/index/recipes/output?"+params.Encode(), "")
+	var wire map[string]any
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &wire) != nil || wire["balance_sats"] != "8" || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("destination HTTP route", response.Code, response.Body.String())
+	}
+	for _, input := range []string{"", "invalid", "51"} {
+		params.Set("destination", input)
+		response = indexInterfaceCall(indexInterfaceHandler(a), "GET", "/api/v1/index/recipes/output?"+params.Encode(), "")
+		if response.Code != 400 {
+			t.Fatal("invalid destination became an all-members query", input, response.Code)
+		}
+	}
 	for _, bad := range []struct {
 		token, cursor string
 		code          int
@@ -153,6 +190,9 @@ func TestRecipeProjectionOutputPinnedPagesAndParentAuthority(t *testing.T) {
 	}
 	if _, code, err := read(1, oldUnit, ""); err == nil || code != 409 {
 		t.Fatal("lost parent exposed committed child", code, err)
+	}
+	if _, code, err := a.readProjectionRecipeDestination(ctx, resolved, 1, 1, "", "", paymentAddress); err == nil || code != 409 {
+		t.Fatal("lost parent became a destination zero", code, err)
 	}
 }
 

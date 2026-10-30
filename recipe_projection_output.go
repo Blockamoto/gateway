@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,9 +12,39 @@ import (
 
 const recipeProjectionQueryProfile = "gateway-address-projection-query-v1"
 
+type recipeProjectionDestination struct {
+	Input, Destination, Script, Kind string
+	Count, Balance                   uint64
+}
+
 // Parent resolution precedes the authority locks. Its exact retained receipt is
 // checked again under that fence. Queries neither create a store nor run work.
 func (a *app) readProjectionRecipeOutput(ctx context.Context, prepared resolvedSavedRecipe, height int64, limit int, token, cursor string) (map[string]any, int, error) {
+	return a.readProjectionRecipeOutputFiltered(ctx, prepared, height, limit, token, cursor, nil)
+}
+
+func (a *app) readProjectionRecipeDestination(ctx context.Context, prepared resolvedSavedRecipe, height int64, limit int, token, cursor, input string) (map[string]any, int, error) {
+	input = strings.TrimSpace(input)
+	if len(input) == 0 || len(input) > 2048 {
+		return nil, 400, fmt.Errorf("provide a mainnet destination or exact supported script")
+	}
+	destination, script, kind, err := bitcoinDestinationScript(input)
+	if err != nil {
+		if raw, decodeErr := hex.DecodeString(input); decodeErr == nil {
+			kind, destination = describeDestinationScript(raw)
+			if destination != "" {
+				script, err = hex.EncodeToString(raw), nil
+			}
+		}
+	}
+	if err != nil {
+		return nil, 400, fmt.Errorf("provide a supported mainnet destination, public key or exact locking script: %w", err)
+	}
+	filter := &recipeProjectionDestination{Input: input, Destination: destination, Script: script, Kind: kind}
+	return a.readProjectionRecipeOutputFiltered(ctx, prepared, height, limit, token, cursor, filter)
+}
+
+func (a *app) readProjectionRecipeOutputFiltered(ctx context.Context, prepared resolvedSavedRecipe, height int64, limit int, token, cursor string, filter *recipeProjectionDestination) (map[string]any, int, error) {
 	if ctx == nil || height < 0 || limit < 1 || limit > 1000 || token != "" && !recipeStoreHashValid(token) || cursor != "" && token == "" {
 		return nil, 400, fmt.Errorf("invalid projection output page")
 	}
@@ -65,6 +96,12 @@ func (a *app) readProjectionRecipeOutput(ctx context.Context, prepared resolvedS
 		return nil, 409, err
 	}
 	result := map[string]any{"state": "uncovered", "authority": "selected_local_header_as_of_read", "height": height, "selected_block_hash": selected, "revision": prepared.Revision, "semantic_hash": prepared.SemanticHash}
+	filterKey := ""
+	if filter != nil {
+		filterKey = addressStateScriptKey(filter.Script)
+		result["scope"] = "recipe_members"
+		result["filter"] = map[string]string{"input": filter.Input, "destination": filter.Destination, "script_pub_key": filter.Script, "script_type": filter.Kind}
+	}
 	var point recipeProjectionPoint
 	found := false
 	for _, candidate := range head.History {
@@ -98,14 +135,15 @@ func (a *app) readProjectionRecipeOutput(ctx context.Context, prepared resolvedS
 	unit := indexDigest(struct {
 		Profile, Instance, Revision, Semantic string
 		Point                                 recipeProjectionPoint
-	}{recipeProjectionQueryProfile, prepared.ID, prepared.Revision, prepared.SemanticHash, point})
+		Filter                                string `json:"filter,omitempty"`
+	}{recipeProjectionQueryProfile, prepared.ID, prepared.Revision, prepared.SemanticHash, point, filterKey})
 	if token != "" && token != unit {
 		return nil, 409, fmt.Errorf("projection output snapshot changed")
 	}
 	if err = parent.checkLocked(ctx, a); err != nil {
 		return nil, 409, err
 	}
-	rows, next, err := g.memberPage(ctx, parent, cp, limit, cursor)
+	rows, next, err := g.memberPage(ctx, parent, cp, limit, cursor, filter)
 	if err != nil {
 		return nil, 409, err
 	}
@@ -119,6 +157,11 @@ func (a *app) readProjectionRecipeOutput(ctx context.Context, prepared resolvedS
 	result["excluded_output_count"] = strconv.FormatUint(cp.ExcludedOutputCount, 10)
 	result["excluded_value_sats"] = strconv.FormatUint(cp.ExcludedValueSats, 10)
 	result["excluded_rows_retained"] = false
+	if filter != nil {
+		result["balance_sats"] = strconv.FormatUint(filter.Balance, 10)
+		result["output_count"] = strconv.FormatUint(filter.Count, 10)
+		result["complete"] = true // complete within this exact recipe and source snapshot
+	}
 	if next != "" {
 		result["next_cursor"] = next
 	}
@@ -132,7 +175,7 @@ func (a *app) readProjectionRecipeOutput(ctx context.Context, prepared resolvedS
 	return result, 0, nil
 }
 
-func (g *recipeProjectionGeneration) memberPage(ctx context.Context, parent *recipeProjectionParent, cp addressStateCheckpoint, limit int, cursor string) ([]recipeStoreRow, string, error) {
+func (g *recipeProjectionGeneration) memberPage(ctx context.Context, parent *recipeProjectionParent, cp addressStateCheckpoint, limit int, cursor string, filter *recipeProjectionDestination) ([]recipeStoreRow, string, error) {
 	scriptAfter, memberAfter := "", ""
 	if cursor != "" {
 		parts := strings.Split(cursor, ":")
@@ -152,6 +195,9 @@ func (g *recipeProjectionGeneration) memberPage(ctx context.Context, parent *rec
 		var bucket addressStateBucket
 		if !validHash(kv.Key) || json.Unmarshal(kv.Value, &bucket) != nil || validateAddressBucket(bucket) != nil || bucket.Count > cp.OutputCount || bucket.ValueSats > cp.ValueSats {
 			return fmt.Errorf("invalid projection summary bucket")
+		}
+		if filter != nil {
+			filter.Count, filter.Balance = bucket.Count, bucket.ValueSats
 		}
 		tree := newOrdinalTree(dir, bucket.Root).withContext(ctx)
 		if after != "" {
@@ -225,6 +271,31 @@ func (g *recipeProjectionGeneration) memberPage(ctx context.Context, parent *rec
 			next = kv.Key + ":" + row.Key
 			return ctx.Err()
 		})
+	}
+	if filter != nil {
+		key := addressStateScriptKey(filter.Script)
+		if scriptAfter != "" && scriptAfter != key {
+			return nil, "", fmt.Errorf("projection cursor belongs to another destination")
+		}
+		var bucket json.RawMessage
+		found, err := summary.get(key, &bucket)
+		if err != nil {
+			return nil, "", err
+		}
+		if !found {
+			if cursor != "" {
+				return nil, "", fmt.Errorf("projection destination cursor is absent")
+			}
+			return rows, "", ctx.Err()
+		}
+		err = visitBucket(ordinalKV{Key: key, Value: bucket}, memberAfter)
+		if err != nil && !errors.Is(err, stop) {
+			return nil, "", err
+		}
+		if !more {
+			next = ""
+		}
+		return rows, next, ctx.Err()
 	}
 	if scriptAfter != "" {
 		var bucket json.RawMessage

@@ -171,5 +171,26 @@ build and four JavaScript checks passed. The public missing-saved-parent test
 also confirms that waiting/pause creates no child, parent or native UTXO generation
 and performs no body read. Visible Chrome acceptance remains open because the
 browser runtimes could not initialize; the temporary offline UI server is only
-an intermediate inspection surface. Custom reverse-query integration, remaining
-built-ins and wider ordered contracts remain open in the engine ledger.
+an intermediate inspection surface. Remaining built-ins and wider ordered contracts remain open in the engine ledger.
+
+
+## Destination lookup for saved projections
+
+The public committed-output route accepts an optional destination address, SEC
+public key or exact supported locking script for checkpoint address recipes.
+It resolves the stored summary bucket directly and pages only that destination's
+members. Address/script aliases share a script-bound token; a token cannot cross
+destinations or switch between filtered and unfiltered output. Counts and sats
+remain exact decimal strings. The response labels its scope `recipe_members`:
+its balance includes only outputs admitted by that recipe at its declared source
+snapshot. It does not imply a network-wide balance. An absent bucket is a covered
+zero only after the same selected-header, source, child checkpoint and saved
+revision checks used for member enumeration. Unbuilt or stale evidence cannot
+be presented as zero.
+
+Saved track controls expose this optional filter for checkpoint projections,
+retain it for cursor paging and reject responses for another filter. Changing
+it invalidates outstanding requests and page tokens. It does not start work.
+Focused projection query checks passed in 8.237 seconds; all four JavaScript
+checks and the production build passed. These remain bounded fixture checks,
+with visible Chrome acceptance and complete 0.8.0 integration still open.

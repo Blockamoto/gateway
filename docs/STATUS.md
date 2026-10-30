@@ -1,13 +1,14 @@
 # Gateway status
 
-## 0.7.9 release candidate
+## 0.7.9 prerelease
 
 Gateway 0.7.9 adds validated Bitmap Parcels and revised dependency and indexing
-controls. Parcel coverage advances only with checked evidence; missing or
+controls. The prerelease is published; [release and updater status](RELEASE-STATUS-0.7.9.md)
+records the verified artifacts and the Render deployment blocker. Parcel coverage advances only with checked evidence; missing or
 unsupported proof remains pending. Existing experimental data is preserved.
 Full-chain Parcel and Live performance have not been established by bounded
-fixtures. Release and updater acceptance are tracked separately in the 0.7.9
-release acceptance record and testing guide. The sections below preserve
+fixtures. The packaged acceptance record describes the earlier candidate stage;
+the linked release status records subsequent evidence. The sections below preserve
 historical source and release records, not current release state.
 
 ## Historical: 0.7.8 local portable preview

@@ -12,7 +12,7 @@ import (
 	"unicode/utf8"
 )
 
-const recipeOrderedProfile = "gateway-ordered-experimental-v1"
+const recipeOrderedProfile = "gateway-ordered-experimental-v2"
 const recipeOrderedMaxEvents = 50000
 const recipeOrderedMaxWork = 1000000
 const recipeOrderedMaxDepth = 32
@@ -375,7 +375,7 @@ func (m *recipeOrderedMachine) exec(steps []recipeOrderedInstruction, depth int)
 			if err != nil {
 				return err
 			}
-			if key.Kind != "text" || s.Table == "" {
+			if key.Kind != "text" || s.Table == "" || strings.HasPrefix(s.Table, "__gateway_") {
 				return fmt.Errorf("invalid ordered state key")
 			}
 			k := recipeStateKey{Table: s.Table, Key: key.Text}

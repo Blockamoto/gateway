@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -22,6 +23,8 @@ const recipeStageChunkOps = 128
 const recipeStageChunkBytes = 1 << 20
 
 var recipeStageMu sync.Mutex // application profile must be single-process owned
+
+func recipeStageReservedTable(table string) bool { return strings.HasPrefix(table, "__gateway_") }
 
 type recipeStageOperation struct {
 	Key   recipeStateKey
@@ -654,6 +657,9 @@ func (s *recipeStageStore) publish(ctx context.Context, id string, guard func(re
 func (s *recipeStageStore) read(ctx context.Context, key recipeStateKey) (recipeStateValue, error) {
 	if ctx == nil {
 		return recipeStateValue{}, fmt.Errorf("missing context")
+	}
+	if recipeStageReservedTable(key.Table) {
+		return recipeStateValue{}, fmt.Errorf("reserved control state is not an indexed fact")
 	}
 	recipeStageMu.Lock()
 	defer recipeStageMu.Unlock()

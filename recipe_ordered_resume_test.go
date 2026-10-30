@@ -189,6 +189,19 @@ func TestRecipeResumeRejectsUnsupportedAndOversizedBeforeExecution(t *testing.T)
 	if _, err := recipeResumeNewSource(context.Background(), 0, genesisHashDisplay, "synthetic", events); !errors.Is(err, errRecipeStateBudget) {
 		t.Fatal("oversized source accepted", err)
 	}
+	p = recipeResumeTestProgram()
+	p.Steps[0].Body[0].Name = string([]byte{0xff})
+	if err := recipeResumeProgramValidate(p); err == nil {
+		t.Fatal("invalid program text accepted")
+	}
+	if _, err := recipeResumeNewSource(context.Background(), 0, genesisHashDisplay, string([]byte{0xff}), nil); err == nil {
+		t.Fatal("invalid source profile accepted")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := recipeResumeNewSource(ctx, 0, genesisHashDisplay, "synthetic", nil); !errors.Is(err, context.Canceled) {
+		t.Fatal("cancelled empty source accepted", err)
+	}
 }
 
 func TestRecipeResumeComposedUTXOAgainstLegacy(t *testing.T) {
@@ -260,5 +273,49 @@ func TestRecipeResumeComposedUTXOAgainstLegacy(t *testing.T) {
 				t.Fatal("UTXO value differs", value, coin, e)
 			}
 		}
+	}
+}
+
+func TestRecipeResumeReservedControlNamespace(t *testing.T) {
+	key := roLit(rovText("current"))
+	for _, op := range []string{"read", "put", "delete"} {
+		step := recipeOrderedInstruction{Op: op, Name: "v", Table: "__gateway_other", Key: key}
+		if op == "put" {
+			step.Expr = roLit(rovUint(1))
+		}
+		p := recipeOrderedProgram{Steps: []recipeOrderedInstruction{{Op: "for_events", Body: []recipeOrderedInstruction{{Op: "if", Expr: roLit(rovBool(false)), Body: []recipeOrderedInstruction{step}}}}}}
+		if err := recipeResumeProgramValidate(p); err == nil {
+			t.Fatal("reserved table accepted", op)
+		}
+	}
+	ctx := context.Background()
+	s, st, p, source := recipeResumeTestSetup(t)
+	var done bool
+	var err error
+	for i := 0; !done; i++ {
+		if i > 30 {
+			t.Fatal("not done")
+		}
+		st, done, err = recipeResumeSlice(ctx, s, st.ID, st.Sequence, p, source, 32)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	control := recipeStateKey{Table: recipeResumeTable, Key: recipeResumeKey}
+	if v, e := s.readStaged(ctx, st.ID, st.Sequence, control); e != nil || !v.Present {
+		t.Fatal("internal checkpoint unavailable", v, e)
+	}
+	stageTestComplete(t, s, st)
+	if _, e := s.read(ctx, control); e == nil {
+		t.Fatal("control checkpoint exposed as indexed fact")
+	}
+	m := &recipeStateMemoryTest{version: recipeStateVersion{Checkpoint: "origin"}, values: map[recipeStateKey]recipeStateValue{}}
+	tx, e := recipeStateBegin(m, m.version, "next", recipeStateTestLimits())
+	if e != nil {
+		t.Fatal(e)
+	}
+	unsafe := recipeOrderedProgram{Steps: []recipeOrderedInstruction{{Op: "put", Table: "__gateway_other", Key: key, Expr: roLit(rovUint(1))}}}
+	if e = recipeOrderedExecute(ctx, unsafe, tx, nil); e == nil {
+		t.Fatal("generic ordered interpreter accepted reserved table")
 	}
 }

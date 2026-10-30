@@ -136,8 +136,14 @@ percentage for the cache.
 The private resumable AST executor binds its exact program and interpreter
 profiles to a content-hashed event sequence. Each bounded slice commits its AST
 path, local variables, loop stack and state writes in one private staged chunk;
-the stage sequence and source cursor fence retries. The continuation uses a
-reserved state key and is not a user-facing recipe format. Its source digest
+the stage sequence and source cursor fence retries. After an uncertain write
+outcome, a caller must reload the stage checkpoint before choosing a retry.
+The `__gateway_` table prefix is reserved for control state: ordered programs
+reject it and committed-state reads refuse to expose it as an indexed fact.
+The continuation currently occupies that namespace inside the staged tree,
+so its metadata still affects the internal root and journal. A future
+user-visible commitment and export must segregate control state or explicitly
+exclude it before publication. This is not a user-facing recipe format. Its source digest
 authenticates the supplied sequence as data, not its completeness or Bitcoin
 chain authority; a verified complete block-source adapter and publication
 authority are still required. This prototype materializes at most 50,000 events

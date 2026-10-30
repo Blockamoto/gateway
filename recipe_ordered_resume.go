@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"unicode/utf8"
 )
 
 const recipeResumeProfile = "gateway-ordered-resume-ast-v1"
@@ -95,8 +96,11 @@ func recipeResumeValueBudget(v recipeOrderedValue, depth int, remaining *int) er
 // future source adapter must independently establish exact complete block bytes.
 func recipeResumeNewSource(ctx context.Context, height int64, blockHash, profile string, events []map[string]recipeOrderedValue) (recipeResumeSource, error) {
 	var src recipeResumeSource
-	if ctx == nil || height < 0 || !recipeStoreHashValid(blockHash) || profile == "" || len(profile) > 256 || len(events) > recipeOrderedMaxEvents {
+	if ctx == nil || height < 0 || !recipeStoreHashValid(blockHash) || profile == "" || len(profile) > 256 || !utf8.ValidString(profile) || len(events) > recipeOrderedMaxEvents {
 		return src, fmt.Errorf("invalid resumable source")
+	}
+	if err := ctx.Err(); err != nil {
+		return src, err
 	}
 	src = recipeResumeSource{Height: height, BlockHash: blockHash, Profile: profile, Events: make([][]byte, 0, len(events))}
 	used := 0
@@ -109,7 +113,7 @@ func recipeResumeNewSource(ctx context.Context, height int64, blockHash, profile
 		}
 		remaining := recipeResumeSourceMaxBytes - used
 		for name, value := range event {
-			if len(name) > 256 {
+			if len(name) > 256 || !utf8.ValidString(name) {
 				return recipeResumeSource{}, errRecipeStateBudget
 			}
 			if err := recipeResumeSpendBudget(&remaining, len(name)); err != nil {
@@ -164,6 +168,9 @@ func recipeResumeProgramValidate(p recipeOrderedProgram) error {
 		if expressions > recipeMaxExpressionWork {
 			return errRecipeStateBudget
 		}
+		if !utf8.ValidString(e.Var) || !utf8.ValidString(e.Field) || !utf8.ValidString(e.Call) {
+			return fmt.Errorf("invalid resumable expression text")
+		}
 		for _, n := range []int{128, len(e.Var), len(e.Field), len(e.Call)} {
 			if err := recipeResumeSpendBudget(&remaining, n); err != nil {
 				return err
@@ -207,6 +214,9 @@ func recipeResumeProgramValidate(p recipeOrderedProgram) error {
 			return errRecipeStateBudget
 		}
 		for k, child := range e.Object {
+			if !utf8.ValidString(k) {
+				return fmt.Errorf("invalid resumable object key")
+			}
 			if err := recipeResumeSpendBudget(&remaining, len(k)); err != nil {
 				return err
 			}
@@ -230,6 +240,9 @@ func recipeResumeProgramValidate(p recipeOrderedProgram) error {
 			count++
 			if count > recipeMaxSteps {
 				return errRecipeStateBudget
+			}
+			if !utf8.ValidString(s.Op) || !utf8.ValidString(s.Name) || !utf8.ValidString(s.Table) {
+				return fmt.Errorf("invalid resumable instruction text")
 			}
 			switch s.Op {
 			case "let", "require", "read", "put", "delete", "if", "for_range":
@@ -263,7 +276,7 @@ func recipeResumeProgramValidate(p recipeOrderedProgram) error {
 			} else if !recipeResumeExprEmpty(s.Expr) {
 				return fmt.Errorf("unexpected instruction expression")
 			}
-			if (s.Op == "read" || s.Op == "put" || s.Op == "delete") && s.Table == recipeResumeTable {
+			if (s.Op == "read" || s.Op == "put" || s.Op == "delete") && recipeStageReservedTable(s.Table) {
 				return fmt.Errorf("reserved continuation table")
 			}
 			if s.Op == "if" {
@@ -399,6 +412,9 @@ func recipeResumeSlice(ctx context.Context, s *recipeStageStore, id string, expe
 	var program recipeOrderedProgram
 	if err = json.Unmarshal(raw, &program); err != nil {
 		return zero, false, err
+	}
+	if source.Height < 0 || !recipeStoreHashValid(source.BlockHash) || !recipeStoreHashValid(source.Commitment) || source.Profile == "" || len(source.Profile) > 256 || !utf8.ValidString(source.Profile) {
+		return zero, false, fmt.Errorf("invalid resumable source identity")
 	}
 	if len(source.Events) > recipeOrderedMaxEvents {
 		return zero, false, errRecipeStateBudget
@@ -567,7 +583,7 @@ func recipeResumeSlice(ctx context.Context, s *recipeStageStore, id string, expe
 			if e != nil {
 				return zero, false, e
 			}
-			if key.Kind != "text" || instruction.Table == "" || instruction.Table == recipeResumeTable {
+			if key.Kind != "text" || instruction.Table == "" || recipeStageReservedTable(instruction.Table) {
 				return zero, false, fmt.Errorf("invalid continuation state key")
 			}
 			k := recipeStateKey{Table: instruction.Table, Key: key.Text}

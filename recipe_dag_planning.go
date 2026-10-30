@@ -49,6 +49,21 @@ func (a *app) recipePlanDependencies(ctx context.Context, root resolvedSavedReci
 	}
 	dependencies := make([]indexRunDependency, 0, len(graph.Edges))
 	for _, edge := range graph.Edges {
+		if edge.Coverage == "snapshot_delta" {
+			state, source := "saved_checkpoint_unknown", "saved"
+			selected := edge.ParentSelected || edge.SelectedSameGeneration
+			if edge.Scope == "builtin" {
+				source = "built-in"
+				choice, ok := runSelection(req, edge.Parent.Instance)
+				selected = ok && choice.Armed && !choice.Recipe
+			}
+			if selected {
+				state = "selected_checkpoint_unknown"
+			}
+			reason := fmt.Sprintf("%s requires the exact coins checkpoint and checked deltas from %s %s revision %s. The input prefix must already exist or be explicitly selected; this child does not start its parent.", edge.Child.Instance, source, edge.Parent.Instance, edge.Parent.Revision)
+			dependencies = append(dependencies, indexRunDependency{Index: edge.Parent.Instance, Kind: "snapshot_delta", State: state, Reason: reason})
+			continue
+		}
 		state := "saved_coverage_unknown"
 		reason := fmt.Sprintf("%s requires same-block export %s from saved %s revision %s; missing evidence waits and never starts a hidden writer.", edge.Child.Instance, edge.Export, edge.Parent.Instance, edge.Parent.Revision)
 		if edge.ParentSelected {

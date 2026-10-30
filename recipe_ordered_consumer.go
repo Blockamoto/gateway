@@ -85,57 +85,17 @@ func (a *app) openRecipeOrderedRunConsumer(ctx context.Context, plan recipeAdmis
 }
 
 func (c *recipeOrderedRunConsumer) Rebind(ctx context.Context, height int64, hash string) error {
-	if ctx == nil || height < 0 || !recipeStoreHashValid(hash) {
-		return fmt.Errorf("invalid ordered target")
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err := c.a.lockSelectedHeaders051(); err != nil {
-		return err
-	}
-	defer c.a.headerChainMu.RUnlock()
-	header, err := readHeaderAt(c.a.headersPath, height)
+	plan, err := c.a.recipeRebindTarget(ctx, c.plan, c.binding, height, hash)
 	if err != nil {
 		return err
 	}
-	digest := hash256(header)
-	if reverseHex(digest[:]) != hash {
-		return fmt.Errorf("ordered target differs from selected local headers")
-	}
-	c.a.indexRunMu.Lock()
-	defer c.a.indexRunMu.Unlock()
-	if err = c.a.loadIndexRunLocked(); err != nil {
-		return err
-	}
-	run := c.a.indexRunState.Run
-	selection, _, err := recipeCheckRunIdentity(run, c.binding)
-	if err != nil {
-		return err
-	}
-	if selection.Live && run.Request.Out == nil {
-		if run.TargetHeight != height || run.TargetHash != hash {
-			return fmt.Errorf("ordered Live target is no longer admitted")
-		}
-	} else if height != run.InitialTargetHeight {
-		return fmt.Errorf("ordered finite target changed")
-	}
-	if err = c.a.recipeLocalMarksLocked(run.Request); err != nil {
-		return err
-	}
-	request, err := recipeAdmissionCloneRequest(run.Request)
-	if err != nil {
-		return err
-	}
-	plan := c.plan
-	plan.Request = request
-	plan.TargetHeight, plan.TargetHash = height, hash
-	plan.NoWork = plan.EffectiveFrom > height
-	plan.PlanID = recipeAdmissionDigest(plan)
 	if plan.PlanID != c.plan.PlanID {
 		c.pending = nil
 	}
 	c.plan = plan
-	return ctx.Err()
+	return nil
 }
 
 func (c *recipeOrderedRunConsumer) selectedTip(ctx context.Context) (int64, string, error) {

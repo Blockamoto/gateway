@@ -7,6 +7,7 @@ import "fmt"
 const recipeUTXOProjectionSource = "dependency.utxo"
 const recipeUTXOProjectionProfile = "gateway-utxo-snapshot-delta-v1"
 const recipeAddressProjectionStorage = "bitcoin.address.cow.v1"
+const recipeProjectionPublicEnabled = true
 
 func recipeUTXOProjectionFields() []recipeFieldCapability {
 	result := []recipeFieldCapability{}

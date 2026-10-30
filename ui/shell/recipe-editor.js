@@ -164,7 +164,7 @@
       return value;
     }
     function guidedChanged(){cancelImport();revision++;pendingGuided=true;status.textContent='Apply guided changes before validating or saving.';}
-    const orderedHost=q('ordered'),orderedEditor=orderedHost&&global.GatewayOrderedRecipeEditor?.mount(orderedHost,{onChange:guidedChanged,getCatalogue:()=>catalogue,onApply(){
+    const orderedHost=q('ordered'),orderedEditor=orderedHost&&global.GatewayOrderedRecipeEditor?.mount(orderedHost,{onChange:guidedChanged,getCatalogue:()=>catalogue,readParent:id=>request('?id='+encodeURIComponent(id)),onApply(){
       cancelImport();revision++;try{model=orderedEditor.definition();showModel();status.textContent='Ordered changes applied to the JSON draft.';}catch(e){status.textContent=e.message;}
     }});
     function labelled(text,input){const label=root.ownerDocument.createElement('label');label.textContent=text;label.append(input);return label;}

@@ -19,17 +19,22 @@ type recipeSourceCapability struct {
 }
 
 type recipeCapabilityCatalogue struct {
-	TableConflicts []string                   `json:"table_conflicts"`
-	Version        int                        `json:"version"`
-	Sources        []recipeSourceCapability   `json:"sources"`
-	Functions      []recipeFunctionCapability `json:"functions"`
-	Steps          []string                   `json:"steps"`
+	BuiltinCheckpoints []recipeDependency         `json:"builtin_checkpoints,omitempty"`
+	TableConflicts     []string                   `json:"table_conflicts"`
+	Version            int                        `json:"version"`
+	Sources            []recipeSourceCapability   `json:"sources"`
+	Functions          []recipeFunctionCapability `json:"functions"`
+	Steps              []string                   `json:"steps"`
 }
 
 // recipeCatalogue is also the source of truth used by compiler checking. A
 // GUI may expose this value, but cannot infer support for anything absent.
 func recipeCatalogue() recipeCapabilityCatalogue {
-	return recipeCapabilityCatalogue{TableConflicts: []string{"", "identical"}, Version: 1, Sources: []recipeSourceCapability{{ID: "bitcoin.reveal", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.reveal")}, {ID: "bitcoin.transaction", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.transaction")}, {ID: "bitcoin.ordered", Histories: []string{"ordered", "sparse"}, Fields: recipeSourceFields("bitcoin.ordered"), Steps: recipeOrderedSteps(), Functions: recipeOrderedFunctions(), StateContracts: []string{recipeOrderedUTXOStorage, recipeOrderedSparseStorage}, Events: recipeOrderedEvents()}, {ID: recipeUTXOProjectionSource, Histories: []string{"projection"}, Fields: recipeUTXOProjectionFields(), Steps: []string{"for_events", "for_range", "let", "if", "require", "emit"}, Functions: recipeOrderedFunctions(), StateContracts: []string{recipeAddressProjectionStorage}}}, Functions: recipeFunctions(), Steps: []string{"let", "require", "write"}}
+	catalogue := recipeCapabilityCatalogue{TableConflicts: []string{"", "identical"}, Version: 1, Sources: []recipeSourceCapability{{ID: "bitcoin.reveal", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.reveal")}, {ID: "bitcoin.transaction", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.transaction")}, {ID: "bitcoin.ordered", Histories: []string{"ordered", "sparse"}, Fields: recipeSourceFields("bitcoin.ordered"), Steps: recipeOrderedSteps(), Functions: recipeOrderedFunctions(), StateContracts: []string{recipeOrderedUTXOStorage, recipeOrderedSparseStorage}, Events: recipeOrderedEvents()}, {ID: recipeUTXOProjectionSource, Histories: []string{"projection"}, Fields: recipeUTXOProjectionFields(), Steps: []string{"for_events", "for_range", "let", "if", "require", "emit"}, Functions: recipeOrderedFunctions(), StateContracts: []string{recipeAddressProjectionStorage}}}, Functions: recipeFunctions(), Steps: []string{"let", "require", "write"}}
+	if revision, semantic, err := recipeNativeUTXORevision(); err == nil {
+		catalogue.BuiltinCheckpoints = []recipeDependency{{Name: "utxo", Scope: "builtin", Instance: "utxo-state", Revision: revision, SemanticHash: semantic, Export: "coins", Coverage: "snapshot_delta", Type: "coin"}}
+	}
+	return catalogue
 }
 
 type recipeDiagnostic struct {

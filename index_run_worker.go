@@ -434,6 +434,15 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 				return v, e
 			}
 			v.recipe = consumer
+		} else if resolved.Source == recipeUTXOProjectionSource {
+			if !recipeProjectionPublicEnabled {
+				return v, fmt.Errorf("checkpoint recipe execution is not yet enabled")
+			}
+			consumer, e := a.openRecipeProjectionRunConsumer(ctx, plan, binding, p.RecipeStateToken)
+			if e != nil {
+				return v, e
+			}
+			v.recipe = consumer
 		} else if len(resolved.Definition.Dependencies) != 0 {
 			consumer, e := a.openRecipeDAGRunConsumer(ctx, plan, binding)
 			if e != nil {

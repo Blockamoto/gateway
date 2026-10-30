@@ -714,6 +714,9 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 			if resolved.Source == "bitcoin.ordered" && !recipeOrderedPublicEnabled {
 				return p, fmt.Errorf("ordered recipe execution is not yet enabled")
 			}
+			if resolved.Source == recipeUTXOProjectionSource && !recipeProjectionPublicEnabled {
+				return p, fmt.Errorf("checkpoint recipe execution is not yet enabled")
+			}
 			q.RecipeRevision, q.RecipeSemanticHash = resolved.Revision, resolved.SemanticHash
 			q.ProfileHash = recipeAdmissionProfile(c.Index, resolved.SemanticHash, resolved.Revision)
 			q.ConfigurationRevision = 1
@@ -730,6 +733,10 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 					return p, e
 				}
 				p.RequiresGenesis = true
+			} else if resolved.Source == recipeUTXOProjectionSource {
+				if e = a.planProjectionRecipeState(ctx, resolved, c, req, &q); e != nil {
+					return p, e
+				}
 			}
 			if len(resolved.Definition.Dependencies) != 0 {
 				q.Dependencies, e = a.recipePlanDependencies(ctx, resolved, req, q.From, p.TargetHeight, resolve)
@@ -739,8 +746,12 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 					}
 					q.State, q.AdmissionState = "blocked", "blocked"
 					q.Reason = "Recipe dependencies cannot be admitted: " + e.Error()
-				} else {
-					q.Reason = "Same-block parent coverage is checked at each block; unavailable evidence waits."
+				} else if q.Reason == "" {
+					if resolved.Source == recipeUTXOProjectionSource {
+						q.Reason = "The declared parent checkpoint is checked at the admitted target; this child never starts a hidden writer."
+					} else {
+						q.Reason = "Same-block parent coverage is checked at each block; unavailable evidence waits."
+					}
 				}
 			}
 			if p.TargetHeight >= 0 && recipeStoreHashValid(p.TargetHash) {
@@ -1247,6 +1258,7 @@ func (a *app) startIndexRunWithAdmissionBoundary(ctx context.Context, req indexR
 	// heads and every member of this closure are checked again under the lock
 	// before the admission record becomes durable.
 	graphIdentities := map[recipeGraphIdentity]struct{}{}
+	builtinGraphIdentities := map[recipeGraphIdentity]recipeDependency{}
 	for _, progress := range p.Consumers {
 		if progress.Recipe == nil || len(progress.Dependencies) == 0 {
 			continue
@@ -1259,8 +1271,13 @@ func (a *app) startIndexRunWithAdmissionBoundary(ctx context.Context, req indexR
 		if e != nil {
 			return indexRunDocument{}, fmt.Errorf("saved recipe graph changed since review: %w", e)
 		}
-		for _, node := range graph.Nodes {
-			graphIdentities[node.Identity] = struct{}{}
+		graphIdentities[graph.Root] = struct{}{}
+		for _, edge := range graph.Edges {
+			if edge.Scope == "builtin" {
+				builtinGraphIdentities[edge.Parent] = recipeDependency{Name: edge.Name, Scope: "builtin", Instance: edge.Parent.Instance, Revision: edge.Parent.Revision, SemanticHash: edge.Parent.SemanticHash, Export: edge.Export, Type: edge.Type, Coverage: edge.Coverage}
+			} else {
+				graphIdentities[edge.Parent] = struct{}{}
+			}
 		}
 	}
 	if beforeLock != nil {
@@ -1304,6 +1321,15 @@ func (a *app) startIndexRunWithAdmissionBoundary(ctx context.Context, req indexR
 			view, readErr := recipeRegistryRead(a.dataDir, identity.Instance, identity.Revision)
 			if readErr != nil || !view.Validated || view.Revision != identity.Revision || view.SemanticHash != identity.SemanticHash {
 				return indexRunDocument{}, fmt.Errorf("saved recipe dependency changed since review; review the plan again")
+			}
+		}
+		for identity, dependency := range builtinGraphIdentities {
+			if err := ctx.Err(); err != nil {
+				return indexRunDocument{}, err
+			}
+			resolved, readErr := recipeResolveBuiltinCoinDefinition(dependency)
+			if readErr != nil || recipeGraphID(resolved) != identity {
+				return indexRunDocument{}, fmt.Errorf("built-in checkpoint dependency changed since review; review the plan again")
 			}
 		}
 	}

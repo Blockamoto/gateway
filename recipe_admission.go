@@ -65,7 +65,8 @@ func recipeAdmissionBuild(resolved resolvedSavedRecipe, req indexRunRequest, tar
 	var p recipeAdmissionPlan
 	sparse := recipeSparseSource(resolved.Source) && resolved.History == "sparse"
 	ordered := resolved.Source == "bitcoin.ordered" && resolved.History == "ordered" && resolved.Origin == 0
-	if resolved.ID == "" || !recipeStoreHashValid(resolved.Revision) || !recipeStoreHashValid(resolved.SemanticHash) || (!sparse && !ordered) || resolved.Origin < 0 {
+	projection := resolved.Source == recipeUTXOProjectionSource && resolved.History == "projection" && resolved.Origin == 0
+	if resolved.ID == "" || !recipeStoreHashValid(resolved.Revision) || !recipeStoreHashValid(resolved.SemanticHash) || (!sparse && !ordered && !projection) || resolved.Origin < 0 {
 		return p, fmt.Errorf("unsupported recipe admission identity or capability")
 	}
 	req, err := recipeAdmissionCloneRequest(req)
@@ -105,7 +106,7 @@ func recipeAdmissionBuild(resolved resolvedSavedRecipe, req indexRunRequest, tar
 		return p, fmt.Errorf("nested recipe options are not supported")
 	}
 	o := selected.indexRunOptions
-	if o.ParcelEvidenceRoute != "" || o.ParcelRawScanBudget != 0 || o.Retention != "" || o.Mode != "" && o.Mode != "lean" || o.RetainOutputValues != nil || o.RetainOutputScripts != nil || o.RetainSatHistory || o.ConventionalIDs != nil || o.Rebuild && !ordered || o.RebuildSnapshot != nil {
+	if o.ParcelEvidenceRoute != "" || o.ParcelRawScanBudget != 0 || o.Retention != "" || o.Mode != "" && o.Mode != "lean" || o.RetainOutputValues != nil || o.RetainOutputScripts != nil || o.RetainSatHistory || o.ConventionalIDs != nil || o.Rebuild && !ordered && !projection || o.RebuildSnapshot != nil {
 		return p, fmt.Errorf("native index options do not apply to a recipe")
 	}
 	from := resolved.Origin

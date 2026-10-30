@@ -1,8 +1,12 @@
 # Ordered state and checkpoint-backed exports
 
-Status: design and isolated transaction primitive. UTXO, Sats and Current
-Addresses remain on their existing implementations; no checkpoint migration,
-domain parity, scheduler integration or durable state adapter is claimed.
+Status: historical design and isolated-prototype notes. Shipping native/public
+Coin recipes reuse the native COW/fact/undo adapter, and Current Addresses now
+uses the same typed interpreter with exact checkpoint dependencies. See
+`080-ORDERED-PUBLIC-INTEGRATION.md` and `080-NATIVE-CURRENT-ADDRESSES.md` for those
+implemented paths and evidence. Sats and wider state contracts remain open. The
+experimental durable/staged/page-pack mechanisms described below are excluded
+from public execution and are not release prerequisites.
 
 An ordered recipe declares typed keyed state tables, their initialization and
 origin, the event order and the operations that read or update each table.

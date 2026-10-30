@@ -1,8 +1,8 @@
 # Current Addresses JSON and checkpoint dependency
 
-This is an intermediate engine increment. The native path is integrated; public
-custom checkpoint scheduling, queries, guided controls, rebuild and maintenance
-are still being connected. It is not the complete 0.8.0 preview.
+Native and public Current Addresses recipe paths are integrated. Wider state
+contracts, remaining built-ins and complete visible acceptance remain open.
+This is an intermediate increment, not the complete 0.8.0 preview.
 
 The current and legacy-payment documents in `recipes/builtins/address-state*.json`
 declare an exact UTXO `coins` dependency with `snapshot_delta` coverage. Their
@@ -55,7 +55,7 @@ native identity and metadata follow-up passed in 11.475 seconds. Materialization
 and catalogue checks also ran after removing completed traversal manifests.
 The production build and all four recipe/workspace JavaScript checks passed.
 
-## Query and collection work in progress
+## Queries and owned collection
 
 The read-only projection adapter now pages stored member rows by physical
 script/member key. Its token binds the exact saved revision, semantic identity,
@@ -64,8 +64,8 @@ an unbuilt projection. A later append preserves historical pages; changed local
 headers, missing parent heads, expired checkpoints or a changed parent receipt
 reject them. Reads verify source membership and use the child's owned facts.
 Exclusions are retained as exact counts/sats, not as individual output rows; the
-response states that explicitly. The public output route remains gated with the
-rest of custom checkpoint execution.
+response states that explicitly. The public output route uses this adapter and
+its cursor; sparse unit/range downloads do not apply to state snapshots.
 
 Each complete child checkpoint now owns an independent copy of the source's
 native fact-pin COW root. Only changed branches are copied, and facts already
@@ -106,6 +106,70 @@ source recovery transition survives, a reviewed rebuild remains necessary.
 This preserves the explicit snapshot/recovery boundary instead of fabricating
 an older view. The production build passed before that final recovery check.
 
-Public saved copies currently validate and resolve with
-`source_scheduling_unavailable`; they remain gated until the complete consumer,
-query, guided and maintenance lifecycle is integrated and checked.
+Saved copies now resolve with `checkpoint_finite_and_live`. Arming and saving
+start no work. A reviewed Start binds the exact child revision, dependency scope
+and definition identities, selected target and range. The declared parent must
+have the complete target checkpoint or be explicitly selected to produce it.
+
+
+## Public execution, review and guided controls
+
+The dependency-only consumer evaluates during its checkpoint step, outside the
+raw-body work queue. It waits without creating either generation when a saved
+parent prefix is missing. A complete target checkpoint can be reused without
+body reads or decoding, including with the producer Off. A parent checkpoint on
+a different selected fork is unavailable before traversal. Child genesis is
+uncovered unless the child itself was evaluated there; parent genesis cannot
+substitute for it.
+
+Both built-in and saved Coin scopes are supported. A mixed cohort can explicitly
+build its parents first. Built-in dependency definitions use their compiled
+native identity during final Start review; saved definitions use their immutable
+registry receipts. Actual source checkpoints are checked separately at execution
+and publication. Every publication/reuse applies the same selected-header,
+marked-window, run/consent, current target and saved revision fence as sparse
+recipes, plus parent receipt validation and child CAS. A stopped or canceled
+consumer publishes no new state.
+
+A finite earlier published child snapshot can be reused without rewinding a
+later saved view. An earlier child snapshot that was never retained requires a
+reviewed child rebuild. A missing/expired parent snapshot cannot be restored by
+child rebuild consent: an available target or explicit parent rebuild is needed.
+Child rebuild can begin at an arbitrary admitted snapshot height because its
+input is a complete checkpoint, not a body prefix. It archives the whole prior
+child generation and facts. Persistent job intents make resumed rebuilds retain
+the replacement's progress. Ordered Coin and checkpoint projections share this
+archive/review implementation; the existing ordered review and marker wire
+format is preserved.
+
+Guided controls round-trip both actual Current Addresses documents, restrict
+checkpoint events to their declared fields and output instructions, edit the
+exact dependency, read/pin a validated saved Coin parent revision and restore the
+installed built-in binding from the read-only capability catalogue. A changed
+draft fences late parent responses. The fixed member/exclusion storage contract
+is explicit; program conditions and expressions remain compositional. Applying
+guided changes precedes validate/save. Saved track controls offer finite/Live
+selection, child rebuild review and state cursor paging, and show included and
+excluded counts without sparse download links.
+
+Public mixed selected-parent, saved-only reuse and child-only rebuild checks
+passed in 12.320 seconds, including distinct nonempty built-in and empty saved
+Coin sources, zero body reads on reuse/rebuild, preservation of the prior child
+receipt bytes and an unchanged native source head. Live extension, local fork
+invalidation, pause and process restart with the admitted historical child
+revision passed alongside them in 15.871 seconds. Shared rebuild/ordered public
+checks passed in 21.488 seconds; the source-free consumer set passed in 7.190
+seconds. Planning/catalogue checks passed in 5.821 seconds, and the four
+JavaScript checks pass with actual checkpoint documents and source-pinning
+controls. Broad regression results belong in the engine ledger after completion.
+These tests do not substitute for full-chain replay or visible Chrome acceptance.
+
+
+Final broad regression for this increment: recipe, saved-recipe, native ordinal,
+UTXO, run and Current Addresses checks passed in 822.032 seconds. The production
+build and four JavaScript checks passed. The public missing-saved-parent test
+also confirms that waiting/pause creates no child, parent or native UTXO generation
+and performs no body read. Visible Chrome acceptance remains open because the
+browser runtimes could not initialize; the temporary offline UI server is only
+an intermediate inspection surface. Custom reverse-query integration, remaining
+built-ins and wider ordered contracts remain open in the engine ledger.

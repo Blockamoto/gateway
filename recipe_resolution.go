@@ -65,6 +65,8 @@ func recipeResolveView(view recipeRegistryView) (resolvedSavedRecipe, error) {
 	execution := "independent_finite_and_live"
 	if recipeOrderedPublicEnabled && view.Recipe.Source == "bitcoin.ordered" && view.Recipe.History == "ordered" {
 		execution = "ordered_finite_and_live"
+	} else if recipeProjectionPublicEnabled && view.Recipe.Source == recipeUTXOProjectionSource {
+		execution = "checkpoint_finite_and_live"
 	} else if !recipeSparseSource(view.Recipe.Source) {
 		execution = "source_scheduling_unavailable"
 	} else if len(view.Recipe.Dependencies) != 0 {

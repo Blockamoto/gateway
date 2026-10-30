@@ -29,6 +29,9 @@ func TestRecipeCatalogueDescribesInstalledTypes(t *testing.T) {
 	if add, ok := recipeFindField(recipeUTXOProjectionSource, []string{"add"}); !ok || strings.Join(add.Type.Types, ",") != "bool" {
 		t.Fatal("source-bound add/remove field missing", add)
 	}
+	if len(c.BuiltinCheckpoints) != 1 || c.BuiltinCheckpoints[0].Scope != "builtin" || c.BuiltinCheckpoints[0].Instance != "utxo-state" || c.BuiltinCheckpoints[0].Coverage != "snapshot_delta" {
+		t.Fatal("installed builtin checkpoint binding missing", c.BuiltinCheckpoints)
+	}
 	metadata, ok := recipeFindField("bitcoin.reveal", []string{"metadata_hex"})
 	if !ok || !metadata.Type.Optional || strings.Join(metadata.Type.Types, ",") != "text" {
 		t.Fatal("metadata optional type missing", metadata)

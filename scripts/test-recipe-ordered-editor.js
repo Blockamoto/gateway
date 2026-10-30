@@ -50,4 +50,25 @@ button('Add output table').events.click();assert.equal(mounted.definition().tabl
 const sparseAdd=control('Add instruction type');assert(!sparseAdd.children.some(option=>['read','put','delete'].includes(option.value)),'stateless controls offer output instructions only');
 sparseAdd.value='emit';sparseAdd.events.change();button('Add instruction').events.click();let added=expand('2. emit');assert.equal(control('Table',added).value,'outputs');
 mounted.load({...original,storage:'unsupported'});assert.equal(root.hidden,true);assert.throws(()=>mounted.definition(),/unsupported shape/);
-console.log('Ordered recipe editor PASS: actual built-in round-trip, owned drafts, exact uints, unsupported preservation, typed expressions, nested instructions and reordering.');
+const current=JSON.parse(fs.readFileSync('recipes/builtins/address-state.json','utf8'));
+for(const file of ['address-state.json','address-state-payment-legacy.json']){const actual=JSON.parse(fs.readFileSync('recipes/builtins/'+file,'utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(actual)),actual,'actual current-address dependency composition round-trips');}
+for(const mutate of [d=>d.dependencies[0].coverage='same_block',d=>d.dependencies[0].scope='unknown',d=>d.dependencies[0].revision='invalid',d=>d.ordered.steps[0].body.push({op:'read',name:'x',table:'coins',key:{field:'height'}}),d=>d.ordered.steps[0].body[0].expr={field:'txid'}]){
+ const value=structuredClone(current);mutate(value);const originalText=JSON.stringify(value);assert.equal(editor.toGuided(value),null);assert.equal(JSON.stringify(value),originalText,'unsupported checkpoint forms preserve raw text');
+}
+;(async()=>{
+ const checkpointRoot=new Node('fieldset'),binding=structuredClone(current.dependencies[0]);let respond;
+ const parentValue={validated:true,revision:'f'.repeat(64),semantic_hash:'b'.repeat(64),recipe:{...original,id:'guided-source-coins'}};
+ const checkpoint=editor.mount(checkpointRoot,{getCatalogue:()=>({builtin_checkpoints:[binding]}),readParent:id=>{assert.equal(id,'guided-source-coins');return new Promise(resolve=>{respond=resolve;});}});
+ assert(checkpoint.load(current));assert.deepEqual(checkpoint.definition(),current);
+ const scope=control('Checkpoint source scope',checkpointRoot);scope.value='saved';scope.events.change();
+ let parentID=control('Parent recipe ID',checkpointRoot);parentID.value='guided-source-coins';parentID.events.input();
+ let click=button('Read saved parent revision',checkpointRoot).events.click();respond(parentValue);await click;
+ let definition=checkpoint.definition();assert.equal(definition.dependencies[0].scope,'saved');assert.equal(definition.dependencies[0].revision,parentValue.revision);assert.equal(definition.dependencies[0].semantic_hash,parentValue.semantic_hash);
+ click=button('Read saved parent revision',checkpointRoot).events.click();const alias=control('Dependency name',checkpointRoot);alias.value='renamed_source';alias.events.input();respond({...parentValue,revision:'c'.repeat(64)});await click;
+ assert.equal(checkpoint.definition().dependencies[0].revision,parentValue.revision,'a changed draft fences a late source response');
+ button('Use built-in UTXO binding',checkpointRoot).events.click();definition=checkpoint.definition();assert.equal(definition.dependencies[0].name,'renamed_source');assert.equal(definition.dependencies[0].scope,'builtin');assert.equal(definition.dependencies[0].revision,binding.revision);
+ const add=control('Add instruction type',checkpointRoot);assert(!add.children.some(option=>['read','put','delete'].includes(option.value)),'checkpoint controls emit source-bound deltas rather than state writes');
+ const first=expand('1. let destination',checkpointRoot),value=expand('Value',first),mode=control('Expression type',value);mode.value='field';mode.events.change();const field=control('Source field',value);assert(field.children.some(option=>option.value==='add'));assert(!field.children.some(option=>option.value==='txid'));
+ assert.equal(find(checkpointRoot,node=>node.tagName==='button'&&node.textContent==='Add output table'),null,'physical checkpoint tables remain fixed');
+ console.log('Ordered recipe editor PASS: actual built-ins and checkpoint dependencies round-trip, exact uints, guided source pinning, stale responses, typed expressions and nested instructions.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

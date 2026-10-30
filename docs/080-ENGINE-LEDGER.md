@@ -430,3 +430,46 @@ and COW set passed in 14.578 seconds after adding owned-child-ancestor recovery
 following source branch reclamation. Without a retained selected child ancestor
 or required source transition, rebuild remains explicit. This does not complete
 public checkpoint integration or the full preview.
+
+
+### Public checkpoint projection lifecycle and guided source pinning
+
+Current Addresses copies now use public `dependency.utxo` finite/Live execution,
+true built-in/saved Coin checkpoint dependencies, arbitrary admitted snapshot
+height, private COW/fact ownership, selected-source/header/revision/CAS fences,
+state cursor query, maintenance and explicit child-only archived rebuild. The
+consumer stays outside the body queue, waits on missing saved prefixes without
+creating either generation and reuses complete inputs with producers Off.
+A saved earlier child point can be read/reused without rewinding a later view;
+unretained older views and expired source evidence require explicit review.
+
+Start review now distinguishes built-in dependency identity from saved registry
+identity. Checkpoint and ordered recipes share the existing archive/resume
+implementation with unchanged ordered metadata wire bytes and a shared target
+binding helper. Native Current Addresses keeps its frozen equivalence bundle,
+physical data and lifecycle. The read-only catalogue supplies the actual native
+Coin binding; guided controls represent both actual Current Addresses documents,
+can pin a saved Coin parent, preserve raw unsupported forms and reject stale
+asynchronous parent responses. Saved tracks distinguish state snapshots from
+sparse row downloads and stage a child rebuild without requiring child genesis.
+
+The public mixed selected-parent/saved-only/rebuild check passed in 12.320
+seconds; the combined public Live/local-fork/pause/historical-restart checks
+passed in 15.871 seconds. Shared rebuild/ordered-public checks passed in 21.488
+seconds; dependency-only consumer checks passed in 7.190 seconds; planning and
+catalogue checks passed in 5.821 seconds. Four JavaScript checks and the
+production build passed. The broad recipe/saved-recipe/ordinal/UTXO/run/current-address regression
+passed in 822.032 seconds with an explicit 30-minute test timeout. General state contracts,
+remaining built-ins, custom reverse-query integration and complete visible
+preview acceptance remain open; no finished preview is claimed.
+
+
+The isolated intermediate UI smoke server is available at
+`http://127.0.0.1:61235`, using only the temporary profile
+`C:/Users/camer/AppData/Local/Temp/gateway-080-ui-766132ffd25b4e959db871d654751474/profile`.
+Core/RPC, mounted Core files, network transport, header sync and serving are
+explicitly disabled. It is not the finished preview and still carries the base
+0.7.9 version label. Production/installed user data and integrations were not
+changed. Both browser-control runtimes failed to initialize with
+`failed to write kernel assets: The system cannot find the path specified`,
+including after a kernel reset. No visible Chrome acceptance is claimed.

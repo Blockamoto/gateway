@@ -137,12 +137,15 @@ func recipeRegistryCompile(raw []byte) (recipeRegistryView, []byte, error) {
 }
 
 func recipeRegistryRunnable(d recipeDefinition) bool {
-	return d.Source == "bitcoin.reveal" || d.Source == "bitcoin.transaction" || recipeOrderedPublicEnabled && d.Source == "bitcoin.ordered"
+	return d.Source == "bitcoin.reveal" || d.Source == "bitcoin.transaction" || recipeOrderedPublicEnabled && d.Source == "bitcoin.ordered" || recipeProjectionPublicEnabled && d.Source == recipeUTXOProjectionSource
 }
 
 // Runnable indicates the currently supported execution shape, not readiness or coverage.
 // Actual runs always require admission and a reviewed plan.
 func recipeRegistryCapabilityNote(d recipeDefinition) string {
+	if recipeProjectionPublicEnabled && d.Source == recipeUTXOProjectionSource {
+		return "Definition validated. Finite and Live checkpoint projection requires its exact declared parent snapshot. This track does not start a parent writer. Rebuild archives only this child generation."
+	}
 	if recipeOrderedPublicEnabled && d.Source == "bitcoin.ordered" && d.History == "ordered" {
 		return "Definition validated. Ordered state requires an explicitly admitted genesis prefix. Finite and Live execution require a reviewed plan; Out caps either choice. Rebuild archives the prior generation."
 	}

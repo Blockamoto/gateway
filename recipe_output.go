@@ -94,6 +94,15 @@ func (a *app) readRecipeOutputPage(ctx context.Context, id, revision, fingerprin
 		}
 		return a.readOrderedRecipeOutput(ctx, prepared, height, limit, token, cursor)
 	}
+	if prepared.Source == recipeUTXOProjectionSource {
+		if !recipeProjectionPublicEnabled {
+			return nil, 409, fmt.Errorf("checkpoint projection public execution is not yet enabled")
+		}
+		if offset != 0 {
+			return nil, 400, fmt.Errorf("checkpoint projection output uses a cursor")
+		}
+		return a.readProjectionRecipeOutput(ctx, prepared, height, limit, token, cursor)
+	}
 	if cursor != "" {
 		return nil, 400, fmt.Errorf("sparse output uses an offset")
 	}

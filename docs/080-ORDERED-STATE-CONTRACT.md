@@ -72,3 +72,19 @@ hash order; an ordered snapshot requires a separate bounded order-preserving
 index or external sort with its own authenticated continuation and limits. The
 adapter exports neither traversal nor snapshots, and does not establish UTXO,
 Sats or Current Addresses parity.
+
+The prototype limits a transaction to 4,096 touched keys and bounds its
+serialized batch. Valid Bitcoin blocks may exceed those limits, so a budget
+failure is an explicit incomplete result, not evidence of an empty block or a
+complete UTXO checkpoint. Full coverage requires bounded staged processing:
+process ordered events into a private temporary tree, persist bounded immutable
+before-image and net-delta chunks with first-touch deduplication, and checkpoint
+staging progress for restart. After the entire verified block is processed,
+authenticate the staged root and complete chunk manifest, reacquire chain and
+admission authority, compare the predecessor head and atomically publish one
+head referencing the complete transition. Crash, cancellation, conflicts and
+reorgs must leave the old head authoritative; orphan staging data can be
+reclaimed separately. Undo and delta readers must verify the complete manifest
+and apply bounded pages without silently truncating. The design must bound
+memory and work per step while supporting every consensus-valid block, and
+must not publish a partial block or impose an artificial per-block key quota.

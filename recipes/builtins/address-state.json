@@ -1,0 +1,172 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "address-state",
+  "name": "Current Addresses",
+  "source": "dependency.utxo",
+  "origin": 0,
+  "history": "projection",
+  "storage": "bitcoin.address.cow.v1",
+  "dependencies": [
+    {
+      "name": "utxo",
+      "scope": "builtin",
+      "instance": "utxo-state",
+      "revision": "8f3c8b2822b993a39f36b764b9e9292f8ecff9c4bb446ed6fb3a4dc26f80c570",
+      "semantic_hash": "9b8862289024d5499a22c8efd348dd8b62094a8257ed6872e0eb9e5865158442",
+      "export": "coins",
+      "coverage": "snapshot_delta",
+      "type": "coin"
+    }
+  ],
+  "tables": [
+    {
+      "name": "members",
+      "key": "ref"
+    },
+    {
+      "name": "excluded",
+      "key": "ref"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "let",
+            "name": "destination",
+            "expr": {
+              "call": "destination",
+              "args": [
+                {
+                  "field": "script"
+                }
+              ]
+            }
+          },
+          {
+            "op": "let",
+            "name": "ref",
+            "expr": {
+              "call": "output_ref",
+              "args": [
+                {
+                  "field": "height"
+                },
+                {
+                  "field": "tx_index"
+                },
+                {
+                  "field": "vout"
+                }
+              ]
+            }
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "get",
+              "args": [
+                {
+                  "var": "destination"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "supported"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "emit",
+                "table": "members",
+                "key": {
+                  "var": "ref"
+                },
+                "expr": {
+                  "object": {
+                    "ref": {
+                      "var": "ref"
+                    },
+                    "value_sats": {
+                      "field": "value"
+                    },
+                    "script": {
+                      "field": "script"
+                    },
+                    "block_hash": {
+                      "field": "block"
+                    },
+                    "add": {
+                      "field": "add"
+                    },
+                    "destination": {
+                      "call": "get",
+                      "args": [
+                        {
+                          "var": "destination"
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "destination"
+                          }
+                        }
+                      ]
+                    },
+                    "script_type": {
+                      "call": "get",
+                      "args": [
+                        {
+                          "var": "destination"
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "kind"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ],
+            "else": [
+              {
+                "op": "emit",
+                "table": "excluded",
+                "key": {
+                  "var": "ref"
+                },
+                "expr": {
+                  "object": {
+                    "ref": {
+                      "var": "ref"
+                    },
+                    "value_sats": {
+                      "field": "value"
+                    },
+                    "script": {
+                      "field": "script"
+                    },
+                    "block_hash": {
+                      "field": "block"
+                    },
+                    "add": {
+                      "field": "add"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

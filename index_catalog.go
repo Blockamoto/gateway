@@ -210,6 +210,13 @@ func indexDefinitions() []indexDefinition {
 				d.ExecutableRecipeHash = builtinUTXORecipeProgram.semanticHash()
 			}
 		}
+		if d.ID == "address-state" {
+			d.ExecutableRecipe = append(json.RawMessage(nil), builtinAddressStateJSON...)
+			if programs, err := builtinAddressStateRecipes(); err == nil {
+				d.ExecutableRecipeHash = programs[1].semanticHash()
+				d.ExecutableRecipeVariants = []indexExecutableRecipe{{Name: "Current destination rules", Definition: append(json.RawMessage(nil), builtinAddressStateJSON...), SemanticHash: programs[1].semanticHash()}, {Name: "Legacy payment-only rules", Definition: append(json.RawMessage(nil), builtinAddressStateLegacyJSON...), SemanticHash: programs[0].semanticHash()}}
+			}
+		}
 		if d.ID == "address-history" {
 			d.ExecutableRecipe = append(json.RawMessage(nil), builtinAddressHistoryJSON...)
 			if programs, err := builtinAddressHistoryRecipes(); err == nil {

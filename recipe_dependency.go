@@ -22,6 +22,7 @@ type recipeExport struct {
 }
 type recipeDependency struct {
 	Name         string `json:"name"`
+	Scope        string `json:"scope,omitempty"`
 	Instance     string `json:"instance"`
 	Revision     string `json:"revision"`
 	SemanticHash string `json:"semantic_hash"`
@@ -62,7 +63,7 @@ func recipeValidateDependencyDeclarations(d recipeDefinition) error {
 	}
 	deps := map[string]bool{}
 	for i, dep := range d.Dependencies {
-		if !recipeRegistryID.MatchString(dep.Name) || deps[dep.Name] || !recipeRegistryID.MatchString(dep.Instance) || dep.Instance == d.ID || !recipeRegistryID.MatchString(dep.Export) || dep.Coverage != "same_block" || !recipeStoreHashValid(dep.Revision) || !recipeStoreHashValid(dep.SemanticHash) || !recipeDependencyType(dep.Type) {
+		if !recipeRegistryID.MatchString(dep.Name) || deps[dep.Name] || !recipeRegistryID.MatchString(dep.Instance) || dep.Instance == d.ID || (dep.Scope != "" && dep.Scope != "saved") || !recipeRegistryID.MatchString(dep.Export) || dep.Coverage != "same_block" || !recipeStoreHashValid(dep.Revision) || !recipeStoreHashValid(dep.SemanticHash) || !recipeDependencyType(dep.Type) {
 			return recipeDiagnosticAt("RECIPE_INVALID_DEPENDENCY", fmt.Sprintf("/dependencies/%d", i), "dependency needs a unique name, different parent, immutable revision, semantic identity, export, same_block coverage and supported scalar type")
 		}
 		deps[dep.Name] = true

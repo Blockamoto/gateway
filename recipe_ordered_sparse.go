@@ -212,7 +212,7 @@ func (p *recipeProgram) evaluateOrderedSparseInto(ctx context.Context, block blo
 // The source adapter supplies complete admitted event data. This function
 // grants no chain authority, native compatibility or publication permission.
 func (p *recipeProgram) evaluateOrderedSparseEventsInto(ctx context.Context, source func(func(map[string]recipeOrderedValue) error) error, sink func(recipeRowProposal) error) error {
-	if ctx == nil || p == nil || p.ordered == nil || p.definition.History != "sparse" || source == nil || sink == nil {
+	if ctx == nil || p == nil || p.ordered == nil || (p.definition.History != "sparse" && p.definition.History != "projection") || source == nil || sink == nil {
 		return fmt.Errorf("invalid sparse event adapter")
 	}
 	machine := recipeOrderedMachine{ctx: ctx, orderedState: recipeOrderedNoState{}, vars: map[string]recipeOrderedValue{}, unboundedEmits: true,

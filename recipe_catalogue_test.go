@@ -19,8 +19,15 @@ func recipeTypeTestDefinition(steps string) recipeDefinition {
 
 func TestRecipeCatalogueDescribesInstalledTypes(t *testing.T) {
 	c := recipeCatalogue()
-	if c.Version != 1 || len(c.Sources) != 3 || c.Sources[0].ID != "bitcoin.reveal" || len(c.Steps) != 3 {
+	if c.Version != 1 || len(c.Sources) != 4 || c.Sources[0].ID != "bitcoin.reveal" || len(c.Steps) != 3 {
 		t.Fatalf("catalogue: %+v", c)
+	}
+	projection := c.Sources[3]
+	if projection.ID != recipeUTXOProjectionSource || strings.Join(projection.Histories, ",") != "projection" || strings.Join(projection.StateContracts, ",") != recipeAddressProjectionStorage {
+		t.Fatal("checkpoint dependency contract missing", projection)
+	}
+	if add, ok := recipeFindField(recipeUTXOProjectionSource, []string{"add"}); !ok || strings.Join(add.Type.Types, ",") != "bool" {
+		t.Fatal("source-bound add/remove field missing", add)
 	}
 	metadata, ok := recipeFindField("bitcoin.reveal", []string{"metadata_hex"})
 	if !ok || !metadata.Type.Optional || strings.Join(metadata.Type.Types, ",") != "text" {

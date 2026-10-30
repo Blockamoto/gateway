@@ -95,12 +95,13 @@ type addressStateBuildProgress struct {
 }
 
 type addressStateBuildManifest struct {
-	Schema         int                    `json:"schema"`
-	Source         utxoCheckpoint         `json:"source"`
-	Projection     addressStateCheckpoint `json:"projection"`
-	OutputsChecked uint64                 `json:"outputs_checked"`
-	After          string                 `json:"after,omitempty"`
-	Checksum       string                 `json:"checksum"`
+	Schema           int                          `json:"schema"`
+	Source           utxoCheckpoint               `json:"source"`
+	Projection       addressStateCheckpoint       `json:"projection"`
+	OutputsChecked   uint64                       `json:"outputs_checked"`
+	After            string                       `json:"after,omitempty"`
+	ProjectionParent *recipeProjectionParentPoint `json:"projection_parent,omitempty"`
+	Checksum         string                       `json:"checksum"`
 }
 
 func addressBuildDigest(m addressStateBuildManifest) string { m.Checksum = ""; return indexDigest(m) }
@@ -213,12 +214,14 @@ type addressStateCursor struct {
 }
 
 type addressStateEditor struct {
-	root    string
-	cp      addressStateCheckpoint
-	summary *ordinalTree
-	buckets map[string]*ordinalTree
-	counts  map[string]addressStateBucket
-	facts   *utxoFactReader
+	projection *recipeProgram // private namespaced host; nil retains the frozen native composition
+	importFact func(context.Context, utxoMember) error
+	root       string
+	cp         addressStateCheckpoint
+	summary    *ordinalTree
+	buckets    map[string]*ordinalTree
+	counts     map[string]addressStateBucket
+	facts      *utxoFactReader
 }
 
 func addressStateDirectory(root string) string {
@@ -274,6 +277,9 @@ func addressSourceContext(ctx context.Context, root string) (*utxoStore, error) 
 }
 
 func readAddressStateContext(ctx context.Context, root string) (*addressStateCheckpoint, error) {
+	if err := recipeAddressStateCheckNative(); err != nil {
+		return nil, err
+	}
 	dir := addressStateDirectory(root)
 	if err := updateapply.CheckPath(dir); err != nil {
 		return nil, err
@@ -372,6 +378,11 @@ func newAddressStateEditor(ctx context.Context, root string, c addressStateCheck
 }
 
 func (e *addressStateEditor) memberFact(member utxoMember) (outputFact, error) {
+	if e.importFact != nil {
+		if err := e.importFact(e.summary.ctx, member); err != nil {
+			return outputFact{}, err
+		}
+	}
 	f, err := e.facts.read(member.FactRef)
 	if err != nil {
 		return f, fmt.Errorf("%w: %v", ErrAddressStateCorrupt, err)
@@ -383,22 +394,27 @@ func (e *addressStateEditor) memberFact(member utxoMember) (outputFact, error) {
 }
 
 func (e *addressStateEditor) change(member utxoMember, add bool) error {
-	f, err := e.memberFact(member)
+	fact, err := e.memberFact(member)
 	if err != nil {
 		return err
 	}
-	_, address, err := addressStateScript(f.ScriptPubKey)
+	var row recipeRowProposal
+	if e.projection == nil {
+		row, err = recipeAddressStateMember(e.summary.ctx, e.cp.DestinationVersion, member, fact, add)
+	} else {
+		row, err = recipeAddressProjectionMember(e.summary.ctx, e.projection, member, fact, add)
+	}
 	if err != nil {
 		return err
 	}
-	// Old projections excluded P2PK. Keep their accounting and existing
-	// conventional lookups usable until an explicit complete traversal replaces
-	// them; an incremental transition cannot backfill old live outputs.
-	if e.cp.DestinationVersion == 0 {
-		raw, _ := hex.DecodeString(f.ScriptPubKey)
-		_, address = describeScript(raw)
-	}
-	if address == "" {
+	return e.changeProjected(member, fact, add, row.Table == "members")
+}
+
+// Physical reverse rows and their derived counters. The interpreter selects
+// membership/exclusion; the source fact identity was checked before this call.
+func (e *addressStateEditor) changeProjected(member utxoMember, f outputFact, add, included bool) error {
+	var err error
+	if !included {
 		if add {
 			e.cp.ExcludedOutputCount++
 			e.cp.ExcludedValueSats += f.ValueSats
@@ -585,6 +601,9 @@ func resumeAddressStateContext(ctx context.Context, root string) error {
 }
 
 func buildAddressStateWithHookContext(ctx context.Context, root string, progress func(addressStateBuildProgress), hook func(string) error) (*addressStateCheckpoint, error) {
+	if err := recipeAddressStateCheckNative(); err != nil {
+		return nil, err
+	}
 	if err := lockAddressSourceContext(ctx); err != nil {
 		return nil, err
 	}

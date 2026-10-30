@@ -20,6 +20,9 @@ type recipeFieldCapability struct {
 }
 
 func recipeSourceFields(source string) []recipeFieldCapability {
+	if source == recipeUTXOProjectionSource {
+		return recipeUTXOProjectionFields()
+	}
 	if source == "bitcoin.ordered" {
 		return recipeOrderedSourceFields()
 	}

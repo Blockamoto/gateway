@@ -375,3 +375,30 @@ individual field/work-budget rejection. Complex fields stream separately and
 repeated byte values share encoding. The final production build and four
 JavaScript checks passed. This does not close Current Addresses, broader
 ordered dependencies, remaining built-ins or visible full-preview acceptance.
+
+### Native Current Addresses and private checkpoint dependency storage
+
+Native full traversal, updates and recovery now execute actual current and
+legacy-payment JSON in the common typed interpreter. Existing COW roots,
+reverse rows, counters and publication paths retain their native layout and a
+frozen equivalence bundle; the prior mutation loop is test-only. Settings
+exposes both actual documents. The exact built-in UTXO recipe is declared as a
+typed coins snapshot/delta dependency, rather than inferred from display order.
+
+Read-only parent resolution also supports exact saved Coin generations without
+creating or starting them. Private child ownership, immutable checkpoints,
+receipt-head CAS, existing COW materialization and checked net-delta/undo paths
+are implemented. Full traversal saves its exact dependency/cursor every 512
+outputs. Child fact links survive source unlink. The combined native Current
+Addresses, mapping, immutable dependency and private projection suite passed in
+89.057 seconds, including durable cancel/restart and distinct JSON policies.
+
+This remains an intermediate increment: custom copies validate but report
+`source_scheduling_unavailable`. Their public consumer, query, guided controls,
+rebuild and maintenance are still open, alongside the wider remaining built-ins
+and full visible preview acceptance. See `080-NATIVE-CURRENT-ADDRESSES.md`.
+
+The final catalogue/API/native identity checks passed in 11.475 seconds after
+updating their expected source catalogue. A saved empty Coin dependency beside
+nonempty native state passed in 6.812 seconds without substitution. The
+production build and four recipe/workspace JavaScript checks passed.

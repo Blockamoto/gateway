@@ -180,6 +180,9 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 	if d.Source == "bitcoin.ordered" {
 		return compileOrderedRecipe(d)
 	}
+	if d.Source == recipeUTXOProjectionSource {
+		return compileUTXOProjectionRecipe(d)
+	}
 	if len(d.Ordered) != 0 || d.Storage != "" {
 		return nil, recipeDiagnosticAt("RECIPE_UNEXPECTED_ORDERED_FIELDS", "/ordered", "ordered program/storage fields require the ordered source")
 	}

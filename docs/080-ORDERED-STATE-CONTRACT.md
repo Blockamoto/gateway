@@ -52,3 +52,23 @@ revision, logical checkpoint and the
 complete batch, including all durable metadata and evidence in production.
 It does not implement a persistent adapter, authenticated snapshots, source
 verification, block ordering, Bitcoin rules, Sat FIFO or crash recovery.
+
+The separate experimental `recipe_state_durable.go` adapter provides a single
+durable head, immutable content-addressed state pages and predecessor receipts,
+contiguous genesis-origin blocks, and guarded forward/undo operations. The
+caller supplies chain and admission authority; hashes and checksums detect
+content damage but do not independently establish chain authority or protect
+against a malicious replacement of the local head. Interrupted writes before
+the head swap leave unreachable objects; an error during the head replacement
+can have an uncertain outcome and requires reopening and checking the head.
+The adapter is single-process and is not wired into execution.
+
+Its fixed-length hashed tree keys retain and verify the original key to detect
+collisions. They support keyed access but do not preserve original key ordering.
+This prototype requires valid UTF-8 table and key strings because its receipts
+encode those fields as JSON strings; values remain arbitrary bytes.
+A future bounded, paginated traversal can enumerate authenticated pages in
+hash order; an ordered snapshot requires a separate bounded order-preserving
+index or external sort with its own authenticated continuation and limits. The
+adapter exports neither traversal nor snapshots, and does not establish UTXO,
+Sats or Current Addresses parity.

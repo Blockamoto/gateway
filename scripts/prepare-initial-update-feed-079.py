@@ -20,7 +20,7 @@ import zipfile
 
 VERSION = "0.7.9"
 TITLE = "0.7.9 Parcels"
-REVISION = ""
+REVISION = 'a9b1722aee6d150af96822da2329ae54bf178de0'
 PREVIOUS_VERSION = "0.7.8"
 PREVIOUS_REVISION = "e439525617ed5ec742cbcda97aecfaa3a36ee7be"
 REPOSITORY = "Blockamoto/gateway"
@@ -29,11 +29,22 @@ KEY = {"key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
        "public_key": "KDki4gPkMMcXH7epA7cuyvta0iPue+Vxqzl+YC1U3Rw="}
 # All following values must be frozen from authenticated, reviewed evidence.
 # Empty defaults deliberately reject every invocation before secrets are read.
-EXPECTED_SEQUENCES = (0, 0)
-EXPECTED_MANIFEST_SHA256 = ""
-EXPECTED_ARTIFACTS = {}
-HEADER_POLICY = ""
-EXPECTED_HEADER_SNAPSHOT_SHA256 = ""
+EXPECTED_SEQUENCES = (18, 17)
+EXPECTED_MANIFEST_SHA256 = 'af6e8ca5d3ab9352f34beb9c1871ed55be390ddb18991e288545bfdaf14e2562'
+EXPECTED_ARTIFACTS = {'gateway-client-v0.7.9-installer.exe': {'bytes': 121474560,
+                                         'sha256': '47dd4737ff6abc1704d2eaa4cf707517957745fe80b627dd578387f355684b4f'},
+ 'gateway-client-v0.7.9-linux-amd64-fresh.zip': {'bytes': 75208416,
+                                                 'sha256': '609aa2f53edebdc1c61b9e1bfcb992cb896789ce08adbda8ac43ece7389f144b'},
+ 'gateway-client-v0.7.9-linux-amd64.zip': {'bytes': 9301613,
+                                           'sha256': '88c2ff74b2faa6eca76983dae4d6d84a31e8b22bffb2f01f66d35e60cc3fe243'},
+ 'gateway-client-v0.7.9-windows-amd64-fresh.zip': {'bytes': 80958958,
+                                                   'sha256': 'bdce2e5dd9d21b96ed64b4987d36bd6f13605a0cc562120bb3734525a3ab44a4'},
+ 'gateway-client-v0.7.9-windows-amd64.zip': {'bytes': 15052154,
+                                             'sha256': 'ff135e9ce24ce7fa76d2cb3293cb30563e8341c061a44cbeae445443436fc55a'},
+ 'gateway-headers-v0.7.9.zip': {'bytes': 65906545,
+                                'sha256': '2e5db3dbe7dde8ba90d39d97a948d414e049142eec41f5ff9c557aacb0797de5'}}
+HEADER_POLICY = 'unchanged'
+EXPECTED_HEADER_SNAPSHOT_SHA256 = '4cba8f53b306e7163f5c43da0569c24a911517833476834925ec64714ca2cc0c'
 FILES = {f"gateway-client-v{VERSION}-{platform}{suffix}.zip"
          for platform in ["windows-amd64", "linux-amd64"] for suffix in ["", "-fresh"]}
 FILES |= {f"gateway-client-v{VERSION}-installer.exe", f"gateway-headers-v{VERSION}.zip"}

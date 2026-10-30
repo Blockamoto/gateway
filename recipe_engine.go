@@ -167,7 +167,7 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 	if d.Origin < 0 {
 		return nil, recipeDiagnosticAt("RECIPE_INVALID_ORIGIN", "/origin", "origin must be non-negative")
 	}
-	if d.Source != "bitcoin.reveal" {
+	if d.Source != "bitcoin.reveal" && d.Source != "bitcoin.transaction" {
 		return nil, recipeDiagnosticAt("RECIPE_UNSUPPORTED_SOURCE", "/source", "unsupported source")
 	}
 	if d.History != "sparse" {

@@ -119,6 +119,10 @@ func (p *recipeProgram) semanticHash() string {
 	if recipeUsesProperties(d) {
 		propertiesProfile = recipePropertiesBrotliProfile
 	}
+	transactionProfile := ""
+	if d.Source == "bitcoin.transaction" {
+		transactionProfile = "gateway-recipe-transaction-verified-v1"
+	}
 	lookupProfile := ""
 	if len(d.Dependencies) != 0 || len(d.Exports) != 0 {
 		lookupProfile = "gateway-sparse-same-anchor-lookup-v1"
@@ -132,7 +136,8 @@ func (p *recipeProgram) semanticHash() string {
 		Properties      string           `json:"properties"`
 		Lookup          string           `json:"lookup,omitempty"`
 		Definition      recipeDefinition `json:"definition"`
-	}{recipeInterpreterProfile, inscriptionParserProfile, inscriptionReferenceCommit, ordInterpretationProfile, recipeCBORProfile, propertiesProfile, lookupProfile, d})
+		Transaction     string           `json:"transaction,omitempty"`
+	}{recipeInterpreterProfile, inscriptionParserProfile, inscriptionReferenceCommit, ordInterpretationProfile, recipeCBORProfile, propertiesProfile, lookupProfile, d, transactionProfile})
 }
 
 // commitInscriptionBlock links the interpreter to its independent sparse store.
@@ -225,6 +230,9 @@ func (p *recipeProgram) evaluateInscriptionBlock(ctx context.Context, block bloc
 }
 
 func (p *recipeProgram) evaluateInscriptionBlockWithLookup(ctx context.Context, block blockView, result *inscriptionBlockResult, lookup func(string, string) (any, error)) (recipeRows, error) {
+	if p.definition.Source != "bitcoin.reveal" {
+		return nil, fmt.Errorf("recipe source is not bitcoin.reveal")
+	}
 	if ctx == nil {
 		return nil, fmt.Errorf("missing recipe context")
 	}

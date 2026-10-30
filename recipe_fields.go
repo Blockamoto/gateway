@@ -20,6 +20,15 @@ type recipeFieldCapability struct {
 }
 
 func recipeSourceFields(source string) []recipeFieldCapability {
+	if source == "bitcoin.transaction" {
+		return []recipeFieldCapability{
+			{Path: []string{"ref"}, Type: recipeTypeSpec{Types: []string{"text"}}},
+			{Path: []string{"txid"}, Type: recipeTypeSpec{Types: []string{"text"}}},
+			{Path: []string{"block_hash"}, Type: recipeTypeSpec{Types: []string{"text"}}},
+			{Path: []string{"height"}, Type: recipeTypeSpec{Types: []string{"integer"}}},
+			{Path: []string{"tx_index"}, Type: recipeTypeSpec{Types: []string{"integer"}}},
+		}
+	}
 	if source != "bitcoin.reveal" {
 		return nil
 	}

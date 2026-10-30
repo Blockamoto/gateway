@@ -416,3 +416,41 @@ func TestRecipeCoveragePrunesUnrelatedRadixBranches(t *testing.T) {
 		t.Fatal("corrupt in-range branch accepted")
 	}
 }
+
+func TestRecipeStoreGuardOrderingRevisionAndLateCallback(t *testing.T) {
+	ctx := context.Background()
+	s := recipeTestOpen(t, t.TempDir(), "locking", recipeTestHash("a"))
+	u := recipeTestUnit(1, recipeTestHash("b"), []recipeStoreRow{})
+	guard := func(publish func() error) error {
+		if _, _, err := s.Read(ctx, 1); err != nil {
+			return err
+		}
+		return publish()
+	}
+	if err := s.PublishAtRevision(ctx, u, 0, guard); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PublishAtRevision(ctx, recipeTestUnit(2, recipeTestHash("b"), []recipeStoreRow{}), 0, recipeTestGuard); err == nil {
+		t.Fatal("stale zero revision accepted")
+	}
+	if _, found, err := s.Read(ctx, 2); err != nil || found {
+		t.Fatalf("stale publication visible: %v %v", found, err)
+	}
+	var late func() error
+	if err := s.Publish(ctx, recipeTestUnit(2, recipeTestHash("b"), []recipeStoreRow{}), func(f func() error) error { late = f; return nil }); err == nil {
+		t.Fatal("guard omitted callback")
+	}
+	if err := late(); err == nil {
+		t.Fatal("callback after guard return succeeded")
+	}
+	if _, found, err := s.Read(ctx, 2); err != nil || found {
+		t.Fatalf("late callback published: %v %v", found, err)
+	}
+	h, err := s.head()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReconcileAtRevision(ctx, h.Revision, map[int64]string{1: u.BlockHash}, guard); err != nil {
+		t.Fatal(err)
+	}
+}

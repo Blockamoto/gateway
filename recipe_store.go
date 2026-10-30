@@ -25,8 +25,11 @@ const recipeStoreHeadMaxBytes = 16 << 10
 
 // The caller must invoke publish exactly once while holding its selected-chain,
 // admission and consent authority; an error before invocation leaves the head
-// unchanged. The guard must not release that authority before publish returns,
-// call the store recursively, or invoke publish after the guard has returned.
+// unchanged. The guard must synchronously call publish, and must not release
+// that authority before publish returns or invoke publish after returning.
+// This is a trusted internal contract: the wrapper rejects a callback starting
+// after return but cannot prove that an already-running callback was synchronous
+// or that a guard continued holding authority while it ran.
 type recipeStoreGuard func(publish func() error) error
 
 type recipeStoreRow struct {
@@ -258,9 +261,15 @@ func recipeStoreGuarded(guard recipeStoreGuard, publish func() error) error {
 	if guard == nil {
 		return fmt.Errorf("recipe publication requires authority guard")
 	}
-	called := false
+	var state sync.Mutex
+	called, closed := false, false
 	var publishErr error
 	err := guard(func() error {
+		state.Lock()
+		defer state.Unlock()
+		if closed {
+			return fmt.Errorf("recipe guard invoked publication after return")
+		}
 		if called {
 			publishErr = fmt.Errorf("recipe guard invoked publication twice")
 			return publishErr
@@ -269,6 +278,9 @@ func recipeStoreGuarded(guard recipeStoreGuard, publish func() error) error {
 		publishErr = publish()
 		return publishErr
 	})
+	state.Lock()
+	defer state.Unlock()
+	closed = true
 	if publishErr != nil {
 		return publishErr
 	}
@@ -310,6 +322,16 @@ func (s *recipeStore) publishHead(h recipeStoreHead, root string) error {
 // is idempotent only for byte-identical units. An existing different unit at
 // the same height requires an explicit reconciliation before replacement.
 func (s *recipeStore) Publish(ctx context.Context, u recipeStoreUnit, guard recipeStoreGuard) error {
+	return s.publish(ctx, u, nil, guard)
+}
+
+// PublishAtRevision rejects any coverage change since the caller inspected it.
+// Revision zero is a valid fence for a not-yet-initialized generation.
+func (s *recipeStore) PublishAtRevision(ctx context.Context, u recipeStoreUnit, revision uint64, guard recipeStoreGuard) error {
+	return s.publish(ctx, u, &revision, guard)
+}
+
+func (s *recipeStore) publish(ctx context.Context, u recipeStoreUnit, expectedRevision *uint64, guard recipeStoreGuard) error {
 	if ctx == nil {
 		return fmt.Errorf("missing context")
 	}
@@ -324,15 +346,18 @@ func (s *recipeStore) Publish(ctx context.Context, u recipeStoreUnit, guard reci
 		return fmt.Errorf("recipe unit exceeds budget")
 	}
 	digest := recipeStoreHash(b)
-	recipeStoreMutex.Lock()
-	defer recipeStoreMutex.Unlock()
 	return recipeStoreGuarded(guard, func() error {
+		recipeStoreMutex.Lock()
+		defer recipeStoreMutex.Unlock()
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		h, err := s.head()
 		if err != nil {
 			return err
+		}
+		if expectedRevision != nil && h.Revision != *expectedRevision {
+			return fmt.Errorf("recipe coverage changed since planning")
 		}
 		h, err = s.initialize(h)
 		if err != nil {
@@ -429,9 +454,9 @@ func (s *recipeStore) reconcile(ctx context.Context, revision uint64, anchors ma
 			return fmt.Errorf("invalid reconciliation anchor")
 		}
 	}
-	recipeStoreMutex.Lock()
-	defer recipeStoreMutex.Unlock()
 	return recipeStoreGuarded(guard, func() error {
+		recipeStoreMutex.Lock()
+		defer recipeStoreMutex.Unlock()
 		if err := ctx.Err(); err != nil {
 			return err
 		}

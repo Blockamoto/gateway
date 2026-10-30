@@ -112,7 +112,7 @@ A reusable row-proposal sink removes the block-wide row map and repeated JSON en
 
 ### Historical dependency pagination still open
 
-Per-block output tokens bind immutable unit bytes and recheck their complete same-height lineage; unrelated appends do not change that unit identity. Multi-height dependency coverage enumeration currently pins complete ancestor head vectors and conservatively rejects a continuation after any ancestor append. It closes the changed-prior-page race but still needs an immutable historical-range view that survives unrelated Live progress and rejects changed referenced receipts or chain anchors. General custom range export and that snapshot-reuse case remain unfinished acceptance work.
+Per-block output tokens bind immutable unit bytes and recheck their complete same-height lineage; unrelated appends do not change that unit identity. Coordinator dependency coverage retains current ancestor-head vectors for its run/admission fence. A separate historical range endpoint now pins existing immutable published heads and compares only the requested receipt intervals, with a digest of the exact selected header interval. It survives unrelated Live append while rejecting changes to prior-page ancestors or headers. General custom row-range export, its UI and bulk validation remain unfinished acceptance work; see `080-HISTORICAL-RANGES.md`.
 
 ### Native UTXO composition
 
@@ -252,3 +252,24 @@ fix, alongside earlier private lifecycle/GC/rebuild checks. All four recipe
 editor/tracks/workspace JavaScript checks passed. The broad recipe/saved-recipe/UTXO/address/run regression passed in
 499.889 seconds, including the pinned metadata fixture and stale rebuild review.
 The production build passed. No finished preview is served; wider state contracts, remaining built-ins and acceptance are open.
+
+### Immutable historical receipt ranges
+
+A separate read-only range-coverage endpoint now pins existing immutable
+published receipt heads for the root and every ancestor. Stateless continuation
+checks the complete requested receipt interval against current trees, including
+prior-page ancestors, and the exact selected local header byte interval.
+Unrelated receipt/header appends beyond the range preserve the token. Boundary
+leaf splits are compared by entries rather than raw page shape. Existing
+coordinator current-head/admission fences remain intact. No snapshot files,
+index job, hidden backfill or additional persistence backend is created.
+
+The focused range/DAG/store coverage set passed in 16.188 seconds. The wider
+DAG/lineage/dependency/store/coverage/output/coordinator/saved-recipe and ordered
+public suite passed in 146.488 seconds after correcting a missed output-route
+return. Synthetic warm header interval hashing measured 5.301 ms/0.8 MB and
+257.534 ms/80 MB, using about 69.8 KB allocated per read. The production build
+passed. Details and scope are in `080-HISTORICAL-RANGES.md`. General custom row
+export, its GUI and bulk validation are still open; bulk export should reuse a
+single checked immutable header fragment rather than hash a wide interval for
+every small page. The requested complete preview is not yet served.

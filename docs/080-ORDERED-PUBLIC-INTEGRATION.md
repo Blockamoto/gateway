@@ -109,5 +109,7 @@ unsupported raw forms. Viewing/copying does not save or start a run.
 
 Remaining acceptance includes measured public-source overhead, visible Chrome
 exercise, wider ordered contracts/dependencies and the complete built-in matrix.
-Historical state queries here retain native recovery limits; full historical
-DAG range snapshots/export remain separate open work in the engine ledger.
+Historical state queries here retain native recovery limits; historical sparse/DAG
+receipt-range snapshots now have a separate endpoint described in
+`080-HISTORICAL-RANGES.md`. General custom row-range export and its GUI remain
+open work in the engine ledger.

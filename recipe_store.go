@@ -572,6 +572,13 @@ func (s *recipeStore) dependencyCoverageRefs(ctx context.Context, from, to int64
 	return s.coverageMode(ctx, from, to, after, expectedRevision, limit, false, true)
 }
 func (s *recipeStore) coverageMode(ctx context.Context, from, to int64, after *int64, expectedRevision uint64, limit int, journal, allowLineage bool) (recipeCoveragePage, error) {
+	return s.coverageSnapshotMode(ctx, from, to, after, expectedRevision, limit, journal, allowLineage, nil)
+}
+
+// A historical caller supplies an authenticated immutable published head and
+// separately checks its full requested interval against current publication.
+// Existing run/reconciliation paths retain their current-head revision fence.
+func (s *recipeStore) coverageSnapshotMode(ctx context.Context, from, to int64, after *int64, expectedRevision uint64, limit int, journal, allowLineage bool, snapshot *recipeStoreHead) (recipeCoveragePage, error) {
 	var result recipeCoveragePage
 	if ctx == nil || from < 0 || to < from || limit < 1 || limit > recipeCoverageMaxPage || after != nil && (*after < from || *after > to || expectedRevision == 0) {
 		return result, fmt.Errorf("invalid recipe coverage request")
@@ -595,6 +602,9 @@ func (s *recipeStore) coverageMode(ctx context.Context, from, to int64, after *i
 	h, err := s.head()
 	if err != nil {
 		return result, err
+	}
+	if snapshot != nil {
+		h = *snapshot
 	}
 	if expectedRevision != 0 && h.Revision != expectedRevision {
 		return result, fmt.Errorf("recipe coverage changed since pagination began")

@@ -273,3 +273,24 @@ passed. Details and scope are in `080-HISTORICAL-RANGES.md`. General custom row
 export, its GUI and bulk validation are still open; bulk export should reuse a
 single checked immutable header fragment rather than hash a wide interval for
 every small page. The requested complete preview is not yet served.
+
+### Large sparse-output evidence and streaming primitives
+
+A verified block-792435 transaction projection with a legal 16 KiB annotation
+completed 3,139 rows / 52,463,224 canonical JSON bytes, then hit the provisional
+16 MiB durable-unit cap. This confirms a real accepted custom-program output
+case which must be supported before release. The opt-in boundary audit passed
+in 4.921 seconds and currently records that rejection explicitly.
+
+Private streaming JSON and external metadata-sort helpers now preserve legacy
+bytes/order without a whole-row/block buffer. Sorting uses bounded batches,
+level compaction and bounded fan-in; long common keys compare in chunks. Tests
+stream a row beyond 64 MiB, check exact JSON bytes and numbers, exercise long
+keys/multiple merge levels, cancellation, malformed runs and cleanup. The
+combined set passed in 4.492 seconds. Public persistence is still unchanged;
+these primitives are not an integration milestone or a finished preview.
+
+The chosen direction retains canonical JSON units and logical digests, existing
+atomic receipt heads and native COW primitives. It does not require a new
+persistent index format or the slow private staged/page-pack experiments. See
+`080-SPARSE-STREAMING.md` for remaining source/consumer/lookup/query/export work.

@@ -130,7 +130,15 @@ func (s *utxoStore) applyOrderedBlockSnapshot(ctx context.Context, block blockVi
 	previous := checkpoint.Commitment
 	journal := utxoJournal{Schema: 1, Height: block.Height, BlockHash: block.Hash, PreviousCommitment: previous, BeforeImages: []utxoBeforeImage{}}
 	edit := &utxoEdit{trees: s.trees(ctx, checkpoint), facts: newUTXOFactReader(ctx, s.root), seen: map[string]bool{}, journal: &journal}
-	facts, err := storeBlockOutputFactsContext(ctx, s.root, block)
+	var facts map[string]outputFactRef
+	var err error
+	if s.privateFacts {
+		// Own physical facts without retaining one whole-block reference map
+		// per custom generation in the shared prepared-source cache.
+		facts, err = storeBlockOutputFactLayersUncachedContext(ctx, s.root, block, true, true)
+	} else {
+		facts, err = storeBlockOutputFactsContext(ctx, s.root, block)
+	}
 	if err != nil {
 		return err
 	}

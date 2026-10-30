@@ -425,7 +425,16 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 		if err != nil {
 			return v, err
 		}
-		if len(resolved.Definition.Dependencies) != 0 {
+		if resolved.Source == "bitcoin.ordered" {
+			if !recipeOrderedPublicEnabled {
+				return v, fmt.Errorf("ordered recipe execution is not yet enabled")
+			}
+			consumer, e := a.openRecipeOrderedRunConsumer(ctx, plan, binding, p.RecipeStateToken)
+			if e != nil {
+				return v, e
+			}
+			v.recipe = consumer
+		} else if len(resolved.Definition.Dependencies) != 0 {
 			consumer, e := a.openRecipeDAGRunConsumer(ctx, plan, binding)
 			if e != nil {
 				return v, e
@@ -1217,6 +1226,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		if state == "complete" && ctx.Err() == nil {
 			for _, c := range consumers {
 				var err error
+				if maintenance, ok := c.recipe.(interface{ Maintain(context.Context) error }); ok {
+					err = maintenance.Maintain(ctx)
+				}
 				if c.utxo != nil {
 					err = c.utxo.CollectPages(ctx)
 				}
@@ -1719,7 +1731,10 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					c.recipeWork = nil
 					c.progress.State, c.progress.Reason = "waiting", e.Error()
 					c.retryAfter = time.Now().Add(time.Second)
-					if !indexRunMarkInterrupted(ctx, e, &c.progress) {
+					if runTerminal(e) {
+						c.progress.State = "rebuild_required"
+						failed = true
+					} else if !indexRunMarkInterrupted(ctx, e, &c.progress) {
 						waiting = true
 					}
 					continue
@@ -1727,11 +1742,14 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 				if observation.VerifiedThrough != nil {
 					c.progress.Height, c.progress.BlockHash = *observation.VerifiedThrough, observation.VerifiedHash
 				}
+				if observation.StateCommitment != "" {
+					c.progress.Commitment = observation.StateCommitment
+				}
 				if observation.State == "range_complete" || observation.State == "no_work" {
 					c.recipeWork = nil
 					c.progress.State = "complete"
 					c.progress.NextRequiredHeight = nil
-					c.progress.Reason = "Sparse coverage was checked against the selected local header snapshot."
+					c.progress.Reason = "Committed recipe coverage was checked against the selected local header snapshot."
 					continue
 				}
 				if observation.State != "ready" || observation.Work == nil {
@@ -2471,6 +2489,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		if processed%128 == 0 {
 			sharedDue := processed%utxoSharedMaintenanceBlocks == 0
 			for _, c := range consumers {
+				if maintenance, ok := c.recipe.(interface{ Maintain(context.Context) error }); ok {
+					_ = maintenance.Maintain(ctx)
+				}
 				if c.selection.Index == "sat-state" && c.store != nil {
 					_ = c.store.collectOrdinalState()
 				}

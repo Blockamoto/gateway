@@ -77,6 +77,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <div class="actions"><button type="button" data-recipe="validate">Validate draft</button><button type="button" data-recipe="save">Save draft</button></div>
 <div class="actions"><label>Saved drafts <select data-recipe="saved" aria-label="Saved recipe drafts"><option value="">Choose a draft</option></select></label><button type="button" data-recipe="refresh">Refresh list</button><button type="button" data-recipe="load">Load selected draft</button></div>
 <p class="small" role="status" aria-live="polite" data-recipe="status"></p><p class="small" role="status" aria-live="polite" data-recipe="save-note"></p>
+<fieldset data-recipe="ordered" hidden></fieldset>
 <label class="recipe-raw-label">Recipe JSON<textarea data-recipe="raw" rows="16" spellcheck="false"></textarea></label>
 <div class="actions"><label>Import JSON <input data-recipe="import" type="file" accept=".json,application/json"></label><button type="button" data-recipe="export">Export JSON</button><button type="button" data-recipe="reset">New draft</button></div>
 </section>
@@ -97,6 +98,7 @@ main{min-width:0;overflow-wrap:anywhere}.workspace-tabs{max-width:100%;min-width
 <script src="/shell/address-panel.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/sat-panel.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/index-workspace.js" nonce="__INDEX_NONCE__"></script>
+<script src="/shell/recipe-ordered-editor.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/recipe-editor.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/transaction-flow-layout.js" nonce="__INDEX_NONCE__"></script>
 <script src="/shell/block-viewport.js" nonce="__INDEX_NONCE__"></script>

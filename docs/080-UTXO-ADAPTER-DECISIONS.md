@@ -44,7 +44,8 @@ garbage collection remain in the existing host machinery.
 The native path streams the complete admitted source, with expression work
 bounded per event. It has no experimental 50,000-event/global-work quota and
 does not use an old-output range loop. Existing physical page/journal bounds
-remain. Public custom resource and fact-ownership policies still need work.
+remain. Custom generations now reuse that format with independent fact
+ownership, CAS, native maintenance and explicit archive-on-rebuild policy.
 
 The normalized actual program and interpreter, typed-stream, Bitcoin primitive,
 native source/fact and physical profiles bind schema 2 to semantic fingerprint
@@ -52,9 +53,11 @@ native source/fact and physical profiles bind schema 2 to semantic fingerprint
 An unmatched program/profile/schema fails closed and requires an explicit
 migration. Native checkpoint and journal bytes remain the compatibility test.
 Settings displays the complete executable JSON document and can copy it into
-a separate raw custom draft. The common compiler/registry validates that
-document. Runnable custom ordered scheduling and its guided editor remain in
-progress; saving a definition does not enable them.
+a separate custom draft. The common compiler/registry validates that document,
+and guided controls represent its complete nested program. Custom Coin/count
+recipes can now be explicitly armed and reviewed through finite/Live scheduling;
+saving a definition starts no work. Other state contracts and full release
+acceptance remain open; see `080-ORDERED-PUBLIC-INTEGRATION.md`.
 
 The opt-in paired `TestRecipeNativeUTXOApplyMeasurement` measures total apply
 cost on the same synthetic 2,048-output block and existing physical backend,

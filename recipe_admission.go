@@ -99,13 +99,13 @@ func recipeAdmissionBuild(resolved resolvedSavedRecipe, req indexRunRequest, tar
 	if selected == nil || !selected.Armed {
 		return p, fmt.Errorf("recipe must be explicitly armed in the requested run")
 	}
-	// Recipe tracks currently have no native-index retention, Sat, Parcel or
-	// rebuild options. Reject them rather than silently changing meaning.
+	// The ordered contract supports an explicitly reviewed generation rebuild.
+	// Native retention, Sat, Parcel and address snapshot options do not apply.
 	if selected.Options != nil {
 		return p, fmt.Errorf("nested recipe options are not supported")
 	}
 	o := selected.indexRunOptions
-	if o.ParcelEvidenceRoute != "" || o.ParcelRawScanBudget != 0 || o.Retention != "" || o.Mode != "" && o.Mode != "lean" || o.RetainOutputValues != nil || o.RetainOutputScripts != nil || o.RetainSatHistory || o.ConventionalIDs != nil || o.Rebuild || o.RebuildSnapshot != nil {
+	if o.ParcelEvidenceRoute != "" || o.ParcelRawScanBudget != 0 || o.Retention != "" || o.Mode != "" && o.Mode != "lean" || o.RetainOutputValues != nil || o.RetainOutputScripts != nil || o.RetainSatHistory || o.ConventionalIDs != nil || o.Rebuild && !ordered || o.RebuildSnapshot != nil {
 		return p, fmt.Errorf("native index options do not apply to a recipe")
 	}
 	from := resolved.Origin

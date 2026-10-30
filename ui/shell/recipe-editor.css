@@ -6,3 +6,9 @@
 .recipe-raw-label textarea{font-family:monospace;resize:vertical;line-height:1.5}
 .recipe-editor .actions{display:flex;align-items:center;gap:12px;margin-top:12px}
 .recipe-editor [data-recipe="status"]{min-height:1.5em}
+.ordered-editor-body{padding:10px 0 6px 16px;display:grid;gap:10px}
+.ordered-editor-body details{border-left:1px solid var(--line);padding-left:10px}
+.ordered-editor-fields,.ordered-editor-member{display:flex;flex-wrap:wrap;align-items:start;gap:10px}
+.ordered-editor-body label,.ordered-editor-fields label{display:grid;gap:5px;font-size:13px}
+.ordered-editor-body input,.ordered-editor-body select{min-width:140px;max-width:100%}
+.recipe-editor [data-recipe="ordered"]>div{margin-top:12px}

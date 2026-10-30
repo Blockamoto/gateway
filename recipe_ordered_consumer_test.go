@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// Installs an admitted run directly while the public ordered entry point is
-// gated. Public Start/Resume tests are required before removing that gate.
+// Installs an admitted run directly for deterministic consumer guard/race tests.
+// Separate public Start/Resume tests exercise the actual coordinator entry.
 func orderedConsumerFixture(t *testing.T, live bool) (*app, *recipeOrderedRunConsumer, map[int64]blockView) {
 	t.Helper()
 	ctx := context.Background()

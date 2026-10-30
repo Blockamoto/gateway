@@ -4,7 +4,7 @@ Last updated: 2026-10-30. Baseline: 0.7.9 `76cc8d5efa3c3d75a1531774fc2af1dff44db
 
 ## Current implementation boundary
 
-The initial interpreter evaluates sparse reveal recipes against complete verified extraction. Independent recipes can be saved, armed, reviewed, run over a finite range or Live and queried through the existing coordinator and a selected-local-header check. Live target rebinding and journalled sparse reorg reconciliation have focused backend tests. A visible isolated Live test followed a real new block and paused; Computer Use stopped after restart because it could not establish Chrome's current URL, so visual Resume remains unverified. This is **not a complete indexing release**: a narrow sparse same-block dependency path is implemented for reveal and transaction sources, while in-run re-admission and broader dependency forms remain open. The language cannot yet describe all built-ins or their ordered mutable state. Native TX ID Locators now derives through its executable JSON recipe and a compact physical adapter with an explicit semantic-equivalence binding to its frozen v1/v2 store identities. Other built-ins still use their original derivation. No other saved legacy checkpoint has been declared compatible with a new recipe store.
+The initial interpreter evaluates sparse reveal recipes against complete verified extraction. Independent recipes can be saved, armed, reviewed, run over a finite range or Live and queried through the existing coordinator and a selected-local-header check. Live target rebinding and journalled sparse reorg reconciliation have focused backend tests. A visible isolated Live test followed a real new block and paused; Computer Use stopped after restart because it could not establish Chrome's current URL, so visual Resume remains unverified. This is **not a complete indexing release**: a narrow sparse same-block dependency path is implemented for reveal and transaction sources, while in-run re-admission and broader dependency forms remain open. The language cannot yet describe all built-ins or their ordered mutable state. Native TX ID Locators, UTXO transitions, Lean/Full inscription retention and optional/saved inscription locators now derive through actual JSON compositions with explicit native semantic-equivalence bindings. Custom ordered Coin/count recipes reuse isolated native-format generations through guided authoring, reviewed finite/Live runs, query, rebuild and maintenance. Other built-ins retain their original derivation; the complete baseline matrix and wider custom contracts remain open. Legacy native equivalence does not relabel a custom generation.
 
 The CBOR reader retains typed data and duplicate entries. The initial Ord properties adapter handles uncompressed and bounded Brotli data; malformed/unknown-field equivalence against the pinned Ord implementation remains unproven. Definitions that use interpreted properties receive a new semantic profile for Brotli; prior property generations remain retained and need an explicit new generation rather than being silently relabelled. Synthetic tests cover metadata and properties. The real Bitcoin genesis fixture proves only the verified empty-reveal case. An optional raw block at height 908657 verifies one real reveal with metadata and metaprotocol, including a changed-predicate check; its standalone header is not authenticated as selected chain. Broad differential parity remains outstanding. The prototype's narrowly supported operators are not a release-scope reduction; extend or replace them to satisfy the full matrix below.
 
@@ -224,3 +224,31 @@ and guided-authoring integration. Other built-ins, generic ordered contracts,
 large sparse persistence and full historical DAG ranges remain open. This is
 an intermediate engine increment, not the requested finished preview.
 See `080-ORDERED-PUBLIC-INTEGRATION.md` for implementation and test evidence.
+
+### Public ordered Coin/count lifecycle and guided program editor
+
+The first ordered physical contract now uses public recipe save/resolve, explicit
+arm and reviewed Start, finite/Live coordination, prefix checks, reorg recovery,
+pause/process restart, historical queries and staged rebuild. Pure planning
+blocks missing lead-in without writing or fetching a prefix. Rebuild review
+binds current metadata and archives the complete prior generation with a
+durable per-job intent; retry/resume retains the replacement's progress.
+
+Maintenance reuses native COW/undo retention and fact sweeping at completion and
+Live committed boundaries, with private generation ownership and without native
+UTXO mutexes. Current/recovery facts survive undo, old unowned facts can expire,
+and native-root facts/archived generations remain independent. The mixed run
+exposed a prepared fact-cache assumption; its key now binds the physical owner,
+and private generations avoid retaining per-track maps in that shared cache.
+
+The guided ordered editor represents the actual complete UTXO program, supports
+nested instructions and typed expressions, preserves exact uint strings and
+refuses unsupported forms without rewriting raw text. Copying/viewing starts no
+work; Apply precedes validation/save. Saved recipe tracks can stage/clear a
+rebuild for the next reviewed Start. Existing flat sparse controls remain.
+
+Focused public coordinator tests passed in 13.753 seconds after the ownership
+fix, alongside earlier private lifecycle/GC/rebuild checks. All four recipe
+editor/tracks/workspace JavaScript checks passed. The broad recipe/saved-recipe/UTXO/address/run regression passed in
+499.889 seconds, including the pinned metadata fixture and stale rebuild review.
+The production build passed. No finished preview is served; wider state contracts, remaining built-ins and acceptance are open.

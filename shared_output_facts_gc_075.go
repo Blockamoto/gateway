@@ -22,7 +22,9 @@ func collectSharedOutputFactsContext(ctx context.Context, root string) error {
 	outputFactCollectionMu.Lock()
 	defer outputFactCollectionMu.Unlock()
 	pins := map[string]bool{}
-	if e:=visitSparseOutputFactPages(ctx,root,func(hash string)error{pins[hash]=true;return nil});e!=nil{return e}
+	if e := visitSparseOutputFactPages(ctx, root, func(hash string) error { pins[hash] = true; return nil }); e != nil {
+		return e
+	}
 	u, e := utxoStoreHead(root)
 	if e != nil {
 		return e
@@ -72,13 +74,20 @@ func collectSharedOutputFactsContext(ctx context.Context, root string) error {
 	if e = visitCurrentAddressFactPagesContext(ctx, root, func(hash string) error { pins[hash] = true; return nil }); e != nil {
 		return e
 	}
+	return collectOutputFactPagesContext(ctx, root, pins)
+}
+
+// The caller owns the complete pin snapshot and excludes concurrent writers
+// for this physical root. Private generations enumerate their own owners and
+// reuse this sweep without acquiring unrelated native store mutexes.
+func collectOutputFactPagesContext(ctx context.Context, root string, pins map[string]bool) error {
 	base := outputFactDirectory(root)
-	if e = updateapply.CheckPath(base); e != nil {
+	if e := updateapply.CheckPath(base); e != nil {
 		return e
 	}
 	// Authenticate retained pages once. Missing dependencies stop collection.
 	for hash := range pins {
-		if _, e = readOutputFactPageContext(ctx, root, hash); e != nil {
+		if _, e := readOutputFactPageContext(ctx, root, hash); e != nil {
 			return e
 		}
 	}

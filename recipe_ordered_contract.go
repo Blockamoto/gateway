@@ -9,7 +9,7 @@ const recipeOrderedUTXOStorage = "bitcoin.utxo.cow.v2"
 const recipeOrderedDocumentProfile = "gateway-ordered-document-v1"
 const recipeOrderedSourceProfile = "gateway-ordered-raw-owned-source-v1"
 const recipeOrderedGenerationProfile = "gateway-custom-utxo-origin-v1"
-const recipeOrderedPublicEnabled = false // enable after integrated lifecycle/query/authoring checks
+const recipeOrderedPublicEnabled = true
 
 // The first physical contract reuses authenticated Coin facts and native COW
 // state/undo. Its fixed table shapes are storage bindings, not an executor for

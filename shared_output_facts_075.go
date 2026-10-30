@@ -135,13 +135,20 @@ func storeBlockOutputFactsContext(ctx context.Context, root string, block blockV
 	return storeBlockOutputFactLayersContext(ctx, root, block, true, true)
 }
 func storeBlockOutputFactLayersContext(ctx context.Context, root string, block blockView, values, scripts bool) (map[string]outputFactRef, error) {
-	if p := runPrepared(ctx); p != nil && p.block.Hash == block.Hash {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if p := runPrepared(ctx); p != nil && p.block.Hash == block.Hash && p.block.Height == block.Height {
 		p.factsMu.Lock()
 		defer p.factsMu.Unlock()
 		if p.refs == nil {
 			p.refs = map[string]map[string]outputFactRef{}
 		}
-		key := fmt.Sprintf("%t:%t", values, scripts)
+		physicalRoot, err := filepath.Abs(root)
+		if err != nil {
+			return nil, err
+		}
+		key := fmt.Sprintf("%s:%t:%t", filepath.Clean(physicalRoot), values, scripts)
 		if refs, ok := p.refs[key]; ok {
 			return refs, nil
 		}

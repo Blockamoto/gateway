@@ -1026,6 +1026,9 @@ func (s *utxoStore) collectPages(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
+	if s.skipAddressProjection {
+		return nil
+	}
 	return collectAddressStatePagesLockedContext(ctx, s.root)
 }
 

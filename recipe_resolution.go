@@ -63,7 +63,9 @@ func recipeResolveView(view recipeRegistryView) (resolvedSavedRecipe, error) {
 		return resolvedSavedRecipe{}, fmt.Errorf("saved recipe capability or identity is invalid")
 	}
 	execution := "independent_finite_and_live"
-	if view.Recipe.Source != "bitcoin.reveal" && view.Recipe.Source != "bitcoin.transaction" {
+	if recipeOrderedPublicEnabled && view.Recipe.Source == "bitcoin.ordered" {
+		execution = "ordered_finite_and_live"
+	} else if view.Recipe.Source != "bitcoin.reveal" && view.Recipe.Source != "bitcoin.transaction" {
 		execution = "source_scheduling_unavailable"
 	} else if len(view.Recipe.Dependencies) != 0 {
 		execution = "same_block_dependencies"

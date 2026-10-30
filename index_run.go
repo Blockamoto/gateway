@@ -82,6 +82,7 @@ type indexRunProgress struct {
 	Recipe                        *indexRunRecipeBinding `json:"recipe_binding,omitempty"`
 	RecipeRevision                string                 `json:"recipe_revision,omitempty"`
 	RecipeSemanticHash            string                 `json:"recipe_semantic_hash,omitempty"`
+	RecipeStateToken              string                 `json:"recipe_state_token,omitempty"`
 	RequiresGenesis               bool                   `json:"requires_genesis,omitempty"`
 	ParcelEvidencePending         bool                   `json:"parcel_evidence_pending,omitempty"`
 	ParcelDiscoveryHeight         *int64                 `json:"parcel_discovery_height,omitempty"`
@@ -471,7 +472,7 @@ func normalizeIndexRunRequestWithRecipes(req indexRunRequest, execution bool, re
 		if c.RebuildSnapshot != nil && c.Index != "address-state" {
 			return req, fmt.Errorf("a reviewed address checkpoint belongs to Current Addresses")
 		}
-		if c.Rebuild && c.Index != "utxo-state" && c.Index != "sat-state" && c.Index != "address-state" {
+		if c.Rebuild && !c.Recipe && c.Index != "utxo-state" && c.Index != "sat-state" && c.Index != "address-state" {
 			return req, fmt.Errorf("%s does not support a state rebuild", c.Index)
 		}
 	}
@@ -724,6 +725,12 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 				q.From = *req.In
 			}
 			q.State, q.AdmissionState = "ready", "admitted"
+			if resolved.Source == "bitcoin.ordered" {
+				if e = a.planOrderedRecipeState(ctx, resolved, c, &q); e != nil {
+					return p, e
+				}
+				p.RequiresGenesis = true
+			}
 			if len(resolved.Definition.Dependencies) != 0 {
 				q.Dependencies, e = a.recipePlanDependencies(ctx, resolved, req, q.From, p.TargetHeight, resolve)
 				if e != nil {
@@ -744,7 +751,7 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 				compact := compactIndexRunRecipeBinding(binding)
 				q.Recipe = &compact
 			}
-			if q.AdmissionState == "blocked" || q.Recipe == nil {
+			if q.AdmissionState == "blocked" || q.Recipe == nil || indexRunConsumerBlocksPlan079(&q) {
 				p.Ready = false
 			} else {
 				runnable++

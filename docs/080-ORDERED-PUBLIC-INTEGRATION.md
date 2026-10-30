@@ -1,11 +1,10 @@
 # Public ordered integration
 
-Status: in progress and public execution remains gated. Complete ordered
-documents compile through the shared recipe/registry contract and native UTXO
-loads that document. Private generation ownership, a selected-header/run-bound
-consumer and historical state queries now have executable tests. Public
-scheduler admission, guided ordered authoring, rebuild and maintenance still
-need integration. This is not a finished preview or an accepted scope reduction.
+Status: the first ordered Coin/count contract is connected to public recipe
+save, guided authoring, reviewed Start, finite/Live runs, restart, output queries,
+rebuild and maintenance. The full release remains in progress: other built-ins,
+general ordered contracts, broader dependencies and Chrome acceptance are open.
+This is not a finished preview or an accepted scope reduction.
 
 The UTXO definition is now `recipes/builtins/utxo-state.json`, containing source,
 origin, history, physical state contract, typed table declarations and the actual
@@ -38,6 +37,12 @@ an extra decode, reported in source counters/time; it is not a one-decode claim.
 No new storage engine/page-pack is introduced. Measure duplication and runtime
 cost before choosing persistent cross-generation fact sharing.
 
+Native and custom physical facts have independent ownership. The prepared fact
+cache now binds its physical root as well as retention choices and block anchor.
+Private generations bypass that cache so a cohort does not retain another
+whole-block fact-reference map per custom track. A mixed native/custom test
+caught the old single-owner cache assumption before this public path passed.
+
 Publication must hold selected-local-header, exact run/selection and saved
 revision authority through an atomic generation CAS. Staging may happen outside
 those locks. Do not acquire header/run/registry locks while holding native state
@@ -66,10 +71,43 @@ synthetic local reorg recovery, raw-source ownership/no authority upgrade,
 historical continuation across append and immediate selected-header rejection.
 These checks do not establish full release acceptance or external consensus.
 
-Required checks before enabling this capability include registry/guided round
-trips, semantic edits creating new generations, genesis/prerequisite admission,
-no hidden parent builds, finite/Live Out, pause/restart/resume, reorg/undo and
-recovery limits, cancellation/publication races, selected-header query fences,
-fact ownership/GC, source receipts, performance and visible Chrome acceptance.
-Other built-ins, dependencies, historical range snapshots and complete release
-acceptance remain tracked in the engine ledger.
+The public coordinator tests passed in 13.753 seconds after the cache fix:
+two different ordered programs and a transaction recipe share two source reads
+and two additional owned-source verification decodes with a native UTXO build;
+their saved physical UTXO bytes match. A missing prefix blocks without creating
+storage, and a saved prefix is reused without a source read. A reviewed rebuild
+preserves the prior generation; Live follows real block one, undoes a synthetic
+local-header replacement, pauses and resumes after process recreation while
+retaining the exact admitted historical definition. The broad recipe/saved-recipe/UTXO/address/run suite, including stale rebuild
+review and the pinned metadata fixture, passed in 499.889 seconds. Editor,
+ordered editor, saved tracks and workspace JavaScript checks and the production
+build also passed.
+
+Maintenance reuses native COW marking, retention and output-fact sweeping at
+committed completion and every 128 processed blocks. It holds the custom work
+slot and generation ownership, without taking native UTXO mutexes. Pins include
+current Coins and retained undo before-images; missing owned pages stop cleanup.
+Synthetic tests preserve a spent Coin through undo/reapply, remove old unowned
+facts, leave native-root facts intact, and check cancellation/missing pins.
+
+Rebuild is staged through Saved recipe tracks for a later reviewed Start and
+requires an explicit range beginning at genesis. The plan binds mutable
+generation metadata; changed publication metadata invalidates review. A durable
+job intent archives the entire old generation, including damaged metadata and
+its own facts, under the instance's `archives` directory. Resuming the same job
+does not archive the replacement prefix. No recursive deletion or legacy data
+migration is performed. Rebuild archive size is retained until explicit user
+management, independently of the replacement's bounded recovery state.
+
+Settings' executable UTXO recipe can be copied into a custom draft. Guided
+controls preserve the full actual program and expose typed expressions, source
+fields, variables, functions, literal/object values, branches, bounded ranges,
+state reads/writes/deletes and emitted prevouts. Instructions can be added,
+reordered and removed. The editor lazily expands nested controls, keeps uints
+as exact decimal strings, requires Apply before validation/save, and preserves
+unsupported raw forms. Viewing/copying does not save or start a run.
+
+Remaining acceptance includes measured public-source overhead, visible Chrome
+exercise, wider ordered contracts/dependencies and the complete built-in matrix.
+Historical state queries here retain native recovery limits; full historical
+DAG range snapshots/export remain separate open work in the engine ledger.

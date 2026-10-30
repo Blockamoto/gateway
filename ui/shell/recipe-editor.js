@@ -164,6 +164,9 @@
       return value;
     }
     function guidedChanged(){cancelImport();revision++;pendingGuided=true;status.textContent='Apply guided changes before validating or saving.';}
+    const orderedHost=q('ordered'),orderedEditor=orderedHost&&global.GatewayOrderedRecipeEditor?.mount(orderedHost,{onChange:guidedChanged,getCatalogue:()=>catalogue,onApply(){
+      cancelImport();revision++;try{model=orderedEditor.definition();showModel();status.textContent='Ordered changes applied to the JSON draft.';}catch(e){status.textContent=e.message;}
+    }});
     function labelled(text,input){const label=root.ownerDocument.createElement('label');label.textContent=text;label.append(input);return label;}
     function renderExtras(){
       const doc=root.ownerDocument,filterNodes=extraFilters.map((f,index)=>{
@@ -186,12 +189,16 @@
     function showModel() { pendingGuided=false; raw.value=JSON.stringify(model,null,2); showGuided(); }
     function filterControls() { const mode=q('filterMode').value; q('filterPath').disabled=mode!=='field'; q('filterKey').disabled=mode==='field'; }
     function showGuided() {
+      if(orderedEditor&&guidableJSON(raw.value)&&global.GatewayOrderedRecipeEditor.toGuided(model)){
+        guided.hidden=true;guided.disabled=true;orderedEditor.load(model);status.textContent='Guided ordered controls represent this draft. Apply ordered changes to update JSON.';return;
+      }
+      orderedEditor?.load(null);guided.hidden=false;
       const g=guidableJSON(raw.value) ? toGuided(model) : null; guided.disabled=!g;
       if (g) { for (const name of names) q(name).value=g[name]; extraFilters=g.extraFilters.map(f=>({...f}));extraColumns=g.extraColumns.map(c=>({...c}));filterControls();sourceFields();renderExtras(); }
       status.textContent=g ? 'Guided controls represent this draft. Apply guided changes to update JSON.' : 'This JSON cannot be represented safely by the guided controls. Its original text is preserved.';
     }
     for (const name of names) q(name).addEventListener('input',()=>{guidedChanged();if(name==='filterMode')filterControls();if(name==='source')sourceFields();});
-    raw.addEventListener('input',()=>{ cancelImport(); revision++; pendingGuided=false; try { const d=JSON.parse(raw.value); if (!d || typeof d!=='object' || Array.isArray(d)) throw new Error('A recipe must be an object.'); model=d; showGuided(); } catch(e) { guided.disabled=true; status.textContent='JSON: '+e.message; } });
+    raw.addEventListener('input',()=>{ cancelImport(); revision++; pendingGuided=false; try { const d=JSON.parse(raw.value); if (!d || typeof d!=='object' || Array.isArray(d)) throw new Error('A recipe must be an object.'); model=d; showGuided(); } catch(e) { guided.disabled=true;orderedEditor?.load(null);status.textContent='JSON: '+e.message; } });
     q('apply').addEventListener('click',()=>{ cancelImport(); revision++; try { const g={}; for (const name of names) g[name]=q(name).value;g.extraFilters=extraFilters.map(f=>({...f}));g.extraColumns=extraColumns.map(c=>({...c}));model=fromGuided(g); showModel(); status.textContent='Guided changes applied to the JSON draft.'; } catch(e) { status.textContent=e.message; } });
     q('reset').addEventListener('click',()=>{ cancelImport(); revision++; base=null; model=initial(); showModel(); });
     q('import').addEventListener('change',async event=>{
@@ -281,7 +288,7 @@
     }).catch(()=>{});
     return {useDefinition(definition){
       const copy=JSON.parse(JSON.stringify(definition));
-      if(!toGuided(copy))throw new Error('This recipe requires the JSON editor.');
+      if(!toGuided(copy)&&!(orderedEditor&&global.GatewayOrderedRecipeEditor.toGuided(copy)))throw new Error('This recipe requires the JSON editor.');
       cancelImport();revision++;base=null;copy.id=copy.id+'-copy';copy.name=copy.name+' copy';model=copy;showModel();
       status.textContent='Custom draft copied from the executable recipe. Choose a new ID, then review and save; no indexing has started.';
     }};

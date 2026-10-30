@@ -21,7 +21,7 @@ type recipeOrderedRunConsumer struct {
 	pending    *recipeConsumerWork
 }
 
-func (a *app) openRecipeOrderedRunConsumer(ctx context.Context, plan recipeAdmissionPlan, binding recipeRunBinding) (*recipeOrderedRunConsumer, error) {
+func (a *app) openRecipeOrderedRunConsumer(ctx context.Context, plan recipeAdmissionPlan, binding recipeRunBinding, reviewed ...string) (*recipeOrderedRunConsumer, error) {
 	if plan.Index != binding.Index || plan.Revision != binding.Revision || plan.SemanticHash != binding.Fingerprint {
 		return nil, fmt.Errorf("ordered recipe binding differs from admitted plan")
 	}
@@ -51,11 +51,29 @@ func (a *app) openRecipeOrderedRunConsumer(ctx context.Context, plan recipeAdmis
 	if err != nil {
 		return nil, err
 	}
+	selection, _ := runSelection(owned.Request, owned.Index)
+	if selection.Rebuild {
+		if owned.EffectiveFrom != 0 || owned.NoWork || len(reviewed) != 1 {
+			return nil, fmt.Errorf("ordered rebuild requires a reviewed generation and an explicit genesis range")
+		}
+		if err = generation.resetForRebuild(ctx, binding.RunID+":"+binding.Index, reviewed[0], a.recipeLocalPublicationGuard(ctx, binding, 0, genesisHashDisplay)); err != nil {
+			return nil, err
+		}
+	}
 	_, initialized, err := generation.inspect(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if !initialized && !owned.NoWork {
+		a.indexRunMu.Lock()
+		_, progress, bindingErr := recipeCheckRunIdentity(a.indexRunState.Run, binding)
+		a.indexRunMu.Unlock()
+		if bindingErr != nil {
+			return nil, bindingErr
+		}
+		if progress.Height >= 0 {
+			return nil, fmt.Errorf("%w: committed ordered generation is missing", ErrUTXOStateCorrupt)
+		}
 		if owned.EffectiveFrom > 0 {
 			return nil, fmt.Errorf("ordered state needs an explicitly admitted genesis prefix before height %d", owned.EffectiveFrom)
 		}

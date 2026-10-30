@@ -1,7 +1,8 @@
 package main
 
-// Experimental ordered interpreter. It is not registered as an executable
-// recipe capability, and does not establish chain or consensus authority.
+// Typed ordered interpreter shared by declared native/custom state contracts.
+// The host supplies source, storage and publication authority. Standalone
+// experimental array/resume helpers do not establish chain/consensus authority.
 import (
 	"context"
 	"encoding/hex"

@@ -241,7 +241,10 @@ func (a *recipeUTXOAdapter) PutOrdered(ctx context.Context, key recipeStateKey, 
 		return fmt.Errorf("Coin creation has no admitted mandatory fact")
 	}
 	fact, err := a.edit.facts.read(ref)
-	if err != nil || fact.Height != coin.Height || fact.BlockHash != coin.BlockHash || fact.TxIndex != coin.TxIndex || fact.Vout != coin.Vout || fact.ValueSats != coin.ValueSats || fact.Coinbase != coin.Coinbase || a.block.Transactions[coin.TxIndex].TxID != coin.TxID {
+	if err != nil {
+		return fmt.Errorf("Coin creation fact unavailable: %w", err)
+	}
+	if fact.Height != coin.Height || fact.BlockHash != coin.BlockHash || fact.TxIndex != coin.TxIndex || fact.Vout != coin.Vout || fact.ValueSats != coin.ValueSats || fact.Coinbase != coin.Coinbase || a.block.Transactions[coin.TxIndex].TxID != coin.TxID {
 		return fmt.Errorf("Coin creation fact mismatch")
 	}
 	if err = a.captureCount(txid); err != nil {

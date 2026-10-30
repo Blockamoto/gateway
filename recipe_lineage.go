@@ -38,6 +38,9 @@ func (a *app) prepareRecipeLineage(ctx context.Context, root resolvedSavedRecipe
 	}
 	result := &recipeLineagePlan{root: graph.Root, nodes: make(map[recipeGraphIdentity]recipeLineageNode, len(graph.Nodes))}
 	for _, node := range graph.Nodes {
+		if !recipeSparseSource(node.Source) || node.History != "sparse" {
+			return nil, fmt.Errorf("same-block lineage requires sparse receipt sources")
+		}
 		if err = ctx.Err(); err != nil {
 			return nil, err
 		}

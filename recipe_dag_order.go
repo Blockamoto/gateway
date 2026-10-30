@@ -48,9 +48,9 @@ func recipeOrderSelectedDAG(ctx context.Context, selected []resolvedSavedRecipe,
 		if err != nil {
 			return nil, err
 		}
-		for _, node := range graph.Nodes {
-			parentIndex, ok := positions[node.Identity.Instance]
-			if !ok || parentIndex == childIndex || selected[parentIndex].SemanticHash != node.Identity.SemanticHash {
+		for _, edge := range graph.Edges {
+			parentIndex, ok := positions[edge.Parent.Instance]
+			if edge.Scope == "builtin" || !ok || parentIndex == childIndex || selected[parentIndex].SemanticHash != edge.Parent.SemanticHash {
 				continue
 			}
 			if edges[parentIndex] == nil {

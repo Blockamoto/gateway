@@ -43,8 +43,9 @@ func TestRecipeDAGSchedulerOrdersSelectedParentsAtSameBlock(t *testing.T) {
 	first := recipeDAGExecutionFixtureRecipe(t, a, "sched-a", nil)
 	middle := recipeDAGExecutionFixtureRecipe(t, a, "sched-b", &first)
 	child := recipeDAGExecutionFixtureRecipe(t, a, "sched-c", &middle)
+	coins := saveOrderedRecipeForRun(t, a, "sched-coins", false)
 	zero := int64(0)
-	req := indexRunRequest{In: &zero, Out: &zero, Consumers: []indexRunSelection{{Index: child.ID, Armed: true}, {Index: middle.ID, Armed: true}, {Index: first.ID, Armed: true}}}
+	req := indexRunRequest{In: &zero, Out: &zero, Consumers: []indexRunSelection{{Index: child.ID, Armed: true}, {Index: middle.ID, Armed: true}, {Index: first.ID, Armed: true}, {Index: coins.Recipe.ID, Armed: true}}}
 	plan, err := a.planIndexRun(ctx, req)
 	if err != nil {
 		t.Fatal(err)
@@ -117,6 +118,10 @@ func TestRecipeDAGSchedulerOrdersSelectedParentsAtSameBlock(t *testing.T) {
 			t.Fatal("first writer did not exit")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	plan, err = a.planIndexRun(ctx, req)
+	if err != nil || !plan.Ready {
+		t.Fatal("mixed restart review", plan, err)
 	}
 	if _, err := a.startIndexRun(ctx, req, plan.PlanID); err != nil {
 		t.Fatalf("public DAG restart: %v", err)

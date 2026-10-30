@@ -55,6 +55,57 @@ native identity and metadata follow-up passed in 11.475 seconds. Materialization
 and catalogue checks also ran after removing completed traversal manifests.
 The production build and all four recipe/workspace JavaScript checks passed.
 
+## Query and collection work in progress
+
+The read-only projection adapter now pages stored member rows by physical
+script/member key. Its token binds the exact saved revision, semantic identity,
+parent namespace and immutable child checkpoint. Empty genesis is distinct from
+an unbuilt projection. A later append preserves historical pages; changed local
+headers, missing parent heads, expired checkpoints or a changed parent receipt
+reject them. Reads verify source membership and use the child's owned facts.
+Exclusions are retained as exact counts/sats, not as individual output rows; the
+response states that explicitly. The public output route remains gated with the
+rest of custom checkpoint execution.
+
+Each complete child checkpoint now owns an independent copy of the source's
+native fact-pin COW root. Only changed branches are copied, and facts already
+owned by a prior pin root are reused. COW page bytes use separate files because
+the existing native collector uses per-owner page timestamps. Immutable output
+fact payloads still use hard links with the checked copy fallback. Initial or
+resumed traversal restores complete fact ownership before publishing, including
+previously checked exclusions.
+
+The private ownership profile is now `gateway-private-address-generation-v2`.
+An earlier internal v1 marker cannot be silently adopted; it requires a reviewed
+rebuild. This ownership change affects only the unreleased private projection
+namespace, not the native schema, its equivalence bundle or existing UTXO data.
+
+Maintenance authenticates all retained snapshots and staged traversal ownership
+before collecting. Distinct COW pin/summary pages are enumerated once across
+related roots, avoiding repeated whole-index walks for 289 checkpoints. The
+existing bounded native page collector, fact grace period and checked deletion
+paths are reused. Every retained summary, member and pin root is marked; partial
+member facts remain pinned; unreachable snapshot metadata can expire. Source
+names and archived generations remain independent. Damaged required pins or
+facts stop collection before any fact deletion.
+
+The focused projection/graph/mixed-dispatch suite passed in 21.230 seconds.
+Maintenance and incremental COW copy checks passed in 11.917 seconds, including
+historical facts, obsolete branch reclamation, partial traversal with exclusions,
+corruption deferral, copied-page timestamp independence and cancellation.
+Definition graph validation also accepts independent ordered writers in a mixed
+sparse DAG run, and distinguishes native checkpoint scope from saved writers.
+Actual parent storage is still resolved separately; a graph proves no coverage.
+
+The broader dependency, DAG, lineage, selected ordering, public ordered-run and
+projection regression passed in 122.557 seconds. A subsequent focused check
+passed in 14.578 seconds after adding direct recovery from an owned retained
+selected child ancestor, even when source collection has removed disconnected
+branch journals/pages. If neither an owned selected ancestor nor the required
+source recovery transition survives, a reviewed rebuild remains necessary.
+This preserves the explicit snapshot/recovery boundary instead of fabricating
+an older view. The production build passed before that final recovery check.
+
 Public saved copies currently validate and resolve with
 `source_scheduling_unavailable`; they remain gated until the complete consumer,
 query, guided and maintenance lifecycle is integrated and checked.

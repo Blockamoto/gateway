@@ -19,6 +19,34 @@ func (g *recipeProjectionGeneration) editor(ctx context.Context, parent *recipeP
 	return e
 }
 
+func (g *recipeProjectionGeneration) stagePoint(ctx context.Context, parent *recipeProjectionParent, cp addressStateCheckpoint, priorPinRoot string) (recipeProjectionPoint, error) {
+	from := parent.store.trees(ctx, cp.Source)["pins"]
+	to := newOrdinalTree(addressStatePages(g.profileRoot, cp.PageGeneration), cp.Source.PagePinRoot).withContext(ctx)
+	prior := newOrdinalTree(to.dir, priorPinRoot).withContext(ctx)
+	importer := newRecipeProjectionFactImporter(parent.root, g.profileRoot)
+	if err := recipeCopyOrdinalSubtree(from, to, cp.Source.PagePinRoot, priorPinRoot, func(kv ordinalKV) error {
+		var count uint64
+		if !validHash(kv.Key) || json.Unmarshal(kv.Value, &count) != nil || count == 0 {
+			return fmt.Errorf("invalid source fact pin")
+		}
+		var owned uint64
+		found, err := prior.get(kv.Key, &owned)
+		if err != nil {
+			return err
+		}
+		if found {
+			if owned == 0 {
+				return fmt.Errorf("invalid owned fact pin")
+			}
+			return nil // changing a count does not change immutable fact bytes
+		}
+		return importer.copy(ctx, utxoMember{FactRef: outputFactRef{Page: kv.Key}})
+	}); err != nil {
+		return recipeProjectionPoint{}, err
+	}
+	return g.writeSnapshot(ctx, cp, parent.point.Namespace)
+}
+
 // applySnapshot serializes with saved coin writers/GC. Native source reads are
 // also pinned against its writers/GC while staging. Release that native lock
 // before entering the header/run/registry publication fence; the final parent
@@ -87,7 +115,7 @@ func (g *recipeProjectionGeneration) materialize(ctx context.Context, parent *re
 		if err != nil {
 			return nil, err
 		}
-		point, err := g.writeSnapshot(ctx, cp, parent.point.Namespace)
+		point, err := g.stagePoint(ctx, parent, cp, "")
 		return []recipeProjectionPoint{point}, err
 	}
 	latest := head.History[0]
@@ -101,7 +129,6 @@ func (g *recipeProjectionGeneration) materialize(ctx context.Context, parent *re
 	if cp.Source.Commitment == parent.point.Checkpoint.Commitment {
 		return []recipeProjectionPoint{latest}, nil
 	}
-	e := g.editor(ctx, parent, cp)
 	selected, err := parent.store.retainedCheckpoints(ctx)
 	if err != nil {
 		return nil, err
@@ -123,11 +150,32 @@ func (g *recipeProjectionGeneration) materialize(ctx context.Context, parent *re
 		byCommit[candidate.Commitment] = i
 	}
 	points := []recipeProjectionPoint{}
+	if _, onSelectedPath := byCommit[cp.Source.Commitment]; !onSelectedPath {
+		// Prefer our own complete retained selected ancestor. Source GC may
+		// already have reclaimed the disconnected branch's pages/journal;
+		// restoring an owned immutable child root needs none of those bytes.
+		for _, candidate := range head.History[1:] {
+			if candidate.Namespace != parent.point.Namespace || candidate.Height > parent.point.Checkpoint.Height {
+				continue
+			}
+			ancestor, err := g.snapshot(ctx, candidate)
+			if err != nil {
+				return nil, err
+			}
+			if _, matches := byCommit[ancestor.Source.Commitment]; matches {
+				cp = ancestor
+				points = append(points, candidate)
+				break
+			}
+		}
+	}
+	e := g.editor(ctx, parent, cp)
 	transition := func(before, after utxoCheckpoint) error {
+		priorPinRoot := e.cp.Source.PagePinRoot
 		if err := e.transition(ctx, parent.store, before, after); err != nil {
 			return err
 		}
-		point, err := g.writeSnapshot(ctx, e.cp, parent.point.Namespace)
+		point, err := g.stagePoint(ctx, parent, e.cp, priorPinRoot)
 		if err == nil {
 			points = append(points, point)
 		}

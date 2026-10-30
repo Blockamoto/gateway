@@ -104,6 +104,9 @@ func TestRecipeProjectionMaterializeFullDeltaReorgAndOwnedFacts(t *testing.T) {
 	if err := u.ReconcileSelected(ctx, 1, func(_ context.Context, h int64) (string, error) { return hashes[h], nil }); err != nil {
 		t.Fatal(err)
 	}
+	if err := u.CollectPages(ctx); err != nil {
+		t.Fatal(err)
+	}
 	rolled := apply(1)
 	if !reflect.DeepEqual(rolled, initial) {
 		t.Fatal("rollback differs from initial checkpoint", rolled, initial)

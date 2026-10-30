@@ -32,6 +32,21 @@ func recipeNativeUTXORevision() (string, string, error) {
 	semantic := builtinUTXORecipeProgram.semanticHash()
 	return recipeRegistryRevisionHash(semantic, canonical), semantic, nil
 }
+
+func recipeResolveBuiltinCoinDefinition(dep recipeDependency) (resolvedSavedRecipe, error) {
+	revision, semantic, err := recipeNativeUTXORevision()
+	if err != nil {
+		return resolvedSavedRecipe{}, err
+	}
+	if dep.Scope != "builtin" || dep.Instance != "utxo-state" || dep.Revision != revision || dep.SemanticHash != semantic {
+		return resolvedSavedRecipe{}, fmt.Errorf("builtin coin definition identity differs")
+	}
+	raw, err := json.Marshal(builtinUTXORecipeProgram.definition)
+	if err != nil {
+		return resolvedSavedRecipe{}, err
+	}
+	return recipeResolveView(recipeRegistryView{Recipe: builtinUTXORecipeProgram.definition, RecipeJSON: string(raw), Revision: revision, SemanticHash: semantic, Validated: true})
+}
 func recipeReadNativeUTXOSnapshot(ctx context.Context, root string) (*utxoStore, error) {
 	// Own the decoded header/roots, without taking native writer/state mutexes
 	// while a caller holds header/registry publication authority. Immutable

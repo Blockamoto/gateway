@@ -402,3 +402,31 @@ The final catalogue/API/native identity checks passed in 11.475 seconds after
 updating their expected source catalogue. A saved empty Coin dependency beside
 nonempty native state passed in 6.812 seconds without substitution. The
 production build and four recipe/workspace JavaScript checks passed.
+
+### Private checkpoint query and owned COW maintenance
+
+Checkpoint projection queries now have an internal read-only adapter with exact
+revision/semantic/parent/checkpoint tokens, physical member paging, empty versus
+unbuilt distinction and historical selected-header/source receipt checks. The
+response explicitly reports that exclusions retain counters rather than rows.
+Public routing and scheduling remain gated pending the remaining lifecycle/UI.
+
+Each child owns copied native fact-pin COW branches as well as immutable fact
+links. Incremental copy reuses unchanged branches and existing fact ownership;
+initial/resumed work restores complete pins before publication. Independent COW
+files keep the native collector's timestamp marks isolated. The private marker
+profile advances to v2 and rejects an earlier internal binding for reviewed
+rebuild, without changing native data or its frozen semantics.
+
+Private maintenance now pins retained history and staged members, visits shared
+COW pages once, uses the existing bounded page/fact collectors and expires only
+unreachable snapshot metadata. Corruption defers fact sweep. Focused projection,
+graph and mixed ordered/sparse DAG dispatch checks passed in 21.230 seconds;
+maintenance/copy checks passed in 11.917 seconds. The dispatch change also fixes
+independent ordered writers being rejected when a sparse DAG shares their run.
+The broader dependency/DAG/lineage/ordered-public/projection regression passed
+in 122.557 seconds and the production build passed. A final focused projection
+and COW set passed in 14.578 seconds after adding owned-child-ancestor recovery
+following source branch reclamation. Without a retained selected child ancestor
+or required source transition, rebuild remains explicit. This does not complete
+public checkpoint integration or the full preview.

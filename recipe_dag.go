@@ -24,6 +24,7 @@ type recipeGraphNode struct {
 	Origin   int64               `json:"origin"`
 }
 type recipeGraphEdge struct {
+	Scope                  string              `json:"scope,omitempty"`
 	Child                  recipeGraphIdentity `json:"child"`
 	Parent                 recipeGraphIdentity `json:"parent"`
 	Name                   string              `json:"name"`
@@ -66,7 +67,7 @@ func recipeBuildDependencyGraph(ctx context.Context, root resolvedSavedRecipe, s
 			return fmt.Errorf("recipe dependency depth exceeds limit")
 		}
 		id := recipeGraphID(node)
-		if !recipeRegistryID.MatchString(id.Instance) || !recipeStoreHashValid(id.Revision) || !recipeStoreHashValid(id.SemanticHash) || node.Definition.ID != node.ID || node.Definition.Source != node.Source || node.Definition.History != node.History || node.Definition.Origin != node.Origin || !recipeSparseSource(node.Source) || node.History != "sparse" || node.Origin < 0 {
+		if !recipeRegistryID.MatchString(id.Instance) || !recipeStoreHashValid(id.Revision) || !recipeStoreHashValid(id.SemanticHash) || node.Definition.ID != node.ID || node.Definition.Source != node.Source || node.Definition.History != node.History || node.Definition.Origin != node.Origin || node.Origin < 0 {
 			return fmt.Errorf("invalid saved recipe dependency identity")
 		}
 		if color[id] == 1 {
@@ -78,8 +79,19 @@ func recipeBuildDependencyGraph(ctx context.Context, root resolvedSavedRecipe, s
 		if len(color) >= recipeGraphMaxNodes {
 			return fmt.Errorf("recipe dependency node limit exceeded")
 		}
-		if err := recipeValidateDependencyDeclarations(node.Definition); err != nil {
-			return err
+		projection := node.Source == recipeUTXOProjectionSource && node.History == "projection"
+		ordered := node.Source == "bitcoin.ordered" && node.History == "ordered"
+		if projection || ordered {
+			if _, err := compileRecipe(node.Definition); err != nil {
+				return err
+			}
+		} else {
+			if !recipeSparseSource(node.Source) || node.History != "sparse" {
+				return fmt.Errorf("unsupported recipe dependency source/history")
+			}
+			if err := recipeValidateDependencyDeclarations(node.Definition); err != nil {
+				return err
+			}
 		}
 		color[id] = 1
 		for _, dep := range node.Definition.Dependencies {
@@ -88,7 +100,13 @@ func recipeBuildDependencyGraph(ctx context.Context, root resolvedSavedRecipe, s
 			}
 			wanted := recipeGraphIdentity{dep.Instance, dep.Revision, dep.SemanticHash}
 			parent, ok := resolved[wanted]
-			if !ok {
+			if dep.Scope == "builtin" {
+				var err error
+				parent, err = recipeResolveBuiltinCoinDefinition(dep)
+				if err != nil {
+					return err
+				}
+			} else if !ok {
 				var err error
 				parent, err = resolve(ctx, dep.Instance, dep.Revision, dep.SemanticHash)
 				if err != nil {
@@ -97,22 +115,29 @@ func recipeBuildDependencyGraph(ctx context.Context, root resolvedSavedRecipe, s
 				resolved[wanted] = parent
 			}
 			parentID := recipeGraphID(parent)
-			if parentID != (recipeGraphIdentity{dep.Instance, dep.Revision, dep.SemanticHash}) || parent.History != "sparse" {
+			if parentID != wanted {
 				return fmt.Errorf("dependency %q resolved to an incompatible identity or source", dep.Name)
 			}
 			found := false
-			for _, e := range parent.Definition.Exports {
-				if e.Name == dep.Export && e.Kind == dep.Coverage && e.Type == dep.Type {
-					found = true
-					break
+			if projection {
+				found = parent.Source == "bitcoin.ordered" && parent.History == "ordered" && parent.Definition.Storage == recipeOrderedUTXOStorage && dep.Export == "coins" && dep.Coverage == "snapshot_delta" && dep.Type == "coin"
+			} else if parent.History == "sparse" {
+				for _, e := range parent.Definition.Exports {
+					if e.Name == dep.Export && e.Kind == dep.Coverage && e.Type == dep.Type {
+						found = true
+						break
+					}
 				}
 			}
 			if !found {
 				return fmt.Errorf("dependency %q export contract is unavailable", dep.Name)
 			}
 			choice, selectedID := selected[parent.ID]
+			if dep.Scope == "builtin" {
+				selectedID = false // native scope never aliases a selected saved writer
+			}
 			exact := selectedID && recipeGraphID(choice) == parentID
-			graph.Edges = append(graph.Edges, recipeGraphEdge{Child: id, Parent: parentID, Name: dep.Name, Export: dep.Export, Type: dep.Type, Coverage: dep.Coverage, ParentSelected: exact, SelectedOtherRevision: selectedID && !exact, SelectedSameGeneration: selectedID && choice.SemanticHash == parentID.SemanticHash, CoverageState: "unknown"})
+			graph.Edges = append(graph.Edges, recipeGraphEdge{Scope: dep.Scope, Child: id, Parent: parentID, Name: dep.Name, Export: dep.Export, Type: dep.Type, Coverage: dep.Coverage, ParentSelected: exact, SelectedOtherRevision: selectedID && !exact, SelectedSameGeneration: selectedID && choice.SemanticHash == parentID.SemanticHash, CoverageState: "unknown"})
 			if err := visit(parent, depth+1); err != nil {
 				return err
 			}

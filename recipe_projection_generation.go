@@ -17,6 +17,8 @@ import (
 
 var recipeProjectionMu sync.Mutex
 
+const recipeProjectionGenerationProfile = "gateway-private-address-generation-v2"
+
 type recipeProjectionIdentity struct {
 	Schema                                                 int
 	Instance, Semantic, Storage, Network, Genesis, Profile string
@@ -71,7 +73,7 @@ func openRecipeProjectionGeneration(root string, program *recipeProgram) (*recip
 	if err != nil {
 		return nil, err
 	}
-	identity := recipeProjectionIdentity{Schema: 1, Instance: owned.definition.ID, Semantic: owned.semanticHash(), Storage: recipeAddressProjectionStorage, Network: "bitcoin-mainnet", Genesis: genesisHashDisplay, Profile: recipeUTXOProjectionProfile, Dependency: owned.definition.Dependencies[0]}
+	identity := recipeProjectionIdentity{Schema: 1, Instance: owned.definition.ID, Semantic: owned.semanticHash(), Storage: recipeAddressProjectionStorage, Network: "bitcoin-mainnet", Genesis: genesisHashDisplay, Profile: recipeProjectionGenerationProfile, Dependency: owned.definition.Dependencies[0]}
 	dir := filepath.Join(abs, "indexes", "recipe-projection-v1", recipeStoreHash([]byte(identity.Instance)), identity.Semantic)
 	if err = updateapply.CheckPath(dir); err != nil {
 		return nil, err
@@ -259,6 +261,9 @@ func (g *recipeProjectionGeneration) snapshot(ctx context.Context, point recipeP
 		return c, err
 	}
 	if _, err = newOrdinalTree(addressStatePages(g.profileRoot, c.PageGeneration), c.Root).withContext(ctx).read(c.Root); err != nil {
+		return c, err
+	}
+	if _, err = newOrdinalTree(addressStatePages(g.profileRoot, c.PageGeneration), c.Source.PagePinRoot).withContext(ctx).read(c.Source.PagePinRoot); err != nil {
 		return c, err
 	}
 	return c, ctx.Err()

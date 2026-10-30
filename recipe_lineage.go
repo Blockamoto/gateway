@@ -28,7 +28,7 @@ type recipeLineageSnapshot struct {
 	hash         string
 	decodedBytes int
 	refs         map[recipeGraphIdentity]recipeLineageRef
-	direct       map[string]recipeStoreUnit
+	direct       map[string]recipeSparseUnitInfo
 }
 
 func (a *app) prepareRecipeLineage(ctx context.Context, root resolvedSavedRecipe) (*recipeLineagePlan, error) {
@@ -80,38 +80,38 @@ func (p *recipeLineagePlan) captureParentsLocked(ctx context.Context, height int
 	if !ok || len(root.definition.Dependencies) == 0 {
 		return nil, fmt.Errorf("recipe has no declared lineage")
 	}
-	snapshot := &recipeLineageSnapshot{root: p.root, height: height, hash: hash, refs: map[recipeGraphIdentity]recipeLineageRef{}, direct: map[string]recipeStoreUnit{}}
+	snapshot := &recipeLineageSnapshot{root: p.root, height: height, hash: hash, refs: map[recipeGraphIdentity]recipeLineageRef{}, direct: map[string]recipeSparseUnitInfo{}}
 	budget := 0
-	loaded := map[recipeGraphIdentity]recipeStoreUnit{}
-	var visit func(recipeGraphIdentity, string) (recipeStoreUnit, error)
-	visit = func(id recipeGraphIdentity, expected string) (recipeStoreUnit, error) {
+	loaded := map[recipeGraphIdentity]recipeSparseUnitInfo{}
+	var visit func(recipeGraphIdentity, string) (recipeSparseUnitInfo, error)
+	visit = func(id recipeGraphIdentity, expected string) (recipeSparseUnitInfo, error) {
 		if err := ctx.Err(); err != nil {
-			return recipeStoreUnit{}, err
+			return recipeSparseUnitInfo{}, err
 		}
 		node, found := p.nodes[id]
 		if !found || height < node.definition.Origin {
-			return recipeStoreUnit{}, fmt.Errorf("%w: parent unavailable at requested height", errRecipeDependencyUnavailable)
+			return recipeSparseUnitInfo{}, fmt.Errorf("%w: parent unavailable at requested height", errRecipeDependencyUnavailable)
 		}
 		if prior, found := snapshot.refs[id]; found {
 			if expected != "" && prior.unit != expected {
-				return recipeStoreUnit{}, fmt.Errorf("%w: conflicting parent receipt", errRecipeDependencyUnavailable)
+				return recipeSparseUnitInfo{}, fmt.Errorf("%w: conflicting parent receipt", errRecipeDependencyUnavailable)
 			}
 			return loaded[id], nil
 		}
-		unit, ref, found, err := recipeDependencyReadLocked(ctx, node.store, height)
+		unit, ref, found, err := recipeDependencyReadInfoLocked(ctx, node.store, height, false)
 		if e := ctx.Err(); e != nil {
-			return recipeStoreUnit{}, e
+			return recipeSparseUnitInfo{}, e
 		}
 		if err != nil || !found || ref.BlockHash != hash || expected != "" && ref.Unit != expected {
-			return recipeStoreUnit{}, fmt.Errorf("%w: parent receipt missing or stale", errRecipeDependencyUnavailable)
+			return recipeSparseUnitInfo{}, fmt.Errorf("%w: parent receipt missing or stale", errRecipeDependencyUnavailable)
 		}
-		n := recipeLineageUnitWeight(unit)
+		n := recipeLineageInfoWeight(unit)
 		if n > recipeMaxDecodedBytes-budget {
-			return recipeStoreUnit{}, errRecipeDependencyBudget
+			return recipeSparseUnitInfo{}, errRecipeDependencyBudget
 		}
 		budget += n
 		if len(unit.Lineage) != len(node.definition.Dependencies) {
-			return recipeStoreUnit{}, fmt.Errorf("%w: incomplete parent lineage", errRecipeDependencyUnavailable)
+			return recipeSparseUnitInfo{}, fmt.Errorf("%w: incomplete parent lineage", errRecipeDependencyUnavailable)
 		}
 		receipts := make(map[string]recipeDependencyReceipt, len(unit.Lineage))
 		for _, receipt := range unit.Lineage {
@@ -121,10 +121,10 @@ func (p *recipeLineagePlan) captureParentsLocked(ctx context.Context, height int
 		for _, dep := range node.definition.Dependencies {
 			receipt, ok := receipts[dep.Name]
 			if !ok || receipt.Instance != dep.Instance || receipt.SemanticHash != dep.SemanticHash || receipt.Height != height || receipt.BlockHash != hash || !recipeStoreHashValid(receipt.Unit) {
-				return recipeStoreUnit{}, fmt.Errorf("%w: parent lineage differs from declaration", errRecipeDependencyUnavailable)
+				return recipeSparseUnitInfo{}, fmt.Errorf("%w: parent lineage differs from declaration", errRecipeDependencyUnavailable)
 			}
 			if _, err = visit(recipeGraphIdentity{dep.Instance, dep.Revision, dep.SemanticHash}, receipt.Unit); err != nil {
-				return recipeStoreUnit{}, err
+				return recipeSparseUnitInfo{}, err
 			}
 		}
 		snapshot.refs[id] = recipeLineageRef{identity: id, height: height, hash: hash, unit: ref.Unit}
@@ -179,14 +179,14 @@ func (p *recipeLineagePlan) checkLocked(ctx context.Context, snapshot *recipeLin
 		if !ok {
 			return fmt.Errorf("%w: missing lineage definition", errRecipeDependencyUnavailable)
 		}
-		unit, ref, found, err := recipeDependencyReadLocked(ctx, node.store, saved.height)
+		unit, ref, found, err := recipeDependencyReadInfoLocked(ctx, node.store, saved.height, false)
 		if e := ctx.Err(); e != nil {
 			return e
 		}
 		if err != nil || !found || ref.BlockHash != saved.hash || ref.Unit != saved.unit {
 			return fmt.Errorf("%w: transitive parent changed", errRecipeDependencyUnavailable)
 		}
-		n := recipeLineageUnitWeight(unit)
+		n := recipeLineageInfoWeight(unit)
 		if n > recipeMaxDecodedBytes-budget {
 			return errRecipeDependencyBudget
 		}
@@ -198,34 +198,58 @@ func (p *recipeLineagePlan) checkLocked(ctx context.Context, snapshot *recipeLin
 // Caller holds recipeStoreMutex and its selected-chain authority. A child
 // receipt is current only while its full parent snapshot remains current and
 // every direct lineage record names the captured parent receipt.
-func (p *recipeLineagePlan) readChildLocked(ctx context.Context, snapshot *recipeLineageSnapshot, height int64, hash string) (recipeStoreUnit, bool, error) {
-	return p.readChildModeLocked(ctx, snapshot, height, hash, false)
+func (p *recipeLineagePlan) readChildInfoLocked(ctx context.Context, snapshot *recipeLineageSnapshot, height int64, hash string) (recipeSparseUnitInfo, bool, error) {
+	return p.readChildInfoModeLocked(ctx, snapshot, height, hash, false)
 }
-func (p *recipeLineagePlan) readChildModeLocked(ctx context.Context, snapshot *recipeLineageSnapshot, height int64, hash string, journal bool) (recipeStoreUnit, bool, error) {
+func (p *recipeLineagePlan) readChildInfoModeLocked(ctx context.Context, snapshot *recipeLineageSnapshot, height int64, hash string, journal bool) (recipeSparseUnitInfo, bool, error) {
 	if err := p.checkLocked(ctx, snapshot, height, hash); err != nil {
-		return recipeStoreUnit{}, false, err
+		return recipeSparseUnitInfo{}, false, err
 	}
 	root, ok := p.nodes[p.root]
 	if !ok {
-		return recipeStoreUnit{}, false, fmt.Errorf("%w: missing child definition", errRecipeDependencyUnavailable)
+		return recipeSparseUnitInfo{}, false, fmt.Errorf("%w: missing child definition", errRecipeDependencyUnavailable)
 	}
-	var unit recipeStoreUnit
+	var unit recipeSparseUnitInfo
 	var ref recipeStoreRef
 	var found bool
 	var err error
 	if journal {
-		unit, ref, found, err = recipeReadJournalRootLocked(ctx, root.store, snapshot.height)
+		unit, ref, found, err = recipeDependencyReadInfoLocked(ctx, root.store, snapshot.height, true)
 	} else {
-		unit, ref, found, err = recipeDependencyReadLocked(ctx, root.store, snapshot.height)
+		unit, ref, found, err = recipeDependencyReadInfoLocked(ctx, root.store, snapshot.height, false)
 	}
 	if e := ctx.Err(); e != nil {
-		return recipeStoreUnit{}, false, e
+		return recipeSparseUnitInfo{}, false, e
 	}
+	if err != nil || !found {
+		return recipeSparseUnitInfo{}, false, err
+	}
+	if err := p.validateChildInfo(snapshot, unit, ref); err != nil {
+		return recipeSparseUnitInfo{}, false, err
+	}
+
+	return unit, true, nil
+}
+
+// Compatibility materialization for internal callers that explicitly request
+// all rows. Public paging, coverage and dependency paths use typed metadata.
+func (p *recipeLineagePlan) readChildLocked(ctx context.Context, snapshot *recipeLineageSnapshot, height int64, hash string) (recipeStoreUnit, bool, error) {
+	_, found, err := p.readChildInfoLocked(ctx, snapshot, height, hash)
 	if err != nil || !found {
 		return recipeStoreUnit{}, false, err
 	}
+	unit, _, found, err := recipeDependencyReadLocked(ctx, p.nodes[p.root].store, height)
+	return unit, found, err
+}
+func recipeLineageInfoWeight(info recipeSparseUnitInfo) int { return 256 + len(info.Lineage)*256 }
+
+func (p *recipeLineagePlan) validateChildInfo(snapshot *recipeLineageSnapshot, unit recipeSparseUnitInfo, ref recipeStoreRef) error {
+	root, ok := p.nodes[p.root]
+	if !ok || snapshot == nil {
+		return fmt.Errorf("invalid child lineage snapshot")
+	}
 	if ref.BlockHash != snapshot.hash || len(unit.Lineage) != len(root.definition.Dependencies) {
-		return recipeStoreUnit{}, false, fmt.Errorf("%w: child anchor or lineage differs", errRecipeDAGChildStale)
+		return fmt.Errorf("%w: child anchor or lineage differs", errRecipeDAGChildStale)
 	}
 	receipts := make(map[string]recipeDependencyReceipt, len(unit.Lineage))
 	for _, receipt := range unit.Lineage {
@@ -235,12 +259,12 @@ func (p *recipeLineagePlan) readChildModeLocked(ctx context.Context, snapshot *r
 		id := recipeGraphIdentity{dep.Instance, dep.Revision, dep.SemanticHash}
 		parent, ok := snapshot.refs[id]
 		if !ok {
-			return recipeStoreUnit{}, false, fmt.Errorf("%w: missing direct parent", errRecipeDependencyUnavailable)
+			return fmt.Errorf("%w: missing direct parent", errRecipeDependencyUnavailable)
 		}
 		receipt, ok := receipts[dep.Name]
 		if !ok || receipt.Instance != dep.Instance || receipt.SemanticHash != dep.SemanticHash || receipt.Height != snapshot.height || receipt.BlockHash != snapshot.hash || receipt.Unit != parent.unit {
-			return recipeStoreUnit{}, false, fmt.Errorf("%w: child lineage changed", errRecipeDAGChildStale)
+			return fmt.Errorf("%w: child lineage changed", errRecipeDAGChildStale)
 		}
 	}
-	return unit, true, nil
+	return nil
 }

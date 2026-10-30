@@ -1,63 +1,93 @@
-# Sparse streaming work
+# Sparse row streaming
 
-Status: in progress. The public sparse writer still has the provisional 16 MiB
-whole-unit limit, and the interpreter still has event/block output buffers.
-The new private helpers below are not yet wired into public persistence. No
-finished preview is implied by their tests.
+Public independent and DAG sparse runs now stage rows to owned files, seal the
+existing canonical schema-1 JSON unit, and publish its existing immutable hash
+through the selected-header/run/registry and coverage-revision fence. This path
+has no aggregate event, block or unit output-size quota. Source admission,
+expression work, definition and decoded-source budgets still apply. Native
+built-in compact stores and their semantic checkpoint mappings are unchanged.
+The complete 0.8.0 preview remains unfinished for the scope listed in the main
+engine ledger.
 
-The opt-in real-source audit (`GATEWAY_RECIPE_LARGE_OUTPUT_AUDIT=1`) reproduced
-the problem on verified block 792435: 3,139 transaction rows with a legal 16 KiB
-annotation produced 52,463,224 canonical unit bytes. Interpretation completed,
-but the existing writer rejected the unit at 16,777,216 bytes. This is a valid
-custom projection, not an accepted output-scope restriction.
+The former real-source failure is now a passing persistence/read audit:
+verified block 792435, 3,139 rows and a legal 16 KiB annotation produce exactly
+52,463,224 bytes with the frozen logical digest
+`60d405ebf28a790218357d8196666a5d53587d539736a3cbb59028519ddce862`.
+Stage, publication and verification measured 2.569 seconds here. Cumulative
+allocations were 465,715,832 bytes; this is allocation traffic, not peak live
+memory or full-chain throughput. Run with
+`GATEWAY_RECIPE_LARGE_OUTPUT_AUDIT=1` for the optional diagnostic report.
 
-The implementation direction is to preserve the existing canonical JSON unit
-and logical unit digest, stream staged rows, and use bounded temporary metadata
-for duplicate checking and sorting. Native built-in compact stores remain in
-place. No page-pack, slow experimental ordered staging backend or new persistent
-storage framework is required for this change. Prefer owned byte snapshots and
-temporary native-COW lookup indexes for large-unit reads before introducing a
-new persistent index/receipt format; measure any later need for that format.
+A public coordinator test also consumes an authenticated Bitcoin genesis block
+with a legal sub-256-KiB definition whose shared variable is projected into
+three large rows, totaling over 64 MiB. It covers a dependent child reading the
+parent's text export, output paging, complete row/unit downloads, and a second
+finite run reusing coverage without a source read. The complete test passed in
+46.16 seconds on this machine. This intentionally expensive projection is not
+a normal-index throughput measurement.
 
-`recipe_sparse_sort.go` now sorts spool references rather than row/key payloads.
-Small bounded batches spill to temporary fixed-size metadata runs. Equal-size
-levels compact during ingestion, bounding live run metadata logarithmically and
-avoiding repeatedly merging a growing run with tiny runs. Merge fan-in bounds
-open files. Keys use fixed prefixes and chunk comparisons for longer common
-prefixes; they preserve legacy bytewise ordering without a key/result quota.
-These run records are temporary working data, not a new store generation.
+## Physical implementation
 
-`recipe_sparse_json_stream.go` preserves `encoding/json` row bytes while
-encoding one field at a time and writing at most 64 KiB per underlying call.
-It preserves key order, HTML escaping, exact `json.Number` values, raw JSON,
-custom marshalers and nil forms. It drops only Encoder's final newline.
-Cancellation, short writes and encoding failures abort staging. A test streamed
-a row exceeding 64 MiB without a whole-row result buffer.
+`recipe_sparse_spool.go` owns sequential row/key files, a bounded in-memory
+membership set, and disposable native `ordinalTree` pages for larger sets.
+Exact duplicate bytes are compared from the owned row spool. Errors poison the
+unpublished stage. Late filters, conflicting duplicates and duplicate export
+type checks preserve the existing interpreter's order and meaning. Native
+materialized adapters retain their own explicit bounded utility paths; public
+custom sparse runs use the spool.
 
-Combined canonical encoding/sort tests passed in 4.492 seconds, including long
-keys, multiple merge levels, exact row identity, source-prefix changes,
-truncated runs, empty input, cancellation, sink errors and cleanup. The audit
-passed in 4.921 seconds and intentionally records the current persistence gap;
-replace its expected rejection with end-to-end success when integration lands.
+`recipe_sparse_sort.go` sorts fixed-size references rather than row/key
+payloads. Bounded batches spill into temporary runs. Equal-size level
+compaction bounds live metadata and merge fan-in bounds open files. Keys use
+fixed prefixes and chunk comparisons for long common prefixes. The final
+stream verifies full key identity, row digests, extents and unique order.
 
-Next implementation work:
+`recipe_sparse_json_stream.go` encodes one field at a time, with underlying
+writes of at most 64 KiB. It preserves `encoding/json` ordering, escaping,
+exact numbers, raw JSON, custom marshalers and nil forms. Source/expression
+budgets still govern individual in-memory fields. A test streams a row larger
+than 64 MiB without a whole-row result buffer.
 
-1. Add an owned row/key spool and exact duplicate-byte checks. Keep only bounded
-   reference metadata in memory and spill keyed membership to `ordinalTree`.
-2. Seal the canonical, sorted JSON unit by streaming; reuse immutable file and
-   atomic head publication, with the existing selected-header/run/registry CAS.
-3. Give sparse consumers and DAG execution a streaming sink, preserving late
-   filters, duplicate/export checks and existing small-result bytes. Remove the
-   provisional output-size result quotas from that path.
-4. Add context-aware metadata/row iterators and owned large-unit views for
-   paging and dependency scalar lookups. Do not materialize large units or
-   represent an unread materialization as an empty row array. Preserve schema-1
-   data and normal native checkpoint identities.
-5. Wire public queries, dependency/reorg audits, lifecycle and generic range
-   row export to those views. Bulk export should reuse one checked immutable
-   header fragment and verify current range receipts/headers at completion.
-6. Measure allocations, I/O and restart/cancellation behavior on the same real
-   source, then finish maintenance and visible end-to-end acceptance.
+`recipe_sparse_publish.go` verifies and installs synced immutable payload bytes
+before entering the authority fence. Failed, stale or canceled publication
+leaves those bytes unreachable. Existing hashes, receipt refs, native COW page
+codec, durable head history and the head visibility boundary remain unchanged.
+The optional unsynced tree flag applies only to disposable scratch roots.
+Durable trees retain their original synced writes and flushes.
 
-The remaining built-in conversions and wider ordered contracts continue in the
-main engine ledger. This work does not reduce their accepted release scope.
+`recipe_sparse_view.go` copies a unit to an owned temporary file and verifies
+its whole digest before parsing. A JSON grammar scanner records row/value byte
+offsets without decoding skipped values. Bounded key metadata spills into
+native scratch pages. Typed metadata is distinct from a materialized unit:
+unread rows cannot become a false evaluated-empty result. Small metadata reads
+reuse the existing bounded decoder for speed. Lineage/coverage/reorg proofs
+retain metadata, and dependency lookups decode only the selected scalar.
+Owned views and spools remove only their checked, uniquely owned directories.
+
+## Output and remaining work
+
+The normal output endpoint pages by immutable unit token and offset. Existing
+small oversized rows retain their inline behavior. Very large rows return an
+exact JSON attachment link, without rejecting durable output or requiring the
+browser to parse the entire value. Saved tracks expose that link and a complete
+block JSON download. Payload copying for the root output view occurs outside
+selected-header/registry locks, followed by a final authority/ref recheck;
+network response writes occur after those locks are released.
+
+A 208.406-second focused consumer/DAG/lineage/output/range regression passed
+before the last small-unit fast-path and export-type refinements. The final broader suite passed in 787.730 seconds. The focused sparse suite
+passed in 121.637 seconds after abstracting row policy from physical storage;
+the combined range-export/large-output set passed in 89.287 seconds. Canonical bytes,
+long keys, scratch spill, malformed JSON, cancellation, corruption, unpublished
+failure, reopen, exact scalar types and late filters have focused coverage.
+The four recipe/workspace JavaScript checks pass.
+
+Generic range row export and its GUI now consume these views; see
+`080-HISTORICAL-RANGES.md`. Full maintenance/retention policy and visible Chrome
+acceptance remain open. Coverage/lineage integrity checks still
+read committed payloads; large graphs may repeat that I/O. Bulk export must
+reuse one checked immutable header fragment rather than hash a wide interval
+per row page. The private bounded secondary-index experiment remains outside
+public execution. No page-pack, slow staged ordered backend, or new permanent
+row-index format was introduced. The remaining built-in conversions and wider
+ordered contracts remain part of the accepted release scope.

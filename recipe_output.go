@@ -23,7 +23,7 @@ func (a *app) handleRecipeOutput(w http.ResponseWriter, r *http.Request) {
 	}
 	values := r.URL.Query()
 	for key, entries := range values {
-		if (key != "id" && key != "revision" && key != "semantic_hash" && key != "height" && key != "offset" && key != "cursor" && key != "limit" && key != "unit") || len(entries) != 1 {
+		if (key != "id" && key != "revision" && key != "semantic_hash" && key != "height" && key != "offset" && key != "cursor" && key != "limit" && key != "unit" && key != "download") || len(entries) != 1 {
 			jsonError(w, 400, fmt.Errorf("invalid recipe output query"))
 			return
 		}
@@ -51,6 +51,19 @@ func (a *app) handleRecipeOutput(w http.ResponseWriter, r *http.Request) {
 	cursor := values.Get("cursor")
 	if (offset > 0 || cursor != "") && !recipeStoreHashValid(token) || token != "" && !recipeStoreHashValid(token) {
 		jsonError(w, 400, fmt.Errorf("a unit token is required for later pages"))
+		return
+	}
+	if kind := values.Get("download"); kind != "" {
+		if cursor != "" {
+			jsonError(w, 400, fmt.Errorf("sparse download uses a row offset"))
+			return
+		}
+		prepared, err := a.ResolveSavedRecipe(r.Context(), id, revision, fingerprint)
+		if err != nil {
+			jsonError(w, 409, err)
+			return
+		}
+		a.downloadRecipeSparseOutput(w, r, prepared, height, offset, token, kind)
 		return
 	}
 	result, status, err := a.readRecipeOutputPage(r.Context(), id, revision, fingerprint, height, offset, limit, token, cursor)
@@ -84,143 +97,72 @@ func (a *app) readRecipeOutputPage(ctx context.Context, id, revision, fingerprin
 	if cursor != "" {
 		return nil, 400, fmt.Errorf("sparse output uses an offset")
 	}
-	var lineage *recipeLineagePlan
-	if len(prepared.Definition.Dependencies) != 0 {
-		lineage, err = a.prepareRecipeLineage(ctx, prepared)
-		if err != nil {
-			return nil, 409, err
-		}
-	}
-	if err := a.lockSelectedHeaders051(); err != nil {
-		return nil, 409, fmt.Errorf("selected local headers unavailable: %w", err)
-	}
-	defer a.headerChainMu.RUnlock()
-	header, err := readHeaderAt(a.headersPath, height)
+
+	view, selected, status, err := a.openRecipeSparseOutput(ctx, prepared, height)
 	if err != nil {
-		return nil, 409, fmt.Errorf("selected local header unavailable: %w", err)
+		return nil, status, err
 	}
-	digest := hash256(header)
-	selected := reverseHex(digest[:])
-	recipeRegistryMu.Lock()
-	defer recipeRegistryMu.Unlock()
-	current, err := recipeRegistryRead(a.dataDir, id, "")
-	if err != nil {
-		return nil, 409, err
-	}
-	view := current
-	if current.Revision != revision {
-		view, err = recipeRegistryRead(a.dataDir, id, revision)
-	}
-	if err != nil || !view.Validated || view.Revision != revision || view.SemanticHash != fingerprint {
-		return nil, 409, fmt.Errorf("saved recipe revision unavailable or incompatible")
-	}
-	resolved, err := recipeResolveView(view)
-	if err != nil || indexDigest(resolved.Definition) != indexDigest(prepared.Definition) {
-		return nil, 409, fmt.Errorf("saved recipe identity changed during output read")
-	}
-	if lineage != nil {
-		identity := recipeAdmissionPlan{Index: id, Revision: revision, SemanticHash: fingerprint}
-		if err = a.recipeCheckLineageRegistryLocked(ctx, lineage, identity); err != nil {
-			return nil, 409, err
-		}
-	}
-	store, err := openRecipeStore(a.dataDir, id, fingerprint)
-	if err != nil {
-		return nil, 409, err
-	}
-	var unit recipeStoreUnit
-	var found bool
-	if lineage == nil {
-		unit, found, err = store.Read(ctx, height)
-	} else {
-		// An absent child is uncovered regardless of parent availability. A
-		// present child is exposed only after a full same-anchor DAG recheck.
-		recipeStoreMutex.Lock()
-		var ref recipeStoreRef
-		unit, ref, found, err = recipeDependencyReadLocked(ctx, store, height)
-		recipeStoreMutex.Unlock()
-		if err == nil && found && (height < resolved.Origin || ref.BlockHash != selected) {
-			return nil, 409, fmt.Errorf("dependent output anchor differs from the selected local header")
-		}
-		if err == nil && found {
-			var snapshot *recipeLineageSnapshot
-			snapshot, err = lineage.captureParents(ctx, height, selected)
-			if err == nil {
-				recipeStoreMutex.Lock()
-				unit, found, err = lineage.readChildLocked(ctx, snapshot, height, selected)
-				recipeStoreMutex.Unlock()
-			}
-		}
-	}
-	if err != nil {
-		return nil, 409, err
-	}
-	if !found {
+	if view == nil {
 		if offset != 0 || token != "" {
 			return nil, 409, fmt.Errorf("recipe output unit changed")
 		}
 		return map[string]any{"state": "uncovered", "authority": "selected_local_header_as_of_read", "height": height, "selected_block_hash": selected, "revision": revision, "semantic_hash": fingerprint}, 0, nil
 	}
-	if unit.BlockHash != selected {
-		return nil, 409, fmt.Errorf("recipe output anchor differs from selected local headers")
-	}
-	data, err := json.Marshal(unit)
-	if err != nil {
-		return nil, 409, err
-	}
-	unitToken := recipeStoreHash(data)
-	if token != "" && token != unitToken || offset > len(unit.Rows) {
+	defer view.Close()
+	if token != "" && token != view.digest || uint64(offset) > view.info.Rows {
 		return nil, 409, fmt.Errorf("recipe output unit changed or page is invalid")
 	}
-	result := map[string]any{"state": "covered", "authority": "selected_local_header_as_of_read", "height": height, "selected_block_hash": selected, "revision": revision, "semantic_hash": fingerprint, "unit": unitToken, "row_count": len(unit.Rows), "rows": []recipeStoreRow{}, "next_offset": len(unit.Rows)}
-	// Marshal exactly as the JSON encoder does, including escaped strings and
-	// the largest possible continuation field. Reserve its trailing newline.
+	result := map[string]any{"state": "covered", "authority": "selected_local_header_as_of_read", "height": height, "selected_block_hash": selected, "revision": revision, "semantic_hash": fingerprint, "unit": view.digest, "row_count": int(view.info.Rows), "rows": []recipeStoreRow{}, "next_offset": view.info.Rows}
 	envelope, err := json.Marshal(result)
 	if err != nil {
 		return nil, 409, err
 	}
-	remaining := recipeOutputMaxResponseBytes - len(envelope) - 1
-	if remaining < 0 {
-		return nil, 413, fmt.Errorf("recipe output envelope exceeds page byte limit")
-	}
-	end := offset
-	for end < len(unit.Rows) && end-offset < limit {
-		row, e := json.Marshal(unit.Rows[end])
-		if e != nil {
-			return nil, 409, e
+	remaining := int64(recipeOutputMaxResponseBytes - len(envelope) - 1)
+	end := uint64(offset)
+	rows := []recipeStoreRow{}
+	for end < view.info.Rows && end-uint64(offset) < uint64(limit) {
+		span, err := view.RowSpan(end)
+		if err != nil {
+			return nil, 409, err
 		}
-		size := len(row)
-		if end > offset {
+		size := span.Row.Bytes
+		if len(rows) > 0 {
 			size++
-		} // JSON array comma
+		}
 		if size > remaining {
 			break
 		}
+		row, err := view.Row(end, recipeOutputMaxResponseBytes)
+		if err != nil {
+			return nil, 409, err
+		}
+		rows = append(rows, row)
 		remaining -= size
 		end++
 	}
-	if end == offset && offset < len(unit.Rows) {
-		// A valid durable row must remain readable even when escaping makes it
-		// larger than the normal page target. It is bounded by the unit limit.
-		end++
-		result["rows"] = unit.Rows[offset:end]
+	if end == uint64(offset) && end < view.info.Rows {
+		span, err := view.RowSpan(end)
+		if err != nil {
+			return nil, 409, err
+		}
 		result["oversized_row"] = true
-		if end < len(unit.Rows) {
-			result["next_offset"] = end
+		// Small historical rows retain the existing inline response behavior.
+		// Larger rows have an exact streamed attachment, without a row-size
+		// rejection or forcing the browser to parse their entire JSON value.
+		if span.Row.Bytes+int64(len(envelope))+128 <= recipeOutputMaxSingleRowResponseBytes {
+			row, err := view.Row(end, recipeOutputMaxSingleRowResponseBytes)
+			if err != nil {
+				return nil, 409, err
+			}
+			rows = append(rows, row)
 		} else {
-			delete(result, "next_offset")
+			result["row_download"] = recipeOutputDownloadURL(prepared, height, end, view.digest, "row")
+			result["row_bytes"] = span.Row.Bytes
 		}
-		encoded, e := json.Marshal(result)
-		if e != nil {
-			return nil, 409, e
-		}
-		if len(encoded)+1 > recipeOutputMaxSingleRowResponseBytes {
-			return nil, 413, fmt.Errorf("encoded recipe row exceeds the durable-unit response bound")
-		}
-		return result, 0, nil
+		end++
 	}
-	result["rows"] = unit.Rows[offset:end]
-	if end < len(unit.Rows) {
+	result["rows"] = rows
+	if end < view.info.Rows {
 		result["next_offset"] = end
 	} else {
 		delete(result, "next_offset")

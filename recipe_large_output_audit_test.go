@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"sort"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
-// A verified real source with a legal static annotation demonstrates why the
-// prototype's whole-unit buffer cap is not a valid release output restriction.
-func TestRecipeLargeOutputCurrentBoundaryAudit(t *testing.T) {
+// Optional allocation/timing report for the same verified block that formerly
+// hit the whole-unit cap. Normal spool and public-coordinator tests also cover
+// this functionality; this report is diagnostic, not an acceptance gate.
+func TestRecipeLargeOutputFormerBoundaryAudit(t *testing.T) {
 	if os.Getenv("GATEWAY_RECIPE_LARGE_OUTPUT_AUDIT") != "1" {
 		t.Skip("opt-in real-source large sparse-output boundary audit")
 	}
@@ -29,28 +31,36 @@ func TestRecipeLargeOutputCurrentBoundaryAudit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unit := recipeStoreUnit{Schema: 1, Fingerprint: p.semanticHash(), Height: block.Height, BlockHash: block.Hash, Rows: []recipeStoreRow{}}
-	if err = p.evaluateTransactionSourceInto(ctx, block, source, nil, func(row recipeRowProposal) error {
-		key, err := json.Marshal([]string{row.Table, row.Key})
-		if err != nil {
-			return err
-		}
-		unit.Rows = append(unit.Rows, recipeStoreRow{Key: string(key), Value: row.Encoded})
-		return nil
-	}); err != nil {
-		t.Fatal("valid recipe source failed before persistence", err)
-	}
-	sort.Slice(unit.Rows, func(i, j int) bool { return unit.Rows[i].Key < unit.Rows[j].Key })
-	encoded, err := json.Marshal(unit)
-	if err != nil || len(encoded) <= recipeStoreUnitMaxBytes {
-		t.Fatal("fixture did not exceed the provisional durable-unit boundary", len(encoded), err)
-	}
-	store, err := openRecipeStore(t.TempDir(), base.ID, unit.Fingerprint)
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	started := time.Now()
+	store, err := openRecipeStore(t.TempDir(), base.ID, p.semanticHash())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = store.Publish(ctx, unit, recipeTestGuard); err == nil {
-		t.Fatal("audit expected the current prototype boundary; update this check with its streaming replacement")
+	spool, err := newRecipeSparseSpool(ctx, store.dir, p)
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Logf("verified real block %d: transactions=%d legal annotation_bytes=%d completed rows=%d canonical_unit_bytes=%d provisional_limit_bytes=%d persistence_error=%v", block.Height, len(block.Transactions), 16<<10, len(unit.Rows), len(encoded), recipeStoreUnitMaxBytes, err)
+	defer spool.Close()
+	if err = p.evaluateTransactionSourceInto(ctx, block, source, nil, spool.Add, spool); err != nil {
+		t.Fatal(err)
+	}
+	staged, err := spool.Seal(recipeStoreUnit{Schema: 1, Fingerprint: p.semanticHash(), Height: block.Height, BlockHash: block.Hash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if staged.Bytes != 52463224 || staged.Rows != 3139 || staged.Digest != "60d405ebf28a790218357d8196666a5d53587d539736a3cbb59028519ddce862" {
+		t.Fatal("canonical legacy bytes changed", staged)
+	}
+	if err = store.publishSparseStaged(ctx, staged, 0, recipeTestGuard, nil); err != nil {
+		t.Fatal(err)
+	}
+	info, err := store.readSparseInfo(ctx, recipeStoreRef{BlockHash: block.Hash, Unit: staged.Digest}, block.Height)
+	if err != nil || info.Rows != 3139 {
+		t.Fatal(info, err)
+	}
+	runtime.ReadMemStats(&after)
+	t.Logf("verified real block %d: transactions=%d annotation_bytes=%d rows=%d canonical_unit_bytes=%d unit_digest=%s stage_publish_verify=%s total_allocated_bytes=%d (cumulative, not peak memory)", block.Height, len(block.Transactions), 16<<10, info.Rows, staged.Bytes, staged.Digest, time.Since(started), after.TotalAlloc-before.TotalAlloc)
 }

@@ -129,7 +129,7 @@ func (r *recipeLocalDAGReconciler) batch(ctx context.Context, plan recipeAdmissi
 			if !found || ref.BlockHash != anchor.BlockHash {
 				return fmt.Errorf("dependent reconciliation anchor changed")
 			}
-			if _, e = r.store.readUnit(ref, anchor.Height); e != nil {
+			if _, e = r.store.readSparseInfo(ctx, ref, anchor.Height); e != nil {
 				return e
 			}
 			header, e := readHeaderAt(r.a.headersPath, anchor.Height)
@@ -147,7 +147,7 @@ func (r *recipeLocalDAGReconciler) batch(ctx context.Context, plan recipeAdmissi
 				}
 				totalRefs += len(snapshot.refs)
 				totalBytes += snapshot.decodedBytes
-				unit, present, e := r.lineage.readChildModeLocked(ctx, snapshot, anchor.Height, anchor.BlockHash, true)
+				unit, present, e := r.lineage.readChildInfoModeLocked(ctx, snapshot, anchor.Height, anchor.BlockHash, true)
 				if e == nil || !errors.Is(e, errRecipeDAGChildStale) {
 					if e != nil {
 						return e

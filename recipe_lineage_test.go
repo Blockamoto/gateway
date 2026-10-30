@@ -72,7 +72,7 @@ func TestRecipeLineageRecursesAndRechecksEveryAncestor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.refs) != 2 || snapshot.direct["middle"].Rows == nil || len(snapshot.direct["middle"].Rows) != 0 {
+	if len(snapshot.refs) != 2 || snapshot.direct["middle"].Rows != 0 {
 		t.Fatalf("complete empty parent was not preserved: %+v", snapshot)
 	}
 	recipeStoreMutex.Lock()

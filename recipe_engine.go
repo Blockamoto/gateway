@@ -5,6 +5,7 @@ package main
 // must atomically commit it with the source anchor and coverage receipt.
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -644,7 +645,21 @@ type recipeRowProposal struct {
 	Encoded    []byte
 }
 
-func (p *recipeProgram) evaluateRowProposals(event map[string]any, lookup func(string, string) (any, error)) ([]recipeRowProposal, bool, error) {
+// The interpreter knows only cancellation and exact JSON comparison policy.
+// The caller owns staged-row storage, duplicate admission and publication.
+type recipeRowStreaming interface {
+	rowContext() context.Context
+	rowsEqual(map[string]any, map[string]any) (bool, error)
+}
+
+func (p *recipeProgram) evaluateRowProposals(event map[string]any, lookup func(string, string) (any, error), staged ...recipeRowStreaming) ([]recipeRowProposal, bool, error) {
+	var spool recipeRowStreaming
+	if len(staged) > 1 {
+		return nil, false, fmt.Errorf("multiple sparse evaluation spools")
+	}
+	if len(staged) == 1 {
+		spool = staged[0]
+	}
 	rows := []recipeRowProposal{}
 	budget := &recipeEvalBudget{lookup: lookup}
 	outputBytes := 0
@@ -655,9 +670,11 @@ func (p *recipeProgram) evaluateRowProposals(event map[string]any, lookup func(s
 	}
 	tables := map[string]recipeTable{}
 	keys := map[string]map[string][]byte{}
+	streamKeys := map[string]map[string]map[string]any{}
 	for _, t := range p.definition.Tables {
 		tables[t.Name] = t
 		keys[t.Name] = map[string][]byte{}
+		streamKeys[t.Name] = map[string]map[string]any{}
 	}
 	vars := map[string]any{}
 	for _, s := range p.definition.Steps {
@@ -699,12 +716,29 @@ func (p *recipeProgram) evaluateRowProposals(event map[string]any, lookup func(s
 			if !ok || key == "" {
 				return nil, false, fmt.Errorf("table key must be non-empty text")
 			}
-			encoded, err := json.Marshal(row)
+			var encoded []byte
+			var err error
+			if spool == nil {
+				encoded, err = json.Marshal(row)
+			} else {
+				err = recipeWriteRowJSON(spool.rowContext(), io.Discard, row)
+			}
 			if err != nil {
 				return nil, false, fmt.Errorf("encode recipe row: %w", err)
 			}
 			if prior, found := keys[s.Table][key]; found {
-				if tables[s.Table].OnConflict == "identical" && bytes.Equal(prior, encoded) {
+				equal := false
+				if tables[s.Table].OnConflict == "identical" {
+					if spool == nil {
+						equal = bytes.Equal(prior, encoded)
+					} else {
+						equal, err = spool.rowsEqual(streamKeys[s.Table][key], row)
+						if err != nil {
+							return nil, false, err
+						}
+					}
+				}
+				if equal {
 					// Equal wire bytes can have different in-memory scalar
 					// representations. Every duplicate still owes export checks,
 					// deferred until late filters have accepted the event.
@@ -715,13 +749,16 @@ func (p *recipeProgram) evaluateRowProposals(event map[string]any, lookup func(s
 				}
 				return nil, false, fmt.Errorf("duplicate or conflicting key in %q", s.Table)
 			}
-			if len(encoded) > outputLimit-outputBytes {
+			if spool == nil && len(encoded) > outputLimit-outputBytes {
 				return nil, false, fmt.Errorf("recipe event output exceeds limit")
 			}
 			outputBytes += len(encoded)
 			keys[s.Table][key] = nil
 			if tables[s.Table].OnConflict == "identical" {
 				keys[s.Table][key] = encoded
+				if spool != nil {
+					streamKeys[s.Table][key] = row
+				}
 			}
 			rows = append(rows, recipeRowProposal{Table: s.Table, Key: key, Value: row, Encoded: encoded})
 		}

@@ -33,14 +33,18 @@ type ordinalPage struct {
 	Children []string    `json:"children,omitempty"`
 }
 type ordinalTree struct {
-	ctx              context.Context
-	dir              string
-	root             string
-	changes          map[string]json.RawMessage
-	cache            map[string]ordinalPage
-	cacheOrder       *list.List
-	cacheEntries     map[string]*list.Element
-	memoryOnly       bool
+	ctx          context.Context
+	dir          string
+	root         string
+	changes      map[string]json.RawMessage
+	cache        map[string]ordinalPage
+	cacheOrder   *list.List
+	cacheEntries map[string]*list.Element
+	memoryOnly   bool
+	// Isolated scratch trees only: their roots must never be published in a
+	// durable head. They reuse the page codec/checks, with discard-on-crash
+	// ownership instead of syncing each temporary page and directory.
+	temporary        bool
 	dirtyDirectories map[string]bool
 	writeLocks       *[256]sync.Mutex
 	// Optional caller policy, applied to each physical page path. Existing
@@ -188,7 +192,14 @@ func (t *ordinalTree) write(p ordinalPage) (string, error) {
 		}
 	}
 	if _, e = os.Stat(path); os.IsNotExist(e) {
-		if e = atomicWriteBytes(path, b); e != nil {
+		if t.temporary {
+			if e = os.MkdirAll(filepath.Dir(path), 0700); e == nil {
+				e = os.WriteFile(path, b, 0600)
+			}
+		} else {
+			e = atomicWriteBytes(path, b)
+		}
+		if e != nil {
 			return "", e
 		}
 		t.dirtyDirectories[filepath.Dir(path)] = true
@@ -332,6 +343,11 @@ func (t *ordinalTree) flush() (string, error) {
 	root, e := t.update(t.root, 0, keys)
 	if e != nil {
 		return "", e
+	}
+	if t.temporary {
+		t.dirtyDirectories = map[string]bool{}
+		t.root, t.changes = root, map[string]json.RawMessage{}
+		return root, nil
 	}
 	// Flush each changed directory once for the entire transaction. The root
 	// is not publishable until these new page entries and ancestors are durable.

@@ -5,25 +5,27 @@ package main
 // publication; all transitive parent refs are rechecked under the store lock.
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"sort"
 )
 
-func (p *recipeLineagePlan) lookupInputs(snapshot *recipeLineageSnapshot) (*recipeDependencyInputs, error) {
+func (p *recipeLineagePlan) lookupInputs(ctx context.Context, snapshot *recipeLineageSnapshot) (result *recipeDependencyInputs, err error) {
 	root, ok := p.nodes[p.root]
 	if !ok || snapshot == nil || snapshot.root != p.root {
 		return nil, fmt.Errorf("invalid lineage lookup snapshot")
 	}
 	inputs := &recipeDependencyInputs{inputs: map[string]recipeDependencyInput{}}
-	retained := 0
+	defer func() {
+		if err != nil {
+			inputs.Close()
+		}
+	}()
 	for _, dep := range root.definition.Dependencies {
 		id := recipeGraphIdentity{dep.Instance, dep.Revision, dep.SemanticHash}
 		node, ok := p.nodes[id]
 		if !ok {
 			return nil, errRecipeDependencyUnavailable
 		}
-		unit, ok := snapshot.direct[dep.Name]
+		_, ok = snapshot.direct[dep.Name]
 		if !ok {
 			return nil, errRecipeDependencyUnavailable
 		}
@@ -41,16 +43,11 @@ func (p *recipeLineagePlan) lookupInputs(snapshot *recipeLineageSnapshot) (*reci
 		if export.Name == "" {
 			return nil, errRecipeDependencyUnavailable
 		}
-		rows := map[string]json.RawMessage{}
-		for _, row := range unit.Rows {
-			n := len(row.Key) + len(row.Value)
-			if n > recipeMaxDecodedBytes-retained {
-				return nil, errRecipeDependencyBudget
-			}
-			retained += n
-			rows[row.Key] = row.Value
+		view, e := node.store.openSparseView(ctx, recipeStoreRef{BlockHash: ref.hash, Unit: ref.unit}, ref.height)
+		if e != nil {
+			return nil, e
 		}
-		inputs.inputs[dep.Name] = recipeDependencyInput{definition: dep, export: export, store: node.store, receipt: recipeDependencyReceipt{Name: dep.Name, Instance: dep.Instance, SemanticHash: dep.SemanticHash, Height: ref.height, BlockHash: ref.hash, Unit: ref.unit}, rows: rows}
+		inputs.inputs[dep.Name] = recipeDependencyInput{definition: dep, export: export, store: node.store, receipt: recipeDependencyReceipt{Name: dep.Name, Instance: dep.Instance, SemanticHash: dep.SemanticHash, Height: ref.height, BlockHash: ref.hash, Unit: ref.unit}, view: view}
 	}
 	return inputs, nil
 }
@@ -83,11 +80,17 @@ func (a *app) recipeExecuteDAGBlock(ctx context.Context, root resolvedSavedRecip
 	if err != nil {
 		return err
 	}
-	inputs, err := plan.lookupInputs(snapshot)
+	inputs, err := plan.lookupInputs(ctx, snapshot)
 	if err != nil {
 		return err
 	}
-	var rows recipeRows
+	defer inputs.Close()
+
+	spool, err := newRecipeSparseSpool(ctx, store.dir, program)
+	if err != nil {
+		return err
+	}
+	defer spool.Close()
 	if root.Source == "bitcoin.transaction" {
 		var source *recipeTransactionSource
 		if len(transactionSources) == 1 {
@@ -95,33 +98,22 @@ func (a *app) recipeExecuteDAGBlock(ctx context.Context, root resolvedSavedRecip
 		}
 		if source == nil {
 			source, err = recipeTransactionSourceFromBlock(ctx, block)
-			if err != nil {
-				return err
-			}
 		}
-		rows, err = program.evaluateTransactionSourceWithLookup(ctx, block, source, inputs.lookup)
+		if err == nil {
+			err = program.evaluateTransactionSourceInto(ctx, block, source, inputs.lookup, spool.Add, spool)
+		}
 	} else {
-		rows, err = program.evaluateInscriptionBlockWithLookup(ctx, block, inventory, inputs.lookup)
+		err = program.evaluateInscriptionSourceInto(ctx, block, inventory, inputs.lookup, spool.Add, spool)
 	}
 	if err != nil {
 		return err
 	}
-	unit := recipeStoreUnit{Schema: 1, Fingerprint: store.fingerprint, Height: block.Height, BlockHash: block.Hash, Rows: []recipeStoreRow{}, Lineage: inputs.receipts()}
-	for table, values := range rows {
-		for key, row := range values {
-			compound, e := json.Marshal([]string{table, key})
-			if e != nil {
-				return e
-			}
-			value, e := json.Marshal(row)
-			if e != nil {
-				return e
-			}
-			unit.Rows = append(unit.Rows, recipeStoreRow{Key: string(compound), Value: value})
-		}
+	unit, err := spool.Seal(recipeStoreUnit{Schema: 1, Fingerprint: store.fingerprint, Height: block.Height, BlockHash: block.Hash, Lineage: inputs.receipts()})
+	if err != nil {
+		return err
 	}
-	sort.Slice(unit.Rows, func(i, j int) bool { return unit.Rows[i].Key < unit.Rows[j].Key })
-	return store.publish(ctx, unit, &revision, guard, func() error { return plan.checkLocked(ctx, snapshot, block.Height, block.Hash) })
+	return store.publishSparseStaged(ctx, unit, revision, guard, func() error { return plan.checkLocked(ctx, snapshot, block.Height, block.Hash) })
+
 }
 
 // The guard supplies selected-chain authority for this exact height and hash.

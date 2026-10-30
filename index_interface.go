@@ -144,6 +144,9 @@ func (a *app) handleIndexAPI(w http.ResponseWriter, r *http.Request) {
 	case "recipes/coverage":
 		a.handleRecipeRangeCoverage(w, r)
 		return
+	case "recipes/export":
+		a.handleRecipeRangeExport(w, r)
+		return
 	case "recipes/validate":
 		a.handleRecipeRegistry(w, r, true)
 		return

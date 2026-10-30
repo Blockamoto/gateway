@@ -116,16 +116,32 @@ type recipeDependencyInput struct {
 	store      *recipeStore
 	receipt    recipeDependencyReceipt
 	rows       map[string]json.RawMessage
+	view       *recipeSparseView
 }
 type recipeDependencyInputs struct {
 	inputs map[string]recipeDependencyInput
 }
 
+func (inputs *recipeDependencyInputs) Close() {
+	if inputs == nil {
+		return
+	}
+	for _, in := range inputs.inputs {
+		if in.view != nil {
+			_ = in.view.Close()
+		}
+	}
+}
+
 // Resolves exact immutable parent revisions and complete same-block receipts.
 // Absence of a receipt is unresolved, never evidence that a key is absent.
-func (a *app) recipeDependencyInputs(ctx context.Context, d recipeDefinition, height int64, hash string) (*recipeDependencyInputs, error) {
+func (a *app) recipeDependencyInputs(ctx context.Context, d recipeDefinition, height int64, hash string) (out *recipeDependencyInputs, failure error) {
 	result := &recipeDependencyInputs{inputs: map[string]recipeDependencyInput{}}
-	retainedBytes := 0
+	defer func() {
+		if failure != nil {
+			result.Close()
+		}
+	}()
 	for _, dep := range d.Dependencies {
 		parent, err := a.ResolveSavedRecipe(ctx, dep.Instance, dep.Revision, dep.SemanticHash)
 		if err != nil {
@@ -155,7 +171,7 @@ func (a *app) recipeDependencyInputs(ctx context.Context, d recipeDefinition, he
 			return nil, err
 		}
 		recipeStoreMutex.Lock()
-		unit, ref, found, err := recipeDependencyReadLocked(ctx, store, height)
+		unit, ref, found, err := recipeDependencyReadInfoLocked(ctx, store, height, false)
 		recipeStoreMutex.Unlock()
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -166,15 +182,11 @@ func (a *app) recipeDependencyInputs(ctx context.Context, d recipeDefinition, he
 		if len(unit.Lineage) != 0 {
 			return nil, fmt.Errorf("%w: %s: transitive lineage is not supported", errRecipeDependencyUnavailable, dep.Name)
 		}
-		rows := map[string]json.RawMessage{}
-		for _, row := range unit.Rows {
-			if len(row.Key)+len(row.Value) > recipeMaxDecodedBytes-retainedBytes {
-				return nil, errRecipeDependencyBudget
-			}
-			retainedBytes += len(row.Key) + len(row.Value)
-			rows[row.Key] = row.Value
+		view, err := store.openSparseView(ctx, ref, height)
+		if err != nil {
+			return nil, err
 		}
-		result.inputs[dep.Name] = recipeDependencyInput{definition: dep, export: export, store: store, receipt: recipeDependencyReceipt{Name: dep.Name, Instance: dep.Instance, SemanticHash: dep.SemanticHash, Height: height, BlockHash: hash, Unit: ref.Unit}, rows: rows}
+		result.inputs[dep.Name] = recipeDependencyInput{definition: dep, export: export, store: store, receipt: recipeDependencyReceipt{Name: dep.Name, Instance: dep.Instance, SemanticHash: dep.SemanticHash, Height: height, BlockHash: hash, Unit: ref.Unit}, view: view}
 	}
 	return result, nil
 }
@@ -206,6 +218,19 @@ func (inputs *recipeDependencyInputs) lookup(alias, key string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if in.view != nil {
+		value, found, err := in.view.LookupScalar(string(compound), in.export.Column)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid parent row: %v", errRecipeDependencyUnavailable, err)
+		}
+		if !found {
+			return recipeMissing{}, nil
+		}
+		if !recipeExportValue(value, in.export.Type) {
+			return nil, fmt.Errorf("%w: invalid parent export", errRecipeDependencyUnavailable)
+		}
+		return value, nil
+	}
 	raw, ok := in.rows[string(compound)]
 	if !ok {
 		return recipeMissing{}, nil
@@ -228,7 +253,7 @@ func (inputs *recipeDependencyInputs) lookup(alias, key string) (any, error) {
 // remains selected in the parent's active sparse coverage.
 func (inputs *recipeDependencyInputs) checkLocked(ctx context.Context) error {
 	for _, in := range inputs.inputs {
-		_, ref, found, err := recipeDependencyReadLocked(ctx, in.store, in.receipt.Height)
+		_, ref, found, err := recipeDependencyReadInfoLocked(ctx, in.store, in.receipt.Height, false)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -267,6 +292,7 @@ func (a *app) recipeExecuteDependentBlock(ctx context.Context, program *recipePr
 	if err != nil {
 		return err
 	}
+	defer inputs.Close()
 	rows, err := program.evaluateInscriptionBlockWithLookup(ctx, block, inventory, inputs.lookup)
 	if err != nil {
 		return err
@@ -300,6 +326,7 @@ func (a *app) recipeReadDependentUnit(ctx context.Context, program *recipeProgra
 	if err != nil {
 		return recipeStoreUnit{}, false, err
 	}
+	defer inputs.Close()
 	var result recipeStoreUnit
 	var found bool
 	err = recipeStoreGuarded(guard, func() error {

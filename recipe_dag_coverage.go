@@ -83,14 +83,14 @@ func (a *app) recipeDAGCoverage(ctx context.Context, root resolvedSavedRecipe, s
 			return fmt.Errorf("dependent lineage changed during pagination")
 		}
 		for i, anchor := range page.Anchors {
-			unit, found, e := plan.readChildLocked(ctx, snapshots[i], anchor.Height, anchor.BlockHash)
+			unit, found, e := plan.readChildInfoLocked(ctx, snapshots[i], anchor.Height, anchor.BlockHash)
 			if e != nil {
 				return e
 			}
 			if !found {
 				return fmt.Errorf("dependent coverage disappeared during proof")
 			}
-			weight := recipeLineageUnitWeight(unit)
+			weight := recipeLineageInfoWeight(unit)
 			if weight > recipeMaxDecodedBytes-totalBytes {
 				return errRecipeDependencyBudget
 			}

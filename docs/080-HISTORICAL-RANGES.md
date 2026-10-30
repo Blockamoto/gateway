@@ -67,3 +67,51 @@ General custom row-range export, its UI and bulk performance remain open release
 work. The experimental generic sparse unit/decoded-byte budgets also remain an
 open persistence boundary. This receipt-range path does not declare those tasks
 complete or reduce the required built-in/custom indexing scope.
+
+## Generic committed-row range export
+
+`GET /api/v1/index/recipes/export` accepts the immutable recipe `id`, `revision`
+and `semantic_hash`, plus inclusive `from` and `to` heights. It consumes only
+committed sparse reveal/transaction receipts. It does not fetch source blocks,
+start a run, backfill gaps or build a secondary index. Saved recipe tracks expose
+From/To inputs and a JSONL download using the same current or historical identity
+as the output controls. Ordered state has its separate snapshot query; this row
+export does not misrepresent an ordered checkpoint as sparse output.
+
+The JSONL format begins with a `gateway-recipe-rows` version-1 manifest naming
+the immutable identity, range, local-header authority and receipt-range snapshot.
+`unit` records include height/hash, logical unit digest, row count and lineage;
+zero rows explicitly mean an evaluated empty block. `row` records stream the
+original stored key/value JSON. `uncovered` records coalesce inclusive missing
+intervals. A final `complete` record reports rows, covered units and uncovered
+blocks. A complete artifact may have uncovered blocks: coverage is explicit,
+and the HTTP Complete/Partial headers distinguish complete range coverage from
+successful artifact preparation. Exact integer JSON bytes are preserved.
+
+The exporter captures the existing immutable heads for the root and every
+ancestor, then copies the selected header interval once into an owned temporary
+fragment. It walks receipt keys with radix pruning, verifies owned root payloads
+and every declared ancestor at each covered anchor, and streams row spans with
+bounded buffers. It retains only a block's graph metadata, not a whole range of
+rows or refs. A final fence checks exact current headers, saved graph revisions
+and the entire receipt interval for all ancestors. Appends outside the interval
+are allowed. It does not rehash a wide header interval per output page.
+
+The entire artifact is staged before response attachment headers are set.
+Late corruption, changed prior rows/ancestor refs, unavailable published-head
+history, canceled requests or changed selected headers discard the artifact.
+The HTTP response includes SHA-256, exact length, row/coverage counts and an
+artifact-complete flag. Network copying occurs after authority locks release.
+Temporary files belong only to the request and are removed on completion/error.
+Owned verified bytes are a coherent snapshot as of their final authority check;
+this is selected-local-header evidence, not independent consensus proof.
+
+Focused tests cover exact values, evaluated-empty versus uncovered records,
+transitive ancestor changes, prior-header changes, missing history, cancellation,
+allowed outside-range append, and late HTTP failure without an attachment.
+The focused set passed in 43.953 seconds before the public route/UI wiring.
+The large-output coordinator test also exercises range export of its >64-MiB
+committed projection. The final route/large-output set passed in 89.287 seconds; the four recipe/
+workspace JavaScript checks and production build passed. The wider pre-export
+regression passed in 787.730 seconds. Full built-in parity and visible preview acceptance
+remain open.

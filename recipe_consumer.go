@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"sync"
 )
 
@@ -215,8 +214,12 @@ func (c *recipeSparseConsumer) Apply(ctx context.Context, work recipeConsumerWor
 	if _, _, err := exactVerifiedBlockPayload(block); err != nil {
 		return fmt.Errorf("recipe verified block evidence: %w", err)
 	}
-	var rows recipeRows
-	var err error
+
+	spool, err := newRecipeSparseSpool(ctx, c.store.dir, c.program)
+	if err != nil {
+		return err
+	}
+	defer spool.Close()
 	if c.program.definition.Source == "bitcoin.transaction" {
 		var source *recipeTransactionSource
 		if len(transactionSources) > 1 {
@@ -229,36 +232,26 @@ func (c *recipeSparseConsumer) Apply(ctx context.Context, work recipeConsumerWor
 			source, err = recipeTransactionSourceFromBlock(ctx, block)
 		}
 		if err == nil {
-			rows, err = c.program.evaluateTransactionSource(ctx, block, source)
+			err = c.program.evaluateTransactionSourceInto(ctx, block, source, nil, spool.Add, spool)
 		}
 	} else {
-		rows, err = c.program.evaluateInscriptionBlock(ctx, block, extraction)
+		err = c.program.evaluateInscriptionSourceInto(ctx, block, extraction, nil, spool.Add, spool)
 	}
 	if err != nil {
 		return err
 	}
-	unit := recipeStoreUnit{Schema: 1, Fingerprint: c.plan.SemanticHash, Height: block.Height, BlockHash: block.Hash, Rows: []recipeStoreRow{}}
-	for table, values := range rows {
-		for key, value := range values {
-			compound, err := json.Marshal([]string{table, key})
-			if err != nil {
-				return err
-			}
-			data, err := json.Marshal(value)
-			if err != nil {
-				return err
-			}
-			unit.Rows = append(unit.Rows, recipeStoreRow{Key: string(compound), Value: data})
-		}
+	unit, err := spool.Seal(recipeStoreUnit{Schema: 1, Fingerprint: c.plan.SemanticHash, Height: block.Height, BlockHash: block.Hash})
+	if err != nil {
+		return err
 	}
-	sort.Slice(unit.Rows, func(i, j int) bool { return unit.Rows[i].Key < unit.Rows[j].Key })
+
 	guardPlan := c.plan
 	guardPlan.Request, err = recipeAdmissionCloneRequest(c.plan.Request)
 	if err != nil {
 		return err
 	}
 	storeGuard := func(publish func() error) error { return guard(guardPlan, work, block, publish) }
-	if err = c.store.PublishAtRevision(ctx, unit, work.CoverageRevision, storeGuard); err != nil {
+	if err = c.store.publishSparseStaged(ctx, unit, work.CoverageRevision, storeGuard, nil); err != nil {
 		return err
 	}
 	c.observedRevision = work.CoverageRevision + 1

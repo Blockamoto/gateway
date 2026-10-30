@@ -183,7 +183,7 @@ func recipeStoreValidateUnit(u recipeStoreUnit, fingerprint string) error {
 	}
 	keys := make(map[string]bool, len(u.Rows))
 	for _, row := range u.Rows {
-		if row.Key == "" || len(row.Key) > 4096 || keys[row.Key] || !json.Valid(row.Value) {
+		if row.Key == "" || keys[row.Key] || !json.Valid(row.Value) {
 			return fmt.Errorf("invalid or duplicate recipe row key or value")
 		}
 		keys[row.Key] = true
@@ -522,7 +522,7 @@ func (s *recipeStore) reconcile(ctx context.Context, revision uint64, anchors ma
 			if !found || ref.BlockHash != hash {
 				return fmt.Errorf("recipe reconciliation anchor changed at %d", height)
 			}
-			if _, err = s.readUnit(ref, height); err != nil {
+			if _, err = s.readSparseInfo(ctx, ref, height); err != nil {
 				return err
 			}
 			t.remove(key)
@@ -674,7 +674,7 @@ func (s *recipeStore) coverageSnapshotMode(ctx context.Context, from, to int64, 
 			if err = json.Unmarshal(kv.Value, &ref); err != nil {
 				return fmt.Errorf("invalid recipe coverage reference: %w", err)
 			}
-			unit, readErr := s.readUnit(ref, int64(n))
+			unit, readErr := s.readSparseInfo(ctx, ref, int64(n))
 			if readErr != nil {
 				return readErr
 			}

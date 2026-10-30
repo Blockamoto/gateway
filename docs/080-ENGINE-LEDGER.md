@@ -294,3 +294,52 @@ The chosen direction retains canonical JSON units and logical digests, existing
 atomic receipt heads and native COW primitives. It does not require a new
 persistent index format or the slow private staged/page-pack experiments. See
 `080-SPARSE-STREAMING.md` for remaining source/consumer/lookup/query/export work.
+
+### Public sparse row streaming
+
+Independent and DAG sparse consumers now stage and sort owned rows, preserve
+schema-1 canonical bytes/logical hashes and publish through the existing
+coverage CAS and authority guard. Public custom execution no longer imposes
+whole-event, block or durable-unit output quotas. Native compact sinks and
+semantic mappings remain unchanged. Temporary native COW pages bound large
+key sets; no new persistent format or experimental storage backend is used.
+
+Coverage, lineage and reconciliation retain typed metadata; owned large-unit
+views verify bytes, index row offsets and provide on-demand scalar exports.
+Output pages retain exact unit tokens; very large rows and complete units can
+be downloaded through saved-track links. Small historical output behavior is
+preserved. Root payload copying and network output occur outside authority
+locks, with an exact receipt/header/registry check before exposure.
+
+The real 52,463,224-byte block-792435 projection now persists and reads with its
+frozen old-format digest. Its optional stage/publish/verify audit measured
+2.569 seconds and 465,715,832 cumulative allocated bytes (not peak memory).
+A public >64-MiB genesis projection, dependent scalar lookup, downloads and
+source-free prefix reuse passed in 46.16 seconds. The focused broader set
+passed in 208.406 seconds; the complete recipe/saved-recipe/ordinal-tree/UTXO/run
+regression passed in 787.730 seconds. The row-policy abstraction and focused
+sparse suite passed in 121.637 seconds. The four
+recipe/workspace JavaScript checks pass. Details and current I/O limits are in
+`080-SPARSE-STREAMING.md`. Generic row-range export/GUI, maintenance, remaining
+built-ins, wider ordered contracts and visible full-preview acceptance are
+still open; no finished preview is claimed.
+
+### Generic sparse range row export
+
+Saved recipe tracks now offer a local JSONL download for inclusive From/To
+heights and current or historical immutable identities. The file streams exact
+committed rows, explicit evaluated-empty units and coalesced uncovered intervals;
+no source fetch, run, backfill or secondary build occurs. Root/ancestor published
+heads and one owned selected-header fragment are shared throughout the export.
+A final full-interval header/graph/receipt check precedes any attachment headers.
+Unrelated appends remain valid. Artifacts are request-owned temporary files with
+SHA-256, exact extent and separate artifact/coverage completion metadata.
+
+The initial focused export set passed in 43.953 seconds, including ancestor and
+prior-header changes, missing history, cancellation, allowed outside append,
+exact integers and corruption without an attachment. The public route/GUI and combined
+export/large-output checks passed in 89.287 seconds; the four JavaScript checks
+and final production build also passed. The wider recipe/saved-recipe/ordinal/
+UTXO/run suite passed in 787.730 seconds before the export route was added. Remaining built-ins, wider
+ordered contracts, maintenance and visible complete-preview acceptance remain
+open. See `080-HISTORICAL-RANGES.md` for the artifact protocol and authority.

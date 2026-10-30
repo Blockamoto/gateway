@@ -170,12 +170,12 @@ func (a *app) readRecipeRangeCoverage(ctx context.Context, id, revision, semanti
 		return empty, err
 	}
 	for i, anchor := range page.Anchors {
-		var unit recipeStoreUnit
+		var unit recipeSparseUnitInfo
 		var found bool
 		if snapshots[i] != nil {
-			unit, found, err = lineage.readChildLocked(ctx, snapshots[i], anchor.Height, anchor.BlockHash)
+			unit, found, err = lineage.readChildInfoLocked(ctx, snapshots[i], anchor.Height, anchor.BlockHash)
 		} else {
-			unit, _, found, err = recipeDependencyReadLocked(ctx, store, anchor.Height)
+			unit, _, found, err = recipeDependencyReadInfoLocked(ctx, store, anchor.Height, false)
 		}
 		if err != nil {
 			return empty, err
@@ -183,7 +183,7 @@ func (a *app) readRecipeRangeCoverage(ctx context.Context, id, revision, semanti
 		if !found || unit.BlockHash != anchor.BlockHash {
 			return empty, fmt.Errorf("recipe range unit disappeared during proof")
 		}
-		weight := recipeLineageUnitWeight(unit)
+		weight := recipeLineageInfoWeight(unit)
 		if weight > recipeMaxDecodedBytes-decodedBytes {
 			return empty, errRecipeDependencyBudget
 		}

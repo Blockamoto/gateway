@@ -84,7 +84,7 @@ func (p *recipeProgram) evaluateTransactionSourceWithLookup(ctx context.Context,
 
 // The sink receives staged proposals, never permission to publish. It must
 // discard them if any later event, duplicate, byte limit or cancellation fails.
-func (p *recipeProgram) evaluateTransactionSourceInto(ctx context.Context, block blockView, source *recipeTransactionSource, lookup func(string, string) (any, error), sink func(recipeRowProposal) error) error {
+func (p *recipeProgram) evaluateTransactionSourceInto(ctx context.Context, block blockView, source *recipeTransactionSource, lookup func(string, string) (any, error), sink func(recipeRowProposal) error, staged ...recipeRowStreaming) error {
 	if ctx == nil {
 		return fmt.Errorf("missing recipe context")
 	}
@@ -104,18 +104,29 @@ func (p *recipeProgram) evaluateTransactionSourceInto(ctx context.Context, block
 		return fmt.Errorf("transaction source differs from block identity")
 	}
 	stream := newRecipeRowStream(p.definition, sink)
+	var spool recipeRowStreaming
+	if len(staged) > 1 {
+		return fmt.Errorf("multiple sparse evaluation spools")
+	}
+	if len(staged) == 1 {
+		spool = staged[0]
+	}
+	emit := stream.add
+	if spool != nil {
+		emit = sink
+	}
 	height := json.Number(strconv.FormatInt(source.height, 10))
 	for i, id := range source.ids {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		event := map[string]any{"ref": txCoordinate(i, source.height), "txid": id, "block_hash": source.hash, "height": height, "tx_index": json.Number(strconv.Itoa(i))}
-		rows, _, err := p.evaluateRowProposals(event, lookup)
+		rows, _, err := p.evaluateRowProposals(event, lookup, spool)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			if err = stream.add(row); err != nil {
+			if err = emit(row); err != nil {
 				return err
 			}
 		}

@@ -303,12 +303,12 @@ func (p *recipeProgram) evaluateInscriptionBlockWithLookup(ctx context.Context, 
 
 // Staged row proposals carry no publication authority. The host discards all
 // proposals if any later event, limit, duplicate or cancellation fails.
-func (p *recipeProgram) evaluateInscriptionSourceInto(ctx context.Context, block blockView, result *inscriptionBlockResult, lookup func(string, string) (any, error), sink func(recipeRowProposal) error) error {
+func (p *recipeProgram) evaluateInscriptionSourceInto(ctx context.Context, block blockView, result *inscriptionBlockResult, lookup func(string, string) (any, error), sink func(recipeRowProposal) error, staged ...recipeRowStreaming) error {
 	source, err := recipeAdmitInscriptionSource(ctx, block, result)
 	if err != nil {
 		return err
 	}
-	return p.evaluateAdmittedInscriptionSourceInto(ctx, block, source, lookup, sink)
+	return p.evaluateAdmittedInscriptionSourceInto(ctx, block, source, lookup, sink, staged...)
 }
 
 // A source is scoped to one synchronous host operation. The host owns the
@@ -332,7 +332,7 @@ func recipeAdmitInscriptionSource(ctx context.Context, block blockView, result *
 	return &recipeAdmittedInscriptionSource{height: block.Height, hash: block.Hash, inventory: result}, nil
 }
 
-func (p *recipeProgram) evaluateAdmittedInscriptionSourceInto(ctx context.Context, block blockView, source *recipeAdmittedInscriptionSource, lookup func(string, string) (any, error), sink func(recipeRowProposal) error) error {
+func (p *recipeProgram) evaluateAdmittedInscriptionSourceInto(ctx context.Context, block blockView, source *recipeAdmittedInscriptionSource, lookup func(string, string) (any, error), sink func(recipeRowProposal) error, staged ...recipeRowStreaming) error {
 	if ctx == nil || sink == nil {
 		return fmt.Errorf("recipe context and sink required")
 	}
@@ -353,6 +353,17 @@ func (p *recipeProgram) evaluateAdmittedInscriptionSourceInto(ctx context.Contex
 	}
 	result := source.inventory
 	stream := newRecipeRowStream(p.definition, sink)
+	var spool recipeRowStreaming
+	if len(staged) > 1 {
+		return fmt.Errorf("multiple sparse evaluation spools")
+	}
+	if len(staged) == 1 {
+		spool = staged[0]
+	}
+	emit := stream.add
+	if spool != nil {
+		emit = sink
+	}
 	minimal := true
 	var needs func(recipeExpr)
 	needs = func(e recipeExpr) {
@@ -394,12 +405,12 @@ func (p *recipeProgram) evaluateAdmittedInscriptionSourceInto(ctx context.Contex
 		event["txid"], event["block_hash"], event["height"] = o.TxID, o.BlockHash, json.Number(fmt.Sprint(o.BlockHeight))
 		event["tx_ref"], event["tx_index"], event["reveal_index"] = txCoordinate(o.TxIndex, o.BlockHeight), json.Number(fmt.Sprint(o.TxIndex)), json.Number(fmt.Sprint(o.Index))
 		event["record"] = &recipeRevealRecord{occurrence: o, receipt: result.inventoryReceipt, ordinal: i}
-		rows, _, err := p.evaluateRowProposals(event, lookup)
+		rows, _, err := p.evaluateRowProposals(event, lookup, spool)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			if err = stream.add(row); err != nil {
+			if err = emit(row); err != nil {
 				return err
 			}
 		}

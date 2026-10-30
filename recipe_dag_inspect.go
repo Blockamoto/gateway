@@ -105,7 +105,7 @@ func (a *app) recipeLocalDAGInspectRange(ctx context.Context, binding recipeRunB
 			}
 			totalRefs += len(snapshot.refs)
 			totalBytes += snapshot.decodedBytes
-			unit, found, e := lineage.readChildModeLocked(ctx, snapshot, anchor.Height, anchor.BlockHash, journal)
+			unit, found, e := lineage.readChildInfoModeLocked(ctx, snapshot, anchor.Height, anchor.BlockHash, journal)
 			if e != nil {
 				if errors.Is(e, errRecipeDAGChildStale) {
 					affected = append(affected, anchor)
@@ -116,7 +116,7 @@ func (a *app) recipeLocalDAGInspectRange(ctx context.Context, binding recipeRunB
 			if !found {
 				return fmt.Errorf("dependent coverage disappeared during inspection")
 			}
-			weight := recipeLineageUnitWeight(unit)
+			weight := recipeLineageInfoWeight(unit)
 			if weight > recipeMaxDecodedBytes-totalBytes {
 				return errRecipeDependencyBudget
 			}

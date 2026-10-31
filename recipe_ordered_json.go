@@ -53,7 +53,7 @@ func parseOrderedRecipeProgram(raw []byte, allowEmit bool) (recipeOrderedProgram
 		}
 		allowed := []string{"kind"}
 		switch header.Kind {
-		case "text", "uint", "bool", "bytes", "object", "ranges":
+		case "text", "uint", "bool", "bytes", "object", "ranges", "list":
 			allowed = append(allowed, header.Kind)
 		case "missing":
 		default:
@@ -79,6 +79,17 @@ func parseOrderedRecipeProgram(raw []byte, allowEmit bool) (recipeOrderedProgram
 			}
 			for _, child := range members {
 				if e = checkValue(child, depth+1); e != nil {
+					return e
+				}
+			}
+		}
+		if header.Kind == "list" {
+			var items []json.RawMessage
+			if json.Unmarshal(value["list"], &items) != nil || items == nil {
+				return fmt.Errorf("invalid ordered literal list")
+			}
+			for _, item := range items {
+				if e = checkValue(item, depth+1); e != nil {
 					return e
 				}
 			}

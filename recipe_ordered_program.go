@@ -28,6 +28,7 @@ type recipeOrderedValue struct {
 	Bytes  []byte                        `json:"bytes,omitempty"`
 	Object map[string]recipeOrderedValue `json:"object,omitempty"`
 	Ranges recipeOrderedRanges           `json:"ranges,omitempty"`
+	List   []recipeOrderedValue          `json:"list,omitempty"`
 }
 
 // Decimal strings preserve integers through JavaScript and other JSON clients.
@@ -43,6 +44,7 @@ func (v recipeOrderedValue) MarshalJSON() ([]byte, error) {
 		Bytes  []byte                         `json:"bytes,omitempty"`
 		Object *map[string]recipeOrderedValue `json:"object,omitempty"`
 		Ranges *recipeOrderedRanges           `json:"ranges,omitempty"`
+		List   *[]recipeOrderedValue          `json:"list,omitempty"`
 	}
 	w := wire{Kind: v.Kind, Text: v.Text, Bool: v.Bool, Bytes: v.Bytes}
 	if v.Kind == "object" {
@@ -50,6 +52,9 @@ func (v recipeOrderedValue) MarshalJSON() ([]byte, error) {
 	}
 	if v.Kind == "ranges" {
 		w.Ranges = &v.Ranges
+	}
+	if v.Kind == "list" {
+		w.List = &v.List
 	}
 	if v.Kind == "uint" {
 		n := strconv.FormatUint(v.Uint, 10)
@@ -67,6 +72,7 @@ func (v *recipeOrderedValue) UnmarshalJSON(data []byte) error {
 		Bytes  []byte                        `json:"bytes,omitempty"`
 		Object map[string]recipeOrderedValue `json:"object,omitempty"`
 		Ranges recipeOrderedRanges           `json:"ranges,omitempty"`
+		List   []recipeOrderedValue          `json:"list,omitempty"`
 	}
 	var w wire
 	if err := json.Unmarshal(data, &w); err != nil {
@@ -83,7 +89,7 @@ func (v *recipeOrderedValue) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("invalid ordered integer representation")
 		}
 	}
-	*v = recipeOrderedValue{Kind: w.Kind, Text: w.Text, Uint: n, Bool: w.Bool, Bytes: w.Bytes, Object: w.Object, Ranges: w.Ranges}
+	*v = recipeOrderedValue{Kind: w.Kind, Text: w.Text, Uint: n, Bool: w.Bool, Bytes: w.Bytes, Object: w.Object, Ranges: w.Ranges, List: w.List}
 	return recipeOrderedCheck(*v, 0)
 }
 
@@ -150,10 +156,19 @@ func recipeOrderedCheckWork(v recipeOrderedValue, depth int, remaining *int) err
 	if v.Kind != "text" && v.Text != "" || v.Kind != "uint" && v.Uint != 0 || v.Kind != "bool" && v.Bool || v.Kind != "bytes" && len(v.Bytes) != 0 {
 		return fmt.Errorf("mixed ordered value types")
 	}
-	if v.Kind != "ranges" && v.Ranges != nil || v.Kind != "object" && v.Object != nil {
+	if v.Kind != "ranges" && v.Ranges != nil || v.Kind != "object" && v.Object != nil || v.Kind != "list" && v.List != nil {
 		return fmt.Errorf("mixed ordered value types")
 	}
 	switch v.Kind {
+	case "list":
+		if v.List == nil {
+			return fmt.Errorf("invalid ordered list")
+		}
+		for _, item := range v.List {
+			if err := recipeOrderedCheckWork(item, depth+1, remaining); err != nil {
+				return err
+			}
+		}
 	case "missing", "text", "uint", "bool", "bytes":
 		if v.Object != nil {
 			return fmt.Errorf("invalid ordered value")
@@ -267,6 +282,9 @@ func (m *recipeOrderedMachine) eval(e recipeOrderedExpr, depth int) (recipeOrder
 		return recipeOrderedValue{}, fmt.Errorf("invalid arguments to ordered function %s", e.Call)
 	}
 	if value, handled, err := m.rangeCall(e.Call, args); handled {
+		return value, err
+	}
+	if value, handled, err := m.listCall(e.Call, args); handled {
 		return value, err
 	}
 	switch e.Call {

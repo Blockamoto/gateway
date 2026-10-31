@@ -7,21 +7,22 @@
   const fifoFields=[...fields,'id','unbound','has_pointer','input_value','input_offset','pointer','outputs_value'];
   const projectionFields=['block','height','tx_index','vout','value','script','add'];
   const tableFields=fields.filter(name=>!['fact_page','fact_row'].includes(name));
-  const revealFields=['kind','block','txid','ref','content_hash','height','tx_index','reveal_index','input_index','parent_count','body','content_type','has_body','has_content_type','incomplete_fields','duplicate_fields'];
+  const revealFields=['kind','block','txid','ref','content_hash','height','tx_index','reveal_index','input_index','parent_count','parents','body','content_type','has_body','has_content_type','incomplete_fields','duplicate_fields'];
   const lookupProviders=[['cohort','In-run Coin evidence'],['same_block','Earlier transactions in this block'],['stored','Retained TXIO creation evidence'],['provider','Configured parent transaction sources']];
   const arities={eq:2,not:1,present:1,add_money:2,sub_money:2,less_equal:2,outpoint:2,output_ref:3,input_ref:3,destination:1,payment_destination:1,retains:2,bip30_exception:3,get:2,range_empty:0,range_subsidy:1,range_concat:2,range_split:2,range_value:1,range_at:2};
-  Object.assign(arities,{inscription_ref:3,bytes_length:1,bytes_ascii:1,bytes_slice:3,bytes_concat:2,bytes_equal:2,bytes_find:2,bytes_find_fold_ascii:2,decimal_parse:1,decimal_format:1,media_type:1});
+  Object.assign(arities,{inscription_ref:3,bytes_length:1,bytes_ascii:1,bytes_slice:3,bytes_concat:2,bytes_equal:2,bytes_find:2,bytes_find_fold_ascii:2,decimal_parse:1,decimal_format:1,media_type:1,list_length:1,list_at:2,list_contains:2});
   const operations={let:['name','expr'],read:['name','table','key'],put:['table','key','expr'],delete:['table','key'],if:['expr','body','else'],require:['name','expr'],emit:['table','key','expr'],for_range:['name','expr','body'],for_events:['body']};
   const uint=text=>typeof text==='string'&&/^(0|[1-9][0-9]*)$/.test(text)&&(text.length<20||text.length===20&&text<='18446744073709551615');
   function valueSupported(value,depth=0){
     if(depth>32||!object(value))return false;
-    const kind=value.kind;if(!['missing','text','uint','bool','bytes','object','ranges'].includes(kind)||!keys(value,kind==='missing'?['kind']:['kind',kind]))return false;
+    const kind=value.kind;if(!['missing','text','uint','bool','bytes','object','ranges','list'].includes(kind)||!keys(value,kind==='missing'?['kind']:['kind',kind]))return false;
     if(kind==='missing')return true;
     if(kind==='text')return !Object.hasOwn(value,'text')||typeof value.text==='string';
     if(kind==='uint')return uint(value.uint);
     if(kind==='bool')return !Object.hasOwn(value,'bool')||typeof value.bool==='boolean';
     if(kind==='bytes')return !Object.hasOwn(value,'bytes')||typeof value.bytes==='string'&&/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.bytes);
     if(kind==='ranges')return Array.isArray(value.ranges)&&value.ranges.every(r=>keys(r,['start','end'])&&Object.keys(r).length===2&&uint(r.start)&&uint(r.end)&&BigInt(r.start)<BigInt(r.end)&&BigInt(r.end)<=2099999997690000n);
+    if(kind==='list')return Array.isArray(value.list)&&value.list.every(item=>valueSupported(item,depth+1));
     return object(value.object)&&Object.keys(value.object).length<=64&&Object.values(value.object).every(v=>valueSupported(v,depth+1));
   }
   function expressionSupported(expr,depth=0,allowedFields=fields){
@@ -147,14 +148,17 @@
       actions.append(button('Add object field',()=>{let name='field';while(Object.hasOwn(mapping,name))name='field_'+(++sequence);Object.defineProperty(mapping,name,{value:renderChild===literalEditor?{kind:'missing'}:missing(),enumerable:true,writable:true,configurable:true});paint();changed();}));paint();
     }
     function literalEditor(host,value,set){
-      function draw(){host.replaceChildren();host.append(select('Value type',['missing','text','uint','bool','bytes','object','ranges'],value.kind,kind=>{
-        value={kind};if(kind==='text')value.text='';if(kind==='uint')value.uint='0';if(kind==='bool')value.bool=false;if(kind==='bytes')value.bytes='';if(kind==='object')value.object=Object.create(null);if(kind==='ranges')value.ranges=[];set(value);draw();
+      function draw(){host.replaceChildren();host.append(select('Value type',['missing','text','uint','bool','bytes','object','ranges','list'],value.kind,kind=>{
+        value={kind};if(kind==='text')value.text='';if(kind==='uint')value.uint='0';if(kind==='bool')value.bool=false;if(kind==='bytes')value.bytes='';if(kind==='object')value.object=Object.create(null);if(kind==='ranges')value.ranges=[];if(kind==='list')value.list=[];set(value);draw();
       }));
       if(value.kind==='text')host.append(textInput('Text',value.text||'',text=>{value.text=text;}));
       if(value.kind==='uint')host.append(textInput('Unsigned integer (exact decimal)',value.uint,text=>{value.uint=text;}));
       if(value.kind==='bytes')host.append(textInput('Bytes (base64)',value.bytes||'',text=>{value.bytes=text;}));
       if(value.kind==='bool')host.append(select('Boolean',['false','true'],String(!!value.bool),text=>{value.bool=text==='true';}));
       if(value.kind==='object')members(host,value.object,literalEditor);
+      if(value.kind==='list'){
+        const rows=el('div');host.append(rows);const paint=()=>{rows.replaceChildren();value.list.forEach((item,index)=>{const row=el('div');row.append(lazy('List item '+(index+1),body=>literalEditor(body,item,next=>{value.list[index]=next;})),button('Remove list item',()=>{value.list.splice(index,1);paint();changed();}),button('Move list item earlier',()=>{if(index){[value.list[index-1],value.list[index]]=[value.list[index],value.list[index-1]];paint();changed();}}));rows.append(row);});};host.append(button('Add list item',()=>{value.list.push({kind:'missing'});paint();changed();}));paint();
+      }
       if(value.kind==='ranges'){
         const rows=el('div');host.append(rows);
         const paint=()=>{rows.replaceChildren();value.ranges.forEach((range,index)=>{const row=el('div');row.append(textInput('Interval start (exact decimal)',range.start,text=>{range.start=text;}),textInput('Interval end, exclusive (exact decimal)',range.end,text=>{range.end=text;}),button('Remove interval',()=>{value.ranges.splice(index,1);paint();changed();}));rows.append(row);});};

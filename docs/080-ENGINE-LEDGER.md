@@ -848,3 +848,29 @@ The final snapshot-lease compatibility/lifecycle set passed in 25.368 seconds;
 the dedicated busy-native-snapshot publication check passed in 1.251 seconds.
 Recipe controls and the wider index workspace passed unit/headless browser
 checks. The production build passed (25,218,048 bytes).
+
+### 2026-10-31: typed lists and complete parent declarations
+
+The common ordered value model now retains nested typed lists, preserving
+exact scalar types, item order and empty lists. `list_length`, `list_at` and
+scalar `list_contains` compose with ordinary instructions; membership consumes
+the interpreter work budget. Recursive byte/structural/state budgets and
+cancellation apply, including owned imported copies and sparse array output.
+Ordered reveal events expose the parser's complete parent-declaration list.
+Declarations remain separate from checked provenance.
+
+The actual `recipes/declared-parent-mentions.json` example, guided nested list
+controls and public state/query round trips are covered. Native District's
+existing equivalence binding remains unchanged. Unit and headless real-DOM
+checks cover list edits, reordering, exact max-uint values and narrow layout.
+
+The broader ordered/reveal/import/District/catalogue suite passed 83 checks in
+55.675 seconds. It exposed and fixed a prior source-sharing regression: the
+reveal-mode guard also excluded sparse transaction projections from shared
+owned preparation. The existing sharing test passed three repeated runs after
+the correction (13.901 seconds for the focused example/declaration/sharing set).
+The audit is `gateway-080-typed-lists-regression.jsonl`. See
+`080-TYPED-LISTS.md`. Actual Parcel proof composition and full visible preview
+acceptance remain open.
+
+The typed-list production build passed (25,241,088 bytes).

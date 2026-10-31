@@ -122,6 +122,13 @@ func recipeTablesCloneValue(v recipeOrderedValue) (recipeOrderedValue, error) {
 	}
 	var clone func(recipeOrderedValue) recipeOrderedValue
 	clone = func(value recipeOrderedValue) recipeOrderedValue {
+		if value.List != nil {
+			items := make([]recipeOrderedValue, len(value.List))
+			for i, item := range value.List {
+				items[i] = clone(item)
+			}
+			value.List = items
+		}
 		value.Bytes = append([]byte(nil), value.Bytes...)
 		value.Ranges = append(recipeOrderedRanges(nil), value.Ranges...)
 		if value.Kind == "ranges" && value.Ranges == nil {

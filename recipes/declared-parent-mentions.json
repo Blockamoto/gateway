@@ -1,0 +1,23 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "my-parent-mentions",
+  "name": "Declared parent mentions",
+  "source": "bitcoin.reveal",
+  "origin": 767430,
+  "history": "ordered",
+  "storage": "tables.cow.v1",
+  "dependencies": [],
+  "tables": [{"name":"mentions","key":"ref"}],
+  "ordered": {
+    "steps": [{"op":"for_events","body":[
+      {"op":"if","expr":{"call":"list_contains","args":[{"field":"parents"},{"literal":{"kind":"text","text":"0000000000000000000000000000000000000000000000000000000000000000i0"}}]},"body":[
+        {"op":"put","table":"mentions","key":{"field":"ref"},"expr":{"object":{
+          "ref":{"field":"ref"},
+          "declared_parents":{"field":"parents"},
+          "parent_count":{"field":"parent_count"}
+        }}}
+      ]}
+    ]}]
+  }
+}

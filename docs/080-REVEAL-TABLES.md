@@ -34,6 +34,7 @@ trimming or claim selection.
 | --- | --- |
 | `kind`, `block`, `txid`, `ref`, `content_hash` | Text; kind is `reveal`, ref is the positional inscription coordinate. |
 | `height`, `tx_index`, `reveal_index`, `input_index`, `parent_count` | Exact unsigned integers; reveal index is transaction-wide. |
+| `parents` | Typed list of parsed parent declarations in parser order. Declarations are separate from checked provenance. |
 | `body`, `content_type` | Exact bytes, including malformed text declarations. |
 | `has_body`, `has_content_type`, `incomplete_fields`, `duplicate_fields` | Parser facts as booleans. |
 
@@ -60,6 +61,8 @@ Existing `eq` behavior is unchanged. Programs choose byte equality explicitly.
 These operations perform no state lookup, evidence acquisition or index
 dispatch. They allow a program to compose decoding decisions, canonical claim
 grammar, eligibility, counters and keyed first-winner state in ordinary JSON.
+Typed list operations and the parent-mention example are described in
+`080-TYPED-LISTS.md`.
 
 ## Verification
 

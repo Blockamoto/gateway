@@ -19,7 +19,7 @@ func recipeTablesSourceProfileFor(source string) string {
 }
 
 func recipeRevealTablesFields() []recipeFieldCapability {
-	result := []recipeFieldCapability{}
+	result := []recipeFieldCapability{{Path: []string{"parents"}, Type: recipeTypeSpec{Types: []string{"list"}}}}
 	for _, group := range []struct {
 		names []string
 		kind  string
@@ -106,6 +106,11 @@ func recipeRevealInventoryWalk(ctx context.Context, b blockView, inventory *insc
 		event["tx_index"], event["reveal_index"], event["input_index"], event["parent_count"] = rovUint(uint64(o.TxIndex)), rovUint(uint64(o.Index)), rovUint(uint64(o.InputIndex)), rovUint(uint64(len(o.Envelope.Parents)))
 		event["body"], event["content_type"] = rovBytes(o.Body), rovBytes([]byte(o.Envelope.ContentType))
 		event["has_body"], event["has_content_type"], event["incomplete_fields"], event["duplicate_fields"] = rovBool(o.Envelope.HasBody), rovBool(o.HasContentType), rovBool(o.Envelope.Incomplete), rovBool(o.Envelope.Duplicate)
+		parents := make([]recipeOrderedValue, len(o.Envelope.Parents))
+		for i, id := range o.Envelope.Parents {
+			parents[i] = rovText(id)
+		}
+		event["parents"] = recipeOrderedValue{Kind: "list", List: parents}
 		if err = sink(event); err != nil {
 			return err
 		}

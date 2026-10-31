@@ -134,6 +134,16 @@ func recipeOrderedPlainRowValue(value recipeOrderedValue, bytesCache map[string]
 		return json.Number(strconv.FormatUint(value.Uint, 10)), nil
 	case "bool":
 		return value.Bool, nil
+	case "list":
+		items := make([]any, len(value.List))
+		for i, item := range value.List {
+			converted, err := recipeOrderedPlainRowValue(item, bytesCache)
+			if err != nil {
+				return nil, err
+			}
+			items[i] = converted
+		}
+		return items, nil
 	case "ranges":
 		rows := make([]map[string]json.Number, 0, len(value.Ranges))
 		for _, interval := range value.Ranges {

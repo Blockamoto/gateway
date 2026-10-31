@@ -963,3 +963,24 @@ Guided and headless document/workspace checks passed. See
 The production build passed (25,361,920 bytes).
 One parallel-build workspace attempt missed the transient highlight; the
 unchanged browser check passed in isolation.
+
+### 2026-10-31: reusable relationship verifier and positive mainnet replay
+
+The existing parent replay logic now accepts generic inscription references and
+explicit selected-header/block/transaction/spender ports. The native Parcel
+method is a thin adapter. Receipt schemas, proof fields/messages and selected
+Ord replay behavior are unchanged; claim grammar and winner policy are outside
+this component.
+
+The optional positive fixture was missing, so its three pinned raw blocks were
+retrieved from the documented Blockstream Esplora API and verified. The payload
+sizes, hashes and reproducible fetch command are in
+`080-INSCRIPTION-PARENT-REPLAY.md`. The files remain in ignored build storage;
+`scripts/fetch-parcel-reference-079.py` reproduces them without touching app data.
+The full mainnet reference replay test passed in 8.036 seconds, including durable
+receipt/reopen, replaced-source rejection and native capture. Its later selected
+District binding is synthetic and the genuine Ord relationship is not itself
+a Bitmap claim. This is bounded authenticated replay, not full-chain consensus.
+The replay/attestation/same-transaction/grammar subset passed in 4.565 seconds
+before downloading the optional fixture. Declared relationship-proof ownership,
+complete Parcel JSON and full visible preview acceptance remain open.

@@ -57,12 +57,14 @@ func (g *recipeTablesGeneration) maintain(ctx context.Context) error {
 		return err
 	}
 	imports := map[string]bool{}
+	sourceBlobs := map[string]bool{}
+	verifiedSourceBlobs := map[string]int64{}
 	err = recipeVisitOrdinalRoots(recipeTablesTree(ctx, g.path("pages"), ""), importRoots, func(kv ordinalKV) error {
 		var ref recipeImportedFactRef
 		if json.Unmarshal(kv.Value, &ref) != nil {
 			return fmt.Errorf("%w: imported fact reference", ErrRecipeTablesCorrupt)
 		}
-		fact, err := recipeReadImportedFact(ctx, g.profileRoot, kv.Key, ref)
+		fact, err := recipeReadImportedFactWithBlobs(ctx, g.profileRoot, kv.Key, ref, verifiedSourceBlobs)
 		if err != nil {
 			return fmt.Errorf("%w: required imported fact (%v)", ErrRecipeTablesCorrupt, err)
 		}
@@ -88,6 +90,9 @@ func (g *recipeTablesGeneration) maintain(ctx context.Context) error {
 		if ref.Blob != "" {
 			imports[ref.Blob] = true
 		}
+		for _, blob := range fact.Blobs {
+			sourceBlobs[blob.Hash] = true
+		}
 		return ctx.Err()
 	})
 	if err != nil {
@@ -111,7 +116,10 @@ func (g *recipeTablesGeneration) maintain(ctx context.Context) error {
 	if err = g.pruneValues(ctx, pins); err != nil {
 		return err
 	}
-	return g.pruneBlobs(ctx, "imports", recipeImportedFactMaxBytes, imports)
+	if err = g.pruneBlobs(ctx, "imports", recipeImportedFactMaxBytes, imports); err != nil {
+		return err
+	}
+	return g.pruneBlobs(ctx, "source-blobs", parcelReplayMaxBytes079, sourceBlobs)
 }
 
 func (g *recipeTablesGeneration) prunePoints(ctx context.Context, retained map[string]bool) error {
@@ -179,6 +187,10 @@ func (g *recipeTablesGeneration) pruneValues(ctx context.Context, pins map[strin
 	return g.pruneBlobs(ctx, "values", recipeTablesEncodedBytes, pins)
 }
 func (g *recipeTablesGeneration) pruneBlobs(ctx context.Context, directory string, limit int64, pins map[string]bool) error {
+	suffix := ".json"
+	if directory == "source-blobs" {
+		suffix = ".blob"
+	}
 	dir := g.path(directory)
 	if err := updateapply.CheckPath(dir); err != nil {
 		return err
@@ -211,10 +223,10 @@ func (g *recipeTablesGeneration) pruneBlobs(ctx context.Context, directory strin
 					if err = ctx.Err(); err != nil {
 						return err
 					}
-					if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+					if entry.IsDir() || !strings.HasSuffix(entry.Name(), suffix) {
 						continue
 					}
-					hash := strings.TrimSuffix(entry.Name(), ".json")
+					hash := strings.TrimSuffix(entry.Name(), suffix)
 					if !validHash(hash) || hash[:2] != shard.Name() || pins[hash] {
 						continue
 					}
@@ -228,13 +240,12 @@ func (g *recipeTablesGeneration) pruneBlobs(ctx context.Context, directory strin
 					if info.ModTime().After(cutoff) {
 						continue
 					}
-					file := filepath.Join(path, hash+".json")
-					raw, err := recipeStoreReadBounded(file, limit)
-					if err != nil {
-						return err
+					file := filepath.Join(path, hash+suffix)
+					if info.Size() < 1 || info.Size() > limit {
+						return fmt.Errorf("unreachable table blob extent changed")
 					}
-					if recipeStoreHash(raw) != hash {
-						return fmt.Errorf("unreachable table value checksum changed")
+					if err = recipeSparseVerifyFile(ctx, file, hash, info.Size()); err != nil {
+						return err
 					}
 					if err = os.Remove(file); err != nil {
 						return err

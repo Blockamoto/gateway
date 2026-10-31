@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -64,6 +65,12 @@ func TestRecipeOrderedTextExactBytesDecimalsAndMissing(t *testing.T) {
 		}
 	}
 	joined := call("bytes_concat", rovBytes([]byte("0")), rovBytes([]byte(".bitmap")))
+	if got := call("text_concat", rovText("child;"), rovText("parent")); got.Kind != "text" || got.Text != "child;parent" {
+		t.Fatal(got)
+	}
+	if _, e := recipeOrderedTextCall(ctx, "text_concat", []recipeOrderedValue{rovText(strings.Repeat("x", recipeStateHardValueBytes)), rovText("x")}); !errors.Is(e, errRecipeStateBudget) {
+		t.Fatal("unbounded text concatenation", e)
+	}
 	if string(joined.Bytes) != "0.bitmap" {
 		t.Fatal(joined)
 	}

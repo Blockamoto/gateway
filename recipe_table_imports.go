@@ -124,6 +124,7 @@ type recipeImportedFact struct {
 	Checksum string
 	Lookup   *recipeSourceLookup        `json:",omitempty"`
 	Evidence []recipeTablePointEvidence `json:",omitempty"`
+	Blobs    []recipeSourceBlob         `json:",omitempty"`
 }
 type recipeImportedFactRef struct {
 	Inline json.RawMessage `json:",omitempty"`
@@ -173,6 +174,9 @@ func recipeImportedFactPath(root, hash string) string {
 }
 
 func recipeReadImportedFact(ctx context.Context, root, key string, ref recipeImportedFactRef) (recipeImportedFact, error) {
+	return recipeReadImportedFactWithBlobs(ctx, root, key, ref, nil)
+}
+func recipeReadImportedFactWithBlobs(ctx context.Context, root, key string, ref recipeImportedFactRef, verified map[string]int64) (recipeImportedFact, error) {
 	var fact recipeImportedFact
 	if !validHash(key) || ref.Bytes == 0 || ref.Bytes > recipeImportedFactMaxBytes || (ref.Blob == "") == (len(ref.Inline) == 0) {
 		return fact, fmt.Errorf("invalid imported fact reference")
@@ -226,6 +230,14 @@ func recipeReadImportedFact(ctx context.Context, root, key string, ref recipeImp
 	}
 	if fact.Lookup != nil {
 		if err := recipeCheckTablePointFact(fact); err != nil {
+			return fact, err
+		}
+	}
+	if len(fact.Blobs) > 0 {
+		if fact.Lookup == nil || fact.Lookup.Source != "bitcoin.inscription_parent" {
+			return fact, fmt.Errorf("unexpected owned source blobs")
+		}
+		if err := recipeCheckParentPointBlobs(ctx, root, fact, verified); err != nil {
 			return fact, err
 		}
 	}
@@ -351,6 +363,19 @@ func (s *recipeTablesImportState) ReadOrdered(ctx context.Context, key recipeSta
 		if source == nil && fact.Lookup.Source == "bitcoin.inscription_identity" {
 			coordinate, _ := recipeInscriptionPointKey(key.Key)
 			fact.Evidence = []recipeTablePointEvidence{{Height: coordinate.Height, BlockHash: s.sources.lookups.anchors[coordinate.Height]}}
+		}
+		if source == nil && fact.Lookup.Source == "bitcoin.inscription_parent" {
+			result, have := s.sources.lookups.parentFacts[recipeParentPointCacheKey(*fact.Lookup, key.Key)]
+			if !have {
+				return recipeOrderedValue{}, fmt.Errorf("relationship source evidence unavailable")
+			}
+			fact.Evidence = result.Evidence
+			for _, input := range result.Blobs {
+				if err = recipeOwnSourceBlob(ctx, s.root, input); err != nil {
+					return recipeOrderedValue{}, err
+				}
+				fact.Blobs = append(fact.Blobs, input.Ref)
+			}
 		}
 		fact.Checksum = recipeImportedFactDigest(fact)
 		raw, e := json.Marshal(fact)

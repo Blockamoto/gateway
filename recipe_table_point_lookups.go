@@ -25,7 +25,7 @@ func recipeTablePointLookupBindings() []recipeSourceLookup {
 		Revision, Network, Authority string
 		Verifier                     int
 	}{identity.Revision, "bitcoin-mainnet", authority, blockVerifierVersion})
-	return []recipeSourceLookup{lookup, identity}
+	return append([]recipeSourceLookup{lookup, identity}, recipeInscriptionParentLookupBindings()...)
 }
 
 func recipeValidateTablePointLookups(d recipeDefinition, tables map[string]bool, deps map[string]recipeDependency) (map[string]recipeSourceLookup, error) {
@@ -71,6 +71,8 @@ type recipeTablePointLookups struct {
 	identities    map[string]recipeOrderedValue
 	lastInventory *inscriptionBlockResult
 	lastPositions map[recipeIdentityPosition]int
+	parentSources map[string]inscriptionParentReplaySource
+	parentFacts   map[string]recipeParentPointResult
 }
 
 func newRecipeTablePointLookups(a *app, d recipeDefinition, source *recipeOrderedOwnedSource) (*recipeTablePointLookups, error) {
@@ -104,6 +106,9 @@ func (r *recipeTablePointLookups) read(ctx context.Context, lookup recipeSourceL
 	}
 	if lookup.Source == "bitcoin.inscription_identity" {
 		return r.readIdentity(ctx, key)
+	}
+	if lookup.Source == "bitcoin.inscription_parent" {
+		return r.readParent(ctx, lookup, key)
 	}
 	height, err := strconv.ParseInt(key, 10, 64)
 	if err != nil || height < 0 || height > r.block.Height || strconv.FormatInt(height, 10) != key {
@@ -174,6 +179,9 @@ func recipeCheckTablePointFact(f recipeImportedFact) error {
 	}
 	if f.Lookup.Source == "bitcoin.inscription_identity" {
 		return recipeCheckIdentityPointFact(f)
+	}
+	if f.Lookup.Source == "bitcoin.inscription_parent" {
+		return recipeCheckParentPointFact(f)
 	}
 	if f.Lookup.Source != "bitcoin.block_context" || len(f.Evidence) != 0 {
 		return fmt.Errorf("owned block context source changed")

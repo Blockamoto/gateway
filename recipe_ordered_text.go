@@ -24,6 +24,14 @@ func recipeOrderedTextCall(ctx context.Context, name string, args []recipeOrdere
 		return recipeOrderedValue{}, err
 	}
 	switch name {
+	case "text_concat":
+		if len(args) != 2 || args[0].Kind != "text" || args[1].Kind != "text" {
+			return fail()
+		}
+		if len(args[0].Text) > recipeStateHardValueBytes-len(args[1].Text) {
+			return recipeOrderedValue{}, errRecipeStateBudget
+		}
+		return rovText(args[0].Text + args[1].Text), nil
 	case "bytes_length":
 		if len(args) != 1 || args[0].Kind != "bytes" {
 			return fail()

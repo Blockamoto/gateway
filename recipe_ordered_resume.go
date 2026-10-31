@@ -217,7 +217,7 @@ func recipeOrderedProgramValidate(p recipeOrderedProgram, allowEmit bool) error 
 		}
 		if e.Call != "" {
 			arity := map[string]int{"eq": 2, "not": 1, "present": 1, "add_money": 2, "sub_money": 2, "less_equal": 2, "outpoint": 2, "output_ref": 3, "input_ref": 3, "retains": 2, "bip30_exception": 3, "get": 2, "destination": 1, "payment_destination": 1, "range_empty": 0, "range_subsidy": 1, "range_concat": 2, "range_split": 2, "range_value": 1, "range_at": 2,
-				"bytes_length": 1, "bytes_ascii": 1, "bytes_slice": 3, "bytes_concat": 2, "bytes_equal": 2, "bytes_find": 2, "bytes_find_fold_ascii": 2, "decimal_parse": 1, "decimal_format": 1, "media_type": 1, "inscription_ref": 3, "list_length": 1, "list_at": 2, "list_contains": 2}
+				"text_concat": 2, "bytes_length": 1, "bytes_ascii": 1, "bytes_slice": 3, "bytes_concat": 2, "bytes_equal": 2, "bytes_find": 2, "bytes_find_fold_ascii": 2, "decimal_parse": 1, "decimal_format": 1, "media_type": 1, "inscription_ref": 3, "list_length": 1, "list_at": 2, "list_contains": 2}
 			want, ok := arity[e.Call]
 			if !ok || len(e.Args) != want {
 				return fmt.Errorf("unsupported resumable function: %s", e.Call)

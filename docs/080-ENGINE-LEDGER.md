@@ -984,3 +984,29 @@ a Bitmap claim. This is bounded authenticated replay, not full-chain consensus.
 The replay/attestation/same-transaction/grammar subset passed in 4.565 seconds
 before downloading the optional fixture. Declared relationship-proof ownership,
 complete Parcel JSON and full visible preview acceptance remain open.
+
+### 2026-10-31: declared relationship points and owned proof evidence
+
+Ordered tables now compose checked inscription parent replay through an exact
+declared point source, with explicit retained-Raw, TX-locator or TXIO providers.
+Provider admission requires its complete selected genesis prefix when used;
+the run plan states scan/audit costs and no producer starts implicitly.
+Typed results distinguish checked rejection, complete known absence and
+unavailable evidence. `text_concat` supports canonical child/parent pair keys.
+
+The child owns independent streamed copies of receipts, raw proof blocks and
+local scan attestations, referenced by its cumulative fact root. Final guards
+include movement headers; maintenance checks all required evidence before
+collection and deduplicates shared-blob verification. Existing facts and native
+proof schemas remain unchanged. Local attestation trust is not upgraded to
+detached consensus proof, and no installation secret is exported.
+
+The focused checks passed in 9.441 seconds. The broader suite passed 52 checks
+without skips/failures in 63.904 seconds, including authentic bounded replay,
+producer removal/mutation, reopened fact reuse, corruption-aware collection,
+unused evidence collection and whole-generation archives. Guided unit and
+headless narrow DOM checks passed. See `080-INSCRIPTION-PARENT-POINTS.md` for
+scope and fixture admission limits. Complete native Parcel JSON and visible
+preview acceptance remain open.
+The parent-point production build passed (25,448,960 bytes), as did the wider
+workspace browser check.

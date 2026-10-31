@@ -31,6 +31,7 @@ func recipeOrderedFunctions() []recipeFunctionCapability {
 		function("bytes_find_fold_ascii", "any", arg("value", "bytes"), arg("needle", "bytes")),
 		function("decimal_parse", "any", arg("canonical_decimal", "bytes")),
 		function("decimal_format", "text", arg("value", "uint")),
+		function("text_concat", "text", arg("left", "text"), arg("right", "text")),
 		function("media_type", "any", arg("content_type", "text", "bytes")),
 		function("destination", "object", arg("script", "bytes")), function("retains", "bool", arg("height", "uint"), arg("script", "bytes")),
 		function("payment_destination", "object", arg("script", "bytes")),

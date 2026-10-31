@@ -760,7 +760,11 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 			}
 			if resolved.Definition.Storage == recipeTablesStorage {
 				for _, lookup := range resolved.Definition.Lookups {
-					q.Dependencies = append(q.Dependencies, indexRunDependency{Index: lookup.Source, Kind: "point_source", State: "required_on_read", Reason: fmt.Sprintf("%s reads %s through %s at explicitly requested heights; complete authenticated facts are retained with the child. Missing bytes wait, and no producer is started.", lookup.Name, lookup.Type, lookup.Provider)})
+					reason := fmt.Sprintf("%s reads %s through %s at explicitly requested heights; complete authenticated facts are retained with the child. Missing bytes wait, and no producer is started.", lookup.Name, lookup.Type, lookup.Provider)
+					if lookup.Source == "bitcoin.inscription_parent" {
+						reason = fmt.Sprintf("%s replays declared inscription parents through %s. On use it requires that provider's complete selected genesis prefix through the child block and may audit that prefix or scan the parent-to-child interval. Checked receipts, raw proof blocks and local scan attestations are retained with this recipe; no producer is started.", lookup.Name, lookup.Provider)
+					}
+					q.Dependencies = append(q.Dependencies, indexRunDependency{Index: lookup.Source, Kind: "point_source", State: "required_on_read", Reason: reason})
 				}
 			}
 			if p.TargetHeight >= 0 && recipeStoreHashValid(p.TargetHash) {

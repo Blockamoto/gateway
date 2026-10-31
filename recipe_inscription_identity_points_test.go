@@ -38,7 +38,7 @@ func recipeIdentityPointFixture(t *testing.T) (*app, blockView, inscriptionBlock
 	}
 	d := recipeTablesTestProgram(t, "identity-point", block.Height, true).definition
 	d.Source = "bitcoin.reveal"
-	d.Lookups = recipeTablePointLookupBindings()[1:]
+	d.Lookups = recipeTablePointLookupBindings()[1:2]
 	reader, err := newRecipeTablePointLookups(a, d, owned)
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestRecipeInscriptionIdentityPointPublicOwnsIdentityAndAbsence(t *testing.T
 	key := inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height)
 	d := recipeTablesTestProgram(t, "identity-public", block.Height, true).definition
 	d.Source = "bitcoin.reveal"
-	d.Lookups = recipeTablePointLookupBindings()[1:]
+	d.Lookups = recipeTablePointLookupBindings()[1:2]
 	program := recipeOrderedProgram{Steps: []recipeOrderedInstruction{{Op: "for_events", Body: []recipeOrderedInstruction{{Op: "read", Name: "identity", Table: d.Lookups[0].Name, Key: roLit(rovText(key))}, {Op: "put", Table: "counts", Key: roLit(rovText("identity")), Expr: roVar("identity")}, {Op: "read", Name: "absent", Table: d.Lookups[0].Name, Key: roLit(rovText("4294967295i4294967295." + strconv.FormatInt(block.Height, 10)))}}}}}
 	d.Ordered, _ = recipeOrderedProgramJSON(program)
 	p, err := compileRecipe(d)

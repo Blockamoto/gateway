@@ -14,7 +14,7 @@ import (
 const recipeOrderedSparseStorage = "rows.json.v1"
 
 func recipeSparseSource(source string) bool {
-	return source == "bitcoin.reveal" || source == "bitcoin.transaction" || source == "bitcoin.ordered"
+	return source == "bitcoin.reveal" || source == "bitcoin.transaction" || source == "bitcoin.ordered" || recipeWholeBlockSource(source)
 }
 
 func compileOrderedSparseRecipe(d recipeDefinition) (*recipeProgram, error) {
@@ -52,7 +52,11 @@ func compileOrderedSparseRecipe(d recipeDefinition) (*recipeProgram, error) {
 		return nil, err
 	}
 	fields := map[string]bool{}
-	for _, field := range recipeOrderedSourceFields() {
+	sourceFields := recipeOrderedSourceFields()
+	if recipeWholeBlockSource(d.Source) {
+		sourceFields = recipeBlockSourceFields(d.Source)
+	}
+	for _, field := range sourceFields {
 		fields[field.Path[0]] = true
 	}
 	var expression func(recipeOrderedExpr) error

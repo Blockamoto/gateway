@@ -50,6 +50,7 @@ type blockView struct {
 	// Owned immutable serialized evidence; never exposed through JSON. Each
 	// successful parser call copies its input so providers cannot mutate it.
 	verifiedRaw        []byte
+	verifiedHeader     []byte // header-only recipe input; never complete body evidence
 	verifiedRawProof   *verifiedBlockBytes
 	Evidence           *resourceEvidence `json:"evidence,omitempty"`
 	Coordinate         string            `json:"coordinate,omitempty"`

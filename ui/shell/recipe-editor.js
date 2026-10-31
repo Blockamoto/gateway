@@ -203,6 +203,8 @@
     q('reset').addEventListener('click',()=>{ cancelImport(); revision++; base=null; model=initial(); showModel(); });
     q('newTables')?.addEventListener('click',()=>{cancelImport();revision++;base=null;model=global.GatewayOrderedRecipeEditor.initialTables();showModel();});
     q('newReveals')?.addEventListener('click',()=>{cancelImport();revision++;base=null;model=global.GatewayOrderedRecipeEditor.initialReveals();showModel();});
+    for(const [name,starter] of [['newHeaders','initialHeaders'],['newBlocks','initialBlocks']])q(name)?.addEventListener('click',()=>{cancelImport();revision++;base=null;model=global.GatewayOrderedRecipeEditor[starter]();showModel();});
+    for(const [name,starter] of [['newHeaders','initialHeaders'],['newBlocks','initialBlocks']])q(name)?.addEventListener('click',()=>{cancelImport();revision++;base=null;model=global.GatewayOrderedRecipeEditor[starter]();showModel();});
     q('import').addEventListener('change',async event=>{
       const file=event.target.files?.[0]; if (!file) return; const started=++revision, epoch=++importEpoch;
       if (file.size>1024*1024) { importing=false; paintBusy(); status.textContent='Import is limited to 1 MiB.'; event.target.value=''; return; }
@@ -266,7 +268,7 @@
     parentChoice.addEventListener('change',async()=>{
       const id=parentChoice.value,ticket=++parentEpoch,started=revision;clearParent();if(!id){parentStatus.textContent='Choose a saved parent.';return;}parentStatus.textContent='Reading immutable parent definition…';
       try{const v=await request('?id='+encodeURIComponent(id));if(ticket!==parentEpoch||parentChoice.value!==id)return;if(started!==revision){parentStatus.textContent='Draft changed; select the parent again.';return;}
-        const d=v?.recipe;if(!v?.validated||d?.id!==id||!['bitcoin.reveal','bitcoin.transaction','bitcoin.ordered'].includes(d.source)||d.history!=='sparse'||(d.dependencies!=null&&(!Array.isArray(d.dependencies)||d.dependencies.length))||!Array.isArray(d.exports)||!d.exports.length||!(/^[0-9a-f]{64}$/.test(v.revision||'')&&/^[0-9a-f]{64}$/.test(v.semantic_hash||'')))throw new Error('No validated independent same-block exports are available.');
+        const d=v?.recipe;if(!v?.validated||d?.id!==id||!['bitcoin.reveal','bitcoin.transaction','bitcoin.ordered','bitcoin.header','bitcoin.block'].includes(d.source)||d.history!=='sparse'||(d.dependencies!=null&&(!Array.isArray(d.dependencies)||d.dependencies.length))||!Array.isArray(d.exports)||!d.exports.length||!(/^[0-9a-f]{64}$/.test(v.revision||'')&&/^[0-9a-f]{64}$/.test(v.semantic_hash||'')))throw new Error('No validated independent same-block exports are available.');
         const exports=d.exports.filter(e=>e?.kind==='same_block'&&['text','bool','integer','null'].includes(e.type)&&typeof e.name==='string'&&e.name);if(!exports.length)throw new Error('No supported same-block exports are available.');
         parentSnapshot={id,revision:v.revision,semanticHash:v.semantic_hash,exports};parentExportChoice.replaceChildren(option('','Choose export'),...exports.map(e=>option(e.name,e.name+' · '+e.type+' · '+e.table+'.'+e.column)));parentStatus.textContent='Choose an export, then use it to pin this exact revision. Parent coverage is checked during a reviewed run; saved-only parents are not started automatically.';
       }catch(e){if(ticket===parentEpoch&&started===revision&&parentChoice.value===id)parentStatus.textContent='Parent: '+e.message;}

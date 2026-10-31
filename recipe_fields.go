@@ -20,6 +20,9 @@ type recipeFieldCapability struct {
 }
 
 func recipeSourceFields(source string) []recipeFieldCapability {
+	if recipeWholeBlockSource(source) {
+		return recipeBlockSourceFields(source)
+	}
 	if source == recipeSatSource {
 		return recipeSatSourceFields()
 	}

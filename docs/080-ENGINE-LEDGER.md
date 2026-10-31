@@ -1054,3 +1054,28 @@ recipes, remaining retained-layer mapping, final portable preview and visible
 acceptance remain open. See `080-NATIVE-BITMAP-PARCELS.md`.
 Two further unchanged Live runs passed in 22.056 seconds. The production build
 passed (25,792,512 bytes).
+
+### 2026-10-31: independent header and complete-block recipe sources
+
+`bitcoin.header` and `bitcoin.block` expose one exact typed event per selected
+height. Actual header and Raw block documents execute through the common
+interpreter and sparse spool. Header-only coordinated work uses local selected
+headers without acquiring bodies, extracting inscriptions or requiring a UTXO
+prefix. Body cohorts can share one independently parsed owned source and record
+its verification in the existing counters. Header carriers cannot satisfy a
+body-consuming recipe. Saved output bytes and coverage remain independent of
+native Raw retention.
+
+The seven-source catalogue and guided builder expose both contracts, with
+header/Raw starters, typed expressions, output declarations and JSON round-trip.
+Authentic genesis/block-1 header and owned Raw checks pass in 3.543 seconds.
+The wider source/registry/coordinator/Live suite passed 26 checks without skips
+or failures in 25.906 seconds; the audit is
+`gateway-080-whole-source-regression.jsonl`. Guided unit, headless narrow DOM and
+workspace checks pass. See `080-HEADER-BLOCK-SOURCES.md`.
+
+Native header/Raw writers still need their JSON codec integration and frozen
+equivalence audit. Remaining retained-layer mapping, final portable preview and
+visible browser acceptance remain open; this source increment does not close
+those requirements.
+The whole-source production build passed (25,814,528 bytes).

@@ -1,0 +1,77 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "blocks",
+  "name": "Verified Raw blocks",
+  "source": "bitcoin.block",
+  "origin": 0,
+  "history": "sparse",
+  "storage": "rows.json.v1",
+  "dependencies": [],
+  "tables": [
+    {
+      "name": "blocks",
+      "key": "ref"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "emit",
+            "table": "blocks",
+            "key": {
+              "call": "decimal_format",
+              "args": [
+                {
+                  "field": "height"
+                }
+              ]
+            },
+            "expr": {
+              "object": {
+                "ref": {
+                  "call": "decimal_format",
+                  "args": [
+                    {
+                      "field": "height"
+                    }
+                  ]
+                },
+                "height": {
+                  "field": "height"
+                },
+                "block": {
+                  "field": "block"
+                },
+                "raw_header": {
+                  "field": "raw_header"
+                },
+                "raw_block": {
+                  "field": "raw_block"
+                },
+                "body_sha256": {
+                  "field": "body_sha256"
+                },
+                "transaction_count": {
+                  "field": "transaction_count"
+                },
+                "serialized_bytes": {
+                  "field": "serialized_bytes"
+                },
+                "stripped_bytes": {
+                  "field": "stripped_bytes"
+                },
+                "weight": {
+                  "field": "weight"
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

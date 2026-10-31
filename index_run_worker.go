@@ -68,6 +68,10 @@ type indexRunConsumer struct {
 	parcelSourceRetryAt      time.Time
 }
 
+func (c *indexRunConsumer) headerOnlyRecipe() bool {
+	return c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.Source == recipeHeaderSource
+}
+
 // A retry is scheduled only when a proof reader failed to obtain exact source
 // bytes. The flag survives errors converted to unresolved proof descriptions.
 type parcelSourceMissingKey079 struct{}
@@ -2038,7 +2042,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		// Do not route it through load(), even when the body is unavailable.
 		rawRequired := false
 		for _, i := range eligible {
-			if nexts[i] == h && (!bitmapConsumerID(consumers[i].selection.Index) || bitmapConsumerKind(consumers[i].selection.Index) != "chain") {
+			if nexts[i] == h && !consumers[i].headerOnlyRecipe() && (!bitmapConsumerID(consumers[i].selection.Index) || bitmapConsumerKind(consumers[i].selection.Index) != "chain") {
 				rawRequired = true
 			}
 		}
@@ -2049,8 +2053,9 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					continue
 				}
 				c := consumers[i]
+				headerOnly := c.headerOnlyRecipe()
 				consumer, ok := c.external.(indexRunOutcomeConsumer)
-				if !ok {
+				if !ok && !headerOnly {
 					c.progress.State = "failed"
 					c.progress.Reason = "Outcome-only consumer adapter unavailable"
 					continue
@@ -2076,9 +2081,26 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					}
 					return nil
 				})
-				counts.OutcomeReads++
 				started := time.Now()
-				err := consumer.ApplyRetainedOutcome(publishCtx, h)
+				var err error
+				if headerOnly {
+					counts.SourceReads++
+					var headerBlock blockView
+					headerBlock, err = a.recipeHeaderRunBlock(publishCtx, h)
+					if err == nil && headerBlock.Hash != expected {
+						err = satPublicationAnchorError077{fmt.Errorf("selected header changed before recipe execution")}
+					}
+					if err == nil {
+						if c.recipe == nil || c.recipeWork == nil {
+							err = fmt.Errorf("header recipe work unavailable")
+						} else {
+							err = c.recipe.Apply(publishCtx, *c.recipeWork, headerBlock, nil)
+						}
+					}
+				} else {
+					counts.OutcomeReads++
+					err = consumer.ApplyRetainedOutcome(publishCtx, h)
+				}
 				counts.ApplyMilliseconds += time.Since(started).Milliseconds()
 				if err != nil {
 					c.progress.State = "failed"
@@ -2107,9 +2129,14 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					c.progress.Reason = err.Error()
 					indexRunMarkInterrupted(ctx, err, &c.progress)
 				} else {
-					counts.ChainSteps++
+					if !headerOnly {
+						counts.ChainSteps++
+					}
 					c.progress.AddedBlocks++
 					c.progress.Height = h
+					if headerOnly {
+						c.progress.BlockHash = expected
+					}
 					next := h + 1
 					c.progress.NextRequiredHeight = &next
 					c.progress.Reason = ""
@@ -2245,7 +2272,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		owners := map[string]bool{}
 		for _, i := range eligible {
 			c := consumers[i]
-			if nexts[i] == h && c.selection.Recipe && c.progress.Recipe != nil && (c.progress.Recipe.Source == "bitcoin.ordered" || c.progress.Recipe.History == "ordered" && recipePrefixSource(c.progress.Recipe.Source)) {
+			if nexts[i] == h && c.selection.Recipe && c.progress.Recipe != nil && (c.progress.Recipe.Source == "bitcoin.ordered" || c.progress.Recipe.Source == recipeBlockSource || c.progress.Recipe.History == "ordered" && recipePrefixSource(c.progress.Recipe.Source)) {
 				if !p.orderedAttempted {
 					p.orderedAttempted = true
 					started := time.Now()

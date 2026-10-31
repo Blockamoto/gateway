@@ -61,6 +61,15 @@ func recipeCatalogue() recipeCapabilityCatalogue {
 		}
 	}
 	catalogue.Sources = append(catalogue.Sources, recipeSourceCapability{ID: recipeSatSource, Histories: []string{"ordered"}, Fields: recipeSatSourceFields(), Steps: recipeOrderedSteps(), Functions: recipeOrderedFunctions(), StateContracts: []string{recipeSatStorage}, Events: []string{"block_begin", "tx_begin", "input", "inscription", "output", "tx_end"}})
+	for _, source := range []string{recipeHeaderSource, recipeBlockSource} {
+		event, profile := "header", recipeHeaderSourceProfile
+		if source == recipeBlockSource {
+			event, profile = "block", recipeBlockSourceProfile
+		}
+		steps := []string{"for_events", "for_range", "let", "if", "require", "emit"}
+		fields := recipeBlockSourceFields(source)
+		catalogue.Sources = append(catalogue.Sources, recipeSourceCapability{ID: source, Histories: []string{"sparse"}, Fields: fields, Steps: steps, Functions: recipeOrderedFunctions(), StateContracts: []string{recipeOrderedSparseStorage}, Events: []string{event}, StateSources: []recipeSourceStateCapability{{History: "sparse", Storage: recipeOrderedSparseStorage, Profile: profile, Fields: fields, Functions: recipeOrderedFunctions(), Steps: steps, Events: []string{event}}}})
+	}
 	return catalogue
 }
 

@@ -4,6 +4,10 @@
   const object=value=>!!value&&typeof value==='object'&&!Array.isArray(value);
   const keys=(value,allowed)=>object(value)&&Object.keys(value).every(key=>allowed.includes(key));
   const fields=['kind','block','txid','height','tx_index','output_count','coinbase','prev_txid','input_ref','fact_page','prev_vout','input_index','vout','value','fact_row','script'];
+  const headerFields=['kind','height','block','previous_block','merkle_root','version','time','bits','nonce','raw_header'];
+  const blockFields=[...headerFields,'body_sha256','transaction_count','serialized_bytes','stripped_bytes','weight','raw_block'];
+  const wholeSource=source=>['bitcoin.header','bitcoin.block'].includes(source);
+  const wholeFields=source=>source==='bitcoin.header'?headerFields:blockFields;
   const fifoFields=[...fields,'id','unbound','has_pointer','input_value','input_offset','pointer','outputs_value'];
   const projectionFields=['block','height','tx_index','vout','value','script','add'];
   const tableFields=fields.filter(name=>!['fact_page','fact_row'].includes(name));
@@ -53,10 +57,11 @@
   }
   function toGuided(definition){
     const d=definition;
-    if(!keys(d,['format','version','id','name','source','origin','history','storage','dependencies','lookups','exports','tables','ordered'])||d.format!=='gateway-recipe'||d.version!==1||typeof d.id!=='string'||typeof d.name!=='string'||!['bitcoin.ordered','bitcoin.reveal','dependency.utxo','bitcoin.fifo'].includes(d.source)||!Number.isSafeInteger(d.origin)||d.origin<0)return null;
+    if(!keys(d,['format','version','id','name','source','origin','history','storage','dependencies','lookups','exports','tables','ordered'])||d.format!=='gateway-recipe'||d.version!==1||typeof d.id!=='string'||typeof d.name!=='string'||!['bitcoin.ordered','bitcoin.reveal','dependency.utxo','bitcoin.fifo','bitcoin.header','bitcoin.block'].includes(d.source)||!Number.isSafeInteger(d.origin)||d.origin<0)return null;
     const projection=d.source==='dependency.utxo'&&d.history==='projection'&&d.storage==='bitcoin.address.cow.v1'&&d.origin===0;
     const fifo=d.source==='bitcoin.fifo'&&d.history==='ordered'&&d.storage==='bitcoin.sats.cow.v1'&&d.origin===0;
     const sparse=d.history==='sparse'&&d.storage==='rows.json.v1';
+    if(wholeSource(d.source)&&!sparse)return null;
     const generic=['bitcoin.ordered','bitcoin.reveal'].includes(d.source)&&d.history==='ordered'&&d.storage==='tables.cow.v1';
     if(d.source==='bitcoin.reveal'&&!generic)return null;
     if(d.source==='dependency.utxo'&&!projection||d.source==='bitcoin.fifo'&&!fifo||!generic&&!fifo&&!projection&&!sparse&&(d.origin!==0||d.history!=='ordered'||d.storage!=='bitcoin.utxo.cow.v2'))return null;
@@ -89,7 +94,7 @@
       if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length))return null;
       if(d.tables.length!==2||!d.tables.every(t=>keys(t,['name','key'])&&((t.name==='coins'&&t.key==='outpoint')||(t.name==='counts'&&t.key==='txid'))))return null;
     }
-    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{output:sparse||projection,lookups:lookups.length>0,fifo,generic,fields:projection?projectionFields:fifo?fifoFields:generic?(d.source==='bitcoin.reveal'?revealFields:tableFields):fields,tables:d.tables.map(t=>t.name),stateTables:sparse?lookups.map(value=>value.name):fifo||generic?d.tables.map(t=>t.name):undefined,readTables:generic?[...d.tables.map(t=>t.name),...(d.dependencies||[]).map(dep=>dep.name),...lookups.map(value=>value.name)]:undefined,emitTables:fifo?['identities','lost','incarnations']:undefined})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
+    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{output:sparse||projection,lookups:lookups.length>0,fifo,generic,fields:projection?projectionFields:fifo?fifoFields:generic?(d.source==='bitcoin.reveal'?revealFields:tableFields):wholeSource(d.source)?wholeFields(d.source):fields,tables:d.tables.map(t=>t.name),stateTables:sparse?lookups.map(value=>value.name):fifo||generic?d.tables.map(t=>t.name):undefined,readTables:generic?[...d.tables.map(t=>t.name),...(d.dependencies||[]).map(dep=>dep.name),...lookups.map(value=>value.name)]:undefined,emitTables:fifo?['identities','lost','incarnations']:undefined})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
     return copy(d);
   }
   function fromGuided(definition){
@@ -99,6 +104,8 @@
     return result;
   }
   const missing=()=>({literal:{kind:'missing'}});
+  function initialWholeSource(source){const header=source==='bitcoin.header',table=header?'headers':'blocks',key={call:'decimal_format',args:[{field:'height'}]},names=header?['height','block','previous_block','merkle_root','version','time','bits','nonce','raw_header']:['height','block','raw_header','raw_block','body_sha256','transaction_count','serialized_bytes','stripped_bytes','weight'];return {format:'gateway-recipe',version:1,id:header?'my-header-history':'my-raw-blocks',name:header?'My header history':'My Raw blocks',source,origin:0,history:'sparse',storage:'rows.json.v1',dependencies:[],tables:[{name:table,key:'ref'}],ordered:{steps:[{op:'for_events',body:[{op:'emit',table,key,expr:{object:{ref:key,...Object.fromEntries(names.map(name=>[name,{field:name}]))}}}]}]}};}
+  const initialHeaders=()=>initialWholeSource('bitcoin.header'),initialBlocks=()=>initialWholeSource('bitcoin.block');
   function initialReveals(){const d=initialTables();Object.assign(d,{id:'my-reveal-count',name:'Reveal count from inscription origin',source:'bitcoin.reveal',origin:767430});d.ordered.steps[0].body=d.ordered.steps[0].body[0].body;return d;}
   function initialTables(){
     const literal=text=>({literal:{kind:'text',text}}),key=literal('total');
@@ -173,7 +180,7 @@
         }));
         if(mode==='field'){
           const declared=stateSource()?.fields||sourceCapability()?.fields;
-          const available=Array.isArray(declared)?declared.filter(f=>Array.isArray(f.path)&&f.path.length===1).map(f=>f.path[0]):model?.history==='projection'?projectionFields:fifo()?fifoFields:generic()?stateFields():fields;
+          const available=Array.isArray(declared)?declared.filter(f=>Array.isArray(f.path)&&f.path.length===1).map(f=>f.path[0]):model?.history==='projection'?projectionFields:fifo()?fifoFields:generic()?stateFields():wholeSource(model.source)?wholeFields(model.source):fields;
           host.append(select('Source field',generic()?available.filter(name=>stateFields().includes(name)):available,expr.field,value=>{expr.field=value;}));
         }
         if(mode==='var')host.append(textInput('Variable name',expr.var,value=>{expr.var=value;}));
@@ -314,8 +321,8 @@
     }
     function render(){root.replaceChildren();removalChecks=[];if(!model)return;const legend=el('legend',model.history==='projection'?'Guided checkpoint draft':'Guided ordered draft'),header=el('div');header.className='recipe-fields';
       header.append(textInput('Ordered recipe ID',model.id,value=>{model.id=value;}),textInput('Ordered recipe name',model.name,value=>{model.name=value;}));
-      root.append(legend,el('p',model.history==='projection'?'Derive current destination members and exclusion counts from the declared complete Coin snapshot, then apply checked deltas. Every source Coin must be accounted for. Source selection does not start its writer.':fifo()?'Process ordinary transactions in Bitcoin order, then allocate subsidy and their fees to coinbase outputs. Compose FIFO intervals, lost sats and inscription identities. The outputs table stores current state; the optional history table retains original output ranges.':generic()?'Process source events continuously from the declared origin. Inscription reveals expose their own body and declared content type as exact bytes. Read, write or delete exact typed values in your named tables. Expand instructions to compose counters, branches and keyed state.':model.history==='sparse'?'Project complete transaction events into per-block rows from the chosen origin. Empty evaluated blocks are retained; no UTXO prefix is required.':'Process transaction events in order from genesis. Coins are keyed by outpoint; counts by transaction ID. Expand an instruction to edit its expressions, branches or nested instructions.'),header);
-      if(model.history==='sparse'){header.append(textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));declarationsEditor(root);sourceLookupsEditor(root);}
+      root.append(legend,el('p',model.history==='projection'?'Derive current destination members and exclusion counts from the declared complete Coin snapshot, then apply checked deltas. Every source Coin must be accounted for. Source selection does not start its writer.':fifo()?'Process ordinary transactions in Bitcoin order, then allocate subsidy and their fees to coinbase outputs. Compose FIFO intervals, lost sats and inscription identities. The outputs table stores current state; the optional history table retains original output ranges.':generic()?'Process source events continuously from the declared origin. Inscription reveals expose their own body and declared content type as exact bytes. Read, write or delete exact typed values in your named tables. Expand instructions to compose counters, branches and keyed state.':model.source==='bitcoin.header'?'Project selected local headers into independent rows. Header-only runs use no block bodies.':model.source==='bitcoin.block'?'Project complete verified block bytes and their checked metadata into independent rows.':model.history==='sparse'?'Project complete transaction events into per-block rows from the chosen origin. Empty evaluated blocks are retained; no UTXO prefix is required.':'Process transaction events in order from genesis. Coins are keyed by outpoint; counts by transaction ID. Expand an instruction to edit its expressions, branches or nested instructions.'),header);
+      if(model.history==='sparse'){header.append(textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));declarationsEditor(root);if(model.source==='bitcoin.ordered')sourceLookupsEditor(root);}
       if(generic()){header.append(select('State source',[['bitcoin.ordered','Bitcoin transaction events'],['bitcoin.reveal','Inscription reveals']],model.source,value=>{model.source=value;render();changed();}),textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));stateTablesEditor(root);tableDependenciesEditor(root);pointLookupsEditor(root);}
       if(model.history==='projection')checkpointParentEditor(root);
       if(fifo())fifoTablesEditor(root);
@@ -323,5 +330,5 @@
     }
     return {load(definition){parentEpoch++;editEpoch++;parentNote='';lookupNote='';model=toGuided(definition);root.hidden=!model;render();return !!model;},definition(){return fromGuided(model);}};
   }
-  global.GatewayOrderedRecipeEditor={toGuided,fromGuided,expressionSupported,valueSupported,instruction,initialTables,initialReveals,mount};
+  global.GatewayOrderedRecipeEditor={toGuided,fromGuided,expressionSupported,valueSupported,instruction,initialTables,initialReveals,initialHeaders,initialBlocks,mount};
 })(typeof window==='undefined'?globalThis:window);

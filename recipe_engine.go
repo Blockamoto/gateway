@@ -184,6 +184,12 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 	if d.Source == "bitcoin.ordered" {
 		return compileOrderedRecipe(d)
 	}
+	if recipeWholeBlockSource(d.Source) {
+		if d.History != "sparse" {
+			return nil, recipeDiagnosticAt("RECIPE_SOURCE_HISTORY", "/history", "header and complete-block projections use sparse history")
+		}
+		return compileOrderedSparseRecipe(d)
+	}
 	if d.Source == "bitcoin.reveal" && d.History == "ordered" {
 		return compileRecipeTablesContract(d)
 	}

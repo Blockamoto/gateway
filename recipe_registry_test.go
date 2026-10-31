@@ -238,7 +238,7 @@ func TestRecipeRegistryCatalogueReadOnly(t *testing.T) {
 		t.Fatalf("catalogue: %d %s", r.Code, r.Body.String())
 	}
 	var c recipeCapabilityCatalogue
-	if err := json.Unmarshal(r.Body.Bytes(), &c); err != nil || c.Version != 1 || len(c.Sources) != 5 || c.Sources[0].ID != "bitcoin.reveal" || c.Sources[3].ID != recipeUTXOProjectionSource || len(c.Functions) == 0 {
+	if err := json.Unmarshal(r.Body.Bytes(), &c); err != nil || c.Version != 1 || len(c.Sources) != 7 || c.Sources[0].ID != "bitcoin.reveal" || c.Sources[3].ID != recipeUTXOProjectionSource || len(c.Functions) == 0 {
 		t.Fatalf("catalogue: %+v %v", c, err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "indexes")); !os.IsNotExist(err) {

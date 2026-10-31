@@ -153,6 +153,17 @@ func recipeUsesProperties(d recipeDefinition) bool {
 func (p *recipeProgram) semanticHash() string {
 	d := p.definition
 	d.ID, d.Name = "", ""
+	if recipeWholeBlockSource(d.Source) {
+		profile := recipeHeaderSourceProfile
+		if d.Source == recipeBlockSource {
+			profile = recipeBlockSourceProfile
+		}
+		return indexDigest(struct {
+			Document, Interpreter, Stream, Source, Physical string
+			Verifier                                        int
+			Definition                                      recipeDefinition
+		}{recipeOrderedDocumentProfile, recipeOrderedProfile, recipeOrderedStreamProfile, profile, recipeOrderedSparseStorage, blockVerifierVersion, d})
+	}
 	if d.Storage == recipeTablesStorage {
 		imports := ""
 		if len(d.Dependencies) > 0 {

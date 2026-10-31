@@ -208,11 +208,17 @@ func (c *recipeSparseConsumer) Apply(ctx context.Context, work recipeConsumerWor
 	if err := c.a.CheckAdmittedRecipeBinding(ctx, c.plan); err != nil {
 		return err
 	}
-	if !integrityVerified(block) {
-		return fmt.Errorf("recipe block is not integrity verified")
-	}
-	if _, _, err := exactVerifiedBlockPayload(block); err != nil {
-		return fmt.Errorf("recipe verified block evidence: %w", err)
+	if c.program.definition.Source == recipeHeaderSource {
+		if _, err := recipeHeaderSourceFromBlock(ctx, block); err != nil {
+			return err
+		}
+	} else {
+		if !integrityVerified(block) {
+			return fmt.Errorf("recipe block is not integrity verified")
+		}
+		if _, _, err := exactVerifiedBlockPayload(block); err != nil {
+			return fmt.Errorf("recipe verified block evidence: %w", err)
+		}
 	}
 
 	spool, err := newRecipeSparseSpool(ctx, c.store.dir, c.program)
@@ -221,7 +227,9 @@ func (c *recipeSparseConsumer) Apply(ctx context.Context, work recipeConsumerWor
 	}
 	defer spool.Close()
 	var sourceLookups *recipeInputCreationLookups
-	if c.program.definition.Source == "bitcoin.ordered" {
+	if recipeWholeBlockSource(c.program.definition.Source) {
+		err = c.program.evaluateBlockSourceInto(ctx, block, spool.Add)
+	} else if c.program.definition.Source == "bitcoin.ordered" {
 		err = c.program.evaluateOrderedSparseWithLookupsInto(ctx, block, func(owned blockView) (*recipeInputCreationLookups, error) {
 			reader, err := newRecipeInputCreationLookups(ctx, c.a, nil, owned, c.program.definition)
 			if err == nil {

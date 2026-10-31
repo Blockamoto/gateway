@@ -8,7 +8,7 @@ A saved definition or graph is not proof of source coverage.
 
 | Family | Native / saved recipe execution | Evidence and remaining boundary |
 | --- | --- | --- |
-| Bitcoin headers and Raw block retention | Existing native paths preserved; actual compositional recipe migration remains open. | Source admission, selected-header fences and retained body codecs stay in place. Retention/source recipe controls still need integration. |
+| Bitcoin headers and Raw block retention | Saved/custom header and complete-block sources execute actual typed JSON projections. Native writer composition remains open. | `080-HEADER-BLOCK-SOURCES.md`; header-only runs use selected local headers without body acquisition, while Raw rows own exact verified bytes. Public finite execution, guided starters and shared coordinator regressions pass. Native retention/source writer projections and their equivalence audits still need integration. |
 | TX ID Locators | Actual native JSON projection and independent saved transaction recipes run through the common engine. | `080-NATIVE-LOCATOR.md`; native reverse lookup retains its physical codec and frozen binding. |
 | Inscriptions Lean / Full / optional and saved conventional IDs | Actual JSON programs control native projections and saved tracks. | `080-NATIVE-INSCRIPTIONS.md`; metadata/Ordprops parsing and same-block dependencies are integrated. Explicit legacy numbering remains a separate open layer. |
 | UTXO Coin state | Actual ordered JSON drives native and saved Coin state. | `080-UTXO-ADAPTER-DECISIONS.md`, `080-ORDERED-PUBLIC-INTEGRATION.md`; native COW/facts/undo, genesis prefix, finite/Live, query, reorg, archive and maintenance are integrated. This fixed Coin contract is not arbitrary table storage. |

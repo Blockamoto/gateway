@@ -1,0 +1,77 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "headers",
+  "name": "Bitcoin selected headers",
+  "source": "bitcoin.header",
+  "origin": 0,
+  "history": "sparse",
+  "storage": "rows.json.v1",
+  "dependencies": [],
+  "tables": [
+    {
+      "name": "headers",
+      "key": "ref"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "emit",
+            "table": "headers",
+            "key": {
+              "call": "decimal_format",
+              "args": [
+                {
+                  "field": "height"
+                }
+              ]
+            },
+            "expr": {
+              "object": {
+                "ref": {
+                  "call": "decimal_format",
+                  "args": [
+                    {
+                      "field": "height"
+                    }
+                  ]
+                },
+                "height": {
+                  "field": "height"
+                },
+                "block": {
+                  "field": "block"
+                },
+                "previous_block": {
+                  "field": "previous_block"
+                },
+                "merkle_root": {
+                  "field": "merkle_root"
+                },
+                "version": {
+                  "field": "version"
+                },
+                "time": {
+                  "field": "time"
+                },
+                "bits": {
+                  "field": "bits"
+                },
+                "nonce": {
+                  "field": "nonce"
+                },
+                "raw_header": {
+                  "field": "raw_header"
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

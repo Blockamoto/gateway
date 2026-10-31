@@ -1158,3 +1158,15 @@ genesis/block-1 profile. Its outcomes are recorded after the corrected build.
 
 The corrected registry/source subset passed in 6.072 seconds. The tracked
 Windows version resource is regenerated for 0.8.0 before the final portable build.
+
+### Working isolated 0.8.0 preview
+
+The corrected clean-source `f60e353` portable build passed its actual process/API
+smoke: header-only block-1 work, shared Raw/fee work, exact saved-parent child,
+prefix reuse, process restart and covered queries. All 89 packaged hashes and
+ZIP payloads match; version resources report 0.8.0 and updates are disabled.
+The tested offline profile is running at `http://127.0.0.1:52108`.
+`080-PREVIEW-VALIDATION.md` records the exact artifact hash, profile, counters,
+commands and preserved boundaries. The final dedicated Chrome tool attempt
+still fails before opening a tab with the kernel-assets Windows path error.
+Visible acceptance remains incomplete; the working process/API preview is ready.

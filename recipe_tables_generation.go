@@ -353,7 +353,7 @@ func (g *recipeTablesGeneration) applyFromToken(ctx context.Context, b blockView
 	defer edit.AbortOrdered()
 	var state recipeOrderedState = edit
 	var imports *recipeTablesImportState
-	if len(g.program.definition.Dependencies) > 0 {
+	if len(g.program.definition.Dependencies)+len(g.program.definition.Lookups) > 0 {
 		sources, _ := ctx.Value(recipeTableDependenciesKey{}).(*recipeTableDependencySet)
 		if err = recipeTablesCheckDependencySet(g.program.definition, sources, b.Height, b.Hash); err != nil {
 			return err

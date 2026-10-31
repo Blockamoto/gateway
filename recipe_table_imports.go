@@ -17,7 +17,7 @@ func recipeTablesCheckLineage(d recipeDefinition, p recipeTablesPoint) error {
 	if p.Imports != "" && !validHash(p.Imports) {
 		return fmt.Errorf("invalid imported fact root")
 	}
-	if len(p.Lineage) != len(d.Dependencies) || len(d.Dependencies) == 0 && p.Imports != "" {
+	if len(p.Lineage) != len(d.Dependencies) || len(d.Dependencies)+len(d.Lookups) == 0 && p.Imports != "" {
 		return fmt.Errorf("checkpoint dependency count changed")
 	}
 	seen := map[string]bool{}
@@ -47,6 +47,16 @@ func recipeTablesCheckDependencySet(d recipeDefinition, s *recipeTableDependency
 			return fmt.Errorf("%w: typed checkpoint input changed", errRecipeDependencyUnavailable)
 		}
 	}
+	if len(d.Lookups) > 0 {
+		if s.lookups == nil || len(s.lookups.declarations) != len(d.Lookups) || s.lookups.block.Height != height || s.lookups.block.Hash != hash {
+			return fmt.Errorf("%w: typed point sources unavailable", errRecipeDependencyUnavailable)
+		}
+		for _, lookup := range d.Lookups {
+			if s.lookups.declarations[lookup.Name] != lookup {
+				return fmt.Errorf("typed point source binding changed")
+			}
+		}
+	}
 	return nil
 }
 
@@ -67,6 +77,9 @@ func (s *recipeTableDependencySet) checkRegistryLocked(ctx context.Context) erro
 		if err != nil || !view.Validated || view.Revision != source.dep.Revision || view.SemanticHash != source.dep.SemanticHash {
 			return fmt.Errorf("%w: imported table revision unavailable", errRecipeDependencyUnavailable)
 		}
+	}
+	if s.lookups != nil {
+		return s.lookups.checkHeadersLocked(ctx)
 	}
 	return nil
 }
@@ -109,6 +122,7 @@ type recipeImportedFact struct {
 	Key      string
 	Value    recipeOrderedValue
 	Checksum string
+	Lookup   *recipeSourceLookup `json:",omitempty"`
 }
 type recipeImportedFactRef struct {
 	Inline json.RawMessage `json:",omitempty"`
@@ -147,7 +161,11 @@ func recipeTablesCloneValue(v recipeOrderedValue) (recipeOrderedValue, error) {
 }
 func recipeImportedFactDigest(f recipeImportedFact) string { f.Checksum = ""; return indexDigest(f) }
 func recipeImportedFactKey(f recipeImportedFact) string {
-	return indexDigest(struct{ Alias, Unit, Key string }{f.Binding.Name, f.Snapshot.Unit, f.Key})
+	alias := f.Binding.Name
+	if f.Lookup != nil {
+		alias = f.Lookup.Name
+	}
+	return indexDigest(struct{ Alias, Unit, Key string }{alias, f.Snapshot.Unit, f.Key})
 }
 func recipeImportedFactPath(root, hash string) string {
 	return filepath.Join(root, "imports", hash[:2], hash+".json")
@@ -175,14 +193,40 @@ func recipeReadImportedFact(ctx context.Context, root, key string, ref recipeImp
 	if uint64(len(raw)) != ref.Bytes || ref.Blob == "" && len(raw) > recipeTablesInlineBytes || json.Unmarshal(raw, &fact) != nil {
 		return fact, fmt.Errorf("imported fact extent or encoding changed")
 	}
-	if fact.Schema != 1 || fact.Checksum != recipeImportedFactDigest(fact) || recipeImportedFactKey(fact) != key || fact.Snapshot.Name != fact.Binding.Name || fact.Snapshot.Instance != fact.Binding.Instance || fact.Snapshot.SemanticHash != fact.Binding.SemanticHash || fact.Snapshot.Height < 0 || !validHash(fact.Snapshot.BlockHash) || !validHash(fact.Snapshot.Unit) || fact.Binding.Coverage != recipeTableSnapshotCoverage || fact.Binding.Type != recipeTableSnapshotType || !recipeStoreHashValid(fact.Binding.Revision) || !recipeStoreHashValid(fact.Binding.SemanticHash) {
+	if fact.Checksum != recipeImportedFactDigest(fact) || recipeImportedFactKey(fact) != key || fact.Snapshot.Height < 0 || !validHash(fact.Snapshot.BlockHash) || !validHash(fact.Snapshot.Unit) {
 		return fact, fmt.Errorf("imported fact binding changed")
 	}
-	if err := recipeStateCheckKey(recipeStateKey{Table: fact.Binding.Export, Key: fact.Key}); err != nil {
+	table := fact.Binding.Export
+	if fact.Lookup != nil {
+		lookup := *fact.Lookup
+		table = lookup.Name
+		if fact.Schema != 2 || fact.Binding != (recipeDependency{}) || fact.Snapshot.Name != lookup.Name || fact.Snapshot.Instance != lookup.Source || fact.Snapshot.SemanticHash != lookup.SemanticHash || fact.Snapshot.Unit != recipeTablePointUnit(lookup, blockView{Height: fact.Snapshot.Height, Hash: fact.Snapshot.BlockHash}) {
+			return fact, fmt.Errorf("owned point fact binding changed")
+		}
+		valid := false
+		for _, binding := range recipeTablePointLookupBindings() {
+			binding.Name = lookup.Name
+			if binding == lookup {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fact, fmt.Errorf("owned point source profile changed")
+		}
+	} else if fact.Schema != 1 || fact.Snapshot.Name != fact.Binding.Name || fact.Snapshot.Instance != fact.Binding.Instance || fact.Snapshot.SemanticHash != fact.Binding.SemanticHash || fact.Binding.Coverage != recipeTableSnapshotCoverage || fact.Binding.Type != recipeTableSnapshotType || !recipeStoreHashValid(fact.Binding.Revision) || !recipeStoreHashValid(fact.Binding.SemanticHash) {
+		return fact, fmt.Errorf("imported checkpoint binding changed")
+	}
+	if err := recipeStateCheckKey(recipeStateKey{Table: table, Key: fact.Key}); err != nil {
 		return fact, err
 	}
 	if err := recipeOrderedCheck(fact.Value, 0); err != nil {
 		return fact, err
+	}
+	if fact.Lookup != nil {
+		if err := recipeCheckTablePointFact(fact); err != nil {
+			return fact, err
+		}
 	}
 	return fact, ctx.Err()
 }
@@ -191,6 +235,7 @@ type recipeTableDependenciesKey struct{}
 type recipeTableDependencySet struct {
 	a       *app
 	sources map[string]*recipeTableDependencySource
+	lookups *recipeTablePointLookups
 }
 
 func (a *app) openRecipeTableDependencies(ctx context.Context, d recipeDefinition, height int64, hash string) (*recipeTableDependencySet, error) {
@@ -248,7 +293,7 @@ func (s *recipeTablesImportState) ReadOrdered(ctx context.Context, key recipeSta
 	if s.own.tables[key.Table] {
 		return s.own.ReadOrdered(ctx, key)
 	}
-	if s.sources == nil || s.sources.sources[key.Table] == nil {
+	if s.sources == nil || s.sources.sources[key.Table] == nil && (s.sources.lookups == nil || s.sources.lookups.declarations[key.Table].Name == "") {
 		return recipeOrderedValue{}, fmt.Errorf("undeclared imported table")
 	}
 	s.own.ops++
@@ -259,7 +304,15 @@ func (s *recipeTablesImportState) ReadOrdered(ctx context.Context, key recipeSta
 		return recipeOrderedValue{}, err
 	}
 	source := s.sources.sources[key.Table]
-	fact := recipeImportedFact{Schema: 1, Binding: source.dep, Snapshot: source.receipt, Key: key.Key}
+	fact := recipeImportedFact{Schema: 1, Key: key.Key}
+	if source != nil {
+		fact.Binding, fact.Snapshot = source.dep, source.receipt
+	} else {
+		lookup := s.sources.lookups.declarations[key.Table]
+		fact.Schema, fact.Lookup = 2, &lookup
+		fact.Snapshot = recipeDependencyReceipt{Name: lookup.Name, Instance: lookup.Source, SemanticHash: lookup.SemanticHash, Height: s.sources.lookups.block.Height, BlockHash: s.sources.lookups.block.Hash, Unit: recipeTablePointUnit(lookup, s.sources.lookups.block)}
+	}
+	expected := fact
 	physical := recipeImportedFactKey(fact)
 	if value, ok := s.cache[physical]; ok {
 		if err := s.own.spend(s.sizes[physical]); err != nil {
@@ -281,7 +334,11 @@ func (s *recipeTablesImportState) ReadOrdered(ctx context.Context, key recipeSta
 			return recipeOrderedValue{}, err
 		}
 	} else {
-		fact.Value, err = source.read(ctx, key.Key)
+		if source != nil {
+			fact.Value, err = source.read(ctx, key.Key)
+		} else {
+			fact.Value, err = s.sources.lookups.read(ctx, *fact.Lookup, key.Key)
+		}
 		if err != nil {
 			return recipeOrderedValue{}, err
 		}
@@ -307,7 +364,8 @@ func (s *recipeTablesImportState) ReadOrdered(ctx context.Context, key recipeSta
 			return recipeOrderedValue{}, err
 		}
 	}
-	if fact.Binding != source.dep || fact.Snapshot != source.receipt || fact.Key != key.Key {
+	lookupMatches := fact.Lookup == nil && expected.Lookup == nil || fact.Lookup != nil && expected.Lookup != nil && *fact.Lookup == *expected.Lookup
+	if fact.Binding != expected.Binding || fact.Snapshot != expected.Snapshot || fact.Key != key.Key || !lookupMatches {
 		return recipeOrderedValue{}, fmt.Errorf("imported point identity differs")
 	}
 	if err := s.own.spend(int(ref.Bytes) + 128 + len(key.Key)); err != nil {

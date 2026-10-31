@@ -874,3 +874,31 @@ The audit is `gateway-080-typed-lists-regression.jsonl`. See
 acceptance remain open.
 
 The typed-list production build passed (25,241,088 bytes).
+
+### 2026-10-31: authenticated block-context point sources
+
+Ordered table recipes can pin an installed `bitcoin.block_context` source and
+read a canonical nonfuture height. The returned height, selected hash and exact
+transaction count come from the current owned block or independently verified
+historical bytes. Base acquisition suppresses Raw retention, incidental index
+fanout and locator repair. Unavailable bytes wait; a point fact grants no prefix
+coverage and starts no producer.
+
+Used values become owned source facts in the child's imported COW root, with
+an exact binding, child snapshot, key, value and checksum. Historical source
+headers are rechecked within the final publication fence. Existing checkpoint
+facts/definitions retain their old encoding and semantic binding. The new
+source-fact schema/profile applies only to definitions declaring these inputs.
+See `080-BLOCK-CONTEXT-POINTS.md` for local-evidence limits.
+
+The wider table/TXIO source-lookup/catalogue/District suite passed 47 checks in
+174.438 seconds, including real TXIO lifecycle compatibility. New checks cover
+current/historical counts, read-only file preservation, unavailable bytes,
+unsupported/future keys and bindings, cancellation, public saved execution and
+owned query facts, native-writer isolation and stale historical-header rejection.
+The audit is `gateway-080-point-lookups-regression.jsonl`.
+Guided/headless checks passed for installed pins, nested aliases, read-only
+targets, height key defaults, live removal protection and narrow layout; the
+wider index workspace also passed. Parcel identity/provenance point readers,
+actual Parcel JSON and complete visible preview acceptance remain open.
+The production build passed (25,282,560 bytes).

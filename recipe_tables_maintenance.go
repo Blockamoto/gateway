@@ -67,10 +67,19 @@ func (g *recipeTablesGeneration) maintain(ctx context.Context) error {
 			return fmt.Errorf("%w: required imported fact (%v)", ErrRecipeTablesCorrupt, err)
 		}
 		matched := false
-		for _, dep := range g.program.definition.Dependencies {
-			if fact.Binding == dep {
-				matched = true
-				break
+		if fact.Lookup != nil {
+			for _, lookup := range g.program.definition.Lookups {
+				if *fact.Lookup == lookup {
+					matched = true
+					break
+				}
+			}
+		} else {
+			for _, dep := range g.program.definition.Dependencies {
+				if fact.Binding == dep {
+					matched = true
+					break
+				}
 			}
 		}
 		if !matched {

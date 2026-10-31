@@ -390,10 +390,16 @@ func (c *recipeOrderedRunConsumer) Apply(ctx context.Context, work recipeConsume
 	}
 	checked.Verification.HeaderChainMatch = true
 	var dependencies *recipeTableDependencySet
-	if tables, ok := c.generation.(*recipeTablesGeneration); ok && len(tables.program.definition.Dependencies) > 0 {
+	if tables, ok := c.generation.(*recipeTablesGeneration); ok && len(tables.program.definition.Dependencies)+len(tables.program.definition.Lookups) > 0 {
 		dependencies, err = c.a.openRecipeTableDependencies(ctx, tables.program.definition, checked.Height, checked.Hash)
 		if err != nil {
 			return err
+		}
+		if len(tables.program.definition.Lookups) > 0 {
+			dependencies.lookups, err = newRecipeTablePointLookups(c.a, tables.program.definition, source)
+			if err != nil {
+				return err
+			}
 		}
 		ctx = context.WithValue(ctx, recipeTableDependenciesKey{}, dependencies)
 	}

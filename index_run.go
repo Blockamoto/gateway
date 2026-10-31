@@ -758,6 +758,11 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 					}
 				}
 			}
+			if resolved.Definition.Storage == recipeTablesStorage {
+				for _, lookup := range resolved.Definition.Lookups {
+					q.Dependencies = append(q.Dependencies, indexRunDependency{Index: lookup.Source, Kind: "point_source", State: "required_on_read", Reason: fmt.Sprintf("%s reads %s through %s at explicitly requested heights; complete authenticated facts are retained with the child. Missing bytes wait, and no producer is started.", lookup.Name, lookup.Type, lookup.Provider)})
+				}
+			}
 			if p.TargetHeight >= 0 && recipeStoreHashValid(p.TargetHash) {
 				binding, e := recipeAdmissionBuild(resolved, req, p.TargetHeight, p.TargetHash)
 				if e != nil {

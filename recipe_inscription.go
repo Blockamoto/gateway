@@ -158,6 +158,9 @@ func (p *recipeProgram) semanticHash() string {
 		if len(d.Dependencies) > 0 {
 			imports = "gateway-typed-checkpoint-owned-point-facts-v1"
 		}
+		if len(d.Lookups) > 0 {
+			imports = "gateway-typed-checkpoint-and-source-point-facts-v1"
+		}
 		return indexDigest(struct {
 			Document, Interpreter, Stream, Source, Physical string
 			Definition                                      recipeDefinition

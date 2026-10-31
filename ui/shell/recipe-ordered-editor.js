@@ -69,9 +69,9 @@
       if(!Array.isArray(deps)||deps.length>16||new Set(deps.map(dep=>dep.name)).size!==deps.length||!deps.every(dep=>keys(dep,['name','scope','instance','revision','semantic_hash','export','coverage','type'])&&id(dep.name)&&id(dep.instance)&&dep.instance!==d.id&&!d.tables?.some(table=>table.name===dep.name)&&['','saved','builtin'].includes(dep.scope||'')&&(dep.scope!=='builtin'||dep.instance==='bitmap-districts-standard-v1')&&hash(dep.revision)&&hash(dep.semantic_hash)&&typeof dep.export==='string'&&new TextEncoder().encode(dep.export).length>0&&new TextEncoder().encode(dep.export).length<=256&&!dep.export.startsWith('__gateway_')&&dep.coverage==='snapshot'&&dep.type==='typed'))return null;
     }else if(Object.hasOwn(d,'dependencies')&&(!Array.isArray(d.dependencies)||d.dependencies.length))return null;
     if(!Array.isArray(d.tables)||!d.tables.length||new Set(d.tables.map(t=>t.name)).size!==d.tables.length)return null;
-    if(Object.hasOwn(d,'lookups')&&(!Array.isArray(d.lookups)||d.lookups.length>16||d.lookups.length&&!sparse))return null;
+    if(Object.hasOwn(d,'lookups')&&(!Array.isArray(d.lookups)||d.lookups.length>16||d.lookups.length&&!sparse&&!generic))return null;
     const lookups=d.lookups||[],hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
-    if(new Set(lookups.map(value=>value.name)).size!==lookups.length||!lookups.every(value=>keys(value,['name','source','provider','revision','semantic_hash','key','type'])&&/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value.name)&&!d.tables.some(table=>table.name===value.name)&&value.source==='bitcoin.input_creation'&&lookupProviders.some(([provider])=>provider===value.provider)&&hash(value.revision)&&hash(value.semantic_hash)&&value.key==='input_ref'&&value.type==='creation_evidence')||lookups.length&&(d.exports||[]).length)return null;
+    if(new Set(lookups.map(value=>value.name)).size!==lookups.length||!lookups.every(value=>keys(value,['name','source','provider','revision','semantic_hash','key','type'])&&/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value.name)&&!d.tables.some(table=>table.name===value.name)&&!(d.dependencies||[]).some(dep=>dep.name===value.name)&&hash(value.revision)&&hash(value.semantic_hash)&&(generic?value.source==='bitcoin.block_context'&&value.provider==='selected'&&value.key==='height'&&value.type==='block_context':value.source==='bitcoin.input_creation'&&lookupProviders.some(([provider])=>provider===value.provider)&&value.key==='input_ref'&&value.type==='creation_evidence'))||lookups.length&&(d.exports||[]).length)return null;
     if(sparse){
       if(d.tables.length>64||!d.tables.every(t=>keys(t,['name','key','on_conflict'])&&typeof t.name==='string'&&!!t.name&&typeof t.key==='string'&&!!t.key&&(!Object.hasOwn(t,'on_conflict')||['','identical'].includes(t.on_conflict))))return null;
       if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||!d.exports.every(e=>keys(e,['name','kind','table','column','type'])&&typeof e.name==='string'&&!!e.name&&e.kind==='same_block'&&d.tables.some(t=>t.name===e.table)&&typeof e.column==='string'&&!!e.column&&['text','bool','integer','null'].includes(e.type))))return null;
@@ -89,7 +89,7 @@
       if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length))return null;
       if(d.tables.length!==2||!d.tables.every(t=>keys(t,['name','key'])&&((t.name==='coins'&&t.key==='outpoint')||(t.name==='counts'&&t.key==='txid'))))return null;
     }
-    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{output:sparse||projection,lookups:lookups.length>0,fifo,generic,fields:projection?projectionFields:fifo?fifoFields:generic?(d.source==='bitcoin.reveal'?revealFields:tableFields):fields,tables:d.tables.map(t=>t.name),stateTables:sparse?lookups.map(value=>value.name):fifo||generic?d.tables.map(t=>t.name):undefined,readTables:generic?[...d.tables.map(t=>t.name),...(d.dependencies||[]).map(dep=>dep.name)]:undefined,emitTables:fifo?['identities','lost','incarnations']:undefined})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
+    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{output:sparse||projection,lookups:lookups.length>0,fifo,generic,fields:projection?projectionFields:fifo?fifoFields:generic?(d.source==='bitcoin.reveal'?revealFields:tableFields):fields,tables:d.tables.map(t=>t.name),stateTables:sparse?lookups.map(value=>value.name):fifo||generic?d.tables.map(t=>t.name):undefined,readTables:generic?[...d.tables.map(t=>t.name),...(d.dependencies||[]).map(dep=>dep.name),...lookups.map(value=>value.name)]:undefined,emitTables:fifo?['identities','lost','incarnations']:undefined})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
     return copy(d);
   }
   function fromGuided(definition){
@@ -119,11 +119,11 @@
     return step;
   }
   function mount(root,{onChange=()=>{},onApply=()=>{},getCatalogue=()=>null,readParent=async()=>{throw Error('Saved parent reader unavailable.');}}={}){
-    const doc=root.ownerDocument;let model=null,sequence=0,editEpoch=0,parentEpoch=0,parentNote='',lookupNote='';
+    const doc=root.ownerDocument;let model=null,sequence=0,editEpoch=0,parentEpoch=0,parentNote='',lookupNote='',removalChecks=[];
     const el=(tag,text)=>{const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
     const label=(text,input)=>{const node=el('label',text);input.setAttribute('aria-label',text);node.append(input);return node;};
     const button=(text,action)=>{const node=el('button',text);node.type='button';node.addEventListener('click',action);return node;};
-    const changed=()=>{editEpoch++;onChange();};
+    const changed=()=>{editEpoch++;for(const check of removalChecks)check();onChange();};
     const outputOnly=()=>['sparse','projection'].includes(model?.history);
     const generic=()=>model?.storage==='tables.cow.v1';
     const stateFields=()=>model?.source==='bitcoin.reveal'?revealFields:tableFields;
@@ -131,7 +131,7 @@
     const stateSource=()=>sourceCapability()?.state_sources?.find(source=>source.history===model.history&&source.storage===model.storage);
     const availableOperations=()=>Object.keys(operations).filter(op=>op!=='for_events'&&!(outputOnly()&&(['put','delete'].includes(op)||op==='read'&&!(model.lookups||[]).length))&&!(generic()&&op==='emit'));
     const fifo=()=>model?.source==='bitcoin.fifo';
-    const tableChoices=op=>op==='read'&&model.history==='sparse'?(model.lookups||[]).map(value=>value.name):op==='emit'?(outputOnly()?model.tables.map(t=>t.name):fifo()?['identities','lost','incarnations']:['prevouts']):generic()?[...model.tables.map(t=>t.name),...(op==='read'?(model.dependencies||[]).map(dep=>dep.name):[])]:fifo()?model.tables.map(t=>t.name).filter(name=>op==='put'||name!=='history'):['coins','counts'];
+    const tableChoices=op=>op==='read'&&model.history==='sparse'?(model.lookups||[]).map(value=>value.name):op==='emit'?(outputOnly()?model.tables.map(t=>t.name):fifo()?['identities','lost','incarnations']:['prevouts']):generic()?[...model.tables.map(t=>t.name),...(op==='read'?[...(model.dependencies||[]).map(dep=>dep.name),...(model.lookups||[]).map(value=>value.name)]:[])]:fifo()?model.tables.map(t=>t.name).filter(name=>op==='put'||name!=='history'):['coins','counts'];
     const newInstruction=op=>{const value=instruction(op);if((fifo()||generic())&&value.table){value.table=tableChoices(op)[0];value.key={field:op==='emit'?'id':'txid'};}if(op==='read'&&model.history==='sparse'){value.table=tableChoices(op)[0];value.key={call:'input_ref',args:[{field:'height'},{field:'tx_index'},{literal:{kind:'uint',uint:'0'}}]};}if(op==='emit'&&outputOnly())value.table=model.tables[0].name;if(model?.history==='projection'&&value.key)value.key={call:'output_ref',args:[{field:'height'},{field:'tx_index'},{field:'vout'}]};return value;};
     function textInput(title,value,set){const input=el('input');input.type='text';input.value=value||'';input.addEventListener('input',()=>{set(input.value);changed();});return label(title,input);}
     function select(title,choices,value,set){const input=el('select');for(const choice of choices){const [key,name]=Array.isArray(choice)?choice:[choice,choice],option=el('option',name);option.value=key;input.append(option);}input.value=value;input.addEventListener('change',()=>{set(input.value);changed();});return label(title,input);}
@@ -195,7 +195,7 @@
           fields.append(select('Instruction',availableOperations(),step.op,op=>{steps[index]=newInstruction(op);paint();}));
           if(['let','read','for_range'].includes(step.op))fields.append(textInput('Bind variable',step.name,value=>{step.name=value;}));
           if(step.op==='require')fields.append(textInput('Assertion name',step.name,value=>{if(value)step.name=value;else delete step.name;}));
-          if(['read','put','delete','emit'].includes(step.op))fields.append(select('Table',tableChoices(step.op),step.table,value=>{step.table=value;}));
+          if(['read','put','delete','emit'].includes(step.op))fields.append(select('Table',tableChoices(step.op),step.table,value=>{step.table=value;if(step.op==='read'&&generic()&&(model.lookups||[]).some(source=>source.name===value&&source.key==='height')){step.key={call:'decimal_format',args:[{field:'height'}]};paint();}}));
           body.append(fields);
           if(step.key)body.append(lazy('State or emitted key',child=>expressionEditor(child,step.key,value=>{step.key=value;})));
           if(step.expr)body.append(lazy(step.op==='if'||step.op==='require'?'Condition':step.op==='for_range'?'Exclusive range end':'Value',child=>expressionEditor(child,step.expr,value=>{step.expr=value;})));
@@ -234,11 +234,11 @@
       const rename=(steps,oldName,newName)=>{for(const step of steps){if(step.table===oldName)step.table=newName;rename(step.body||[],oldName,newName);rename(step.else||[],oldName,newName);}};
       for(const [index,table] of model.tables.entries()){
         const row=el('div'),name=el('input');row.className='recipe-fields ordered-editor-table';name.type='text';name.value=table.name;
-        name.addEventListener('change',()=>{const next=name.value;if(!next||next.startsWith('__gateway_')||new TextEncoder().encode(next).length>256||model.tables.some(other=>other!==table&&other.name===next)||(model.dependencies||[]).some(dep=>dep.name===next)){name.value=table.name;return;}rename(model.ordered.steps,table.name,next);table.name=next;render();changed();});
+        name.addEventListener('change',()=>{const next=name.value;if(!next||next.startsWith('__gateway_')||new TextEncoder().encode(next).length>256||model.tables.some(other=>other!==table&&other.name===next)||(model.dependencies||[]).some(dep=>dep.name===next)||(model.lookups||[]).some(value=>value.name===next)){name.value=table.name;return;}rename(model.ordered.steps,table.name,next);table.name=next;render();changed();});
         const remove=button('Remove state table',()=>{model.tables.splice(index,1);render();changed();});remove.disabled=model.tables.length===1||references(model.ordered.steps,table.name);remove.title='Remove its instructions before removing a referenced table.';
         row.append(label('State table name',name),textInput('State key label',table.key,value=>{table.key=value;}),remove);box.append(row);
       }
-      const add=button('Add state table',()=>{let name='state';while(model.tables.some(table=>table.name===name)||(model.dependencies||[]).some(dep=>dep.name===name))name='state_'+(++sequence);model.tables.push({name,key:'key'});render();changed();});add.disabled=model.tables.length>=64;box.append(add);
+      const add=button('Add state table',()=>{let name='state';while(model.tables.some(table=>table.name===name)||(model.dependencies||[]).some(dep=>dep.name===name)||(model.lookups||[]).some(value=>value.name===name))name='state_'+(++sequence);model.tables.push({name,key:'key'});render();changed();});add.disabled=model.tables.length>=64;box.append(add);
     }
     function checkpointParentEditor(host){
       const dep=model.dependencies[0],box=el('fieldset'),row=el('div');box.append(el('legend','Checkpoint source'));host.append(box);
@@ -265,7 +265,7 @@
       const bindings=()=>getCatalogue()?.builtin_checkpoints?.filter(value=>value.coverage==='snapshot'&&value.type==='typed')||[];
       for(const [index,dep] of (model.dependencies||[]).entries()){
         const row=el('div'),name=el('input');row.className='recipe-fields ordered-editor-table';name.type='text';name.value=dep.name;
-        name.addEventListener('change',()=>{const next=name.value;if(!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(next)||model.dependencies.some(other=>other!==dep&&other.name===next)||model.tables.some(table=>table.name===next)){name.value=dep.name;return;}rename(model.ordered.steps,dep.name,next);dep.name=next;render();changed();});
+        name.addEventListener('change',()=>{const next=name.value;if(!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(next)||model.dependencies.some(other=>other!==dep&&other.name===next)||model.tables.some(table=>table.name===next)||(model.lookups||[]).some(value=>value.name===next)){name.value=dep.name;return;}rename(model.ordered.steps,dep.name,next);dep.name=next;render();changed();});
         row.append(label('Parent table alias',name),select('Parent table scope',[['saved','Saved table recipe'],['builtin','Built-in Districts']],dep.scope==='builtin'?'builtin':'saved',value=>{dep.scope=value;if(value==='builtin'){const installed=bindings().find(value=>value.export===dep.export)||bindings()[0];if(installed)Object.assign(dep,copy(installed),{name:dep.name});}render();}),textInput('Parent table recipe ID',dep.instance,value=>{dep.instance=value;}),textInput('Parent table name',dep.export,value=>{dep.export=value;}));
         const note=el('p',parentNote),saved=button('Pin saved table revision',async()=>{
           const captured=model,epoch=editEpoch,id=dep.instance,table=dep.export,ticket=++parentEpoch;saved.disabled=true;note.textContent='Reading the saved table definition…';
@@ -275,12 +275,12 @@
           }catch(error){if(ticket===parentEpoch&&captured===model&&epoch===editEpoch){parentNote='Parent: '+error.message;render();}}finally{saved.disabled=false;}
         });saved.disabled=dep.scope==='builtin';
         const native=button('Pin built-in table revision',()=>{const value=bindings().find(value=>value.instance===dep.instance&&value.export===dep.export);if(!value){parentNote='Choose an installed built-in table from the catalogue.';render();return;}Object.assign(dep,copy(value),{name:dep.name});parentNote='Pinned the installed built-in checkpoint contract.';render();changed();});native.disabled=dep.scope!=='builtin';
-        const remove=button('Remove parent table',()=>{model.dependencies.splice(index,1);render();changed();});remove.disabled=references(model.ordered.steps,dep.name);
+        const remove=button('Remove parent table',()=>{model.dependencies.splice(index,1);render();changed();});const checkRemove=()=>{remove.disabled=references(model.ordered.steps,dep.name);};removalChecks.push(checkRemove);checkRemove();
         row.append(textInput('Parent table revision',dep.revision,value=>{dep.revision=value;}),textInput('Parent table semantic fingerprint',dep.semantic_hash,value=>{dep.semantic_hash=value;}),saved,native,remove,note);box.append(row);
       }
       let builtin=bindings()[0]?.export||'';
       if(bindings().length)box.append(select('Built-in table to add',bindings().map(value=>[value.export,value.instance+' / '+value.export]),builtin,value=>{builtin=value;}));
-      const add=(binding)=>{if(!model.dependencies)model.dependencies=[];let name=binding.name;while(model.dependencies.some(dep=>dep.name===name)||model.tables.some(table=>table.name===name))name=binding.name+'_'+(++sequence);model.dependencies.push({...copy(binding),name});render();changed();};
+      const add=(binding)=>{if(!model.dependencies)model.dependencies=[];let name=binding.name;while(model.dependencies.some(dep=>dep.name===name)||model.tables.some(table=>table.name===name)||(model.lookups||[]).some(value=>value.name===name))name=binding.name+'_'+(++sequence);model.dependencies.push({...copy(binding),name});render();changed();};
       const saved=button('Add saved parent table',()=>add({name:'parent',scope:'saved',instance:'saved-parent',revision:'0'.repeat(64),semantic_hash:'0'.repeat(64),export:'counts',coverage:'snapshot',type:'typed'}));saved.disabled=(model.dependencies||[]).length>=16;box.append(saved);
       const native=button('Add built-in parent table',()=>{const value=bindings().find(value=>value.export===builtin);if(value)add(value);});native.disabled=(model.dependencies||[]).length>=16||!bindings().length;box.append(native);
     }
@@ -293,17 +293,30 @@
         const row=el('div'),name=el('input');row.className='recipe-fields ordered-editor-table';name.type='text';name.value=lookup.name;
         name.addEventListener('change',()=>{const next=name.value;if(!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(next)||model.lookups.some(other=>other!==lookup&&other.name===next)||model.tables.some(table=>table.name===next)){name.value=lookup.name;return;}rename(model.ordered.steps,lookup.name,next);lookup.name=next;render();changed();});
         const choose=select('Creation evidence provider',lookupProviders,lookup.provider,provider=>{const installed=binding(provider);if(!installed){lookupNote='The installed lookup catalogue is unavailable; refresh it before changing providers.';render();return;}const name=lookup.name;Object.assign(lookup,copy(installed),{name});lookupNote='Pinned the installed creation-evidence contract.';render();});
-        const remove=button('Remove source lookup',()=>{model.lookups.splice(index,1);render();changed();});remove.disabled=references(model.ordered.steps,lookup.name);remove.title='Remove or change its read instructions before removing a referenced lookup.';
+        const remove=button('Remove source lookup',()=>{model.lookups.splice(index,1);render();changed();});const checkRemove=()=>{remove.disabled=references(model.ordered.steps,lookup.name);};removalChecks.push(checkRemove);checkRemove();remove.title='Remove or change its read instructions before removing a referenced lookup.';
         row.append(label('Source lookup name',name),choose,remove);box.append(row);
       }
       let provider='cohort';box.append(select('Source lookup to add',lookupProviders,provider,value=>{provider=value;}));
       const add=button('Add source lookup',()=>{const installed=binding(provider);if(!installed){lookupNote='The installed lookup catalogue is unavailable; refresh it before adding a source.';render();return;}if(!model.lookups)model.lookups=[];let name=installed.name;while(model.lookups.some(value=>value.name===name)||model.tables.some(table=>table.name===name))name=installed.name+'_'+(++sequence);model.lookups.push({...copy(installed),name});lookupNote='Source declared. Read it only where an input coordinate is available; no writer has started.';render();changed();});add.disabled=(model.lookups||[]).length>=16||(model.exports||[]).length>0;box.append(add,note);
     }
-    function render(){root.replaceChildren();if(!model)return;const legend=el('legend',model.history==='projection'?'Guided checkpoint draft':'Guided ordered draft'),header=el('div');header.className='recipe-fields';
+    function pointLookupsEditor(host){
+      const box=el('fieldset');box.append(el('legend','Source point facts'),el('p','Read an authenticated block context by canonical decimal height, up to the current block. It returns height, block and transaction_count. Missing bytes wait; a point read grants no prefix coverage and starts no index writer.'));host.append(box);
+      const references=(steps,name)=>steps.some(step=>step.op==='read'&&step.table===name||references(step.body||[],name)||references(step.else||[],name));
+      const rename=(steps,oldName,newName)=>{for(const step of steps){if(step.op==='read'&&step.table===oldName)step.table=newName;rename(step.body||[],oldName,newName);rename(step.else||[],oldName,newName);}};
+      const bindings=getCatalogue()?.builtin_lookups?.filter(value=>value.source==='bitcoin.block_context'&&value.provider==='selected')||[];
+      for(const [index,lookup] of (model.lookups||[]).entries()){
+        const row=el('div'),name=el('input');name.type='text';name.value=lookup.name;
+        name.addEventListener('change',()=>{const next=name.value;if(!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(next)||model.lookups.some(other=>other!==lookup&&other.name===next)||model.tables.some(table=>table.name===next)||(model.dependencies||[]).some(dep=>dep.name===next)){name.value=lookup.name;return;}rename(model.ordered.steps,lookup.name,next);lookup.name=next;render();changed();});
+        const remove=button('Remove point source',()=>{model.lookups.splice(index,1);render();changed();});const checkRemove=()=>{remove.disabled=references(model.ordered.steps,lookup.name);};removalChecks.push(checkRemove);checkRemove();
+        row.append(label('Point source alias',name),el('p',lookup.source+' / '+lookup.provider),remove);box.append(row);
+      }
+      const add=button('Add block context source',()=>{const installed=bindings[0];if(!installed)return;if(!model.lookups)model.lookups=[];let name=installed.name;while(model.lookups.some(value=>value.name===name)||model.tables.some(table=>table.name===name)||(model.dependencies||[]).some(dep=>dep.name===name))name=installed.name+'_'+(++sequence);model.lookups.push({...copy(installed),name});render();changed();});add.disabled=(model.lookups||[]).length>=16||!bindings.length;box.append(add);
+    }
+    function render(){root.replaceChildren();removalChecks=[];if(!model)return;const legend=el('legend',model.history==='projection'?'Guided checkpoint draft':'Guided ordered draft'),header=el('div');header.className='recipe-fields';
       header.append(textInput('Ordered recipe ID',model.id,value=>{model.id=value;}),textInput('Ordered recipe name',model.name,value=>{model.name=value;}));
       root.append(legend,el('p',model.history==='projection'?'Derive current destination members and exclusion counts from the declared complete Coin snapshot, then apply checked deltas. Every source Coin must be accounted for. Source selection does not start its writer.':fifo()?'Process ordinary transactions in Bitcoin order, then allocate subsidy and their fees to coinbase outputs. Compose FIFO intervals, lost sats and inscription identities. The outputs table stores current state; the optional history table retains original output ranges.':generic()?'Process source events continuously from the declared origin. Inscription reveals expose their own body and declared content type as exact bytes. Read, write or delete exact typed values in your named tables. Expand instructions to compose counters, branches and keyed state.':model.history==='sparse'?'Project complete transaction events into per-block rows from the chosen origin. Empty evaluated blocks are retained; no UTXO prefix is required.':'Process transaction events in order from genesis. Coins are keyed by outpoint; counts by transaction ID. Expand an instruction to edit its expressions, branches or nested instructions.'),header);
       if(model.history==='sparse'){header.append(textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));declarationsEditor(root);sourceLookupsEditor(root);}
-      if(generic()){header.append(select('State source',[['bitcoin.ordered','Bitcoin transaction events'],['bitcoin.reveal','Inscription reveals']],model.source,value=>{model.source=value;render();changed();}),textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));stateTablesEditor(root);tableDependenciesEditor(root);}
+      if(generic()){header.append(select('State source',[['bitcoin.ordered','Bitcoin transaction events'],['bitcoin.reveal','Inscription reveals']],model.source,value=>{model.source=value;render();changed();}),textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));stateTablesEditor(root);tableDependenciesEditor(root);pointLookupsEditor(root);}
       if(model.history==='projection')checkpointParentEditor(root);
       if(fifo())fifoTablesEditor(root);
       stepsEditor(root,model.ordered.steps[0].body);root.append(button('Apply ordered changes',onApply));

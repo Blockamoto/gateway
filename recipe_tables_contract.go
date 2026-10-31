@@ -40,6 +40,10 @@ func compileRecipeTablesContract(d recipeDefinition) (*recipeProgram, error) {
 	if err != nil {
 		return nil, err
 	}
+	lookups, err := recipeValidateTablePointLookups(d, tables, dependencies)
+	if err != nil {
+		return nil, err
+	}
 	program, err := parseOrderedRecipeProgram(d.Ordered, false)
 	if err != nil {
 		return nil, err
@@ -69,7 +73,7 @@ func compileRecipeTablesContract(d recipeDefinition) (*recipeProgram, error) {
 	scan = func(steps []recipeOrderedInstruction) error {
 		for _, s := range steps {
 			if (s.Op == "read" || s.Op == "put" || s.Op == "delete") && !tables[s.Table] {
-				if s.Op != "read" || dependencies[s.Table].Name == "" {
+				if s.Op != "read" || dependencies[s.Table].Name == "" && lookups[s.Table].Name == "" {
 					return fmt.Errorf("undeclared or non-writable state table %q", s.Table)
 				}
 			}

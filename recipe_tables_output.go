@@ -91,6 +91,8 @@ func (a *app) withRecipeTablesSnapshot(ctx context.Context, prepared resolvedSav
 	result["state"], result["unit"], result["checkpoint"] = "covered", unit, point.Commitment
 	if len(point.Lineage) > 0 {
 		result["dependencies"] = point.Lineage
+	}
+	if point.Imports != "" {
 		result["imported_fact_root"] = point.Imports
 	}
 	result["state_entry_count"] = strconv.FormatUint(point.Entries, 10)

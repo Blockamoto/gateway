@@ -178,8 +178,8 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 	if d.Origin < 0 {
 		return nil, recipeDiagnosticAt("RECIPE_INVALID_ORIGIN", "/origin", "origin must be non-negative")
 	}
-	if len(d.Lookups) > 0 && (d.Source != "bitcoin.ordered" || d.History != "sparse" || d.Storage != recipeOrderedSparseStorage) {
-		return nil, recipeDiagnosticAt("RECIPE_LOOKUP_SOURCE", "/lookups", "source lookups currently require sparse ordered transaction events")
+	if len(d.Lookups) > 0 && !(d.Source == "bitcoin.ordered" && d.History == "sparse" && d.Storage == recipeOrderedSparseStorage) && !((d.Source == "bitcoin.ordered" || d.Source == "bitcoin.reveal") && d.History == "ordered" && d.Storage == recipeTablesStorage) {
+		return nil, recipeDiagnosticAt("RECIPE_LOOKUP_SOURCE", "/lookups", "source lookups require their supported source, history and storage contract")
 	}
 	if d.Source == "bitcoin.ordered" {
 		return compileOrderedRecipe(d)

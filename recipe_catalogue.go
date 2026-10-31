@@ -44,6 +44,7 @@ type recipeCapabilityCatalogue struct {
 func recipeCatalogue() recipeCapabilityCatalogue {
 	catalogue := recipeCapabilityCatalogue{TableConflicts: []string{"", "identical"}, Version: 1, Sources: []recipeSourceCapability{{ID: "bitcoin.reveal", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.reveal")}, {ID: "bitcoin.transaction", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.transaction")}, {ID: "bitcoin.ordered", Histories: []string{"ordered", "sparse"}, Fields: recipeSourceFields("bitcoin.ordered"), Steps: recipeOrderedSteps(), Functions: recipeOrderedFunctions(), StateContracts: []string{recipeOrderedUTXOStorage, recipeOrderedSparseStorage, recipeTablesStorage}, Events: recipeOrderedEvents()}, {ID: recipeUTXOProjectionSource, Histories: []string{"projection"}, Fields: recipeUTXOProjectionFields(), Steps: []string{"for_events", "for_range", "let", "if", "require", "emit"}, Functions: recipeOrderedFunctions(), StateContracts: []string{recipeAddressProjectionStorage}}}, Functions: recipeFunctions(), Steps: []string{"let", "require", "write"}}
 	catalogue.BuiltinLookups = recipeSourceLookupBindings()
+	catalogue.BuiltinLookups = append(catalogue.BuiltinLookups, recipeTablePointLookupBindings()...)
 	for i := range catalogue.Sources {
 		if catalogue.Sources[i].ID == "bitcoin.reveal" {
 			catalogue.Sources[i].Histories = append(catalogue.Sources[i].Histories, "ordered")

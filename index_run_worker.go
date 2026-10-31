@@ -2238,7 +2238,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 		owners := map[string]bool{}
 		for _, i := range eligible {
 			c := consumers[i]
-			if nexts[i] == h && c.selection.Recipe && c.progress.Recipe != nil && recipePrefixSource(c.progress.Recipe.Source) {
+			if nexts[i] == h && c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.History == "ordered" && recipePrefixSource(c.progress.Recipe.Source) {
 				if !p.orderedAttempted {
 					p.orderedAttempted = true
 					started := time.Now()
@@ -2350,7 +2350,7 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 					result.err = p.transactionErr
 					return result.err
 				}
-				if p.orderedErr != nil && c.selection.Recipe && c.progress.Recipe != nil && recipePrefixSource(c.progress.Recipe.Source) {
+				if p.orderedErr != nil && c.selection.Recipe && c.progress.Recipe != nil && c.progress.Recipe.History == "ordered" && recipePrefixSource(c.progress.Recipe.Source) {
 					result.err = p.orderedErr
 					return result.err
 				}

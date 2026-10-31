@@ -22,7 +22,7 @@ type recipePrefixBackend interface {
 }
 
 func recipePrefixSource(source string) bool {
-	return source == "bitcoin.ordered" || source == recipeSatSource
+	return source == "bitcoin.ordered" || source == "bitcoin.reveal" || source == recipeSatSource
 }
 
 func openRecipePrefixBackend(root string, program *recipeProgram) (recipePrefixBackend, error) {

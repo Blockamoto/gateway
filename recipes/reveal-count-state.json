@@ -1,0 +1,91 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "my-reveal-count",
+  "name": "Reveal count from inscription origin",
+  "source": "bitcoin.reveal",
+  "origin": 767430,
+  "history": "ordered",
+  "storage": "tables.cow.v1",
+  "dependencies": [],
+  "tables": [
+    {
+      "name": "counts",
+      "key": "name"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "read",
+            "name": "old",
+            "table": "counts",
+            "key": {
+              "literal": {
+                "kind": "text",
+                "text": "total"
+              }
+            }
+          },
+          {
+            "op": "let",
+            "name": "count",
+            "expr": {
+              "literal": {
+                "kind": "uint",
+                "uint": "0"
+              }
+            }
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "present",
+              "args": [
+                {
+                  "var": "old"
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "count",
+                "expr": {
+                  "var": "old"
+                }
+              }
+            ]
+          },
+          {
+            "op": "put",
+            "table": "counts",
+            "key": {
+              "literal": {
+                "kind": "text",
+                "text": "total"
+              }
+            },
+            "expr": {
+              "call": "add_money",
+              "args": [
+                {
+                  "var": "count"
+                },
+                {
+                  "literal": {
+                    "kind": "uint",
+                    "uint": "1"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

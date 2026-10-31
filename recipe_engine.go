@@ -184,6 +184,9 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 	if d.Source == "bitcoin.ordered" {
 		return compileOrderedRecipe(d)
 	}
+	if d.Source == "bitcoin.reveal" && d.History == "ordered" {
+		return compileRecipeTablesContract(d)
+	}
 	if d.Source == recipeSatSource {
 		return compileSatRecipe(d)
 	}

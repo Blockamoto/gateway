@@ -157,7 +157,7 @@ func (p *recipeProgram) semanticHash() string {
 		return indexDigest(struct {
 			Document, Interpreter, Stream, Source, Physical string
 			Definition                                      recipeDefinition
-		}{recipeOrderedDocumentProfile, recipeOrderedProfile, recipeOrderedStreamProfile, recipeTablesSourceProfile, recipeTablesStorage + "/" + recipeTablesGenerationProfile, d})
+		}{recipeOrderedDocumentProfile, recipeOrderedProfile, recipeOrderedStreamProfile, recipeTablesSourceProfileFor(d.Source), recipeTablesStorage + "/" + recipeTablesGenerationProfile, d})
 	}
 	if d.Source == recipeSatSource {
 		return indexDigest(struct {

@@ -23,7 +23,7 @@ func recipeTablesFields() []recipeFieldCapability {
 }
 
 func compileRecipeTablesContract(d recipeDefinition) (*recipeProgram, error) {
-	if d.Source != "bitcoin.ordered" || d.History != "ordered" || d.Storage != recipeTablesStorage || d.Origin < 0 || len(d.Steps) != 0 || len(d.Dependencies) != 0 || len(d.Exports) != 0 {
+	if d.Source != "bitcoin.ordered" && d.Source != "bitcoin.reveal" || d.History != "ordered" || d.Storage != recipeTablesStorage || d.Origin < 0 || len(d.Steps) != 0 || len(d.Dependencies) != 0 || len(d.Exports) != 0 {
 		return nil, recipeDiagnosticAt("RECIPE_TABLE_STATE_CONTRACT", "/storage", "typed COW tables require a continuous ordered event prefix and declared tables")
 	}
 	if len(d.Tables) == 0 || len(d.Tables) > recipeMaxTables {
@@ -41,7 +41,7 @@ func compileRecipeTablesContract(d recipeDefinition) (*recipeProgram, error) {
 		return nil, err
 	}
 	fields := map[string]bool{}
-	for _, f := range recipeTablesFields() {
+	for _, f := range recipeTablesFieldsFor(d.Source) {
 		fields[f.Path[0]] = true
 	}
 	var expression func(recipeOrderedExpr) error

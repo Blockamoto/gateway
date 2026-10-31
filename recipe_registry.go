@@ -143,6 +143,9 @@ func recipeRegistryRunnable(d recipeDefinition) bool {
 // Runnable indicates the currently supported execution shape, not readiness or coverage.
 // Actual runs always require admission and a reviewed plan.
 func recipeRegistryCapabilityNote(d recipeDefinition) string {
+	if d.Storage == recipeTablesStorage && d.History == "ordered" {
+		return fmt.Sprintf("Definition validated. Ordered tables require the explicitly admitted continuous prefix from declared origin %d. Finite and Live runs require review; rebuild archives the prior generation.", d.Origin)
+	}
 	if recipeProjectionPublicEnabled && d.Source == recipeUTXOProjectionSource {
 		return "Definition validated. Finite and Live checkpoint projection requires its exact declared parent snapshot. This track does not start a parent writer. Rebuild archives only this child generation."
 	}

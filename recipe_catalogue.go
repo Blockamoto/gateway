@@ -9,13 +9,24 @@ import (
 )
 
 type recipeSourceCapability struct {
-	Steps          []string                   `json:"steps,omitempty"`
-	Functions      []recipeFunctionCapability `json:"functions,omitempty"`
-	StateContracts []string                   `json:"state_contracts,omitempty"`
-	Events         []string                   `json:"events,omitempty"`
-	ID             string                     `json:"id"`
-	Histories      []string                   `json:"histories"`
-	Fields         []recipeFieldCapability    `json:"fields"`
+	StateSources   []recipeSourceStateCapability `json:"state_sources,omitempty"`
+	Steps          []string                      `json:"steps,omitempty"`
+	Functions      []recipeFunctionCapability    `json:"functions,omitempty"`
+	StateContracts []string                      `json:"state_contracts,omitempty"`
+	Events         []string                      `json:"events,omitempty"`
+	ID             string                        `json:"id"`
+	Histories      []string                      `json:"histories"`
+	Fields         []recipeFieldCapability       `json:"fields"`
+}
+
+type recipeSourceStateCapability struct {
+	History   string                     `json:"history"`
+	Storage   string                     `json:"storage"`
+	Profile   string                     `json:"profile"`
+	Fields    []recipeFieldCapability    `json:"fields"`
+	Functions []recipeFunctionCapability `json:"functions"`
+	Steps     []string                   `json:"steps"`
+	Events    []string                   `json:"events"`
 }
 
 type recipeCapabilityCatalogue struct {
@@ -33,6 +44,13 @@ type recipeCapabilityCatalogue struct {
 func recipeCatalogue() recipeCapabilityCatalogue {
 	catalogue := recipeCapabilityCatalogue{TableConflicts: []string{"", "identical"}, Version: 1, Sources: []recipeSourceCapability{{ID: "bitcoin.reveal", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.reveal")}, {ID: "bitcoin.transaction", Histories: []string{"sparse"}, Fields: recipeSourceFields("bitcoin.transaction")}, {ID: "bitcoin.ordered", Histories: []string{"ordered", "sparse"}, Fields: recipeSourceFields("bitcoin.ordered"), Steps: recipeOrderedSteps(), Functions: recipeOrderedFunctions(), StateContracts: []string{recipeOrderedUTXOStorage, recipeOrderedSparseStorage, recipeTablesStorage}, Events: recipeOrderedEvents()}, {ID: recipeUTXOProjectionSource, Histories: []string{"projection"}, Fields: recipeUTXOProjectionFields(), Steps: []string{"for_events", "for_range", "let", "if", "require", "emit"}, Functions: recipeOrderedFunctions(), StateContracts: []string{recipeAddressProjectionStorage}}}, Functions: recipeFunctions(), Steps: []string{"let", "require", "write"}}
 	catalogue.BuiltinLookups = recipeSourceLookupBindings()
+	for i := range catalogue.Sources {
+		if catalogue.Sources[i].ID == "bitcoin.reveal" {
+			catalogue.Sources[i].Histories = append(catalogue.Sources[i].Histories, "ordered")
+			catalogue.Sources[i].StateContracts = []string{recipeTablesStorage}
+			catalogue.Sources[i].StateSources = []recipeSourceStateCapability{{History: "ordered", Storage: recipeTablesStorage, Profile: recipeTablesSourceProfileFor("bitcoin.reveal"), Fields: recipeRevealTablesFields(), Functions: recipeOrderedFunctions(), Steps: []string{"for_events", "for_range", "let", "read", "put", "delete", "if", "require"}, Events: []string{"reveal"}}}
+		}
+	}
 	if revision, semantic, err := recipeNativeUTXORevision(); err == nil {
 		catalogue.BuiltinCheckpoints = []recipeDependency{{Name: "utxo", Scope: "builtin", Instance: "utxo-state", Revision: revision, SemanticHash: semantic, Export: "coins", Coverage: "snapshot_delta", Type: "coin"}}
 	}

@@ -52,6 +52,11 @@ func recipeResolveView(view recipeRegistryView) (resolvedSavedRecipe, error) {
 	if source.ID == "" {
 		return resolvedSavedRecipe{}, fmt.Errorf("saved recipe source capability is unavailable")
 	}
+	for _, state := range source.StateSources {
+		if state.History == view.Recipe.History && state.Storage == view.Recipe.Storage {
+			source.Fields, source.Functions, source.Steps, source.Events = state.Fields, state.Functions, state.Steps, state.Events
+		}
+	}
 	supported := false
 	for _, history := range source.Histories {
 		if history == view.Recipe.History {

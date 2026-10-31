@@ -33,8 +33,13 @@ async function main(){
   if(out)await page.screenshot({path:path.join(out,'tables-guided-wide.png'),fullPage:true});
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'table controls fit a narrow viewport');
   if(out)await page.screenshot({path:path.join(out,'tables-guided-narrow.png'),fullPage:true});
+  const reveals=JSON.parse(fs.readFileSync(path.join(root,'recipes','reveal-count-state.json'),'utf8'));await page.setViewportSize({width:1100,height:900});assert(await page.evaluate(definition=>editor.load(definition),reveals));assert.deepEqual(await page.evaluate(()=>editor.definition()),reveals);assert.equal(await page.getByLabel('State source',{exact:true}).inputValue(),'bitcoin.reveal');
+  await page.getByLabel('Add instruction type',{exact:true}).selectOption('let');await page.getByRole('button',{name:'Add instruction',exact:true}).click();const revealStep=page.locator('summary').filter({hasText:/^5\. let value$/}).locator('..');await revealStep.locator('summary').first().click();await revealStep.locator('summary').filter({hasText:/^Value$/}).click();await revealStep.getByLabel('Expression type',{exact:true}).selectOption('field');
+  const revealOptions=await revealStep.getByLabel('Source field',{exact:true}).locator('option').evaluateAll(options=>options.map(option=>option.value));assert(revealOptions.includes('body')&&revealOptions.includes('parent_count'));assert(!revealOptions.includes('script'));await revealStep.getByLabel('Source field',{exact:true}).selectOption('body');assert.equal((await page.evaluate(()=>editor.definition())).ordered.steps[0].body[4].expr.field,'body');
+  await revealStep.getByLabel('Expression type',{exact:true}).selectOption('call');await revealStep.getByLabel('Function',{exact:true}).selectOption('decimal_parse');assert.equal((await page.evaluate(()=>editor.definition())).ordered.steps[0].body[4].expr.call,'decimal_parse');
+  if(out)await page.screenshot({path:path.join(out,'reveal-tables-wide.png'),fullPage:true});await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(out)await page.screenshot({path:path.join(out,'reveal-tables-narrow.png'),fullPage:true});
   assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
-  console.log('Table browser PASS: actual starter, origin, reference-preserving rename, declarations, keyed writes, exact uints, Apply, narrow layout and no network work.');
+  console.log('Table browser PASS: actual transaction/reveal starters, source-specific fields, byte/decimal functions, origin, reference-preserving rename, declarations, keyed writes, exact uints, Apply, narrow layout and no network work.');
  }finally{await browser.close()}
 }
 main().catch(error=>{console.error(error);process.exitCode=1});

@@ -19,7 +19,7 @@
     const checkpoint=item=>item?.recipe?.source==='dependency.utxo'&&item?.recipe?.history==='projection';
     const evidence=item=>item?.recipe?.source==='bitcoin.ordered'&&item?.recipe?.history==='sparse'&&item?.recipe?.lookups?.length>0;
     const rebuildable=item=>stateful(item)||evidence(item);
-    const stateful=item=>checkpoint(item)||['bitcoin.ordered','bitcoin.fifo'].includes(item?.recipe?.source)&&item?.recipe?.history==='ordered';
+    const stateful=item=>checkpoint(item)||['bitcoin.ordered','bitcoin.reveal','bitcoin.fifo'].includes(item?.recipe?.source)&&item?.recipe?.history==='ordered';
     function rangeReady(){range.hidden=stateful(selected());const item=selected(),from=rangeFrom.value,to=rangeTo.value,rev=revision.value.trim(),hash=semantic.value.trim(),valid=!!item&&!!rev&&!!hash&&/^\d+$/.test(from)&&/^\d+$/.test(to)&&Number.isSafeInteger(Number(from))&&Number.isSafeInteger(Number(to))&&Number(to)>=Number(from);rangeLink.hidden=range.hidden||!valid;rangeLink.href=valid?'/api/v1/index/recipes/export?'+new URLSearchParams({id:item.recipe.id,revision:rev,semantic_hash:hash,from,to}).toString():'';}
     rangeFrom.addEventListener('input',rangeReady);rangeTo.addEventListener('input',rangeReady);
 

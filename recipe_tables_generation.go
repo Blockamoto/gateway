@@ -330,7 +330,12 @@ func (g *recipeTablesGeneration) applyFromToken(ctx context.Context, b blockView
 	}
 	edit := newRecipeTablesEdit(ctx, g.profileRoot, base.Root, g.program.definition.Tables, base.BlobPins)
 	defer edit.AbortOrdered()
-	if err = recipeOrderedExecuteStateStream(ctx, *g.program.ordered, edit, func(sink func(map[string]recipeOrderedValue) error) error { return recipeTablesWalk(ctx, b, sink) }, nil); err != nil {
+	if err = recipeOrderedExecuteStateStream(ctx, *g.program.ordered, edit, func(sink func(map[string]recipeOrderedValue) error) error {
+		if g.program.definition.Source == "bitcoin.reveal" {
+			return recipeRevealTablesWalk(ctx, b, sink)
+		}
+		return recipeTablesWalk(ctx, b, sink)
+	}, nil); err != nil {
 		return err
 	}
 	root, journal, changes, entries, err := edit.flush(base.Entries)

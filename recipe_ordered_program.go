@@ -270,6 +270,8 @@ func (m *recipeOrderedMachine) eval(e recipeOrderedExpr, depth int) (recipeOrder
 		return value, err
 	}
 	switch e.Call {
+	case "bytes_length", "bytes_ascii", "bytes_slice", "bytes_concat", "bytes_equal", "bytes_find", "bytes_find_fold_ascii", "decimal_parse", "decimal_format", "media_type", "inscription_ref":
+		return recipeOrderedTextCall(m.ctx, e.Call, args)
 	case "eq":
 		if len(args) != 2 || args[0].Kind != args[1].Kind {
 			return fail()

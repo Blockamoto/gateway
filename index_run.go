@@ -711,7 +711,7 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 			if e != nil {
 				return p, fmt.Errorf("saved recipe %q unavailable: %w", c.Index, e)
 			}
-			if recipePrefixSource(resolved.Source) && !recipeOrderedPublicEnabled {
+			if recipePrefixSource(resolved.Source) && resolved.History == "ordered" && !recipeOrderedPublicEnabled {
 				return p, fmt.Errorf("ordered recipe execution is not yet enabled")
 			}
 			if resolved.Source == recipeUTXOProjectionSource && !recipeProjectionPublicEnabled {

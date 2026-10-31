@@ -747,3 +747,39 @@ parity matrix.
 The final Live/reorg/pause/restart follow-up also stages a rebuild of a nonempty
 original generation and verifies its archive after restart. It passed in 3.644
 seconds. The production build passed after the final source changes.
+
+### 2026-10-31: ordered reveal tables and reusable text primitives
+
+`bitcoin.reveal` now supports the common named-table prefix executor alongside
+its existing sparse mode. It consumes a complete authenticated inventory from
+an independently owned raw source, in transaction/envelope order. Bodies and
+MIME declarations remain exact own-envelope bytes. Source fields/functions are
+described by a history/storage-specific catalogue mode; generic sparse metadata
+and property capabilities remain intact. Source/parser/reference/verifier
+binding enters the new table fingerprint without changing old transaction-table
+or native identities. Empty evaluated blocks are committed coverage.
+
+The typed interpreter and guided controls gained bounded byte slicing,
+concatenation, equality/search/ASCII folding, strict ASCII conversion, exact
+canonical uint64 decimal parse/format, MIME parsing and positional inscription
+references. JSON composes those operations with ordinary branches and keyed
+read/write state. Existing `eq` semantics are unchanged; bytes use their own
+operator. The executable `recipes/reveal-count-state.json` starter is exposed
+by New reveal table draft, with editable origin, declarations and source fields.
+
+Real block 792435 verifies two state tracks and a sparse reveal control sharing
+one fetch, one independent owned-source verification and one extraction.
+Stored count queries, reuse, reviewed rebuild, forged-inventory rejection and
+caller-edited decoded identity exclusion passed. A real empty block remains
+covered with zero entries. Live crossing the declared origin, pause/restart,
+retained-root reorg recovery and maintenance passed. The focused suite took
+28.223 seconds; the broader coordinator/dependency/transaction/table/saved and
+frozen-native suite passed all 92 checks in 174.582 seconds. The temporary audit
+is `gateway-080-reveal-tables-regression.jsonl`.
+
+Actual transaction/reveal starters, source-specific byte fields/functions,
+declarations, exact values, Apply, narrow layouts, no network work and the wider
+index workspace passed unit/headless DOM checks. See `080-REVEAL-TABLES.md`.
+Native Bitmap compositions and broader typed incoming checkpoints remain open;
+this foundation does not complete the preview scope.
+The production build passed after the final source changes.

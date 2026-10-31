@@ -65,6 +65,14 @@ const sparseAdd=control('Add instruction type');assert(!sparseAdd.children.some(
 sparseAdd.value='emit';sparseAdd.events.change();button('Add instruction').events.click();let added=expand('2. emit');assert.equal(control('Table',added).value,'outputs');
 mounted.load({...original,storage:'unsupported'});assert.equal(root.hidden,true);assert.throws(()=>mounted.definition(),/unsupported shape/);
 const stateful=JSON.parse(fs.readFileSync('recipes/output-count-state.json','utf8'));
+const revealState=JSON.parse(fs.readFileSync('recipes/reveal-count-state.json','utf8'));
+assert.deepEqual(editor.initialReveals(),revealState,'the reveal starter is the executable example');assert.deepEqual(editor.fromGuided(editor.toGuided(revealState)),revealState);assert(mounted.load(revealState));
+assert.equal(control('State source').value,'bitcoin.reveal');const revealAdd=control('Add instruction type');revealAdd.value='let';revealAdd.events.change();button('Add instruction').events.click();
+const revealLet=expand('5. let value'),revealValue=expand('Value',revealLet),revealMode=control('Expression type',revealValue);revealMode.value='field';revealMode.events.change();
+let revealField=control('Source field',revealValue);assert(revealField.children.some(option=>option.value==='body'));assert(!revealField.children.some(option=>option.value==='script'));revealField.value='body';revealField.events.change();assert.equal(mounted.definition().ordered.steps[0].body[4].expr.field,'body');
+revealMode.value='call';revealMode.events.change();const textFunction=control('Function',revealValue);assert(textFunction.children.some(option=>option.value==='decimal_parse'));textFunction.value='media_type';textFunction.events.change();
+const mediaArg=expand('Argument 1',revealValue),mediaExpr=control('Expression type',mediaArg);mediaExpr.value='field';mediaExpr.events.change();revealField=control('Source field',mediaArg);revealField.value='content_type';revealField.events.change();assert.equal(mounted.definition().ordered.steps[0].body[4].expr.call,'media_type');
+for(const mutate of [d=>d.ordered.steps[0].body.push({op:'let',name:'wrong',expr:{field:'script'}}),d=>d.history='sparse',d=>d.storage='bitcoin.utxo.cow.v2']){const d=structuredClone(revealState);mutate(d);assert.equal(editor.toGuided(d),null);}
 assert.deepEqual(editor.initialTables(),stateful,'the guided starter is the actual executable example');
 assert.deepEqual(editor.fromGuided(editor.toGuided(stateful)),stateful);assert(mounted.load(stateful));
 origin=control('Origin height');origin.value='10';origin.events.input();assert.equal(mounted.definition().origin,10);

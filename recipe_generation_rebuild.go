@@ -7,11 +7,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
+	"time"
 
 	"./internal/updateapply"
 )
@@ -102,6 +106,11 @@ func recipeReviewGenerationMetadata[T comparable](ctx context.Context, profileRo
 }
 
 func recipeResetGenerationForRebuild[T comparable](ctx context.Context, profileRoot string, identity T, semantic, jobID, reviewed string, review func(context.Context) (string, error)) error {
+	var err error
+	profileRoot, err = filepath.Abs(profileRoot)
+	if err != nil {
+		return err
+	}
 	parent := filepath.Dir(profileRoot)
 	key := indexDigest(struct{ Semantic, Job string }{semantic, jobID})
 	archives, markers := filepath.Join(parent, "archives"), filepath.Join(parent, "rebuilds")
@@ -117,7 +126,7 @@ func recipeResetGenerationForRebuild[T comparable](ctx context.Context, profileR
 		}
 	}
 	var marker recipeGenerationRebuildMarker[T]
-	err := utxoReadJSON(ctx, path, 16<<10, &marker)
+	err = utxoReadJSON(ctx, path, 16<<10, &marker)
 	if err == nil {
 		if marker.Schema != 1 || marker.Identity != identity || marker.JobID != jobID || marker.Reviewed != reviewed || marker.Checksum != recipeGenerationRebuildChecksum(marker) {
 			return fmt.Errorf("invalid recipe rebuild marker")
@@ -170,7 +179,29 @@ func recipeResetGenerationForRebuild[T comparable](ctx context.Context, profileR
 			if err = os.MkdirAll(archives, 0755); err != nil {
 				return err
 			}
-			if err = os.Rename(profileRoot, archive); err != nil {
+			if err = recipeRetryArchiveMove(ctx, func() error {
+				// A short-lived Windows descendant/scanner handle must not
+				// turn a reviewed rebuild into an unsafe copy or stale move.
+				for _, target := range []string{profileRoot, archive} {
+					if err := updateapply.CheckPath(target); err != nil {
+						return err
+					}
+				}
+				if _, err := os.Lstat(archive); !os.IsNotExist(err) {
+					if err != nil {
+						return err
+					}
+					return fmt.Errorf("recipe rebuild archive appeared during move")
+				}
+				current, err := review(ctx)
+				if err != nil {
+					return err
+				}
+				if current != reviewed {
+					return fmt.Errorf("recipe rebuild source changed during archive retry")
+				}
+				return nil
+			}, func() error { return os.Rename(profileRoot, archive) }, recipeArchiveRenameBusy); err != nil {
 				return err
 			}
 			if err = syncDirectory(archives); err != nil {
@@ -194,4 +225,39 @@ func recipeResetGenerationForRebuild[T comparable](ctx context.Context, profileR
 		return err
 	}
 	return syncDirectory(markers)
+}
+
+func recipeArchiveRenameBusy(err error) bool {
+	// These Win32 errors can result from a recently closed reader or a file
+	// scanner. Other errors, including an existing destination, fail at once.
+	return runtime.GOOS == "windows" && (os.IsPermission(err) || errors.Is(err, syscall.Errno(32)) || errors.Is(err, syscall.Errno(33)))
+}
+
+func recipeRetryArchiveMove(ctx context.Context, check, move func() error, retryable func(error) bool) error {
+	if ctx == nil || check == nil || move == nil || retryable == nil {
+		return fmt.Errorf("archive move requires its context and checked operation")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := check(); err != nil {
+			return err
+		}
+		err := move()
+		if err == nil {
+			return nil
+		}
+		if !retryable(err) || !time.Now().Before(deadline) {
+			return err
+		}
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }

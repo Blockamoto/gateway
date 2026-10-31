@@ -640,3 +640,23 @@ not a full-chain throughput or peak-memory claim. `080-RETAINED-OUTPUT-FACTS.md`
 records exact figures and boundaries. TXIO creation/spender links, header/raw
 retention, broader dependencies, remaining built-ins and complete visible
 preview acceptance are still open.
+
+### Windows generation archive handles
+
+A later compatibility run hit Windows `Access is denied` while archiving a
+saved Sat generation for rebuild. The shared generation helper now resolves
+absolute owned paths and retries only Windows access/sharing/lock rename errors
+for at most roughly two seconds. Every attempt rechecks safe paths, an absent
+destination and the exact reviewed publication metadata under the existing
+authority/generation guards. It never falls back to copying, overwriting an
+archive or deleting the original. Permanent errors fail immediately; cancellation
+keeps the incomplete persistent intent resumable with the original generation.
+
+A real Windows held-reader test proves delayed release permits the archive,
+and a cancelled move preserves the original head and resumes the same job after
+release. Deterministic checks reject changed review metadata before another move
+and do not retry a permanent destination error. These and Sat public lifecycle,
+Coin rebuild, table rebuild and wire-compatibility checks passed three repeated
+rounds in 61.510 seconds. The prior 73.977-second compatibility invocation failed
+on the observed archive error; it is not reported as clean or hidden by a longer
+test deadline. The fix changes no generation identity, head or marker encoding.

@@ -90,5 +90,9 @@ const flush=()=>new Promise(r=>setImmediate(r));
  const writesBeforeVariant=calls.filter(c=>c.body).length;
  await vm.runInContext('refresh()',context);assert.equal(variants.value,'1','Observation preserves the selected recipe layer');assert.equal(variants.children.length,4);
  assert.equal(calls.filter(c=>c.body).length,writesBeforeVariant,'Viewing a recipe layer performs no save or run');
+ const outputLayers=['output-values.json','output-scripts.json','output-values-scripts.json'].map(file=>({name:file,definition:JSON.parse(fs.readFileSync('recipes/builtins/'+file,'utf8'))}));
+ definitions.push({...definition,id:'txo-spender',name:'TXIO index',executable_recipe_variants:outputLayers});await vm.runInContext('refresh()',context);timelineOptions.select('txo-spender','advanced');
+ assert.equal(variants.children.length,3);for(let i=0;i<outputLayers.length;i++){variants.value=String(i);variants.onchange();assert.deepEqual(JSON.parse(nodes.get('executable-recipe-json').textContent),outputLayers[i].definition,'inspector shows the actual retained output program');}
+ assert.equal(calls.filter(c=>c.body).length,writesBeforeVariant,'Viewing retained output recipes starts no work');
  assert.equal(typeof refreshTimer,'function');assert.equal(refreshDelay,5000,'Idle observation uses a completion-scheduled five-second timeout');console.log('Indexes controller PASS: foundational selection, contextual staged options, bounded records, stale-response rejection, locked settings, resource navigation and no competing execution.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

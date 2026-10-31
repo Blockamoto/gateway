@@ -251,6 +251,18 @@ func indexDefinitions() []indexDefinition {
 			d.Name = "TXIO index"
 			d.Theory = "Transaction Input/Output Index: input-to-original-output and output-to-spending-input positions. Missing or unresolved sparse relationships do not prove unspentness."
 		}
+		if d.ID == "txo-spender" || d.ID == "blocks" {
+			// Retained output layers have independent executable documents. They
+			// are display metadata added after the frozen native rule identity.
+			if programs, err := builtinOutputFactRecipes(); err == nil {
+				for i, variant := range []struct {
+					name string
+					raw  []byte
+				}{{"Retained output values", builtinOutputValuesJSON}, {"Retained exact scripts", builtinOutputScriptsJSON}, {"Retained values and scripts", builtinOutputValuesScriptsJSON}} {
+					d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: variant.name, Definition: append(json.RawMessage(nil), variant.raw...), SemanticHash: programs[i].semanticHash()})
+				}
+			}
+		}
 		// Availability is presentation policy, not part of the persisted recipe.
 		d.Locked = !releaseFeatureAvailable(d.ID)
 		if d.Locked {

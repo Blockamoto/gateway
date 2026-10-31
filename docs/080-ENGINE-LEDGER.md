@@ -596,3 +596,47 @@ workspace browser fixture passed. Wide/narrow table captures were inspected and
 the declaration layout corrected. This is headless QA, not visible Chrome
 acceptance. Wider typed dependencies, remaining built-ins and the complete
 isolated preview remain open in `080-PARITY-MATRIX.md`.
+
+### Actual retained output value/script programs
+
+Three independent JSON documents now select retained output values, exact
+scripts, or both through the common typed event machine. Native shared fact
+writers accept individual checked typed proposals and retain the existing
+schema-1 page codec, packing, content addresses, repair and ownership/coverage
+mechanics. The previous writer is a test-only differential oracle. Native
+optional TXIO history/enrichment and mandatory Coin/Sat/address facts share this
+projection; selecting a layer still does not enable a different retention policy.
+Saved copies independently produce generic sparse rows through the public run
+path. TXIO and Bitcoin block inspectors expose the actual documents as variants
+after computing their frozen native rule identities.
+
+All three policies retain exact physical references/pages on verified block
+792435. Focused large/empty/maximum-value/cancellation, native rule identity,
+public saved/native cohort and existing fact/repair/native-Coin/Sat/address
+checks passed first in 88.269 seconds. The final field/counter/catalogue set
+passed in 7.569 seconds. Follow-up existing/native checks plus the first source
+allocation optimization passed in 55.715 seconds. Final typed-proposal fact
+checks and the three-iteration benchmark passed in 33.666 seconds. The production
+build and JavaScript editor/inspector checks passed. A source-identical headless
+DOM check passed for all actual documents, block-1 origin, a custom source field,
+Apply and wide/narrow layout without network work; captures were inspected.
+
+The wider recipe/saved-recipe/075/IndexRun/TimelineRun run took 429.102 seconds:
+598 test/subtest passes, six skips and one existing Live-fairness timeout while
+the finite inscription consumer was still progressing at 18 of 20 blocks. It
+was run alongside build/browser QA. The unchanged fairness test then passed
+three isolated repetitions at 4.43, 3.62 and 3.61 seconds (11.857 seconds total),
+including idle and same-height reorg assertions. This is consistent with a
+transient timing failure; the broad invocation itself was not clean. No runtime
+scheduler code or test deadline was changed to hide it. Preserve this qualification
+for the final acceptance run (`gateway-080-output-facts-regression.jsonl` in the
+local temporary directory).
+
+The final reference-block benchmark records cumulative recipe allocations of
+roughly 19–21 MB versus 3.5–4.5 MB for the old direct loop. Native typed proposals
+and source-envelope reuse reduced the initial 31–35 MB recipe totals, but the
+remaining increase is material. Filesystem timings varied across runs and are
+not a full-chain throughput or peak-memory claim. `080-RETAINED-OUTPUT-FACTS.md`
+records exact figures and boundaries. TXIO creation/spender links, header/raw
+retention, broader dependencies, remaining built-ins and complete visible
+preview acceptance are still open.

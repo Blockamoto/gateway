@@ -225,42 +225,22 @@ func storeBlockOutputFactLayersUncachedContext(ctx context.Context, root string,
 		return nil
 	}
 	bytes := 0
-	for ti, tx := range block.Transactions {
-		if tx.Coinbase != (ti == 0) {
-			return nil, fmt.Errorf("output facts require verified coinbase position")
+	if err := recipeOutputFactVisit(ctx, block, values, scripts, func(r outputFactRow) error {
+		rowBytes := 80
+		if r.Script != nil {
+			rowBytes += len(*r.Script)
 		}
-		for oi, out := range tx.Outputs {
-			if e := ctx.Err(); e != nil {
-				return nil, e
+		if len(p.Rows) >= outputFactPageRows || len(p.Rows) > 0 && bytes+rowBytes > 512<<10 {
+			if err := flush(); err != nil {
+				return err
 			}
-			if out.N != oi {
-				return nil, fmt.Errorf("output facts require canonical output order")
-			}
-			r := outputFactRow{TxIndex: ti, Vout: uint32(oi)}
-			if values {
-				v := out.ValueSats
-				r.Value = &v
-			}
-			if scripts {
-				s := out.ScriptPubKey
-				if _, e := hex.DecodeString(s); e != nil || s != strings.ToLower(s) {
-					return nil, fmt.Errorf("output facts require exact script bytes")
-				}
-				r.Script = &s
-			}
-			rowBytes := 80
-			if r.Script != nil {
-				rowBytes += len(*r.Script)
-			}
-			if len(p.Rows) >= outputFactPageRows || len(p.Rows) > 0 && bytes+rowBytes > 512<<10 {
-				if e := flush(); e != nil {
-					return nil, e
-				}
-				bytes = 0
-			}
-			p.Rows = append(p.Rows, r)
-			bytes += rowBytes
+			bytes = 0
 		}
+		p.Rows = append(p.Rows, r)
+		bytes += rowBytes
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	if e := flush(); e != nil {
 		return nil, e

@@ -193,7 +193,7 @@
     function declarationsEditor(host){
       const box=el('fieldset');host.append(box);box.append(el('legend','Output declarations'));
       for(const [index,table] of model.tables.entries()){
-        const row=el('div');row.append(textInput('Output table name',table.name,value=>{table.name=value;}),textInput('Output key column',table.key,value=>{table.key=value;}),select('Duplicate output keys',['','identical'],table.on_conflict||'',value=>{if(value)table.on_conflict=value;else delete table.on_conflict;}));
+        const row=el('div');row.className='recipe-fields ordered-editor-table';row.append(textInput('Output table name',table.name,value=>{table.name=value;}),textInput('Output key column',table.key,value=>{table.key=value;}),select('Duplicate output keys',['','identical'],table.on_conflict||'',value=>{if(value)table.on_conflict=value;else delete table.on_conflict;}));
         const remove=button('Remove output table',()=>{model.tables.splice(index,1);render();changed();});
         const references=steps=>steps.some(step=>step.table===table.name||references(step.body||[])||references(step.else||[]));
         remove.disabled=model.tables.length===1||references(model.ordered.steps)||(model.exports||[]).some(entry=>entry.table===table.name);remove.title='Remove its instructions and exports before removing a referenced table.';row.append(remove);box.append(row);

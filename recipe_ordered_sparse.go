@@ -218,6 +218,23 @@ func (p *recipeProgram) evaluateOrderedSparseInto(ctx context.Context, block blo
 // The source adapter supplies complete admitted event data. This function
 // grants no chain authority, native compatibility or publication permission.
 func (p *recipeProgram) evaluateOrderedSparseEventsInto(ctx context.Context, source func(func(map[string]recipeOrderedValue) error) error, sink func(recipeRowProposal) error) error {
+	if sink == nil {
+		return fmt.Errorf("invalid sparse event adapter")
+	}
+	return p.evaluateOrderedSparseTypedEventsInto(ctx, source, func(table, key string, value recipeOrderedValue) error {
+		converted, err := recipeOrderedRowValue(value)
+		if err != nil {
+			return err
+		}
+		return sink(recipeRowProposal{Table: table, Key: key, Value: converted.(map[string]any)})
+	})
+}
+
+// Native codecs can accept exact typed proposals without converting them to
+// generic JSON rows and then decoding their numbers/bytes again. Their sink
+// checks its physical field schema and bounds; sparse JSON keeps its existing
+// per-field budget and conversion in the wrapper above. Both run this machine.
+func (p *recipeProgram) evaluateOrderedSparseTypedEventsInto(ctx context.Context, source func(func(map[string]recipeOrderedValue) error) error, sink func(string, string, recipeOrderedValue) error) error {
 	if ctx == nil || p == nil || p.ordered == nil || (p.definition.History != "sparse" && p.definition.History != "projection") || source == nil || sink == nil {
 		return fmt.Errorf("invalid sparse event adapter")
 	}
@@ -229,11 +246,7 @@ func (p *recipeProgram) evaluateOrderedSparseEventsInto(ctx context.Context, sou
 			if value.Kind != "object" {
 				return fmt.Errorf("sparse output needs an object row")
 			}
-			converted, err := recipeOrderedRowValue(value)
-			if err != nil {
-				return err
-			}
-			return sink(recipeRowProposal{Table: table, Key: key, Value: converted.(map[string]any)})
+			return sink(table, key, value)
 		}}
 	return machine.exec(p.ordered.Steps, 0)
 }

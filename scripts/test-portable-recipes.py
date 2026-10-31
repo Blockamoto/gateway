@@ -97,9 +97,9 @@ def main():
         recipe = copy.deepcopy(recipe)
         recipe.update(id=name, name=name, origin=1)
         validated = api('/api/v1/index/recipes/validate', dict(recipe=recipe))
-        assert validated['validated'] and validated['runnable'], validated
+        assert validated['validated'], validated
         saved = api('/api/v1/index/recipes', dict(recipe=recipe))
-        assert saved['semantic_hash'] == validated['semantic_hash']
+        assert saved['runnable'] and saved['semantic_hash'] == validated['semantic_hash'], saved
         return saved
 
     def run(names, expected_reads, headers_only=False):
@@ -142,6 +142,21 @@ def main():
         for item in saved.values():
             output(item)
         assert output(saved['qa-fees'])['state_entry_count'] == '2'
+        parent = saved['qa-fees']
+        child = dict(format='gateway-recipe', version=1, id='qa-child', name='qa-child',
+                     source='bitcoin.ordered', origin=1, history='ordered', storage='tables.cow.v1',
+                     dependencies=[dict(name='parent', scope='saved', instance='qa-fees',
+                                        revision=parent['revision'], semantic_hash=parent['semantic_hash'],
+                                        export='totals', coverage='snapshot', type='typed')],
+                     tables=[dict(name='copied', key='block')],
+                     ordered=dict(steps=[dict(op='for_events', body=[dict(op='if',
+                         expr=dict(call='eq', args=[dict(field='kind'), dict(literal=dict(kind='text', text='tx_begin'))]),
+                         body=[dict(op='read', name='upstream', table='parent', key=dict(field='block')),
+                               dict(op='put', table='copied', key=dict(field='block'), expr=dict(var='upstream'))])])]))
+        saved['qa-child'] = save('qa-child', child)
+        run(['qa-child'], 1)
+        assert output(saved['qa-child'])['state_entry_count'] == '1'
+
         stop()
         start()
         run(['qa-raw', 'qa-fees'], 0)

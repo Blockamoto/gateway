@@ -1145,3 +1145,16 @@ portable packager includes the current review/testing notes and executable JSON
 with a hashed source manifest. The process/API smoke uses its own new offline
 profile with authenticated genesis/block-1 fixtures; visible Chrome remains a
 separate blocked acceptance step.
+
+### Portable integration correction
+
+The first real portable process/API smoke exposed a missing registry capability
+flag: saved header/block/body recipes executed through the reviewed backend but
+reported `runnable:false`, disabling the UI Arm control. The flag now recognizes
+all three whole-source contracts, with compile/save/read regression checks. The
+new process smoke also covers header-only execution, shared Raw/fee execution,
+exact saved parent checkpoints, prefix reuse and restart in a fresh offline
+genesis/block-1 profile. Its outcomes are recorded after the corrected build.
+
+The corrected registry/source subset passed in 6.072 seconds. The tracked
+Windows version resource is regenerated for 0.8.0 before the final portable build.

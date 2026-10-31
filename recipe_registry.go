@@ -137,7 +137,7 @@ func recipeRegistryCompile(raw []byte) (recipeRegistryView, []byte, error) {
 }
 
 func recipeRegistryRunnable(d recipeDefinition) bool {
-	return d.Source == "bitcoin.reveal" || d.Source == "bitcoin.transaction" || recipeOrderedPublicEnabled && recipePrefixSource(d.Source) || recipeProjectionPublicEnabled && d.Source == recipeUTXOProjectionSource
+	return recipeWholeBlockSource(d.Source) || d.Source == "bitcoin.reveal" || d.Source == "bitcoin.transaction" || recipeOrderedPublicEnabled && recipePrefixSource(d.Source) || recipeProjectionPublicEnabled && d.Source == recipeUTXOProjectionSource
 }
 
 // Runnable indicates the currently supported execution shape, not readiness or coverage.

@@ -234,3 +234,30 @@ func TestRecipeHeaderAndBlockDocumentsUseCommonInterpreter(t *testing.T) {
 		})
 	}
 }
+
+func TestRecipeWholeSourcesRegistryRemainsArmable(t *testing.T) {
+	for i, source := range []string{recipeHeaderSource, recipeBlockSource, recipeBlockBodySource} {
+		d, err := parseRecipe(builtinSourceRetentionBytes(source))
+		if err != nil {
+			t.Fatal(err)
+		}
+		d.ID = fmt.Sprintf("qa-source-%d", i)
+		draft, err := json.Marshal(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		view, raw, err := recipeRegistryCompile(draft)
+		if err != nil || !view.Validated || !view.Runnable {
+			t.Fatal(source, view, err)
+		}
+		root := t.TempDir()
+		saved, err := recipeRegistrySave(context.Background(), root, view, raw, "", "")
+		if err != nil || !saved.Runnable {
+			t.Fatal(source, err)
+		}
+		read, err := recipeRegistryRead(root, view.Recipe.ID, view.Revision)
+		if err != nil || !read.Validated || !read.Runnable {
+			t.Fatal(source, read, err)
+		}
+	}
+}

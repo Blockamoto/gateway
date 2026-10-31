@@ -902,3 +902,33 @@ targets, height key defaults, live removal protection and narrow layout; the
 wider index workspace also passed. Parcel identity/provenance point readers,
 actual Parcel JSON and complete visible preview acceptance remain open.
 The production build passed (25,282,560 bytes).
+
+### 2026-10-31: authenticated inscription identity points
+
+The installed `bitcoin.inscription_identity` source maps canonical positional
+references to authenticated conventional IDs and source coordinates. It uses
+complete own-envelope inventories from owned verified bytes. Known absence is
+typed missing; unavailable source bytes remain unavailable. Parent consumption,
+ownership and numbering are separate claims. One latest inventory is indexed
+for repeated lookups, avoiding a repeated scan for every key.
+
+Used identities and known absences are child-owned facts with an explicit
+source-block anchor, including historical empty results. Existing block-context
+and checkpoint fact bytes/bindings are preserved. Header rechecks, collection,
+archives and query snapshots share the existing lifecycle. The acquisition
+callback carries its read-only flags into coalesced work.
+
+The wider identity/point/import/District/catalogue/reveal suite passed 23 checks
+in 30.191 seconds. Real block 792435 checks compare every admitted identity,
+preserve source files, reject future/noncanonical references, and exercise
+anchored missing results. A public saved recipe retains identity/absence facts,
+passes maintenance and returns the original conventional ID. The temporary audit
+is `gateway-080-identity-points-regression.jsonl`. The final inventory-cache
+publication check passed in 3.310 seconds.
+Guided unit and headless real-DOM controls passed for installed identity pins,
+key defaults, nested alias renames, removal protection and narrow layout. See
+`080-INSCRIPTION-IDENTITY-POINTS.md`. Parcel relationship proof readers, actual
+Parcel JSON and complete visible preview acceptance remain open.
+Final identity/block-context checks passed in 6.576 seconds after the coalesced
+read-only callback guard.
+The identity-point production build passed (25,309,696 bytes).

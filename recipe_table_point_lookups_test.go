@@ -121,7 +121,7 @@ func TestRecipeTablePointPublicationRechecksHistoricalHeader(t *testing.T) {
 func recipeBlockContextTestProgram(t *testing.T, id string, origin int64, key recipeOrderedExpr) *recipeProgram {
 	t.Helper()
 	d := recipeTablesTestProgram(t, id, origin, true).definition
-	d.Lookups = recipeTablePointLookupBindings()
+	d.Lookups = recipeTablePointLookupBindings()[:1]
 	program := recipeOrderedProgram{Steps: []recipeOrderedInstruction{{Op: "for_events", Body: []recipeOrderedInstruction{{Op: "read", Name: "context", Table: d.Lookups[0].Name, Key: key}, {Op: "put", Table: "counts", Key: roLit(rovText("context")), Expr: roVar("context")}}}}}
 	d.Ordered, _ = recipeOrderedProgramJSON(program)
 	p, err := compileRecipe(d)

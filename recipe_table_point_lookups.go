@@ -9,6 +9,7 @@ import (
 )
 
 const recipeBlockContextLookupProfile = "gateway-selected-block-context-point-v1"
+const recipeInscriptionIdentityLookupProfile = "gateway-selected-inscription-identity-point-v1"
 
 func recipeTablePointLookupBindings() []recipeSourceLookup {
 	lookup := recipeSourceLookup{Name: "block_context", Source: "bitcoin.block_context", Provider: "selected", Key: "height", Type: "block_context"}
@@ -17,7 +18,14 @@ func recipeTablePointLookupBindings() []recipeSourceLookup {
 		Revision, Network, Authority string
 		Verifier                     int
 	}{lookup.Revision, "bitcoin-mainnet", "complete-raw-owned-selected-block-v1", blockVerifierVersion})
-	return []recipeSourceLookup{lookup}
+	identity := recipeSourceLookup{Name: "inscription_identity", Source: "bitcoin.inscription_identity", Provider: "selected", Key: "inscription_ref", Type: "inscription_identity"}
+	identity.Revision = indexDigest(struct{ Profile, Source, Provider, Key, Type string }{recipeInscriptionIdentityLookupProfile, identity.Source, identity.Provider, identity.Key, identity.Type})
+	authority := indexDigest(struct{ Mode, Parser, Reference string }{"complete-raw-owned-selected-reveal-identity-v1", inscriptionParserProfile, inscriptionReferenceCommit})
+	identity.SemanticHash = indexDigest(struct {
+		Revision, Network, Authority string
+		Verifier                     int
+	}{identity.Revision, "bitcoin-mainnet", authority, blockVerifierVersion})
+	return []recipeSourceLookup{lookup, identity}
 }
 
 func recipeValidateTablePointLookups(d recipeDefinition, tables map[string]bool, deps map[string]recipeDependency) (map[string]recipeSourceLookup, error) {
@@ -55,11 +63,14 @@ func recipeTablePointUnit(lookup recipeSourceLookup, block blockView) string {
 }
 
 type recipeTablePointLookups struct {
-	a            *app
-	block        blockView
-	declarations map[string]recipeSourceLookup
-	cache        map[int64]recipeOrderedValue
-	anchors      map[int64]string
+	a             *app
+	block         blockView
+	declarations  map[string]recipeSourceLookup
+	cache         map[int64]recipeOrderedValue
+	anchors       map[int64]string
+	identities    map[string]recipeOrderedValue
+	lastInventory *inscriptionBlockResult
+	lastPositions map[recipeIdentityPosition]int
 }
 
 func newRecipeTablePointLookups(a *app, d recipeDefinition, source *recipeOrderedOwnedSource) (*recipeTablePointLookups, error) {
@@ -78,7 +89,7 @@ func newRecipeTablePointLookups(a *app, d recipeDefinition, source *recipeOrdere
 	if err != nil {
 		return nil, err
 	}
-	return &recipeTablePointLookups{a: a, block: source.block, declarations: declarations, cache: map[int64]recipeOrderedValue{}, anchors: map[int64]string{}}, nil
+	return &recipeTablePointLookups{a: a, block: source.block, declarations: declarations, cache: map[int64]recipeOrderedValue{}, anchors: map[int64]string{}, identities: map[string]recipeOrderedValue{}}, nil
 }
 
 // A read is a complete authenticated point fact, never complete prefix coverage.
@@ -91,6 +102,9 @@ func (r *recipeTablePointLookups) read(ctx context.Context, lookup recipeSourceL
 	if r.declarations[lookup.Name] != lookup {
 		return recipeOrderedValue{}, fmt.Errorf("undeclared typed point source")
 	}
+	if lookup.Source == "bitcoin.inscription_identity" {
+		return r.readIdentity(ctx, key)
+	}
 	height, err := strconv.ParseInt(key, 10, 64)
 	if err != nil || height < 0 || height > r.block.Height || strconv.FormatInt(height, 10) != key {
 		return recipeOrderedValue{}, fmt.Errorf("point source requires a canonical nonfuture height")
@@ -98,56 +112,71 @@ func (r *recipeTablePointLookups) read(ctx context.Context, lookup recipeSourceL
 	if value, ok := r.cache[height]; ok {
 		return value, nil
 	}
+	b, err := r.loadBlock(ctx, height)
+	if err != nil {
+		return recipeOrderedValue{}, err
+	}
+	value := recipeOrderedValue{Kind: "object", Object: map[string]recipeOrderedValue{"height": rovUint(uint64(height)), "block": rovText(b.Hash), "transaction_count": rovUint(b.TransactionCount)}}
+	r.cache[height] = value
+	return value, nil
+}
+
+func (r *recipeTablePointLookups) loadBlock(ctx context.Context, height int64) (blockView, error) {
 	b := r.block
 	if height != b.Height {
 		if r.a == nil {
-			return recipeOrderedValue{}, fmt.Errorf("%w: historical block context unavailable", errRecipeDependencyUnavailable)
+			return b, fmt.Errorf("%w: historical block context unavailable", errRecipeDependencyUnavailable)
 		}
 		target, err := r.a.utxoSelectedTarget(ctx, r.a.currentChainAuthority(), height)
 		if err != nil {
-			return recipeOrderedValue{}, fmt.Errorf("%w: selected block context unavailable (%v)", errRecipeDependencyUnavailable, err)
+			return b, fmt.Errorf("%w: selected block context unavailable (%v)", errRecipeDependencyUnavailable, err)
 		}
 		readCtx := context.WithValue(context.WithValue(ctx, parcelEvidenceReadKey079{}, true), indexLocatorReadOnlyKey{}, true)
 		r.a.settingsMu.RLock()
 		settings := r.a.settings
 		r.a.settingsMu.RUnlock()
 		acquired, err := r.a.coalescedBlockBaseContext(readCtx, target, settings, func(work context.Context) (blockView, error) {
-			return r.a.acquireBlockBaseContext(work, target, settings)
+			ownedRead := context.WithValue(context.WithValue(work, parcelEvidenceReadKey079{}, true), indexLocatorReadOnlyKey{}, true)
+			return r.a.acquireBlockBaseContext(ownedRead, target, settings)
 		})
 		if err != nil {
 			if ctx.Err() != nil {
-				return recipeOrderedValue{}, ctx.Err()
+				return b, ctx.Err()
 			}
-			return recipeOrderedValue{}, fmt.Errorf("%w: block context bytes unavailable (%v)", errRecipeDependencyUnavailable, err)
+			return b, fmt.Errorf("%w: block context bytes unavailable (%v)", errRecipeDependencyUnavailable, err)
 		}
 		owned, err := recipeOrderedSourceFromBlock(ctx, acquired)
 		if err != nil {
-			return recipeOrderedValue{}, err
+			return b, err
 		}
 		b = owned.block
 	}
 	if b.Height != height || !integrityVerified(b) || !validHash(b.Hash) || b.TransactionCount == 0 || b.TransactionCount != uint64(len(b.Transactions)) {
-		return recipeOrderedValue{}, fmt.Errorf("block context inventory differs from admitted source")
+		return b, fmt.Errorf("block context inventory differs from admitted source")
 	}
 	if r.a != nil {
 		header, err := r.a.readSelectedHeader(height)
 		if err != nil {
-			return recipeOrderedValue{}, err
+			return b, err
 		}
 		digest := hash256(header)
 		if reverseHex(digest[:]) != b.Hash {
-			return recipeOrderedValue{}, fmt.Errorf("block context is on a replaced selected branch")
+			return b, fmt.Errorf("block context is on a replaced selected branch")
 		}
 	}
-	value := recipeOrderedValue{Kind: "object", Object: map[string]recipeOrderedValue{"height": rovUint(uint64(height)), "block": rovText(b.Hash), "transaction_count": rovUint(b.TransactionCount)}}
-	r.cache[height] = value
 	r.anchors[height] = b.Hash
-	return value, nil
+	return b, nil
 }
 
 func recipeCheckTablePointFact(f recipeImportedFact) error {
-	if f.Lookup == nil || f.Lookup.Source != "bitcoin.block_context" {
+	if f.Lookup == nil {
 		return fmt.Errorf("owned point source unavailable")
+	}
+	if f.Lookup.Source == "bitcoin.inscription_identity" {
+		return recipeCheckIdentityPointFact(f)
+	}
+	if f.Lookup.Source != "bitcoin.block_context" || len(f.Evidence) != 0 {
+		return fmt.Errorf("owned block context source changed")
 	}
 	height, err := strconv.ParseInt(f.Key, 10, 64)
 	if err != nil || height < 0 || height > f.Snapshot.Height || strconv.FormatInt(height, 10) != f.Key {

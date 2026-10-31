@@ -122,7 +122,8 @@ type recipeImportedFact struct {
 	Key      string
 	Value    recipeOrderedValue
 	Checksum string
-	Lookup   *recipeSourceLookup `json:",omitempty"`
+	Lookup   *recipeSourceLookup        `json:",omitempty"`
+	Evidence []recipeTablePointEvidence `json:",omitempty"`
 }
 type recipeImportedFactRef struct {
 	Inline json.RawMessage `json:",omitempty"`
@@ -333,6 +334,11 @@ func (s *recipeTablesImportState) ReadOrdered(ctx context.Context, key recipeSta
 		if err != nil {
 			return recipeOrderedValue{}, err
 		}
+		if fact.Lookup != nil {
+			if err = s.sources.lookups.adoptEvidence(ctx, fact); err != nil {
+				return recipeOrderedValue{}, err
+			}
+		}
 	} else {
 		if source != nil {
 			fact.Value, err = source.read(ctx, key.Key)
@@ -341,6 +347,10 @@ func (s *recipeTablesImportState) ReadOrdered(ctx context.Context, key recipeSta
 		}
 		if err != nil {
 			return recipeOrderedValue{}, err
+		}
+		if source == nil && fact.Lookup.Source == "bitcoin.inscription_identity" {
+			coordinate, _ := recipeInscriptionPointKey(key.Key)
+			fact.Evidence = []recipeTablePointEvidence{{Height: coordinate.Height, BlockHash: s.sources.lookups.anchors[coordinate.Height]}}
 		}
 		fact.Checksum = recipeImportedFactDigest(fact)
 		raw, e := json.Marshal(fact)

@@ -7,9 +7,8 @@ import (
 	"testing"
 )
 
-// Same verified block and fresh physical root for both writers. Results include
-// immutable page durability and allocation totals, not peak resident memory.
-func BenchmarkRecipeOutputFactWriter(b *testing.B) {
+func recipeBuiltinBenchmarkBlock(b *testing.B) blockView {
+	b.Helper()
 	raw, err := os.ReadFile(filepath.Join("docs", "bitmap-evidence", "genesis-block.raw"))
 	if err != nil {
 		b.Fatal(err)
@@ -18,7 +17,14 @@ func BenchmarkRecipeOutputFactWriter(b *testing.B) {
 	if err != nil || !integrityVerified(block) {
 		b.Fatal(err)
 	}
-	if _, err = builtinOutputFactRecipes(); err != nil {
+	return block
+}
+
+// Same verified block and fresh physical root for both writers. Results include
+// immutable page durability and allocation totals, not peak resident memory.
+func BenchmarkRecipeOutputFactWriter(b *testing.B) {
+	block := recipeBuiltinBenchmarkBlock(b)
+	if _, err := builtinOutputFactRecipes(); err != nil {
 		b.Fatal(err)
 	}
 	ctx := context.Background()

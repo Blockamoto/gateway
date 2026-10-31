@@ -1,0 +1,142 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "txio-inputs",
+  "name": "Spending input outpoints",
+  "source": "bitcoin.ordered",
+  "origin": 0,
+  "history": "sparse",
+  "storage": "rows.json.v1",
+  "dependencies": [],
+  "tables": [
+    {
+      "name": "inputs",
+      "key": "ref"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "tx_begin"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "vin",
+                "expr": {
+                  "literal": {
+                    "kind": "uint",
+                    "uint": "0"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "input"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "ref",
+                "expr": {
+                  "call": "input_ref",
+                  "args": [
+                    {
+                      "field": "height"
+                    },
+                    {
+                      "field": "tx_index"
+                    },
+                    {
+                      "var": "vin"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "emit",
+                "table": "inputs",
+                "key": {
+                  "var": "ref"
+                },
+                "expr": {
+                  "object": {
+                    "ref": {
+                      "var": "ref"
+                    },
+                    "block_hash": {
+                      "field": "block"
+                    },
+                    "prev_txid": {
+                      "field": "prev_txid"
+                    },
+                    "prev_vout": {
+                      "field": "prev_vout"
+                    },
+                    "txid": {
+                      "field": "txid"
+                    },
+                    "tx_index": {
+                      "field": "tx_index"
+                    },
+                    "input_index": {
+                      "var": "vin"
+                    }
+                  }
+                }
+              },
+              {
+                "op": "let",
+                "name": "vin",
+                "expr": {
+                  "call": "add_money",
+                  "args": [
+                    {
+                      "var": "vin"
+                    },
+                    {
+                      "literal": {
+                        "kind": "uint",
+                        "uint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -225,7 +225,11 @@ func (s *indexStore) ownTXIOCreation(ctx context.Context, in inputView, height i
 }
 
 func (s *indexStore) deriveTXIOBlock(block blockView) (*indexSpenderBlock, error) {
-	out, err := deriveIndexSpenders(block)
+	ctx := s.locatorContext
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	out, err := deriveIndexSpendersContext(ctx, block)
 	if err != nil {
 		return nil, err
 	}
@@ -234,10 +238,6 @@ func (s *indexStore) deriveTXIOBlock(block blockView) (*indexSpenderBlock, error
 	out.TransactionCount = uint32(len(block.Transactions))
 	for _, tx := range block.Transactions {
 		out.OutputCounts = append(out.OutputCounts, uint32(len(tx.Outputs)))
-	}
-	ctx := s.locatorContext
-	if ctx == nil {
-		ctx = context.Background()
 	}
 	parents := []txioTranslationParent{}
 	parentSeen := map[string]bool{}

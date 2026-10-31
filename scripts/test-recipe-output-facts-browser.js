@@ -14,7 +14,7 @@ async function main(){
   for(const name of ['theme.css','style.css','recipe-editor.css'])await page.addStyleTag({content:fs.readFileSync(path.join(root,'ui','shell',name),'utf8')});
   await page.addScriptTag({path:path.join(root,'ui','shell','recipe-ordered-editor.js')});
   await page.evaluate(()=>{window.applied=0;window.editor=GatewayOrderedRecipeEditor.mount(document.getElementById('facts'),{onApply(){applied++}})});
-  for(const name of ['output-values.json','output-scripts.json','output-values-scripts.json']){
+  for(const name of ['txio-inputs.json','output-values.json','output-scripts.json','output-values-scripts.json']){
    const actual=JSON.parse(fs.readFileSync(path.join(root,'recipes','builtins',name),'utf8'));
    assert.equal(await page.evaluate(definition=>editor.load(definition),actual),true);assert.deepEqual(await page.evaluate(()=>editor.definition()),actual);
   }
@@ -29,7 +29,7 @@ async function main(){
   await page.getByRole('button',{name:'Apply ordered changes',exact:true}).click();assert.equal(await page.evaluate(()=>applied),1);
   if(out)await page.screenshot({path:path.join(out,'output-fields-wide.png'),fullPage:true});await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   if(out)await page.screenshot({path:path.join(out,'output-fields-narrow.png'),fullPage:true});assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
-  console.log('Output fields browser PASS: three actual layer documents, sparse operations, block-1 origin, custom field, Apply, narrow layout and no network work.');
+  console.log('Input/output fields browser PASS: four actual documents, sparse operations, block-1 origin, custom field, Apply, narrow layout and no network work.');
  }finally{await browser.close()}
 }
 main().catch(error=>{console.error(error);process.exitCode=1});

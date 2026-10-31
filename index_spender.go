@@ -40,19 +40,7 @@ func indexSpendKey(txid string, vout uint32) string {
 	return hex.EncodeToString(sum[:])
 }
 func deriveIndexSpenders(block blockView) (*indexSpenderBlock, error) {
-	out := &indexSpenderBlock{Rows: []indexSpendRecord{}}
-	for ti, tx := range block.Transactions {
-		if tx.Coinbase {
-			continue
-		}
-		for vin, in := range tx.Inputs {
-			if in.Coinbase || !validHash(in.PrevTxID) || ti == 0 {
-				return nil, fmt.Errorf("invalid spender input evidence")
-			}
-			out.Rows = append(out.Rows, indexSpendRecord{PrevTxID: in.PrevTxID, Vout: in.PrevVout, TxID: tx.TxID, TxIndex: ti, Vin: vin})
-		}
-	}
-	return out, nil
+	return deriveIndexSpendersContext(context.Background(), block)
 }
 
 type indexSpendResult struct {

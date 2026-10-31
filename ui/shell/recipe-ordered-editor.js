@@ -7,7 +7,7 @@
   const fifoFields=[...fields,'id','unbound','has_pointer','input_value','input_offset','pointer','outputs_value'];
   const projectionFields=['block','height','tx_index','vout','value','script','add'];
   const tableFields=fields.filter(name=>!['fact_page','fact_row'].includes(name));
-  const arities={eq:2,not:1,present:1,add_money:2,sub_money:2,less_equal:2,outpoint:2,output_ref:3,destination:1,payment_destination:1,retains:2,bip30_exception:3,get:2,range_empty:0,range_subsidy:1,range_concat:2,range_split:2,range_value:1,range_at:2};
+  const arities={eq:2,not:1,present:1,add_money:2,sub_money:2,less_equal:2,outpoint:2,output_ref:3,input_ref:3,destination:1,payment_destination:1,retains:2,bip30_exception:3,get:2,range_empty:0,range_subsidy:1,range_concat:2,range_split:2,range_value:1,range_at:2};
   const operations={let:['name','expr'],read:['name','table','key'],put:['table','key','expr'],delete:['table','key'],if:['expr','body','else'],require:['name','expr'],emit:['table','key','expr'],for_range:['name','expr','body'],for_events:['body']};
   const uint=text=>typeof text==='string'&&/^(0|[1-9][0-9]*)$/.test(text)&&(text.length<20||text.length===20&&text<='18446744073709551615');
   function valueSupported(value,depth=0){

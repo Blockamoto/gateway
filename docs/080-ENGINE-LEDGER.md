@@ -660,3 +660,35 @@ Coin rebuild, table rebuild and wire-compatibility checks passed three repeated
 rounds in 61.510 seconds. The prior 73.977-second compatibility invocation failed
 on the observed archive error; it is not reported as clean or hidden by a longer
 test deadline. The fix changes no generation identity, head or marker encoding.
+
+### TXIO spending-input composition
+
+The actual `txio-inputs.json` program now derives native raw spending rows and
+saved sparse copies through the common typed machine. It resets/increments an
+input counter and composes positions with the narrow `input_ref` primitive;
+the source and codec adapter do not derive those rows outside the program. The
+old loop is a differential oracle. The native source/program binding is pinned
+to `f6be769c76c8c0fe8030405dcb5069f6035843c12aa1378ed907c27f82e5423d`.
+Native row shape, modern translation/proof behavior and frozen rule identities
+remain unchanged. Creation-evidence selection is still native code and remains
+explicitly open; this is a component migration, not complete TXIO acceptance.
+
+Reference-block raw parity, existing TXIO creation/pending/legacy checks and
+unchanged native semantic bundles passed in 17.581 seconds. The final public
+reference-block saved run, multi-input counters, empty blocks, cancellation,
+coordinate bounds and native catalogue checks passed in 17.187 seconds. After
+the Windows archive fix above, the wider input/output/native/ordered/Sat/table
+and TXIO compatibility set passed in 81.746 seconds. Actual-document guided
+round trips, all four TXIO inspector variants and source-identical headless DOM
+checks passed. The sparse header fixture is local publication evidence, not a
+full intervening mainnet chain replay.
+
+A three-iteration reference benchmark isolates only raw spending rows: old
+loop 1.97 ms / 2.92 MB allocated, recipe 50.95 ms / 24.42 MB. This interpreter
+overhead is material and does not describe the full creation/storage pipeline
+or peak memory. `080-TXIO-INPUTS.md` records the contract, source distinction,
+evidence and remaining proof-selection boundary. Full-preview scope remains
+open in `080-PARITY-MATRIX.md`.
+
+The final production build passed after the TXIO input component and Windows
+archive follow-up.

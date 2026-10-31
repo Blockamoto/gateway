@@ -147,10 +147,14 @@ func TestRecipeOutputFactCataloguePreservesFrozenNativeRules(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(d.ExecutableRecipeVariants) != 3 {
+		offset := 0
+		if id == "txo-spender" {
+			offset = 1
+		}
+		if len(d.ExecutableRecipeVariants) != 3+offset {
 			t.Fatal("retained layer recipes absent", id)
 		}
-		for i, variant := range d.ExecutableRecipeVariants {
+		for i, variant := range d.ExecutableRecipeVariants[offset:] {
 			parsed, err := parseRecipe(variant.Definition)
 			if err != nil {
 				t.Fatal(err)

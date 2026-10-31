@@ -317,9 +317,12 @@ func (m *recipeOrderedMachine) eval(e recipeOrderedExpr, depth int) (recipeOrder
 		}
 		s, err := recipeBitcoinOutpoint(args[0].Text, uint32(args[1].Uint))
 		return rovText(s), err
-	case "output_ref":
+	case "output_ref", "input_ref":
 		if len(args) != 3 || args[0].Kind != "uint" || args[1].Kind != "uint" || args[2].Kind != "uint" || args[0].Uint > uint64(^uint64(0)>>1) || args[1].Uint > uint64(^uint32(0)) || args[2].Uint > uint64(^uint32(0)) {
 			return fail()
+		}
+		if e.Call == "input_ref" {
+			return rovText(inputCoordinate(int(args[2].Uint), int(args[1].Uint), int64(args[0].Uint))), nil
 		}
 		return rovText(outputCoordinate(int(args[2].Uint), int(args[1].Uint), int64(args[0].Uint))), nil
 	case "destination", "payment_destination":

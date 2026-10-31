@@ -783,3 +783,35 @@ index workspace passed unit/headless DOM checks. See `080-REVEAL-TABLES.md`.
 Native Bitmap compositions and broader typed incoming checkpoints remain open;
 this foundation does not complete the preview scope.
 The production build passed after the final source changes.
+
+### 2026-10-31: native Standard District JSON
+
+`recipes/builtins/bitmap-districts-standard-v1.json` now controls candidate
+recognition, MIME/ASCII decisions, canonical decimal/whole-claim grammar,
+target-height eligibility and first-winner state through ordinary typed JSON
+operations. Its named table writes feed the retained native COW candidate,
+winner and reverse-key codecs; physical counts and publication retain the old
+fences. The native equivalence bundle is
+`426dd8721c0b74b63a7f7e0083f338c2201e231bb16742c0ea84a73487cbf9af`.
+The existing Standard profile hash, native page roots, checkpoint identity and
+legacy execution gates remain unchanged. The inspector exposes the complete
+executable document after its frozen native rule identity.
+
+Differential checks compare whole native heads, page roots and references on
+real block 792435 and a malformed/duplicate/case/whitespace/overflow/non-ASCII
+corpus, including restart and retained reorg. The exact saved document matches
+every native logical candidate/winner row and starts no native parent writers.
+A saved suffix edit changes its fingerprint and produces covered empty results
+on the original fixture, confirming JSON controls custom claim grammar.
+Guided actual-document round trips and real-DOM table controls passed.
+
+The focused set and fresh-root sample passed in 4.382 seconds. The sample
+measured old evaluator 82.73 ms / 19.10 MB allocated, recipe 83.63 ms / 20.47 MB,
+including extraction and durable native publication. This single fixture is
+not full-chain throughput or peak-memory evidence. The wider Bitmap/Parcel and
+reveal-table suite passed in 425.889 seconds: 210 passes, four skips, no failures.
+Its temporary audit is `gateway-080-district-recipe-regression.jsonl`.
+`080-NATIVE-BITMAP-DISTRICTS.md` states source and storage boundaries. Typed
+incoming snapshots, actual validated Parcel JSON, source retention layers and
+complete preview acceptance remain open.
+The production build passed after the final source changes.

@@ -39,6 +39,7 @@ async function main(){
   await revealStep.getByLabel('Expression type',{exact:true}).selectOption('call');await revealStep.getByLabel('Function',{exact:true}).selectOption('decimal_parse');assert.equal((await page.evaluate(()=>editor.definition())).ordered.steps[0].body[4].expr.call,'decimal_parse');
   if(out)await page.screenshot({path:path.join(out,'reveal-tables-wide.png'),fullPage:true});await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);if(out)await page.screenshot({path:path.join(out,'reveal-tables-narrow.png'),fullPage:true});
   assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
+  const districts=JSON.parse(fs.readFileSync(path.join(root,'recipes','builtins','bitmap-districts-standard-v1.json'),'utf8'));assert(await page.evaluate(definition=>editor.load(definition),districts));assert.deepEqual(await page.evaluate(()=>editor.definition()),districts);assert.equal(await page.getByLabel('Origin height',{exact:true}).inputValue(),'792435');assert.equal(await page.getByLabel('State table name',{exact:true}).count(),2);
   console.log('Table browser PASS: actual transaction/reveal starters, source-specific fields, byte/decimal functions, origin, reference-preserving rename, declarations, keyed writes, exact uints, Apply, narrow layout and no network work.');
  }finally{await browser.close()}
 }

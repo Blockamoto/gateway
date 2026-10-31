@@ -323,6 +323,13 @@ func bitmapFixedIndexDefinition(id string) (indexDefinition, bool) {
 	if !d.Buildable {
 		d.LockReason = releaseLockReason(id)
 	}
+	if id == bitmapStandardDistrictID {
+		d.ExecutableRecipe = append(json.RawMessage(nil), builtinBitmapDistrictJSON...)
+		if p, err := builtinBitmapDistrictRecipe(); err == nil {
+			d.ExecutableRecipeHash = p.semanticHash()
+			d.ExecutableRecipeVariants = []indexExecutableRecipe{{Name: "Standard V1 District claims and first-winner state", Definition: append(json.RawMessage(nil), builtinBitmapDistrictJSON...), SemanticHash: p.semanticHash()}}
+		}
+	}
 	return d, true
 }
 

@@ -79,7 +79,15 @@ func recipeRevealTablesWalk(ctx context.Context, b blockView, sink func(map[stri
 	if err != nil {
 		return err
 	}
-	ordered := append([]inscriptionOccurrence(nil), admitted.inventory.Occurrences...)
+	return recipeRevealInventoryWalk(ctx, source.block, admitted.inventory, sink)
+}
+
+func recipeRevealInventoryWalk(ctx context.Context, b blockView, inventory *inscriptionBlockResult, sink func(map[string]recipeOrderedValue) error) error {
+	if ctx == nil || inventory == nil || sink == nil {
+		return fmt.Errorf("admitted reveal inventory and sink required")
+	}
+	var err error
+	ordered := append([]inscriptionOccurrence(nil), inventory.Occurrences...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		if ordered[i].TxIndex != ordered[j].TxIndex {
 			return ordered[i].TxIndex < ordered[j].TxIndex
@@ -91,7 +99,7 @@ func recipeRevealTablesWalk(ctx context.Context, b blockView, sink func(map[stri
 		if err = ctx.Err(); err != nil {
 			return err
 		}
-		if o.TxIndex < 0 || o.InputIndex < 0 || o.TxIndex >= len(source.block.Transactions) || source.block.Transactions[o.TxIndex].TxID != o.TxID {
+		if o.TxIndex < 0 || o.InputIndex < 0 || o.TxIndex >= len(b.Transactions) || b.Transactions[o.TxIndex].TxID != o.TxID || o.ID != fmt.Sprintf("%si%d", o.TxID, o.Index) {
 			return fmt.Errorf("reveal coordinate differs from owned transaction inventory")
 		}
 		event["txid"], event["ref"], event["content_hash"] = rovText(o.TxID), rovText(inscriptionCoordinate(uint32(o.TxIndex), o.Index, b.Height)), rovText(o.ContentSHA256)

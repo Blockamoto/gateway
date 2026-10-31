@@ -700,6 +700,9 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 			return err
 		}
 	}
+	if s.id == bitmapStandardDistrictID {
+		return s.applyDistrictRecipe(ctx, block, &extraction, h, row, winners, candidates, targets, blocks)
+	}
 	ordered := append([]inscriptionOccurrence(nil), extraction.Occurrences...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		if ordered[i].TxIndex != ordered[j].TxIndex {

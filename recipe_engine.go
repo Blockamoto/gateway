@@ -20,19 +20,20 @@ import (
 // recipeDefinition is an executable document, not a selector for a built-in
 // index. Presentation and dependency identities do not choose an algorithm.
 type recipeDefinition struct {
-	Ordered      json.RawMessage    `json:"ordered,omitempty"`
-	Storage      string             `json:"storage,omitempty"`
-	Format       string             `json:"format"`
-	Version      int                `json:"version"`
-	ID           string             `json:"id"`
-	Name         string             `json:"name"`
-	Source       string             `json:"source"`
-	Origin       int64              `json:"origin"`
-	History      string             `json:"history"`
-	Dependencies []recipeDependency `json:"dependencies"`
-	Exports      []recipeExport     `json:"exports,omitempty"`
-	Tables       []recipeTable      `json:"tables"`
-	Steps        []recipeStep       `json:"steps,omitempty"`
+	Ordered      json.RawMessage      `json:"ordered,omitempty"`
+	Storage      string               `json:"storage,omitempty"`
+	Format       string               `json:"format"`
+	Version      int                  `json:"version"`
+	ID           string               `json:"id"`
+	Name         string               `json:"name"`
+	Source       string               `json:"source"`
+	Origin       int64                `json:"origin"`
+	History      string               `json:"history"`
+	Dependencies []recipeDependency   `json:"dependencies"`
+	Lookups      []recipeSourceLookup `json:"lookups,omitempty"`
+	Exports      []recipeExport       `json:"exports,omitempty"`
+	Tables       []recipeTable        `json:"tables"`
+	Steps        []recipeStep         `json:"steps,omitempty"`
 }
 
 type recipeTable struct {
@@ -176,6 +177,9 @@ func compileRecipe(d recipeDefinition) (*recipeProgram, error) {
 	}
 	if d.Origin < 0 {
 		return nil, recipeDiagnosticAt("RECIPE_INVALID_ORIGIN", "/origin", "origin must be non-negative")
+	}
+	if len(d.Lookups) > 0 && (d.Source != "bitcoin.ordered" || d.History != "sparse" || d.Storage != recipeOrderedSparseStorage) {
+		return nil, recipeDiagnosticAt("RECIPE_LOOKUP_SOURCE", "/lookups", "source lookups currently require sparse ordered transaction events")
 	}
 	if d.Source == "bitcoin.ordered" {
 		return compileOrderedRecipe(d)

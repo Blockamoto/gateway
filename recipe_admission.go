@@ -62,10 +62,25 @@ func recipeAdmissionCloneRequest(req indexRunRequest) (indexRunRequest, error) {
 }
 
 func recipeAdmissionBuild(resolved resolvedSavedRecipe, req indexRunRequest, targetHeight int64, targetHash string) (recipeAdmissionPlan, error) {
+	if resolved.Source == "bitcoin.ordered" && resolved.History == "sparse" && len(resolved.Definition.Lookups) == 0 {
+		for _, selection := range req.Consumers {
+			if selection.Index == resolved.ID && selection.Rebuild {
+				return recipeAdmissionPlan{}, fmt.Errorf("sparse rebuild requires declared source evidence")
+			}
+		}
+	}
+	return recipeAdmissionBuildIdentity(resolved, req, targetHeight, targetHash)
+}
+
+// Persisted run validation has immutable identity fields, not a mutable registry
+// definition. It checks request shape and digest here. Actual admission and
+// every reopened consumer use recipeAdmissionBuild with the exact definition.
+func recipeAdmissionBuildIdentity(resolved resolvedSavedRecipe, req indexRunRequest, targetHeight int64, targetHash string) (recipeAdmissionPlan, error) {
 	var p recipeAdmissionPlan
 	sparse := recipeSparseSource(resolved.Source) && resolved.History == "sparse"
 	ordered := recipePrefixSource(resolved.Source) && resolved.History == "ordered"
 	projection := resolved.Source == recipeUTXOProjectionSource && resolved.History == "projection" && resolved.Origin == 0
+	sourceEvidence := resolved.Source == "bitcoin.ordered" && resolved.History == "sparse"
 	if resolved.ID == "" || !recipeStoreHashValid(resolved.Revision) || !recipeStoreHashValid(resolved.SemanticHash) || (!sparse && !ordered && !projection) || resolved.Origin < 0 {
 		return p, fmt.Errorf("unsupported recipe admission identity or capability")
 	}
@@ -106,7 +121,7 @@ func recipeAdmissionBuild(resolved resolvedSavedRecipe, req indexRunRequest, tar
 		return p, fmt.Errorf("nested recipe options are not supported")
 	}
 	o := selected.indexRunOptions
-	if o.ParcelEvidenceRoute != "" || o.ParcelRawScanBudget != 0 || o.Retention != "" || o.Mode != "" && o.Mode != "lean" || o.RetainOutputValues != nil || o.RetainOutputScripts != nil || o.RetainSatHistory || o.ConventionalIDs != nil || o.Rebuild && !ordered && !projection || o.RebuildSnapshot != nil {
+	if o.ParcelEvidenceRoute != "" || o.ParcelRawScanBudget != 0 || o.Retention != "" || o.Mode != "" && o.Mode != "lean" || o.RetainOutputValues != nil || o.RetainOutputScripts != nil || o.RetainSatHistory || o.ConventionalIDs != nil || o.Rebuild && !ordered && !projection && !sourceEvidence || o.RebuildSnapshot != nil {
 		return p, fmt.Errorf("native index options do not apply to a recipe")
 	}
 	from := resolved.Origin

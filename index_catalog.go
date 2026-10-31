@@ -250,9 +250,12 @@ func indexDefinitions() []indexDefinition {
 			// TXIO payloads carry their own additive version and private layout.
 			d.Name = "TXIO index"
 			d.Theory = "Transaction Input/Output Index: input-to-original-output and output-to-spending-input positions. Missing or unresolved sparse relationships do not prove unspentness."
-			d.ExecutableRecipe = append(json.RawMessage(nil), builtinTXIOInputsJSON...)
-			if p, err := builtinTXIOInputsRecipe(); err == nil {
+			d.ExecutableRecipe = append(json.RawMessage(nil), builtinTXIOLinksJSON...)
+			if p, err := builtinTXIOLinksRecipe(); err == nil {
 				d.ExecutableRecipeHash = p.semanticHash()
+				d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: "Input to creation links and pending evidence", Definition: append(json.RawMessage(nil), builtinTXIOLinksJSON...), SemanticHash: p.semanticHash()})
+			}
+			if p, err := builtinTXIOInputsRecipe(); err == nil {
 				d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: "Spending input outpoints", Definition: append(json.RawMessage(nil), builtinTXIOInputsJSON...), SemanticHash: p.semanticHash()})
 			}
 		}

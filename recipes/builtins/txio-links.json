@@ -1,0 +1,460 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "txio-links",
+  "name": "Input and output links",
+  "source": "bitcoin.ordered",
+  "origin": 0,
+  "history": "sparse",
+  "storage": "rows.json.v1",
+  "dependencies": [],
+  "lookups": [
+    {
+      "name": "cohort_creation",
+      "source": "bitcoin.input_creation",
+      "provider": "cohort",
+      "revision": "c6a0067795f578daa947a2a5fd0e948fd870b8bc011a7bb4646e35ef116d6734",
+      "semantic_hash": "58c8841374463eedfc89c492396b66905c8b32381f7c5bcb3dcd993888caf073",
+      "key": "input_ref",
+      "type": "creation_evidence"
+    },
+    {
+      "name": "same_block_creation",
+      "source": "bitcoin.input_creation",
+      "provider": "same_block",
+      "revision": "ae6fa76b20d98a4ee04cb76a4abe992033d6d2f79cb3f2fb192c6624c5e9a4ad",
+      "semantic_hash": "4d18f47fc391e1461ee1465f2543514cfefee48a3662cd829b4263ea7c9493fc",
+      "key": "input_ref",
+      "type": "creation_evidence"
+    },
+    {
+      "name": "stored_creation",
+      "source": "bitcoin.input_creation",
+      "provider": "stored",
+      "revision": "f93b1061645cfe45e45e884aa1f0cea7dced62bb4492833cd7cc249544cd3f86",
+      "semantic_hash": "678160b23723ee90345645f821693861628d1e44c6e65f8f70a31acc5715634e",
+      "key": "input_ref",
+      "type": "creation_evidence"
+    },
+    {
+      "name": "provider_creation",
+      "source": "bitcoin.input_creation",
+      "provider": "provider",
+      "revision": "e46c32e901b846daabdd01f49873a295ac800291fd13021e02aa28c9bcb38173",
+      "semantic_hash": "1da58386b5b63524c42291f206721c2789fa8c72f52d2a8633d07718d6c6e3fd",
+      "key": "input_ref",
+      "type": "creation_evidence"
+    }
+  ],
+  "tables": [
+    {
+      "name": "links",
+      "key": "ref"
+    },
+    {
+      "name": "pending",
+      "key": "ref"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "tx_begin"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "vin",
+                "expr": {
+                  "literal": {
+                    "kind": "uint",
+                    "uint": "0"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "input"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "ref",
+                "expr": {
+                  "call": "input_ref",
+                  "args": [
+                    {
+                      "field": "height"
+                    },
+                    {
+                      "field": "tx_index"
+                    },
+                    {
+                      "var": "vin"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "let",
+                "name": "chosen",
+                "expr": {
+                  "literal": {
+                    "kind": "missing"
+                  }
+                }
+              },
+              {
+                "op": "read",
+                "name": "cohort_evidence",
+                "table": "cohort_creation",
+                "key": {
+                  "var": "ref"
+                }
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "call": "eq",
+                  "args": [
+                    {
+                      "call": "get",
+                      "args": [
+                        {
+                          "var": "cohort_evidence"
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "state"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "literal": {
+                        "kind": "text",
+                        "text": "available"
+                      }
+                    }
+                  ]
+                },
+                "body": [
+                  {
+                    "op": "let",
+                    "name": "chosen",
+                    "expr": {
+                      "var": "cohort_evidence"
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "op": "read",
+                    "name": "same_block_evidence",
+                    "table": "same_block_creation",
+                    "key": {
+                      "var": "ref"
+                    }
+                  },
+                  {
+                    "op": "if",
+                    "expr": {
+                      "call": "eq",
+                      "args": [
+                        {
+                          "call": "get",
+                          "args": [
+                            {
+                              "var": "same_block_evidence"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "state"
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "available"
+                          }
+                        }
+                      ]
+                    },
+                    "body": [
+                      {
+                        "op": "let",
+                        "name": "chosen",
+                        "expr": {
+                          "var": "same_block_evidence"
+                        }
+                      }
+                    ],
+                    "else": [
+                      {
+                        "op": "read",
+                        "name": "stored_evidence",
+                        "table": "stored_creation",
+                        "key": {
+                          "var": "ref"
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "eq",
+                          "args": [
+                            {
+                              "call": "get",
+                              "args": [
+                                {
+                                  "var": "stored_evidence"
+                                },
+                                {
+                                  "literal": {
+                                    "kind": "text",
+                                    "text": "state"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "available"
+                              }
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "let",
+                            "name": "chosen",
+                            "expr": {
+                              "var": "stored_evidence"
+                            }
+                          }
+                        ],
+                        "else": [
+                          {
+                            "op": "read",
+                            "name": "provider_evidence",
+                            "table": "provider_creation",
+                            "key": {
+                              "var": "ref"
+                            }
+                          },
+                          {
+                            "op": "if",
+                            "expr": {
+                              "call": "eq",
+                              "args": [
+                                {
+                                  "call": "get",
+                                  "args": [
+                                    {
+                                      "var": "provider_evidence"
+                                    },
+                                    {
+                                      "literal": {
+                                        "kind": "text",
+                                        "text": "state"
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "literal": {
+                                    "kind": "text",
+                                    "text": "available"
+                                  }
+                                }
+                              ]
+                            },
+                            "body": [
+                              {
+                                "op": "let",
+                                "name": "chosen",
+                                "expr": {
+                                  "var": "provider_evidence"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "call": "present",
+                  "args": [
+                    {
+                      "var": "chosen"
+                    }
+                  ]
+                },
+                "body": [
+                  {
+                    "op": "emit",
+                    "table": "links",
+                    "key": {
+                      "var": "ref"
+                    },
+                    "expr": {
+                      "object": {
+                        "ref": {
+                          "var": "ref"
+                        },
+                        "block_hash": {
+                          "field": "block"
+                        },
+                        "prev_txid": {
+                          "field": "prev_txid"
+                        },
+                        "prev_vout": {
+                          "field": "prev_vout"
+                        },
+                        "txid": {
+                          "field": "txid"
+                        },
+                        "tx_index": {
+                          "field": "tx_index"
+                        },
+                        "input_index": {
+                          "var": "vin"
+                        },
+                        "output_ref": {
+                          "call": "get",
+                          "args": [
+                            {
+                              "var": "chosen"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "position"
+                              }
+                            }
+                          ]
+                        },
+                        "creation_block_hash": {
+                          "call": "get",
+                          "args": [
+                            {
+                              "var": "chosen"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": "block_hash"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "op": "emit",
+                    "table": "pending",
+                    "key": {
+                      "var": "ref"
+                    },
+                    "expr": {
+                      "object": {
+                        "ref": {
+                          "var": "ref"
+                        },
+                        "block_hash": {
+                          "field": "block"
+                        },
+                        "prev_txid": {
+                          "field": "prev_txid"
+                        },
+                        "prev_vout": {
+                          "field": "prev_vout"
+                        },
+                        "txid": {
+                          "field": "txid"
+                        },
+                        "tx_index": {
+                          "field": "tx_index"
+                        },
+                        "input_index": {
+                          "var": "vin"
+                        },
+                        "evidence_state": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "unavailable"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "let",
+                "name": "vin",
+                "expr": {
+                  "call": "add_money",
+                  "args": [
+                    {
+                      "var": "vin"
+                    },
+                    {
+                      "literal": {
+                        "kind": "uint",
+                        "uint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

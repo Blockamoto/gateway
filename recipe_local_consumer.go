@@ -20,13 +20,27 @@ type recipeLocalConsumer struct {
 	binding       recipeRunBinding
 }
 
-func (a *app) openRecipeLocalConsumer(ctx context.Context, plan recipeAdmissionPlan, binding recipeRunBinding) (*recipeLocalConsumer, error) {
+func (a *app) openRecipeLocalConsumer(ctx context.Context, plan recipeAdmissionPlan, binding recipeRunBinding, reviewed ...string) (*recipeLocalConsumer, error) {
 	if plan.Index != binding.Index || plan.Revision != binding.Revision || plan.SemanticHash != binding.Fingerprint {
 		return nil, fmt.Errorf("recipe plan does not match the run binding")
 	}
 	consumer, err := a.openRecipeSparseConsumer(ctx, plan)
 	if err != nil {
 		return nil, err
+	}
+	selection, _ := runSelection(consumer.plan.Request, consumer.plan.Index)
+	if selection.Rebuild {
+		if len(consumer.program.definition.Lookups) == 0 || consumer.plan.NoWork || len(reviewed) != 1 {
+			return nil, fmt.Errorf("source-evidence rebuild requires its reviewed generation and range")
+		}
+		header, err := a.readSelectedHeader(consumer.plan.EffectiveFrom)
+		if err != nil {
+			return nil, err
+		}
+		digest := hash256(header)
+		if err = consumer.store.resetForRebuild(ctx, binding.RunID+":"+binding.Index, reviewed[0], a.recipeLocalPublicationGuard(ctx, binding, consumer.plan.EffectiveFrom, reverseHex(digest[:]))); err != nil {
+			return nil, err
+		}
 	}
 	return &recipeLocalConsumer{a: a, consumer: consumer, binding: binding}, nil
 }

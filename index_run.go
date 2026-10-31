@@ -297,7 +297,7 @@ func validateStoredRecipeRunBindings(run *indexRunRecord) error {
 			return fmt.Errorf("saved recipe run binding is inconsistent")
 		}
 		resolved := resolvedSavedRecipe{ID: binding.Index, Revision: binding.Revision, SemanticHash: binding.SemanticHash, Source: binding.Source, Origin: binding.Origin, History: binding.History}
-		rebuilt, err := recipeAdmissionBuild(resolved, binding.Request, binding.TargetHeight, binding.TargetHash)
+		rebuilt, err := recipeAdmissionBuildIdentity(resolved, binding.Request, binding.TargetHeight, binding.TargetHash)
 		if err != nil || rebuilt.PlanID != binding.PlanID || progress.From != binding.EffectiveFrom {
 			return fmt.Errorf("saved recipe run binding is invalid")
 		}
@@ -735,6 +735,10 @@ func (a *app) planIndexRunResolved(ctx context.Context, req indexRunRequest, res
 				p.RequiresGenesis = p.RequiresGenesis || q.RequiresGenesis
 			} else if resolved.Source == recipeUTXOProjectionSource {
 				if e = a.planProjectionRecipeState(ctx, resolved, c, req, &q); e != nil {
+					return p, e
+				}
+			} else if resolved.Source == "bitcoin.ordered" && resolved.History == "sparse" && len(resolved.Definition.Lookups) > 0 {
+				if e = a.planSourceLookupRecipe(ctx, resolved, c, &q); e != nil {
 					return p, e
 				}
 			}

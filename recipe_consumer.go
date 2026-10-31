@@ -220,8 +220,15 @@ func (c *recipeSparseConsumer) Apply(ctx context.Context, work recipeConsumerWor
 		return err
 	}
 	defer spool.Close()
+	var sourceLookups *recipeInputCreationLookups
 	if c.program.definition.Source == "bitcoin.ordered" {
-		err = c.program.evaluateOrderedSparseInto(ctx, block, spool.Add)
+		err = c.program.evaluateOrderedSparseWithLookupsInto(ctx, block, func(owned blockView) (*recipeInputCreationLookups, error) {
+			reader, err := newRecipeInputCreationLookups(ctx, c.a, nil, owned, c.program.definition)
+			if err == nil {
+				sourceLookups = reader
+			}
+			return reader, err
+		}, spool.Add)
 	} else if c.program.definition.Source == "bitcoin.transaction" {
 		var source *recipeTransactionSource
 		if len(transactionSources) > 1 {
@@ -252,7 +259,16 @@ func (c *recipeSparseConsumer) Apply(ctx context.Context, work recipeConsumerWor
 	if err != nil {
 		return err
 	}
-	storeGuard := func(publish func() error) error { return guard(guardPlan, work, block, publish) }
+	storeGuard := func(publish func() error) error {
+		return guard(guardPlan, work, block, func() error {
+			if sourceLookups != nil {
+				if err := sourceLookups.checkAnchorsLocked(ctx); err != nil {
+					return err
+				}
+			}
+			return publish()
+		})
+	}
 	if err = c.store.publishSparseStaged(ctx, unit, work.CoverageRevision, storeGuard, nil); err != nil {
 		return err
 	}

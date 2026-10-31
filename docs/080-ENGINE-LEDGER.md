@@ -692,3 +692,58 @@ open in `080-PARITY-MATRIX.md`.
 
 The final production build passed after the TXIO input component and Windows
 archive follow-up.
+
+### 2026-10-31: complete TXIO links and declared source reads
+
+The complete `recipes/builtins/txio-links.json` now controls native input
+ordinals, lazy creation-proof priority, resolved positional links and pending
+translations through the typed interpreter. The native adapter retains the v3
+physical codec, creation anchors, translation catalogue, reverse pointers and
+optional retained facts. Its frozen equivalence bundle is
+`060c52f86e2983e2d5a534d34ded08f0e31f08603aef776c8e3efb82aae88052`.
+Native rule identities and existing data layouts remain unchanged. The inspector
+defaults to this complete document and retains the raw-input and three output
+fact variants.
+
+Saved sparse ordered programs can declare exact installed per-input creation
+lookups. JSON chooses among cohort, earlier same-block, stored and configured
+provider facts. Reads expose explicit available/unavailable results, preserve
+latest eligible incarnations, and start no parent writer. Saved stored/provider
+reads cannot repair producer locators. Raw-owned input scope and selected
+creation anchors are fenced before publication. Empty offline provider
+inventories are captured lazily to avoid repeating filesystem probes for each
+input; exact known cache IDs remain usable.
+
+A saved copy runs through the common finite/Live sparse executor and generic
+query/download path. Later evidence does not silently replace a receipt. An
+explicitly reviewed rebuild archives the whole previous semantic generation,
+then evaluates the selected range without a hidden genesis or state prefix.
+Stale reviews fail, and persistent archive markers preserve replacements when
+resuming. Read-only stored-run shape validation is separate from admission and
+reopening against the exact immutable definition. Ordinary sparse projections
+cannot acquire a rebuild by omitting the declared source contract.
+
+Focused checks cover complete native v3/reference parity on block 792435,
+provider priority/errors/cancellation, legacy reads and reorgs, complete saved
+reference output/reuse, and real block-170 pending-to-resolved refresh with the
+native parent Off and its files unchanged. Selected sparse header and admitted
+parent fixtures do not claim a full consensus replay. Guided reconstruction,
+provider pins/alias edits, nested reads, five actual documents, narrow layouts
+and the wider workspace passed unit/headless DOM checks. These remain code QA,
+not visible finished-preview acceptance.
+
+The wider recipe/saved/native-TXIO/075/IndexRun/TimelineRun suite passed cleanly
+in 930.163 seconds: 629 passes, six skips, no failures. Build and browser checks
+did not compete with that run. The audit log is the session's temporary
+`gateway-080-txio-links-regression.jsonl`. A single full derivation benchmark
+including fresh durable translation writes measured old oracle 91.946 seconds /
+244.78 MB allocated, recipe 117.151 seconds / 320.18 MB. The allocation increase
+is material; this Windows sample does not establish a throughput ratio, peak
+memory or full-chain performance. See `080-TXIO-SOURCE-LOOKUPS.md` for contracts
+and measurement boundaries. Bitmap, wider typed incoming dependencies, source
+retention layers and complete visible preview acceptance remain open in the
+parity matrix.
+
+The final Live/reorg/pause/restart follow-up also stages a rebuild of a nonempty
+original generation and verifies its archive after restart. It passed in 3.644
+seconds. The production build passed after the final source changes.

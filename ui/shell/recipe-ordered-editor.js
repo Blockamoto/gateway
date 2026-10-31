@@ -7,6 +7,7 @@
   const fifoFields=[...fields,'id','unbound','has_pointer','input_value','input_offset','pointer','outputs_value'];
   const projectionFields=['block','height','tx_index','vout','value','script','add'];
   const tableFields=fields.filter(name=>!['fact_page','fact_row'].includes(name));
+  const lookupProviders=[['cohort','In-run Coin evidence'],['same_block','Earlier transactions in this block'],['stored','Retained TXIO creation evidence'],['provider','Configured parent transaction sources']];
   const arities={eq:2,not:1,present:1,add_money:2,sub_money:2,less_equal:2,outpoint:2,output_ref:3,input_ref:3,destination:1,payment_destination:1,retains:2,bip30_exception:3,get:2,range_empty:0,range_subsidy:1,range_concat:2,range_split:2,range_value:1,range_at:2};
   const operations={let:['name','expr'],read:['name','table','key'],put:['table','key','expr'],delete:['table','key'],if:['expr','body','else'],require:['name','expr'],emit:['table','key','expr'],for_range:['name','expr','body'],for_events:['body']};
   const uint=text=>typeof text==='string'&&/^(0|[1-9][0-9]*)$/.test(text)&&(text.length<20||text.length===20&&text<='18446744073709551615');
@@ -34,7 +35,7 @@
   }
   function stepsSupported(steps,depth=0,scope=null){
     return depth<=32&&Array.isArray(steps)&&steps.length<=512&&steps.every(step=>{
-      if(!Object.hasOwn(operations,step?.op)||scope?.output&&['read','put','delete'].includes(step.op)||scope?.generic&&step.op==='emit')return false;
+      if(!Object.hasOwn(operations,step?.op)||scope?.output&&(['put','delete'].includes(step.op)||step.op==='read'&&!scope.lookups)||scope?.generic&&step.op==='emit')return false;
       const allowed=operations[step.op];if(step.op==='for_events'&&depth!==0||!keys(step,['op',...allowed]))return false;
       if(Object.hasOwn(step,'name')&&(typeof step.name!=='string'||!step.name))return false;
       if(Object.hasOwn(step,'table')&&!(step.op==='emit'?(scope?.output?scope.tables:scope?.emitTables||['prevouts']):scope?.stateTables||['coins','counts']).includes(step.table))return false;
@@ -49,7 +50,7 @@
   }
   function toGuided(definition){
     const d=definition;
-    if(!keys(d,['format','version','id','name','source','origin','history','storage','dependencies','exports','tables','ordered'])||d.format!=='gateway-recipe'||d.version!==1||typeof d.id!=='string'||typeof d.name!=='string'||!['bitcoin.ordered','dependency.utxo','bitcoin.fifo'].includes(d.source)||!Number.isSafeInteger(d.origin)||d.origin<0)return null;
+    if(!keys(d,['format','version','id','name','source','origin','history','storage','dependencies','lookups','exports','tables','ordered'])||d.format!=='gateway-recipe'||d.version!==1||typeof d.id!=='string'||typeof d.name!=='string'||!['bitcoin.ordered','dependency.utxo','bitcoin.fifo'].includes(d.source)||!Number.isSafeInteger(d.origin)||d.origin<0)return null;
     const projection=d.source==='dependency.utxo'&&d.history==='projection'&&d.storage==='bitcoin.address.cow.v1'&&d.origin===0;
     const fifo=d.source==='bitcoin.fifo'&&d.history==='ordered'&&d.storage==='bitcoin.sats.cow.v1'&&d.origin===0;
     const sparse=d.history==='sparse'&&d.storage==='rows.json.v1';
@@ -61,6 +62,9 @@
       if(!keys(dep,['name','scope','instance','revision','semantic_hash','export','coverage','type'])||!id(dep.name)||!id(dep.instance)||dep.instance===d.id||!['','saved','builtin'].includes(dep.scope||'')||dep.scope==='builtin'&&dep.instance!=='utxo-state'||!hash(dep.revision)||!hash(dep.semantic_hash)||dep.export!=='coins'||dep.coverage!=='snapshot_delta'||dep.type!=='coin')return null;
     }else if(Object.hasOwn(d,'dependencies')&&(!Array.isArray(d.dependencies)||d.dependencies.length))return null;
     if(!Array.isArray(d.tables)||!d.tables.length||new Set(d.tables.map(t=>t.name)).size!==d.tables.length)return null;
+    if(Object.hasOwn(d,'lookups')&&(!Array.isArray(d.lookups)||d.lookups.length>16||d.lookups.length&&!sparse))return null;
+    const lookups=d.lookups||[],hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+    if(new Set(lookups.map(value=>value.name)).size!==lookups.length||!lookups.every(value=>keys(value,['name','source','provider','revision','semantic_hash','key','type'])&&/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value.name)&&!d.tables.some(table=>table.name===value.name)&&value.source==='bitcoin.input_creation'&&lookupProviders.some(([provider])=>provider===value.provider)&&hash(value.revision)&&hash(value.semantic_hash)&&value.key==='input_ref'&&value.type==='creation_evidence')||lookups.length&&(d.exports||[]).length)return null;
     if(sparse){
       if(d.tables.length>64||!d.tables.every(t=>keys(t,['name','key','on_conflict'])&&typeof t.name==='string'&&!!t.name&&typeof t.key==='string'&&!!t.key&&(!Object.hasOwn(t,'on_conflict')||['','identical'].includes(t.on_conflict))))return null;
       if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||!d.exports.every(e=>keys(e,['name','kind','table','column','type'])&&typeof e.name==='string'&&!!e.name&&e.kind==='same_block'&&d.tables.some(t=>t.name===e.table)&&typeof e.column==='string'&&!!e.column&&['text','bool','integer','null'].includes(e.type))))return null;
@@ -78,7 +82,7 @@
       if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length))return null;
       if(d.tables.length!==2||!d.tables.every(t=>keys(t,['name','key'])&&((t.name==='coins'&&t.key==='outpoint')||(t.name==='counts'&&t.key==='txid'))))return null;
     }
-    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{output:sparse||projection,fifo,generic,fields:projection?projectionFields:fifo?fifoFields:generic?tableFields:fields,tables:d.tables.map(t=>t.name),stateTables:fifo||generic?d.tables.map(t=>t.name):undefined,emitTables:fifo?['identities','lost','incarnations']:undefined})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
+    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{output:sparse||projection,lookups:lookups.length>0,fifo,generic,fields:projection?projectionFields:fifo?fifoFields:generic?tableFields:fields,tables:d.tables.map(t=>t.name),stateTables:sparse?lookups.map(value=>value.name):fifo||generic?d.tables.map(t=>t.name):undefined,emitTables:fifo?['identities','lost','incarnations']:undefined})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
     return copy(d);
   }
   function fromGuided(definition){
@@ -107,17 +111,17 @@
     return step;
   }
   function mount(root,{onChange=()=>{},onApply=()=>{},getCatalogue=()=>null,readParent=async()=>{throw Error('Saved parent reader unavailable.');}}={}){
-    const doc=root.ownerDocument;let model=null,sequence=0,editEpoch=0,parentEpoch=0,parentNote='';
+    const doc=root.ownerDocument;let model=null,sequence=0,editEpoch=0,parentEpoch=0,parentNote='',lookupNote='';
     const el=(tag,text)=>{const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
     const label=(text,input)=>{const node=el('label',text);input.setAttribute('aria-label',text);node.append(input);return node;};
     const button=(text,action)=>{const node=el('button',text);node.type='button';node.addEventListener('click',action);return node;};
     const changed=()=>{editEpoch++;onChange();};
     const outputOnly=()=>['sparse','projection'].includes(model?.history);
     const generic=()=>model?.storage==='tables.cow.v1';
-    const availableOperations=()=>Object.keys(operations).filter(op=>op!=='for_events'&&!(outputOnly()&&['read','put','delete'].includes(op))&&!(generic()&&op==='emit'));
+    const availableOperations=()=>Object.keys(operations).filter(op=>op!=='for_events'&&!(outputOnly()&&(['put','delete'].includes(op)||op==='read'&&!(model.lookups||[]).length))&&!(generic()&&op==='emit'));
     const fifo=()=>model?.source==='bitcoin.fifo';
-    const tableChoices=op=>op==='emit'?(outputOnly()?model.tables.map(t=>t.name):fifo()?['identities','lost','incarnations']:['prevouts']):generic()?model.tables.map(t=>t.name):fifo()?model.tables.map(t=>t.name).filter(name=>op==='put'||name!=='history'):['coins','counts'];
-    const newInstruction=op=>{const value=instruction(op);if((fifo()||generic())&&value.table){value.table=tableChoices(op)[0];value.key={field:op==='emit'?'id':'txid'};}if(op==='emit'&&outputOnly())value.table=model.tables[0].name;if(model?.history==='projection'&&value.key)value.key={call:'output_ref',args:[{field:'height'},{field:'tx_index'},{field:'vout'}]};return value;};
+    const tableChoices=op=>op==='read'&&model.history==='sparse'?(model.lookups||[]).map(value=>value.name):op==='emit'?(outputOnly()?model.tables.map(t=>t.name):fifo()?['identities','lost','incarnations']:['prevouts']):generic()?model.tables.map(t=>t.name):fifo()?model.tables.map(t=>t.name).filter(name=>op==='put'||name!=='history'):['coins','counts'];
+    const newInstruction=op=>{const value=instruction(op);if((fifo()||generic())&&value.table){value.table=tableChoices(op)[0];value.key={field:op==='emit'?'id':'txid'};}if(op==='read'&&model.history==='sparse'){value.table=tableChoices(op)[0];value.key={call:'input_ref',args:[{field:'height'},{field:'tx_index'},{literal:{kind:'uint',uint:'0'}}]};}if(op==='emit'&&outputOnly())value.table=model.tables[0].name;if(model?.history==='projection'&&value.key)value.key={call:'output_ref',args:[{field:'height'},{field:'tx_index'},{field:'vout'}]};return value;};
     function textInput(title,value,set){const input=el('input');input.type='text';input.value=value||'';input.addEventListener('input',()=>{set(input.value);changed();});return label(title,input);}
     function select(title,choices,value,set){const input=el('select');for(const choice of choices){const [key,name]=Array.isArray(choice)?choice:[choice,choice],option=el('option',name);option.value=key;input.append(option);}input.value=value;input.addEventListener('change',()=>{set(input.value);changed();});return label(title,input);}
     function lazy(title,render){const node=el('details'),summary=el('summary',title),body=el('div');body.className='ordered-editor-body';let drawn=false;node.append(summary,body);node.addEventListener('toggle',()=>{if(node.open&&!drawn){drawn=true;render(body);}});return node;}
@@ -202,7 +206,7 @@
       for(const [index,entry] of (model.exports||[]).entries()){
         const row=el('div');row.append(textInput('Export name',entry.name,value=>{entry.name=value;}),select('Export table',model.tables.map(table=>table.name),entry.table,value=>{entry.table=value;}),textInput('Export column',entry.column,value=>{entry.column=value;}),select('Export type',['text','bool','integer','null'],entry.type,value=>{entry.type=value;}),button('Remove export',()=>{model.exports.splice(index,1);render();changed();}));box.append(row);
       }
-      const addExport=button('Add same-block export',()=>{if(!model.exports)model.exports=[];let name='value';while(model.exports.some(entry=>entry.name===name))name='value_'+(++sequence);model.exports.push({name,kind:'same_block',table:model.tables[0].name,column:model.tables[0].key,type:'text'});render();changed();});addExport.disabled=(model.exports||[]).length>=64;box.append(addExport);
+      const addExport=button('Add same-block export',()=>{if(!model.exports)model.exports=[];let name='value';while(model.exports.some(entry=>entry.name===name))name='value_'+(++sequence);model.exports.push({name,kind:'same_block',table:model.tables[0].name,column:model.tables[0].key,type:'text'});render();changed();});addExport.disabled=(model.exports||[]).length>=64||(model.lookups||[]).length>0;box.append(addExport);
     }
     function fifoTablesEditor(host){
       const box=el('fieldset');box.append(el('legend','FIFO state tables'),el('p','Every source output is retained in current state. The optional history table requires a history write for each output event.'));
@@ -240,16 +244,31 @@
       }),note=el('p',parentNote||'Uses an exact coins checkpoint and checked deltas. The child never starts a parent writer.');
       saved.disabled=dep.scope==='builtin';actions.append(native,saved);box.append(actions,note);
     }
+    function sourceLookupsEditor(host){
+      const box=el('fieldset');box.append(el('legend','Input creation evidence'),el('p','Declare per-input reads, then use a read instruction with an input coordinate. Results have state available or unavailable. Available results provide position and block_hash. A declaration starts no work.'));host.append(box);
+      const note=el('p',lookupNote),binding=provider=>getCatalogue()?.builtin_lookups?.find(value=>value.source==='bitcoin.input_creation'&&value.provider===provider);
+      const references=(steps,name)=>steps.some(step=>step.op==='read'&&step.table===name||references(step.body||[],name)||references(step.else||[],name));
+      const rename=(steps,oldName,newName)=>{for(const step of steps){if(step.op==='read'&&step.table===oldName)step.table=newName;rename(step.body||[],oldName,newName);rename(step.else||[],oldName,newName);}};
+      for(const [index,lookup] of (model.lookups||[]).entries()){
+        const row=el('div'),name=el('input');row.className='recipe-fields ordered-editor-table';name.type='text';name.value=lookup.name;
+        name.addEventListener('change',()=>{const next=name.value;if(!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(next)||model.lookups.some(other=>other!==lookup&&other.name===next)||model.tables.some(table=>table.name===next)){name.value=lookup.name;return;}rename(model.ordered.steps,lookup.name,next);lookup.name=next;render();changed();});
+        const choose=select('Creation evidence provider',lookupProviders,lookup.provider,provider=>{const installed=binding(provider);if(!installed){lookupNote='The installed lookup catalogue is unavailable; refresh it before changing providers.';render();return;}const name=lookup.name;Object.assign(lookup,copy(installed),{name});lookupNote='Pinned the installed creation-evidence contract.';render();});
+        const remove=button('Remove source lookup',()=>{model.lookups.splice(index,1);render();changed();});remove.disabled=references(model.ordered.steps,lookup.name);remove.title='Remove or change its read instructions before removing a referenced lookup.';
+        row.append(label('Source lookup name',name),choose,remove);box.append(row);
+      }
+      let provider='cohort';box.append(select('Source lookup to add',lookupProviders,provider,value=>{provider=value;}));
+      const add=button('Add source lookup',()=>{const installed=binding(provider);if(!installed){lookupNote='The installed lookup catalogue is unavailable; refresh it before adding a source.';render();return;}if(!model.lookups)model.lookups=[];let name=installed.name;while(model.lookups.some(value=>value.name===name)||model.tables.some(table=>table.name===name))name=installed.name+'_'+(++sequence);model.lookups.push({...copy(installed),name});lookupNote='Source declared. Read it only where an input coordinate is available; no writer has started.';render();changed();});add.disabled=(model.lookups||[]).length>=16||(model.exports||[]).length>0;box.append(add,note);
+    }
     function render(){root.replaceChildren();if(!model)return;const legend=el('legend',model.history==='projection'?'Guided checkpoint draft':'Guided ordered draft'),header=el('div');header.className='recipe-fields';
       header.append(textInput('Ordered recipe ID',model.id,value=>{model.id=value;}),textInput('Ordered recipe name',model.name,value=>{model.name=value;}));
       root.append(legend,el('p',model.history==='projection'?'Derive current destination members and exclusion counts from the declared complete Coin snapshot, then apply checked deltas. Every source Coin must be accounted for. Source selection does not start its writer.':fifo()?'Process ordinary transactions in Bitcoin order, then allocate subsidy and their fees to coinbase outputs. Compose FIFO intervals, lost sats and inscription identities. The outputs table stores current state; the optional history table retains original output ranges.':generic()?'Process transaction events continuously from the declared origin. Read, write or delete exact typed values in your named tables. Expand instructions to compose counters, branches and keyed state.':model.history==='sparse'?'Project complete transaction events into per-block rows from the chosen origin. Empty evaluated blocks are retained; no UTXO prefix is required.':'Process transaction events in order from genesis. Coins are keyed by outpoint; counts by transaction ID. Expand an instruction to edit its expressions, branches or nested instructions.'),header);
-      if(model.history==='sparse'){header.append(textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));declarationsEditor(root);}
+      if(model.history==='sparse'){header.append(textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));declarationsEditor(root);sourceLookupsEditor(root);}
       if(generic()){header.append(textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));stateTablesEditor(root);}
       if(model.history==='projection')checkpointParentEditor(root);
       if(fifo())fifoTablesEditor(root);
       stepsEditor(root,model.ordered.steps[0].body);root.append(button('Apply ordered changes',onApply));
     }
-    return {load(definition){parentEpoch++;editEpoch++;parentNote='';model=toGuided(definition);root.hidden=!model;render();return !!model;},definition(){return fromGuided(model);}};
+    return {load(definition){parentEpoch++;editEpoch++;parentNote='';lookupNote='';model=toGuided(definition);root.hidden=!model;render();return !!model;},definition(){return fromGuided(model);}};
   }
   global.GatewayOrderedRecipeEditor={toGuided,fromGuided,expressionSupported,valueSupported,instruction,initialTables,mount};
 })(typeof window==='undefined'?globalThis:window);

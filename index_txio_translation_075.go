@@ -214,12 +214,19 @@ func (s *indexStore) activeTXIOTranslation(ctx context.Context, r indexLocatorRe
 }
 
 func (s *indexStore) bridgeTXIOCreation(ctx context.Context, in inputView, height int64) (txioCreation, error) {
+	return s.bridgeTXIOCreationAccess(ctx, in, height, true)
+}
+
+func (s *indexStore) bridgeTXIOCreationAccess(ctx context.Context, in inputView, height int64, repair bool) (txioCreation, error) {
 	if s.checkpoint == nil {
 		return txioCreation{}, nil
 	}
 	bridge := s.txioTranslationStore()
 	rows, e := bridge.bitcoinLocatorRecordsWithBudget(ctx, in.PrevTxID, false, (64<<20)/indexLocatorRecordBytes, 64<<20)
 	if e != nil {
+		if !repair {
+			return txioCreation{}, e
+		}
 		path, pathErr := graphShardPath(bridge.dir, bridge.locatorKind(), in.PrevTxID)
 		if pathErr != nil {
 			return txioCreation{}, pathErr

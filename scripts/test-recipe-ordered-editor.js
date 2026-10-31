@@ -47,6 +47,18 @@ for(const file of ['address-history.json','address-history-payment-legacy.json']
 const sparse=JSON.parse(fs.readFileSync('recipes/output-destinations.json','utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(sparse)),sparse,'stateless output projections and exports round-trip');
 for(const file of ['output-values.json','output-scripts.json','output-values-scripts.json']){const actual=JSON.parse(fs.readFileSync('recipes/builtins/'+file,'utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(actual)),actual,'actual independent retained output layer round-trips');}
 const inputs=JSON.parse(fs.readFileSync('recipes/builtins/txio-inputs.json','utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(inputs)),inputs,'actual spending input counter and coordinate composition round-trips');
+const links=JSON.parse(fs.readFileSync('recipes/builtins/txio-links.json','utf8'));
+assert.deepEqual(editor.fromGuided(editor.toGuided(links)),links,'the complete TXIO lookup and fallback program round-trips');
+const lookupRoot=new Node('fieldset'),lookups=editor.mount(lookupRoot,{getCatalogue:()=>({builtin_lookups:links.lookups})});
+assert(lookups.load(links));assert(button('Remove source lookup',lookupRoot).disabled,'referenced lookup cannot be removed');
+let lookupName=control('Source lookup name',lookupRoot);lookupName.value='my_cohort';lookupName.events.change();
+let lookupDraft=lookups.definition();assert.equal(lookupDraft.lookups[0].name,'my_cohort');assert(JSON.stringify(lookupDraft.ordered).includes('"table":"my_cohort"'),'alias edits preserve nested reads');
+const provider=control('Creation evidence provider',lookupRoot);provider.value='same_block';provider.events.change();
+lookupDraft=lookups.definition();assert.deepEqual(lookupDraft.lookups[0],{...links.lookups[1],name:'my_cohort'},'provider selection pins the installed immutable contract');
+assert(button('Add same-block export',lookupRoot).disabled,'lookup recipes cannot acquire an unsupported outgoing export');
+button('Add source lookup',lookupRoot).events.click();assert.equal(lookups.definition().lookups.length,5);
+const lookupOps=control('Add instruction type',lookupRoot).children.map(option=>option.value);assert(lookupOps.includes('read'));assert(!lookupOps.some(op=>['put','delete'].includes(op)));
+for(const mutate of [d=>d.lookups[0].source='unknown',d=>d.lookups[0].provider='unknown',d=>d.lookups[0].revision='invalid',d=>d.lookups[0].name=d.tables[0].name,d=>d.exports=[{name:'out',type:'text'}]]){const d=structuredClone(links);mutate(d);assert.equal(editor.toGuided(d),null);}
 assert(mounted.load(sparse));let origin=control('Origin height');origin.value='100';origin.events.input();assert.equal(mounted.definition().origin,100);
 button('Add output table').events.click();assert.equal(mounted.definition().tables.length,2);button('Add same-block export').events.click();assert.equal(mounted.definition().exports.length,2);
 const sparseAdd=control('Add instruction type');assert(!sparseAdd.children.some(option=>['read','put','delete'].includes(option.value)),'stateless controls offer output instructions only');

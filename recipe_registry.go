@@ -155,6 +155,9 @@ func recipeRegistryCapabilityNote(d recipeDefinition) string {
 	if len(d.Dependencies) != 0 {
 		return "Definition validated. Same-block dependencies require a reviewed plan and matching selected or saved parent coverage; saved-only parents are not started automatically."
 	}
+	if len(d.Lookups) > 0 {
+		return "Definition validated. Declared per-input source lookups are evaluated lazily under configured provider policies. Unavailable evidence is explicit; no parent index writer is started. Finite and Live execution require a reviewed plan."
+	}
 	return "Definition validated. Finite and Live execution require a reviewed plan; Out caps either choice."
 }
 

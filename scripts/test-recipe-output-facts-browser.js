@@ -13,8 +13,9 @@ async function main(){
   await page.setContent('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main class="recipe-editor"><fieldset data-recipe="ordered" id="facts"></fieldset></main></body></html>');
   for(const name of ['theme.css','style.css','recipe-editor.css'])await page.addStyleTag({content:fs.readFileSync(path.join(root,'ui','shell',name),'utf8')});
   await page.addScriptTag({path:path.join(root,'ui','shell','recipe-ordered-editor.js')});
-  await page.evaluate(()=>{window.applied=0;window.editor=GatewayOrderedRecipeEditor.mount(document.getElementById('facts'),{onApply(){applied++}})});
-  for(const name of ['txio-inputs.json','output-values.json','output-scripts.json','output-values-scripts.json']){
+  const links=JSON.parse(fs.readFileSync(path.join(root,'recipes','builtins','txio-links.json'),'utf8'));
+  await page.evaluate(bindings=>{window.applied=0;window.editor=GatewayOrderedRecipeEditor.mount(document.getElementById('facts'),{getCatalogue:()=>({builtin_lookups:bindings}),onApply(){applied++}})},links.lookups);
+  for(const name of ['txio-links.json','txio-inputs.json','output-values.json','output-scripts.json','output-values-scripts.json']){
    const actual=JSON.parse(fs.readFileSync(path.join(root,'recipes','builtins',name),'utf8'));
    assert.equal(await page.evaluate(definition=>editor.load(definition),actual),true);assert.deepEqual(await page.evaluate(()=>editor.definition()),actual);
   }
@@ -29,7 +30,16 @@ async function main(){
   await page.getByRole('button',{name:'Apply ordered changes',exact:true}).click();assert.equal(await page.evaluate(()=>applied),1);
   if(out)await page.screenshot({path:path.join(out,'output-fields-wide.png'),fullPage:true});await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   if(out)await page.screenshot({path:path.join(out,'output-fields-narrow.png'),fullPage:true});assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
-  console.log('Input/output fields browser PASS: four actual documents, sparse operations, block-1 origin, custom field, Apply, narrow layout and no network work.');
+  await page.setViewportSize({width:1100,height:900});assert(await page.evaluate(definition=>editor.load(definition),links));
+  assert(await page.getByRole('button',{name:'Remove source lookup',exact:true}).first().isDisabled());
+  await page.getByLabel('Source lookup name',{exact:true}).first().fill('chosen_cohort');await page.getByLabel('Source lookup name',{exact:true}).first().press('Tab');
+  await page.getByLabel('Creation evidence provider',{exact:true}).first().selectOption('same_block');
+  const changed=await page.evaluate(()=>editor.definition());assert.deepEqual(changed.lookups[0],{...links.lookups[1],name:'chosen_cohort'});assert(JSON.stringify(changed.ordered).includes('"table":"chosen_cohort"'));
+  assert(await page.getByRole('button',{name:'Add same-block export',exact:true}).isDisabled());
+  await page.getByRole('button',{name:'Add source lookup',exact:true}).click();assert.equal((await page.evaluate(()=>editor.definition())).lookups.length,5);
+  if(out)await page.screenshot({path:path.join(out,'creation-lookups-wide.png'),fullPage:true});await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  if(out)await page.screenshot({path:path.join(out,'creation-lookups-narrow.png'),fullPage:true});assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);
+  console.log('Input/output fields browser PASS: five actual documents, source binding and nested read aliases, sparse operations, block-1 origin, custom field, Apply, narrow layout and no network work.');
  }finally{await browser.close()}
 }
 main().catch(error=>{console.error(error);process.exitCode=1});

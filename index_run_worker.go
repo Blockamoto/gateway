@@ -450,7 +450,7 @@ func (a *app) openRunConsumer(ctx context.Context, r *indexRunRecord, p indexRun
 			}
 			v.recipe = consumer
 		} else {
-			consumer, e := a.openRecipeLocalConsumer(ctx, plan, binding)
+			consumer, e := a.openRecipeLocalConsumer(ctx, plan, binding, p.RecipeStateToken)
 			if e != nil {
 				return v, e
 			}

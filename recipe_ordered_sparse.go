@@ -27,6 +27,10 @@ func compileOrderedSparseRecipe(d recipeDefinition) (*recipeProgram, error) {
 	if len(d.Dependencies) != 0 {
 		return nil, recipeDiagnosticAt("RECIPE_ORDERED_DEPENDENCIES", "/dependencies", "typed sparse dependency lookups require a supported expression contract")
 	}
+	lookups, err := recipeValidateSourceLookups(d)
+	if err != nil {
+		return nil, err
+	}
 	if len(d.Tables) == 0 || len(d.Tables) > 64 {
 		return nil, recipeDiagnosticAt("RECIPE_ORDERED_TABLES", "/tables", "declare sparse output tables")
 	}
@@ -36,6 +40,9 @@ func compileOrderedSparseRecipe(d recipeDefinition) (*recipeProgram, error) {
 			return nil, recipeDiagnosticAt("RECIPE_ORDERED_TABLES", "/tables", "invalid or duplicate sparse output table")
 		}
 		tables[table.Name] = table
+		if _, exists := lookups[table.Name]; exists {
+			return nil, fmt.Errorf("source lookup name collides with output table %q", table.Name)
+		}
 	}
 	if err := recipeValidateDependencyDeclarations(d); err != nil {
 		return nil, err
@@ -69,7 +76,11 @@ func compileOrderedSparseRecipe(d recipeDefinition) (*recipeProgram, error) {
 	instructions = func(steps []recipeOrderedInstruction) error {
 		for _, step := range steps {
 			switch step.Op {
-			case "read", "put", "delete":
+			case "read":
+				if _, have := lookups[step.Table]; !have {
+					return fmt.Errorf("read requires a declared source lookup %q", step.Table)
+				}
+			case "put", "delete":
 				return fmt.Errorf("sparse row projection cannot read or mutate ordered state")
 			case "emit":
 				if tables[step.Table].Name == "" {
@@ -187,6 +198,10 @@ func (recipeOrderedNoState) DeleteOrdered(context.Context, recipeStateKey) error
 func (recipeOrderedNoState) AbortOrdered() {}
 
 func (p *recipeProgram) evaluateOrderedSparseInto(ctx context.Context, block blockView, sink func(recipeRowProposal) error) error {
+	return p.evaluateOrderedSparseWithLookupsInto(ctx, block, nil, sink)
+}
+
+func (p *recipeProgram) evaluateOrderedSparseWithLookupsInto(ctx context.Context, block blockView, factory func(blockView) (*recipeInputCreationLookups, error), sink func(recipeRowProposal) error) error {
 	if ctx == nil || p == nil || p.ordered == nil || p.definition.Source != "bitcoin.ordered" || p.definition.History != "sparse" || p.definition.Storage != recipeOrderedSparseStorage || sink == nil || block.Height < p.definition.Origin {
 		return fmt.Errorf("invalid stateless event projection")
 	}
@@ -210,9 +225,27 @@ func (p *recipeProgram) evaluateOrderedSparseInto(ctx context.Context, block blo
 	if source.block.Height != block.Height || source.block.Hash != block.Hash {
 		return fmt.Errorf("owned event source differs from projection anchor")
 	}
-	return p.evaluateOrderedSparseEventsInto(ctx, func(emit func(map[string]recipeOrderedValue) error) error {
+	var state recipeOrderedState = recipeOrderedNoState{}
+	if len(p.definition.Lookups) > 0 {
+		if factory == nil {
+			return fmt.Errorf("declared source lookup reader is unavailable")
+		}
+		reader, err := factory(source.block)
+		if err != nil {
+			return err
+		}
+		state = reader
+		defer reader.AbortOrdered()
+	}
+	return p.evaluateOrderedSparseTypedStateEventsInto(ctx, state, func(emit func(map[string]recipeOrderedValue) error) error {
 		return recipeVerifiedWalk(ctx, source.block, emit)
-	}, sink)
+	}, func(table, key string, value recipeOrderedValue) error {
+		converted, err := recipeOrderedRowValue(value)
+		if err != nil {
+			return err
+		}
+		return sink(recipeRowProposal{Table: table, Key: key, Value: converted.(map[string]any)})
+	})
 }
 
 // The source adapter supplies complete admitted event data. This function
@@ -235,10 +268,20 @@ func (p *recipeProgram) evaluateOrderedSparseEventsInto(ctx context.Context, sou
 // checks its physical field schema and bounds; sparse JSON keeps its existing
 // per-field budget and conversion in the wrapper above. Both run this machine.
 func (p *recipeProgram) evaluateOrderedSparseTypedEventsInto(ctx context.Context, source func(func(map[string]recipeOrderedValue) error) error, sink func(string, string, recipeOrderedValue) error) error {
+	if p != nil && len(p.definition.Lookups) > 0 {
+		return fmt.Errorf("declared source lookups require their checked reader")
+	}
+	return p.evaluateOrderedSparseTypedStateEventsInto(ctx, recipeOrderedNoState{}, source, sink)
+}
+
+func (p *recipeProgram) evaluateOrderedSparseTypedStateEventsInto(ctx context.Context, state recipeOrderedState, source func(func(map[string]recipeOrderedValue) error) error, sink func(string, string, recipeOrderedValue) error) error {
 	if ctx == nil || p == nil || p.ordered == nil || (p.definition.History != "sparse" && p.definition.History != "projection") || source == nil || sink == nil {
 		return fmt.Errorf("invalid sparse event adapter")
 	}
-	machine := recipeOrderedMachine{ctx: ctx, orderedState: recipeOrderedNoState{}, vars: map[string]recipeOrderedValue{}, unboundedEmits: true,
+	if state == nil {
+		return fmt.Errorf("typed source reader is required")
+	}
+	machine := recipeOrderedMachine{ctx: ctx, orderedState: state, vars: map[string]recipeOrderedValue{}, unboundedEmits: true,
 		source: func(emit func(map[string]recipeOrderedValue) error) error {
 			return source(emit)
 		},

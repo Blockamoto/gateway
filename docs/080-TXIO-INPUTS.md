@@ -15,13 +15,12 @@ legacy raw row shape. The old loop is a test-only oracle. The binding is
 `f6be769c76c8c0fe8030405dcb5069f6035843c12aa1378ed907c27f82e5423d`.
 Changed semantics fail closed pending explicit migration.
 
-The current modern TXIO writer consumes these proposals before its existing
-creation-evidence logic. That remaining logic still checks in-run prevouts,
-earlier same-block incarnations, owned positive origin records and on-demand
-positioned parent evidence; it preserves pending translations when creation
-evidence is unavailable. **That creation/proof selection is not yet a JSON
-composition.** This component does not establish unspentness, complete history
-or a new creation proof, and is not claimed as complete TXIO migration.
+The modern TXIO writer now executes the complete `txio-links.json` program,
+including creation-proof selection and pending translations. This raw-input
+component remains independently editable and supplies the legacy raw-spend
+boundary. See `080-TXIO-SOURCE-LOOKUPS.md` for the complete composition and its
+declared, lazy input-creation evidence. Neither program establishes unspentness
+or complete history from missing evidence.
 
 The TXIO inspector exposes the actual input document beside the independent
 retained output value/script programs. A saved copy runs with authenticated
@@ -47,5 +46,5 @@ the old direct loop, versus 50.95 ms and 24.42 MB for the recipe component. This
 is a material CPU/allocation increase for this small component. Creation lookups,
 translation/page writes, source parsing and generic saved storage are excluded;
 these numbers are not complete TXIO throughput or peak-memory measurements.
-The remaining composition must retain practical whole-pipeline behavior and the
-proof/coverage semantics recorded in `080-PARITY-MATRIX.md`.
+Complete-derivation measurements and the preserved proof/coverage semantics are
+recorded separately in `080-TXIO-SOURCE-LOOKUPS.md` and `080-PARITY-MATRIX.md`.

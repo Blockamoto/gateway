@@ -16,7 +16,7 @@ func TestRecipeTXIOLinksSemanticBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	d, err := findIndexDefinition("txo-spender")
-	if err != nil || !bytes.Equal(d.ExecutableRecipe, builtinTXIOLinksJSON) || len(d.ExecutableRecipeVariants) != 5 {
+	if err != nil || !bytes.Equal(d.ExecutableRecipe, builtinTXIOLinksJSON) || len(d.ExecutableRecipeVariants) != 7 {
 		t.Fatal("native inspector lost the full executable program", err)
 	}
 }

@@ -266,6 +266,11 @@ func indexDefinitions() []indexDefinition {
 			d.Name = "Saved District Chain evidence"
 			d.Theory = errBitmapChainDeferred.Error()
 		}
+		if d.ID == "sat-state" {
+			if p, err := builtinFeesRecipe(); err == nil {
+				d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: "Transaction fees and block prefix", Definition: append(json.RawMessage(nil), builtinFeesJSON...), SemanticHash: p.semanticHash()})
+			}
+		}
 		if d.ID == "txo-spender" {
 			// Preserve the legacy recipe identity and readable immutable batches.
 			// TXIO payloads carry their own additive version and private layout.
@@ -290,6 +295,16 @@ func indexDefinitions() []indexDefinition {
 				}{{"Retained output values", builtinOutputValuesJSON}, {"Retained exact scripts", builtinOutputScriptsJSON}, {"Retained values and scripts", builtinOutputValuesScriptsJSON}} {
 					d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: variant.name, Definition: append(json.RawMessage(nil), variant.raw...), SemanticHash: programs[i].semanticHash()})
 				}
+			}
+		}
+		if d.ID == "txo-spender" {
+			if p, err := builtinFeesRecipe(); err == nil {
+				d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: "Transaction fees and block prefix", Definition: append(json.RawMessage(nil), builtinFeesJSON...), SemanticHash: p.semanticHash()})
+			}
+		}
+		if d.ID == "sat-state" || d.ID == "txo-spender" {
+			if p, err := builtinFeePrefixRecipe(); err == nil {
+				d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: "Checked Core fee prefix", Definition: append(json.RawMessage(nil), builtinFeePrefixJSON...), SemanticHash: p.semanticHash()})
 			}
 		}
 		// Availability is presentation policy, not part of the persisted recipe.

@@ -24,7 +24,7 @@ func TestRecipeNativeSatSemanticEquivalence(t *testing.T) {
 		t.Fatal("unknown native semantics adopted")
 	}
 	d, err := findIndexDefinition("sat-state")
-	if err != nil || d.ExecutableRecipeHash != programs[0].semanticHash() || len(d.ExecutableRecipeVariants) != 2 {
+	if err != nil || d.ExecutableRecipeHash != programs[0].semanticHash() || len(d.ExecutableRecipeVariants) != 4 {
 		t.Fatal("native catalogue lacks actual documents", err)
 	}
 }

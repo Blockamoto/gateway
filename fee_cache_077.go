@@ -203,48 +203,9 @@ func storeSatFeeBlockContext(ctx context.Context, root string, block blockView, 
 	if len(values) != len(block.Transactions) {
 		return fmt.Errorf("fee input transaction count mismatch")
 	}
-	rows := make([]satFeeRow, len(block.Transactions))
-	var total uint64
-	for ti, tx := range block.Transactions {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if tx.Index != ti || tx.Coinbase != (ti == 0) || !validHash(tx.TxID) {
-			return fmt.Errorf("fee transaction order mismatch")
-		}
-		rows[ti].Before = total
-		if ti == 0 {
-			if len(values[ti]) != 0 {
-				return fmt.Errorf("coinbase has no ordinary fee inputs")
-			}
-			continue
-		}
-		if len(values[ti]) != len(tx.Inputs) || len(tx.Inputs) == 0 {
-			return fmt.Errorf("fee ordered input values incomplete")
-		}
-		var input uint64
-		for i, value := range values[ti] {
-			if tx.Inputs[i].Coinbase {
-				return fmt.Errorf("ordinary fee transaction has coinbase input")
-			}
-			var err error
-			input, err = addUint64(input, value)
-			if err != nil {
-				return err
-			}
-		}
-		output, err := sumOutputs(tx)
-		if err != nil {
-			return err
-		}
-		if output > input {
-			return fmt.Errorf("fee outputs exceed inputs")
-		}
-		rows[ti].Fee = input - output
-		total, err = addUint64(total, rows[ti].Fee)
-		if err != nil {
-			return err
-		}
+	rows, total, err := recipeNativeFeeRows(ctx, block, values)
+	if err != nil {
+		return err
 	}
 	return storeSatFeeRowsContext077(ctx, root, block.Height, block.Hash, rows, total)
 }

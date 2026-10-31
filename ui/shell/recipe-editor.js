@@ -204,7 +204,6 @@
     q('newTables')?.addEventListener('click',()=>{cancelImport();revision++;base=null;model=global.GatewayOrderedRecipeEditor.initialTables();showModel();});
     q('newReveals')?.addEventListener('click',()=>{cancelImport();revision++;base=null;model=global.GatewayOrderedRecipeEditor.initialReveals();showModel();});
     for(const [name,starter] of [['newHeaders','initialHeaders'],['newBlocks','initialBlocks'],['newBodies','initialBodies']])q(name)?.addEventListener('click',()=>{cancelImport();revision++;base=null;model=global.GatewayOrderedRecipeEditor[starter]();showModel();});
-    for(const [name,starter] of [['newHeaders','initialHeaders'],['newBlocks','initialBlocks']])q(name)?.addEventListener('click',()=>{cancelImport();revision++;base=null;model=global.GatewayOrderedRecipeEditor[starter]();showModel();});
     q('import').addEventListener('change',async event=>{
       const file=event.target.files?.[0]; if (!file) return; const started=++revision, epoch=++importEpoch;
       if (file.size>1024*1024) { importing=false; paintBusy(); status.textContent='Import is limited to 1 MiB.'; event.target.value=''; return; }

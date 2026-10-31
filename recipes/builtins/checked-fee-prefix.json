@@ -1,0 +1,226 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "checked-fee-prefix",
+  "name": "Checked Core fees and block prefix",
+  "source": "bitcoin.ordered",
+  "origin": 0,
+  "history": "ordered",
+  "storage": "tables.cow.v1",
+  "dependencies": [],
+  "lookups": [
+    {
+      "name": "transaction_fee",
+      "source": "bitcoin.transaction_fee",
+      "provider": "core",
+      "revision": "69a5d992a4fae3f1a2789af436b357537e18d99ff2467863103daed701877e60",
+      "semantic_hash": "fb47d3fce53948696cf0cb63b1fc7909ce1040e78f92d8c5f736a8c55566b207",
+      "key": "transaction_ref",
+      "type": "transaction_fee"
+    }
+  ],
+  "tables": [
+    {
+      "name": "fees",
+      "key": "transaction"
+    },
+    {
+      "name": "totals",
+      "key": "block"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "tx_begin"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "if",
+                "expr": {
+                  "field": "coinbase"
+                },
+                "body": [
+                  {
+                    "op": "let",
+                    "name": "total",
+                    "expr": {
+                      "literal": {
+                        "kind": "uint",
+                        "uint": "0"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "read",
+                "name": "checked_fee",
+                "table": "transaction_fee",
+                "key": {
+                  "call": "text_concat",
+                  "args": [
+                    {
+                      "call": "text_concat",
+                      "args": [
+                        {
+                          "call": "decimal_format",
+                          "args": [
+                            {
+                              "field": "tx_index"
+                            }
+                          ]
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "."
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "call": "decimal_format",
+                      "args": [
+                        {
+                          "field": "height"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "let",
+                "name": "fee",
+                "expr": {
+                  "call": "get",
+                  "args": [
+                    {
+                      "var": "checked_fee"
+                    },
+                    {
+                      "literal": {
+                        "kind": "text",
+                        "text": "fee_sats"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "put",
+                "table": "fees",
+                "key": {
+                  "call": "text_concat",
+                  "args": [
+                    {
+                      "call": "text_concat",
+                      "args": [
+                        {
+                          "call": "decimal_format",
+                          "args": [
+                            {
+                              "field": "tx_index"
+                            }
+                          ]
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "."
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "call": "decimal_format",
+                      "args": [
+                        {
+                          "field": "height"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "expr": {
+                  "object": {
+                    "height": {
+                      "field": "height"
+                    },
+                    "block": {
+                      "field": "block"
+                    },
+                    "txid": {
+                      "field": "txid"
+                    },
+                    "tx_index": {
+                      "field": "tx_index"
+                    },
+                    "fee_sats": {
+                      "var": "fee"
+                    },
+                    "prior_fees_sats": {
+                      "var": "total"
+                    }
+                  }
+                }
+              },
+              {
+                "op": "let",
+                "name": "total",
+                "expr": {
+                  "call": "add_uint",
+                  "args": [
+                    {
+                      "var": "total"
+                    },
+                    {
+                      "var": "fee"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "put",
+                "table": "totals",
+                "key": {
+                  "field": "block"
+                },
+                "expr": {
+                  "object": {
+                    "height": {
+                      "field": "height"
+                    },
+                    "block": {
+                      "field": "block"
+                    },
+                    "total_fees_sats": {
+                      "var": "total"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

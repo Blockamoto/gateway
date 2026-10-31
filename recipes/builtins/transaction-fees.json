@@ -1,0 +1,363 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "transaction-fees",
+  "name": "Transaction fees and block prefix",
+  "source": "bitcoin.ordered",
+  "origin": 0,
+  "history": "ordered",
+  "storage": "tables.cow.v1",
+  "dependencies": [],
+  "lookups": [
+    {
+      "name": "input_value",
+      "source": "bitcoin.input_value",
+      "provider": "selected",
+      "revision": "3f4ca567ee97b86d27b2fe5407cd0a791a912cf28b37c1728c04854d15114ac2",
+      "semantic_hash": "2d1ec70491e9ee1e88d327f29fd7f4bc76ed1f8222a5389b2f47fa4ab0447529",
+      "key": "input_ref",
+      "type": "input_value"
+    }
+  ],
+  "tables": [
+    {
+      "name": "fees",
+      "key": "transaction"
+    },
+    {
+      "name": "totals",
+      "key": "block"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "tx_begin"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "inputs",
+                "expr": {
+                  "literal": {
+                    "kind": "uint",
+                    "uint": "0"
+                  }
+                }
+              },
+              {
+                "op": "let",
+                "name": "outputs",
+                "expr": {
+                  "literal": {
+                    "kind": "uint",
+                    "uint": "0"
+                  }
+                }
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "field": "coinbase"
+                },
+                "body": [
+                  {
+                    "op": "let",
+                    "name": "total",
+                    "expr": {
+                      "literal": {
+                        "kind": "uint",
+                        "uint": "0"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "input"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "read",
+                "name": "amount",
+                "table": "input_value",
+                "key": {
+                  "field": "input_ref"
+                }
+              },
+              {
+                "op": "let",
+                "name": "inputs",
+                "expr": {
+                  "call": "add_uint",
+                  "args": [
+                    {
+                      "var": "inputs"
+                    },
+                    {
+                      "call": "get",
+                      "args": [
+                        {
+                          "var": "amount"
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "value"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "output"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "if",
+                "expr": {
+                  "call": "not",
+                  "args": [
+                    {
+                      "field": "coinbase"
+                    }
+                  ]
+                },
+                "body": [
+                  {
+                    "op": "let",
+                    "name": "outputs",
+                    "expr": {
+                      "call": "add_uint",
+                      "args": [
+                        {
+                          "var": "outputs"
+                        },
+                        {
+                          "field": "value"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "eq",
+              "args": [
+                {
+                  "field": "kind"
+                },
+                {
+                  "literal": {
+                    "kind": "text",
+                    "text": "tx_end"
+                  }
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "fee",
+                "expr": {
+                  "literal": {
+                    "kind": "uint",
+                    "uint": "0"
+                  }
+                }
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "call": "not",
+                  "args": [
+                    {
+                      "field": "coinbase"
+                    }
+                  ]
+                },
+                "body": [
+                  {
+                    "op": "require",
+                    "name": "outputs must not exceed inputs",
+                    "expr": {
+                      "call": "less_equal",
+                      "args": [
+                        {
+                          "var": "outputs"
+                        },
+                        {
+                          "var": "inputs"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "op": "let",
+                    "name": "fee",
+                    "expr": {
+                      "call": "sub_uint",
+                      "args": [
+                        {
+                          "var": "inputs"
+                        },
+                        {
+                          "var": "outputs"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "op": "put",
+                "table": "fees",
+                "key": {
+                  "call": "text_concat",
+                  "args": [
+                    {
+                      "call": "text_concat",
+                      "args": [
+                        {
+                          "call": "decimal_format",
+                          "args": [
+                            {
+                              "field": "tx_index"
+                            }
+                          ]
+                        },
+                        {
+                          "literal": {
+                            "kind": "text",
+                            "text": "."
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "call": "decimal_format",
+                      "args": [
+                        {
+                          "field": "height"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "expr": {
+                  "object": {
+                    "height": {
+                      "field": "height"
+                    },
+                    "block": {
+                      "field": "block"
+                    },
+                    "txid": {
+                      "field": "txid"
+                    },
+                    "tx_index": {
+                      "field": "tx_index"
+                    },
+                    "fee_sats": {
+                      "var": "fee"
+                    },
+                    "prior_fees_sats": {
+                      "var": "total"
+                    }
+                  }
+                }
+              },
+              {
+                "op": "let",
+                "name": "total",
+                "expr": {
+                  "call": "add_uint",
+                  "args": [
+                    {
+                      "var": "total"
+                    },
+                    {
+                      "var": "fee"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "put",
+                "table": "totals",
+                "key": {
+                  "field": "block"
+                },
+                "expr": {
+                  "object": {
+                    "height": {
+                      "field": "height"
+                    },
+                    "block": {
+                      "field": "block"
+                    },
+                    "total_fees_sats": {
+                      "var": "total"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

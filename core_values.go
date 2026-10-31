@@ -87,46 +87,12 @@ func (b contextSatlineBackend) InputValues(tx transactionView, height int64, has
 	return out, nil
 }
 func (b contextSatlineBackend) FeePrefix(block blockView) ([]uint64, error) {
-	b.a.settingsMu.RLock()
-	s := b.a.settings
-	b.a.settingsMu.RUnlock()
-	c, e := newCoreRPC(s)
-	if e != nil {
-		return nil, e
+	fees, err := recipeCoreFeeValues(b.ctx, b.a, block)
+	if err != nil {
+		return nil, err
 	}
-	var x struct {
-		Hash          string `json:"hash"`
-		Confirmations int64  `json:"confirmations"`
-		Tx            []struct {
-			TxID string          `json:"txid"`
-			Fee  json.RawMessage `json:"fee"`
-		} `json:"tx"`
-	}
-	if e = c.callContext(b.ctx, "getblock", []any{block.Hash, 3}, &x); e != nil {
-		return nil, e
-	}
-	if x.Hash != block.Hash || x.Confirmations <= 0 || len(x.Tx) != len(block.Transactions) {
-		return nil, fmt.Errorf("Core fee layout is not the checked active block")
-	}
-	prefix := make([]uint64, len(x.Tx)+1)
-	for i, tx := range x.Tx {
-		if tx.TxID != block.Transactions[i].TxID {
-			return nil, fmt.Errorf("Core fee transaction order mismatch")
-		}
-		prefix[i+1] = prefix[i]
-		if i == 0 {
-			continue
-		}
-		fee, e := exactBTCSats(tx.Fee)
-		if e != nil {
-			return nil, e
-		}
-		prefix[i+1], e = addUint64(prefix[i], fee)
-		if e != nil {
-			return nil, e
-		}
-	}
-	return prefix, nil
+	return recipeCheckedFeePrefix(b.ctx, block, fees)
+
 }
 func (r *satlineResolver) primeInputValues(tx transactionView, height int64) {
 	b, ok := r.backend.(coreValueBackend)

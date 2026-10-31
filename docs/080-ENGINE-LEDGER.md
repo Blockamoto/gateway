@@ -4,15 +4,13 @@ Last updated: 2026-10-31. Baseline: 0.7.9 `76cc8d5efa3c3d75a1531774fc2af1dff44db
 
 ## Current implementation boundary
 
-The initial interpreter evaluates sparse reveal recipes against complete verified extraction. Independent recipes can be saved, armed, reviewed, run over a finite range or Live and queried through the existing coordinator and a selected-local-header check. Live target rebinding and journalled sparse reorg reconciliation have focused backend tests. A visible isolated Live test followed a real new block and paused; Computer Use stopped after restart because it could not establish Chrome's current URL, so visual Resume remains unverified. This is **not a complete indexing release**: a narrow sparse same-block dependency path is implemented for reveal and transaction sources, while in-run re-admission and broader dependency forms remain open. The language cannot yet describe all built-ins or their ordered mutable state. Native TX ID Locators, UTXO transitions, Lean/Full inscription retention, optional/saved inscription locators and Address History destination rows now derive through actual JSON compositions with explicit native semantic-equivalence bindings. Custom ordered Coin/count recipes reuse isolated native-format generations through guided authoring, reviewed finite/Live runs, query, rebuild and maintenance. Other built-ins retain their original derivation; the complete baseline matrix and wider custom contracts remain open. Legacy native equivalence does not relabel a custom generation.
+Enabled native derivations now execute actual compositional JSON through the common compiler/interpreter: headers and Raw bodies; TX locators; Lean/Full inscriptions and independently retained conventional IDs; retained output values/scripts; complete TXIO links; Coin state; current/historical addresses; Sat FIFO/history; Standard Districts; and validated replay Parcels. Compact fee derivation and explicit Core fee prefix compositions are integrated in the current increment. Physical codecs, native rule identities, old readers and release gates remain distinct. The current family-by-family evidence and limitations are in `080-PARITY-MATRIX.md`; dated sections below record earlier boundaries and are not the current implementation inventory.
 
-The CBOR reader retains typed data and duplicate entries. The initial Ord properties adapter handles uncompressed and bounded Brotli data; malformed/unknown-field equivalence against the pinned Ord implementation remains unproven. Definitions that use interpreted properties receive a new semantic profile for Brotli; prior property generations remain retained and need an explicit new generation rather than being silently relabelled. Synthetic tests cover metadata and properties. The real Bitcoin genesis fixture proves only the verified empty-reveal case. An optional raw block at height 908657 verifies one real reveal with metadata and metaprotocol, including a changed-predicate check; its standalone header is not authenticated as selected chain. Broad differential parity remains outstanding. The prototype's narrowly supported operators are not a release-scope reduction; extend or replace them to satisfy the full matrix below.
+Saved/custom recipes use independent sparse rows, ordered typed COW tables, Coin/Sat state or exact Coin checkpoint projections. The guided editor and raw JSON round-trip actual documents, typed expressions, byte/list/range primitives, table declarations and exact read-only inputs. Incoming sources include same-block scalar exports, Coin deltas, typed checkpoints and authenticated point facts; used facts and required proof blobs are retained with the child. UI hierarchy is independent of execution dependencies. Review, arming and navigation do not start producers.
 
-Definition and sparse-store initialization fail closed if a published head is lost; a crash between initialization marker and first head also requires explicit recovery. Page paths receive best-effort reparse-point checks, not protection against hostile concurrent filesystem replacement. Production integration still needs complete chain, admission and dependency fencing, reorg recovery and read-side validation. The generic store guard is a trusted synchronous caller contract, not an independent authority check.
+Source acquisition, integrity, selected-chain publication fences and native storage/recovery retain their existing authority boundaries. Bitcoin header/body verification is not complete script/UTXO consensus validation. Real block/Ord fixtures and controlled synthetic state/proof-policy fixtures have separate roles. Bounded parity and lifecycle checks do not establish full-chain throughput or a positive mainnet Bitmap Parcel. Detailed semantic pins, physical comparisons, allocation costs and known limits accompany each family document.
 
-The sparse consumer and local-header publication guard have focused tests, including cancellation, stale revisions, gaps and concurrent stop/header replacement. Independent recipes use them through the coordinated worker and per-height query path. The local fence cannot lock an external Core process; the Live backend reuses an unchanged authenticated prefix within a running consumer, while restart rechecks saved anchors. See `080-RECIPE-PUBLICATION-FENCE.md` for lock order and remaining authority boundaries.
-
-Offline, disposable Chrome smoke tests authored, validated, saved and reloaded metadata and property-trait drafts; they ran a finite recipe over the verified Bitcoin genesis block and observed its committed empty result. A separate real-block run at 792435 returned a reveal. At 908657, guided metadata and metaprotocol recipes ran against the verified block and validated header prefix: the metadata predicate selected `2201i0.908657`, a changed value produced a completed empty result, and the metaprotocol predicate returned 38 rows including that reveal. A combined guided metadata-and-metaprotocol recipe returned that same reveal with transaction and block-hash projections. These are bounded checks, not full acceptance or a user-ready preview. Full guided recreation, child dependencies, all built-in recipes and parity remain open.
+The working portable preview and visible Chrome acceptance remain unfinished. The existing visible-browser runtime fails before JavaScript initialization with `failed to write kernel assets` / Windows path error 3, including after a kernel reset. Headless source-identical editor/browser checks pass and remain separate evidence. This ledger is not release acceptance; final source revision, isolated artifact, commands and remaining limits will be recorded with the preview.
 
 ## Repository brief
 
@@ -1113,3 +1111,37 @@ and visible browser acceptance remain open.
 
 The final focused source/native comparison subset and production build passed
 (25,851,904 bytes).
+
+### 2026-10-31: compact fee rows and explicit checked Core prefix
+
+Actual transaction-fee and checked Core-prefix JSON now use the shared typed
+interpreter. Native Sat fee storage retains its page/manifest format. Saved
+compositions read explicit input-amount or Core fee point facts, own used values
+and anchors, and can choose an independent origin. No missing source becomes
+zero and no point read starts a producer. Generic uint64 addition/subtraction
+reject overflow and underflow without changing existing money primitives.
+
+The focused suite passed in 16.208 seconds: 600-transaction frozen physical
+parity, malformed/overflow/cancellation rejection, a real same-block amount in
+block 792435, synthetic positive owned imports through maintenance, public
+block-1 execution/reuse and exact checked Core prefix. Both actual documents
+round-trip in guided unit/headless narrow DOM checks. Wider regression is
+running. See `080-COMPACT-FEES.md` and `080-RETAINED-LAYER-AUDIT.md`.
+
+The wider fee/ordered/table/Sat/TXIO/catalogue/registry regression passed 151
+checks without skips or failures in 583.899 seconds
+(`gateway-080-fees-regression.jsonl`). Final source/fee/compatibility/release-gate
+checks passed 33 checks in 10.570 seconds
+(`gateway-080-fees-version-final.jsonl`). A fresh-root 600-transaction synthetic
+comparison measured recipe 69.94 ms/11,181,712 cumulative allocation bytes versus
+frozen 32.82 ms/277,104; it includes receipt writes but excludes acquisition,
+full-chain throughput and peak memory. Interpreter overhead remains explicit.
+
+Both workspace browser suites pass. The older transaction workspace fixture now
+serves the three new read-only registry/hierarchy requests and distinguishes the
+shared navigation address field from the destination filter. No navigation
+behavior changed. App/compatibility/companion version is prepared as 0.8.0; the
+portable packager includes the current review/testing notes and executable JSON
+with a hashed source manifest. The process/API smoke uses its own new offline
+profile with authenticated genesis/block-1 fixtures; visible Chrome remains a
+separate blocked acceptance step.

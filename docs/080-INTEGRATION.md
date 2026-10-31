@@ -1,5 +1,10 @@
 # 0.8.0 recipe integration map
 
+This document records the original integration plan and early migration notes.
+For the current implemented contracts and evidence, read `080-PARITY-MATRIX.md`,
+`080-ENGINE-LEDGER.md` and `REVIEW-0.8.0.md`. Earlier “open” statements below
+are historical boundaries, not the current inventory.
+
 This is an implementation map, not a claim that any part of the new engine is complete. Keep the 0.7.9 data and UI operational throughout. A built-in is migrated only when its recipe actually controls its source, conditions, state transitions and outputs; selecting an old complete index by name or opcode is not migration.
 
 ## Contract and identity

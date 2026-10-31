@@ -314,6 +314,18 @@ func (m *recipeOrderedMachine) eval(e recipeOrderedExpr, depth int) (recipeOrder
 			return fail()
 		}
 		return rovBool(args[0].Kind != "missing"), nil
+	case "add_uint", "sub_uint":
+		if len(args) != 2 || args[0].Kind != "uint" || args[1].Kind != "uint" {
+			return fail()
+		}
+		if e.Call == "add_uint" {
+			n, err := addUint64(args[0].Uint, args[1].Uint)
+			return rovUint(n), err
+		}
+		if args[1].Uint > args[0].Uint {
+			return recipeOrderedValue{}, fmt.Errorf("unsigned subtraction underflow")
+		}
+		return rovUint(args[0].Uint - args[1].Uint), nil
 	case "add_money", "sub_money":
 		if len(args) != 2 || args[0].Kind != "uint" || args[1].Kind != "uint" {
 			return fail()

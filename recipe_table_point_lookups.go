@@ -25,7 +25,7 @@ func recipeTablePointLookupBindings() []recipeSourceLookup {
 		Revision, Network, Authority string
 		Verifier                     int
 	}{identity.Revision, "bitcoin-mainnet", authority, blockVerifierVersion})
-	return append([]recipeSourceLookup{lookup, identity}, recipeInscriptionParentLookupBindings()...)
+	return append(append([]recipeSourceLookup{lookup, identity}, recipeInscriptionParentLookupBindings()...), recipeInputValueLookupBinding(), recipeCoreFeeLookupBinding())
 }
 
 func recipeValidateTablePointLookups(d recipeDefinition, tables map[string]bool, deps map[string]recipeDependency) (map[string]recipeSourceLookup, error) {
@@ -75,6 +75,9 @@ type recipeTablePointLookups struct {
 	parentFacts    map[string]recipeParentPointResult
 	parentCurrent  *recipeParentInventoryPoint
 	parentPrevious *recipeParentInventoryPoint
+	inputValues    *recipeInputValuePoints
+	inputPositions map[string][]int
+	coreFees       []uint64
 }
 
 func newRecipeTablePointLookups(a *app, d recipeDefinition, source *recipeOrderedOwnedSource) (*recipeTablePointLookups, error) {
@@ -105,6 +108,12 @@ func (r *recipeTablePointLookups) read(ctx context.Context, lookup recipeSourceL
 	}
 	if r.declarations[lookup.Name] != lookup {
 		return recipeOrderedValue{}, fmt.Errorf("undeclared typed point source")
+	}
+	if lookup.Source == "bitcoin.transaction_fee" {
+		return r.readCoreFee(ctx, key)
+	}
+	if lookup.Source == "bitcoin.input_value" {
+		return r.readInputValue(ctx, key)
 	}
 	if lookup.Source == "bitcoin.inscription_identity" {
 		return r.readIdentity(ctx, key)
@@ -178,6 +187,12 @@ func (r *recipeTablePointLookups) loadBlock(ctx context.Context, height int64) (
 func recipeCheckTablePointFact(f recipeImportedFact) error {
 	if f.Lookup == nil {
 		return fmt.Errorf("owned point source unavailable")
+	}
+	if f.Lookup.Source == "bitcoin.transaction_fee" {
+		return recipeCheckCoreFeeFact(f)
+	}
+	if f.Lookup.Source == "bitcoin.input_value" {
+		return recipeCheckInputValueFact(f)
 	}
 	if f.Lookup.Source == "bitcoin.inscription_identity" {
 		return recipeCheckIdentityPointFact(f)

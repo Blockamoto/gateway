@@ -16,6 +16,7 @@ func recipeOrderedFunctions() []recipeFunctionCapability {
 	return []recipeFunctionCapability{
 		function("eq", "bool", arg("left", "text", "uint", "bool"), arg("right", "text", "uint", "bool")),
 		function("not", "bool", arg("value", "bool")), function("present", "bool", arg("value", "any")),
+		function("add_uint", "uint", arg("left", "uint"), arg("right", "uint")), function("sub_uint", "uint", arg("left", "uint"), arg("right", "uint")),
 		function("add_money", "uint", arg("left", "uint"), arg("right", "uint")), function("sub_money", "uint", arg("left", "uint"), arg("right", "uint")),
 		function("less_equal", "bool", arg("left", "uint"), arg("right", "uint")),
 		function("outpoint", "text", arg("txid", "text"), arg("vout", "uint")),

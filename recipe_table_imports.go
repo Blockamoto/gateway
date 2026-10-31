@@ -360,6 +360,14 @@ func (s *recipeTablesImportState) ReadOrdered(ctx context.Context, key recipeSta
 		if err != nil {
 			return recipeOrderedValue{}, err
 		}
+		if source == nil && fact.Lookup.Source == "bitcoin.transaction_fee" {
+			fact.Evidence = []recipeTablePointEvidence{{Height: fact.Snapshot.Height, BlockHash: fact.Snapshot.BlockHash}}
+		}
+		if source == nil && fact.Lookup.Source == "bitcoin.input_value" {
+			value := fact.Value.Object
+			height := int64(value["creation_height"].Uint)
+			fact.Evidence = []recipeTablePointEvidence{{Height: height, BlockHash: value["creation_block"].Text}}
+		}
 		if source == nil && fact.Lookup.Source == "bitcoin.inscription_identity" {
 			coordinate, _ := recipeInscriptionPointKey(key.Key)
 			fact.Evidence = []recipeTablePointEvidence{{Height: coordinate.Height, BlockHash: s.sources.lookups.anchors[coordinate.Height]}}

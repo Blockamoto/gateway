@@ -2,6 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs');
 require('../ui/shell/recipe-ordered-editor.js');
 const editor=globalThis.GatewayOrderedRecipeEditor,original=JSON.parse(fs.readFileSync('recipes/builtins/utxo-state.json','utf8'));
+for(const name of ['transaction-fees','checked-fee-prefix']){const feeDocument=JSON.parse(fs.readFileSync('recipes/builtins/'+name+'.json','utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(feeDocument)),feeDocument);}
 const guided=editor.toGuided(original);assert(guided,'the actual executable UTXO document has a guided representation');
 assert.deepEqual(editor.fromGuided(guided),original,'all instructions, expressions, diagnostic names and table declarations round-trip');
 guided.name='Changed';assert.notEqual(original.name,guided.name,'the editor owns its draft');

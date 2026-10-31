@@ -68,6 +68,7 @@ const stateful=JSON.parse(fs.readFileSync('recipes/output-count-state.json','utf
 const revealState=JSON.parse(fs.readFileSync('recipes/reveal-count-state.json','utf8'));
 const parentMentions=JSON.parse(fs.readFileSync('recipes/declared-parent-mentions.json','utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(parentMentions)),parentMentions,'declared parent lists and exact membership round-trip');
 const districts=JSON.parse(fs.readFileSync('recipes/builtins/bitmap-districts-standard-v1.json','utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(districts)),districts,'actual District grammar, eligibility and first-winner program round-trips');
+const parcelClaims=JSON.parse(fs.readFileSync('recipes/builtins/bitmap-parcel-claims-standard-v1.json','utf8'));assert.deepEqual(editor.fromGuided(editor.toGuided(parcelClaims)),parcelClaims,'actual native Parcel candidate grammar stage round-trips');
 assert.deepEqual(editor.initialReveals(),revealState,'the reveal starter is the executable example');assert.deepEqual(editor.fromGuided(editor.toGuided(revealState)),revealState);assert(mounted.load(revealState));
 assert.equal(control('State source').value,'bitcoin.reveal');const revealAdd=control('Add instruction type');revealAdd.value='let';revealAdd.events.change();button('Add instruction').events.click();
 const revealLet=expand('5. let value'),revealValue=expand('Value',revealLet),revealMode=control('Expression type',revealValue);revealMode.value='field';revealMode.events.change();

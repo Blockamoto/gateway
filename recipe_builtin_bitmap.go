@@ -103,6 +103,10 @@ func (r *bitmapRecipeState) ReadOrdered(ctx context.Context, key recipeStateKey)
 }
 
 func (r *bitmapRecipeState) decodeProposal(value recipeOrderedValue) (bitmapDevelopmentCandidate, error) {
+	return recipeDecodeBitmapCandidate(r.block, r.current, r.occurrences, value, "district")
+}
+
+func recipeDecodeBitmapCandidate(block blockView, current string, occurrences map[string]inscriptionOccurrence, value recipeOrderedValue, kind string) (bitmapDevelopmentCandidate, error) {
 	fail := func() (bitmapDevelopmentCandidate, error) {
 		return bitmapDevelopmentCandidate{}, fmt.Errorf("Bitmap candidate proposal differs from its admitted source/schema")
 	}
@@ -120,14 +124,14 @@ func (r *bitmapRecipeState) decodeProposal(value recipeOrderedValue) (bitmapDeve
 			return fail()
 		}
 	}
-	if v["has_district"].Kind != "bool" || v["content"].Kind != "bytes" || v["ref"].Text != r.current {
+	if v["has_district"].Kind != "bool" || v["content"].Kind != "bytes" || v["ref"].Text != current {
 		return fail()
 	}
-	o, ok := r.occurrences[r.current]
+	o, ok := occurrences[current]
 	if !ok {
 		return fail()
 	}
-	if v["kind"].Text != "district" || v["ownership"].Text != "unknown" || v["block"].Text != r.block.Hash || v["height"].Uint != uint64(r.block.Height) || v["tx_index"].Uint != uint64(o.TxIndex) || v["reveal_index"].Uint != uint64(o.Index) || v["content_hash"].Text != o.ContentSHA256 || v["parent_count"].Uint != uint64(len(o.Envelope.Parents)) {
+	if v["kind"].Text != kind || v["ownership"].Text != "unknown" || v["block"].Text != block.Hash || v["height"].Uint != uint64(block.Height) || v["tx_index"].Uint != uint64(o.TxIndex) || v["reveal_index"].Uint != uint64(o.Index) || v["content_hash"].Text != o.ContentSHA256 || v["parent_count"].Uint != uint64(len(o.Envelope.Parents)) {
 		return fail()
 	}
 	if len(v["content"].Bytes) > 128 || len(v["content"].Bytes) > 0 && !bytes.Equal(v["content"].Bytes, o.Body) {
@@ -139,7 +143,7 @@ func (r *bitmapRecipeState) decodeProposal(value recipeOrderedValue) (bitmapDeve
 	if v["decode_state"].Text != "pass" && v["decode_state"].Text != "fail" || v["eligibility"].Text != "eligible" && v["eligibility"].Text != "ineligible" || v["selection"].Text != "selected" && v["selection"].Text != "not-selected" {
 		return fail()
 	}
-	c := bitmapDevelopmentCandidate{ID: o.ID, Blocator: r.current, Kind: v["kind"].Text, RevealCoordinate: r.current, RevealHeight: r.block.Height, RevealHash: r.block.Hash, TxIndex: o.TxIndex, InscriptionIndex: o.Index, ContentHash: o.ContentSHA256, Content: string(v["content"].Bytes), Eligibility: v["eligibility"].Text, Selection: v["selection"].Text, Reason: v["reason"].Text, Parents: append([]string(nil), o.Envelope.Parents...), DeclaredParentCount: len(o.Envelope.Parents), Ownership: v["ownership"].Text, DecodeState: v["decode_state"].Text}
+	c := bitmapDevelopmentCandidate{ID: o.ID, Blocator: current, Kind: v["kind"].Text, RevealCoordinate: current, RevealHeight: block.Height, RevealHash: block.Hash, TxIndex: o.TxIndex, InscriptionIndex: o.Index, ContentHash: o.ContentSHA256, Content: string(v["content"].Bytes), Eligibility: v["eligibility"].Text, Selection: v["selection"].Text, Reason: v["reason"].Text, Parents: append([]string(nil), o.Envelope.Parents...), DeclaredParentCount: len(o.Envelope.Parents), Ownership: v["ownership"].Text, DecodeState: v["decode_state"].Text}
 	if v["has_district"].Bool {
 		n := v["district"].Uint
 		c.District = &n

@@ -330,6 +330,11 @@ func bitmapFixedIndexDefinition(id string) (indexDefinition, bool) {
 			d.ExecutableRecipeVariants = []indexExecutableRecipe{{Name: "Standard V1 District claims and first-winner state", Definition: append(json.RawMessage(nil), builtinBitmapDistrictJSON...), SemanticHash: p.semanticHash()}}
 		}
 	}
+	if id == bitmapReplayParcelID {
+		if p, err := builtinParcelClaimsRecipe(); err == nil {
+			d.ExecutableRecipeVariants = []indexExecutableRecipe{{Name: "Standard V1 Parcel candidate grammar stage", Definition: append(json.RawMessage(nil), builtinParcelClaimsJSON...), SemanticHash: p.semanticHash()}}
+		}
+	}
 	return d, true
 }
 

@@ -932,3 +932,34 @@ Parcel JSON and complete visible preview acceptance remain open.
 Final identity/block-context checks passed in 6.576 seconds after the coalesced
 read-only callback guard.
 The identity-point production build passed (25,309,696 bytes).
+
+### 2026-10-31: native replay Parcel candidate grammar
+
+The enabled replay Parcel writer now obtains candidate grammar facts from
+`recipes/builtins/bitmap-parcel-claims-standard-v1.json`. Ordinary byte/MIME/
+decimal operations control candidate recognition, whole claim syntax, both
+numbers, target-height rejection and retained source fields. A typed adapter
+checks proposals and maps them into the existing native candidate schema.
+The stage equivalence bundle is
+`a810cff65d014869c44b24211f740dfb6d353101a01d43830638a0e1374fe50c`.
+Native replay profile/rule identities, codecs, proof routes and legacy gates
+remain unchanged. The inspector names this as a candidate grammar stage.
+
+The selected District, transaction count proof, declared-parent matching,
+checked relationship, unresolved order and final winner policy still use the
+retained native path; their full JSON composition remains open. Saved copies
+are candidate grammar trackers, separately from validated Parcels. No complete
+Parcel migration or preview acceptance is claimed by this stage.
+
+Frozen prefix comparisons match malformed/case/whitespace/overflow/MIME and
+non-ASCII fixtures and real block 792435. Differential checks match complete
+native heads/pages and pending payload bytes. The focused checks passed in
+1.611 seconds. Public saved execution and a suffix customization use the same
+interpreter without native parent writers. The wider Bitmap/Parcel suite passed
+211 checks with four skips in 437.408 seconds, including proof routes, validated ordering, Live, retention
+and recovery; its audit is `gateway-080-parcel-grammar-regression.jsonl`.
+Guided and headless document/workspace checks passed. See
+`080-PARCEL-CANDIDATE-GRAMMAR.md` for the remaining boundary.
+The production build passed (25,361,920 bytes).
+One parallel-build workspace attempt missed the transient highlight; the
+unchanged browser check passed in isolation.

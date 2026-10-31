@@ -1,0 +1,781 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "bitmap-parcel-claims-standard-v1",
+  "name": "Bitmap Parcel Standard V1 candidate grammar",
+  "source": "bitcoin.reveal",
+  "origin": 792435,
+  "history": "ordered",
+  "storage": "tables.cow.v1",
+  "dependencies": [],
+  "tables": [
+    {
+      "name": "candidates",
+      "key": "ref"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "let",
+            "name": "marker",
+            "expr": {
+              "call": "bytes_find_fold_ascii",
+              "args": [
+                {
+                  "field": "body"
+                },
+                {
+                  "literal": {
+                    "kind": "bytes",
+                    "bytes": "LmJpdG1hcA=="
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "present",
+              "args": [
+                {
+                  "var": "marker"
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "stem",
+                "expr": {
+                  "call": "bytes_slice",
+                  "args": [
+                    {
+                      "field": "body"
+                    },
+                    {
+                      "literal": {
+                        "kind": "uint",
+                        "uint": "0"
+                      }
+                    },
+                    {
+                      "var": "marker"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "let",
+                "name": "dot",
+                "expr": {
+                  "call": "bytes_find",
+                  "args": [
+                    {
+                      "var": "stem"
+                    },
+                    {
+                      "literal": {
+                        "kind": "bytes",
+                        "bytes": "Lg=="
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "call": "present",
+                  "args": [
+                    {
+                      "var": "dot"
+                    }
+                  ]
+                },
+                "body": [
+                  {
+                    "op": "let",
+                    "name": "district_start",
+                    "expr": {
+                      "call": "add_money",
+                      "args": [
+                        {
+                          "var": "dot"
+                        },
+                        {
+                          "literal": {
+                            "kind": "uint",
+                            "uint": "1"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "op": "let",
+                    "name": "district_bytes",
+                    "expr": {
+                      "call": "bytes_slice",
+                      "args": [
+                        {
+                          "var": "stem"
+                        },
+                        {
+                          "var": "district_start"
+                        },
+                        {
+                          "call": "bytes_length",
+                          "args": [
+                            {
+                              "var": "stem"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "op": "let",
+                    "name": "extra_dot",
+                    "expr": {
+                      "call": "bytes_find",
+                      "args": [
+                        {
+                          "var": "district_bytes"
+                        },
+                        {
+                          "literal": {
+                            "kind": "bytes",
+                            "bytes": "Lg=="
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "op": "if",
+                    "expr": {
+                      "call": "not",
+                      "args": [
+                        {
+                          "call": "present",
+                          "args": [
+                            {
+                              "var": "extra_dot"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "body": [
+                      {
+                        "op": "let",
+                        "name": "reason",
+                        "expr": {
+                          "literal": {
+                            "kind": "text",
+                            "text": ""
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "media",
+                        "expr": {
+                          "call": "media_type",
+                          "args": [
+                            {
+                              "field": "content_type"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "text_plain",
+                        "expr": {
+                          "literal": {
+                            "kind": "bool",
+                            "bool": false
+                          }
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "present",
+                          "args": [
+                            {
+                              "var": "media"
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "if",
+                            "expr": {
+                              "call": "eq",
+                              "args": [
+                                {
+                                  "var": "media"
+                                },
+                                {
+                                  "literal": {
+                                    "kind": "text",
+                                    "text": "text/plain"
+                                  }
+                                }
+                              ]
+                            },
+                            "body": [
+                              {
+                                "op": "let",
+                                "name": "text_plain",
+                                "expr": {
+                                  "literal": {
+                                    "kind": "bool",
+                                    "bool": true
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "not",
+                          "args": [
+                            {
+                              "var": "text_plain"
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "let",
+                            "name": "reason",
+                            "expr": {
+                              "literal": {
+                                "kind": "text",
+                                "text": "text_plain_required"
+                              }
+                            }
+                          }
+                        ],
+                        "else": [
+                          {
+                            "op": "let",
+                            "name": "ascii",
+                            "expr": {
+                              "call": "bytes_ascii",
+                              "args": [
+                                {
+                                  "field": "body"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "op": "if",
+                            "expr": {
+                              "call": "not",
+                              "args": [
+                                {
+                                  "call": "present",
+                                  "args": [
+                                    {
+                                      "var": "ascii"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "body": [
+                              {
+                                "op": "let",
+                                "name": "reason",
+                                "expr": {
+                                  "literal": {
+                                    "kind": "text",
+                                    "text": "invalid_ascii"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "let",
+                        "name": "decode_state",
+                        "expr": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "fail"
+                          }
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "eq",
+                          "args": [
+                            {
+                              "var": "reason"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": ""
+                              }
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "let",
+                            "name": "decode_state",
+                            "expr": {
+                              "literal": {
+                                "kind": "text",
+                                "text": "pass"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "op": "let",
+                        "name": "eligibility",
+                        "expr": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "ineligible"
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "selection",
+                        "expr": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "not-selected"
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "has_transaction",
+                        "expr": {
+                          "literal": {
+                            "kind": "bool",
+                            "bool": false
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "transaction",
+                        "expr": {
+                          "literal": {
+                            "kind": "uint",
+                            "uint": "0"
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "syntax_valid",
+                        "expr": {
+                          "literal": {
+                            "kind": "bool",
+                            "bool": false
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "has_district",
+                        "expr": {
+                          "literal": {
+                            "kind": "bool",
+                            "bool": false
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "district",
+                        "expr": {
+                          "literal": {
+                            "kind": "uint",
+                            "uint": "0"
+                          }
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "eq",
+                          "args": [
+                            {
+                              "var": "reason"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": ""
+                              }
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "if",
+                            "expr": {
+                              "call": "bytes_equal",
+                              "args": [
+                                {
+                                  "call": "bytes_concat",
+                                  "args": [
+                                    {
+                                      "var": "stem"
+                                    },
+                                    {
+                                      "literal": {
+                                        "kind": "bytes",
+                                        "bytes": "LmJpdG1hcA=="
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "field": "body"
+                                }
+                              ]
+                            },
+                            "body": [
+                              {
+                                "op": "let",
+                                "name": "district_number",
+                                "expr": {
+                                  "call": "decimal_parse",
+                                  "args": [
+                                    {
+                                      "var": "district_bytes"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "op": "if",
+                                "expr": {
+                                  "call": "present",
+                                  "args": [
+                                    {
+                                      "var": "district_number"
+                                    }
+                                  ]
+                                },
+                                "body": [
+                                  {
+                                    "op": "let",
+                                    "name": "has_district",
+                                    "expr": {
+                                      "literal": {
+                                        "kind": "bool",
+                                        "bool": true
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "district",
+                                    "expr": {
+                                      "var": "district_number"
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "transaction_bytes",
+                                    "expr": {
+                                      "call": "bytes_slice",
+                                      "args": [
+                                        {
+                                          "var": "stem"
+                                        },
+                                        {
+                                          "literal": {
+                                            "kind": "uint",
+                                            "uint": "0"
+                                          }
+                                        },
+                                        {
+                                          "var": "dot"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "transaction_number",
+                                    "expr": {
+                                      "call": "decimal_parse",
+                                      "args": [
+                                        {
+                                          "var": "transaction_bytes"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "op": "if",
+                                    "expr": {
+                                      "call": "present",
+                                      "args": [
+                                        {
+                                          "var": "transaction_number"
+                                        }
+                                      ]
+                                    },
+                                    "body": [
+                                      {
+                                        "op": "let",
+                                        "name": "has_transaction",
+                                        "expr": {
+                                          "literal": {
+                                            "kind": "bool",
+                                            "bool": true
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "op": "let",
+                                        "name": "transaction",
+                                        "expr": {
+                                          "var": "transaction_number"
+                                        }
+                                      },
+                                      {
+                                        "op": "if",
+                                        "expr": {
+                                          "call": "less_equal",
+                                          "args": [
+                                            {
+                                              "var": "district"
+                                            },
+                                            {
+                                              "field": "height"
+                                            }
+                                          ]
+                                        },
+                                        "body": [
+                                          {
+                                            "op": "let",
+                                            "name": "syntax_valid",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "bool",
+                                                "bool": true
+                                              }
+                                            }
+                                          }
+                                        ],
+                                        "else": [
+                                          {
+                                            "op": "let",
+                                            "name": "reason",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "text",
+                                                "text": "future_block"
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    ],
+                                    "else": [
+                                      {
+                                        "op": "let",
+                                        "name": "reason",
+                                        "expr": {
+                                          "literal": {
+                                            "kind": "text",
+                                            "text": "noncanonical_transaction"
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "else": [
+                                  {
+                                    "op": "let",
+                                    "name": "reason",
+                                    "expr": {
+                                      "literal": {
+                                        "kind": "text",
+                                        "text": "noncanonical_district"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            ],
+                            "else": [
+                              {
+                                "op": "let",
+                                "name": "reason",
+                                "expr": {
+                                  "literal": {
+                                    "kind": "text",
+                                    "text": "noncanonical_claim"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "let",
+                        "name": "content",
+                        "expr": {
+                          "literal": {
+                            "kind": "bytes",
+                            "bytes": ""
+                          }
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "less_equal",
+                          "args": [
+                            {
+                              "call": "bytes_length",
+                              "args": [
+                                {
+                                  "field": "body"
+                                }
+                              ]
+                            },
+                            {
+                              "literal": {
+                                "kind": "uint",
+                                "uint": "128"
+                              }
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "let",
+                            "name": "content",
+                            "expr": {
+                              "field": "body"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "op": "let",
+                        "name": "candidate",
+                        "expr": {
+                          "object": {
+                            "kind": {
+                              "literal": {
+                                "kind": "text",
+                                "text": "parcel"
+                              }
+                            },
+                            "ownership": {
+                              "literal": {
+                                "kind": "text",
+                                "text": "unknown"
+                              }
+                            },
+                            "ref": {
+                              "field": "ref"
+                            },
+                            "block": {
+                              "field": "block"
+                            },
+                            "height": {
+                              "field": "height"
+                            },
+                            "tx_index": {
+                              "field": "tx_index"
+                            },
+                            "reveal_index": {
+                              "field": "reveal_index"
+                            },
+                            "content_hash": {
+                              "field": "content_hash"
+                            },
+                            "parent_count": {
+                              "field": "parent_count"
+                            },
+                            "content": {
+                              "var": "content"
+                            },
+                            "decode_state": {
+                              "var": "decode_state"
+                            },
+                            "eligibility": {
+                              "var": "eligibility"
+                            },
+                            "selection": {
+                              "var": "selection"
+                            },
+                            "reason": {
+                              "var": "reason"
+                            },
+                            "has_district": {
+                              "var": "has_district"
+                            },
+                            "district": {
+                              "var": "district"
+                            },
+                            "has_transaction": {
+                              "var": "has_transaction"
+                            },
+                            "transaction": {
+                              "var": "transaction"
+                            },
+                            "syntax_valid": {
+                              "var": "syntax_valid"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "op": "put",
+                        "table": "candidates",
+                        "key": {
+                          "field": "ref"
+                        },
+                        "expr": {
+                          "var": "candidate"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

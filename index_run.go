@@ -1340,7 +1340,7 @@ func (a *app) startIndexRunWithAdmissionBoundary(ctx context.Context, req indexR
 			if err := ctx.Err(); err != nil {
 				return indexRunDocument{}, err
 			}
-			resolved, readErr := recipeResolveBuiltinCoinDefinition(dependency)
+			resolved, readErr := recipeResolveBuiltinDefinition(dependency)
 			if readErr != nil || recipeGraphID(resolved) != identity {
 				return indexRunDocument{}, fmt.Errorf("built-in checkpoint dependency changed since review; review the plan again")
 			}

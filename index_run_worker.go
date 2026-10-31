@@ -1078,7 +1078,8 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 			c.parcelAnchorHeight, c.parcelAnchorTip, c.parcelAnchorHash = next, authority.Hash, selected.HashDisplay
 		}
-		if !c.parcelSourceRetryAt.IsZero() && !time.Now().Before(c.parcelSourceRetryAt) {
+		retryingMissingSource := !c.parcelSourceRetryAt.IsZero()
+		if retryingMissingSource && !time.Now().Before(c.parcelSourceRetryAt) {
 			c.parcelSourceRetryAt = time.Time{}
 			c.parcelObservationKey, c.parcelValidationKey = "", ""
 		}
@@ -1133,7 +1134,13 @@ func (a *app) runCoordinatedIndexes(ctx context.Context, id string) {
 			}
 		}
 		c.parcelBusy, parcelActive = true, true
-		c.progress.ParcelValidationState, c.progress.ParcelValidationReason = "validating", "Checking the next Parcel block against the selected proof route."
+		c.progress.ParcelValidationState = "validating"
+		// Keep the last missing-source explanation visible during its retry.
+		// A quick retry must not erase the only useful persisted status before
+		// clients can observe it. Successful publication clears it above.
+		if !retryingMissingSource || c.progress.ParcelValidationReason == "" {
+			c.progress.ParcelValidationReason = "Checking the next Parcel block against the selected proof route."
+		}
 		progress, expectedHash := c.progress, c.parcelAnchorHash
 		retention := runRawRetention(record.Request)
 		workCtx, workCancel := context.WithCancel(parcelCtx)

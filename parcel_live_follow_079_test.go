@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -99,6 +100,12 @@ func TestParcelLiveFollowsEvidencePauseAndReorg079(t *testing.T) {
 	a.indexRunActiveID = record.ID
 	a.indexMu.Unlock()
 	go a.runCoordinatedIndexes(worker, record.ID)
+	defer func() {
+		if t.Failed() {
+			raw, _ := json.MarshalIndent(a.indexRunSnapshot(), "", "  ")
+			t.Log("Live failure snapshot: " + string(raw))
+		}
+	}()
 	waitHeight := func(height int64, hash string) indexRunDocument {
 		return waitRunCondition(t, a, func(d indexRunDocument) bool {
 			if d.Run == nil || d.Run.State != "waiting" {

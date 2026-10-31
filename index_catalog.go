@@ -331,8 +331,14 @@ func bitmapFixedIndexDefinition(id string) (indexDefinition, bool) {
 		}
 	}
 	if id == bitmapReplayParcelID {
-		if p, err := builtinParcelClaimsRecipe(); err == nil {
-			d.ExecutableRecipeVariants = []indexExecutableRecipe{{Name: "Standard V1 Parcel candidate grammar stage", Definition: append(json.RawMessage(nil), builtinParcelClaimsJSON...), SemanticHash: p.semanticHash()}}
+		for _, provider := range []string{"retained-raw", "tx-locators", "txio-links"} {
+			if p, err := builtinParcelRecipe(provider); err == nil {
+				raw := append(json.RawMessage(nil), builtinParcelRecipeBytes(provider)...)
+				if d.ExecutableRecipe == nil {
+					d.ExecutableRecipe, d.ExecutableRecipeHash = raw, p.semanticHash()
+				}
+				d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: "Standard V1 Parcels (" + provider + ")", Definition: raw, SemanticHash: p.semanticHash()})
+			}
 		}
 	}
 	return d, true

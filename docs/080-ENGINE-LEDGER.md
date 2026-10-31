@@ -1010,3 +1010,47 @@ scope and fixture admission limits. Complete native Parcel JSON and visible
 preview acceptance remain open.
 The parent-point production build passed (25,448,960 bytes), as did the wider
 workspace browser check.
+
+### 2026-10-31: complete enabled native Parcel JSON policy
+
+Three actual Standard Parcel documents now compose candidate grammar, the exact
+District winners checkpoint, recognition order, target transaction bounds,
+authenticated parent identity and declared membership, checked Ord relationship
+and first eligible winner state. Their proof providers are explicitly pinned
+retained Raw, TX locators and TXIO links. Native source/codec adapters preserve
+the existing profile, proof routes, head/page schema, publication/recovery and
+deferred generation gates; the inspector exposes complete editable documents.
+The earlier grammar-only definition remains a separate partial tracker.
+The native equivalence bundle is
+`e2db73c5607f1cb89c37f6b8bce50a16cfb7ff920b6d6f2a310cf13ba1102a93`.
+
+Controlled checked-fact inputs verify two first winners, a duplicate, rejected
+parent consumption, transaction bounds, missing/later Districts, unmatched
+declarations and malformed/future claims. Frozen comparisons match native
+heads/COW references and pending behavior; provider-only variants match a
+four-candidate fixture. Public saved execution on authentic block 792435 and
+custom suffix execution pass with exact parent pins and no implicit producer.
+That real block has zero Parcel candidates; the separate positive mainnet Ord
+relationship is not a Bitmap claim. These bounded roles are kept distinct.
+
+The public full-copy check found and fixed the final start guard's Coin-only
+built-in resolver, which had rejected a valid reviewed District checkpoint.
+Parent point lookups now index the current admitted inventory once and retain
+only one historical inventory window, avoiding per-candidate whole-block parse.
+
+The wider regression passed 291 checks and skipped three, but failed a Live
+missing-source-status test in 316.102 seconds. An isolated rerun reproduced it:
+quick retries erased the missing-source message before the persisted UI status
+could expose it. The worker now keeps that explanation during retries and clears
+it on successful publication. The final semantic-fence/composition/ownership/
+coordinated lifecycle subset passed all 34 checks in 66.728 seconds. The initial
+wider failure is retained in `gateway-080-parcel-composition-regression.jsonl`;
+the clean final subset is `gateway-080-parcel-composition-final.jsonl`.
+
+Guided unit and headless DOM checks round-trip all three full programs and fit
+the narrow layout. Both visible browser runtimes were retried and still failed
+to initialize with the missing kernel-assets path error. Headers/Raw source
+recipes, remaining retained-layer mapping, final portable preview and visible
+acceptance remain open. See `080-NATIVE-BITMAP-PARCELS.md`.
+Two further unchanged Live runs passed in 22.056 seconds. The production build
+passed (25,792,512 bytes).

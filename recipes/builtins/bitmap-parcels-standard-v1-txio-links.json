@@ -1,0 +1,2097 @@
+{
+  "format": "gateway-recipe",
+  "version": 1,
+  "id": "bitmap-parcels-standard-v1-txio-links",
+  "name": "Bitmap Parcel Standard V1 (txio-links)",
+  "source": "bitcoin.reveal",
+  "origin": 792435,
+  "history": "ordered",
+  "storage": "tables.cow.v1",
+  "dependencies": [
+    {
+      "name": "districts",
+      "scope": "builtin",
+      "instance": "bitmap-districts-standard-v1",
+      "revision": "40ad26d241869a5d395e38f09273435e39dae56005046be752ac2cf11396dbea",
+      "semantic_hash": "b8c0a7d0622cbd19092133c560bcff848bdcfd36abc5a31f71c69774b15b8b01",
+      "export": "winners",
+      "coverage": "snapshot",
+      "type": "typed"
+    }
+  ],
+  "tables": [
+    {
+      "name": "winners",
+      "key": "transaction.district"
+    },
+    {
+      "name": "candidates",
+      "key": "ref"
+    },
+    {
+      "name": "evaluation",
+      "key": "ref"
+    }
+  ],
+  "ordered": {
+    "steps": [
+      {
+        "op": "for_events",
+        "body": [
+          {
+            "op": "let",
+            "name": "marker",
+            "expr": {
+              "call": "bytes_find_fold_ascii",
+              "args": [
+                {
+                  "field": "body"
+                },
+                {
+                  "literal": {
+                    "kind": "bytes",
+                    "bytes": "LmJpdG1hcA=="
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "op": "if",
+            "expr": {
+              "call": "present",
+              "args": [
+                {
+                  "var": "marker"
+                }
+              ]
+            },
+            "body": [
+              {
+                "op": "let",
+                "name": "stem",
+                "expr": {
+                  "call": "bytes_slice",
+                  "args": [
+                    {
+                      "field": "body"
+                    },
+                    {
+                      "literal": {
+                        "kind": "uint",
+                        "uint": "0"
+                      }
+                    },
+                    {
+                      "var": "marker"
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "let",
+                "name": "dot",
+                "expr": {
+                  "call": "bytes_find",
+                  "args": [
+                    {
+                      "var": "stem"
+                    },
+                    {
+                      "literal": {
+                        "kind": "bytes",
+                        "bytes": "Lg=="
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "op": "if",
+                "expr": {
+                  "call": "present",
+                  "args": [
+                    {
+                      "var": "dot"
+                    }
+                  ]
+                },
+                "body": [
+                  {
+                    "op": "let",
+                    "name": "district_start",
+                    "expr": {
+                      "call": "add_money",
+                      "args": [
+                        {
+                          "var": "dot"
+                        },
+                        {
+                          "literal": {
+                            "kind": "uint",
+                            "uint": "1"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "op": "let",
+                    "name": "district_bytes",
+                    "expr": {
+                      "call": "bytes_slice",
+                      "args": [
+                        {
+                          "var": "stem"
+                        },
+                        {
+                          "var": "district_start"
+                        },
+                        {
+                          "call": "bytes_length",
+                          "args": [
+                            {
+                              "var": "stem"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "op": "let",
+                    "name": "extra_dot",
+                    "expr": {
+                      "call": "bytes_find",
+                      "args": [
+                        {
+                          "var": "district_bytes"
+                        },
+                        {
+                          "literal": {
+                            "kind": "bytes",
+                            "bytes": "Lg=="
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "op": "if",
+                    "expr": {
+                      "call": "not",
+                      "args": [
+                        {
+                          "call": "present",
+                          "args": [
+                            {
+                              "var": "extra_dot"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "body": [
+                      {
+                        "op": "let",
+                        "name": "reason",
+                        "expr": {
+                          "literal": {
+                            "kind": "text",
+                            "text": ""
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "media",
+                        "expr": {
+                          "call": "media_type",
+                          "args": [
+                            {
+                              "field": "content_type"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "text_plain",
+                        "expr": {
+                          "literal": {
+                            "kind": "bool",
+                            "bool": false
+                          }
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "present",
+                          "args": [
+                            {
+                              "var": "media"
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "if",
+                            "expr": {
+                              "call": "eq",
+                              "args": [
+                                {
+                                  "var": "media"
+                                },
+                                {
+                                  "literal": {
+                                    "kind": "text",
+                                    "text": "text/plain"
+                                  }
+                                }
+                              ]
+                            },
+                            "body": [
+                              {
+                                "op": "let",
+                                "name": "text_plain",
+                                "expr": {
+                                  "literal": {
+                                    "kind": "bool",
+                                    "bool": true
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "not",
+                          "args": [
+                            {
+                              "var": "text_plain"
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "let",
+                            "name": "reason",
+                            "expr": {
+                              "literal": {
+                                "kind": "text",
+                                "text": "text_plain_required"
+                              }
+                            }
+                          }
+                        ],
+                        "else": [
+                          {
+                            "op": "let",
+                            "name": "ascii",
+                            "expr": {
+                              "call": "bytes_ascii",
+                              "args": [
+                                {
+                                  "field": "body"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "op": "if",
+                            "expr": {
+                              "call": "not",
+                              "args": [
+                                {
+                                  "call": "present",
+                                  "args": [
+                                    {
+                                      "var": "ascii"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            "body": [
+                              {
+                                "op": "let",
+                                "name": "reason",
+                                "expr": {
+                                  "literal": {
+                                    "kind": "text",
+                                    "text": "invalid_ascii"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "let",
+                        "name": "decode_state",
+                        "expr": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "fail"
+                          }
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "eq",
+                          "args": [
+                            {
+                              "var": "reason"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": ""
+                              }
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "let",
+                            "name": "decode_state",
+                            "expr": {
+                              "literal": {
+                                "kind": "text",
+                                "text": "pass"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "op": "let",
+                        "name": "eligibility",
+                        "expr": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "ineligible"
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "selection",
+                        "expr": {
+                          "literal": {
+                            "kind": "text",
+                            "text": "not-selected"
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "has_transaction",
+                        "expr": {
+                          "literal": {
+                            "kind": "bool",
+                            "bool": false
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "transaction",
+                        "expr": {
+                          "literal": {
+                            "kind": "uint",
+                            "uint": "0"
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "syntax_valid",
+                        "expr": {
+                          "literal": {
+                            "kind": "bool",
+                            "bool": false
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "has_district",
+                        "expr": {
+                          "literal": {
+                            "kind": "bool",
+                            "bool": false
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "district",
+                        "expr": {
+                          "literal": {
+                            "kind": "uint",
+                            "uint": "0"
+                          }
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "eq",
+                          "args": [
+                            {
+                              "var": "reason"
+                            },
+                            {
+                              "literal": {
+                                "kind": "text",
+                                "text": ""
+                              }
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "if",
+                            "expr": {
+                              "call": "bytes_equal",
+                              "args": [
+                                {
+                                  "call": "bytes_concat",
+                                  "args": [
+                                    {
+                                      "var": "stem"
+                                    },
+                                    {
+                                      "literal": {
+                                        "kind": "bytes",
+                                        "bytes": "LmJpdG1hcA=="
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "field": "body"
+                                }
+                              ]
+                            },
+                            "body": [
+                              {
+                                "op": "let",
+                                "name": "district_number",
+                                "expr": {
+                                  "call": "decimal_parse",
+                                  "args": [
+                                    {
+                                      "var": "district_bytes"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "op": "if",
+                                "expr": {
+                                  "call": "present",
+                                  "args": [
+                                    {
+                                      "var": "district_number"
+                                    }
+                                  ]
+                                },
+                                "body": [
+                                  {
+                                    "op": "let",
+                                    "name": "has_district",
+                                    "expr": {
+                                      "literal": {
+                                        "kind": "bool",
+                                        "bool": true
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "district",
+                                    "expr": {
+                                      "var": "district_number"
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "transaction_bytes",
+                                    "expr": {
+                                      "call": "bytes_slice",
+                                      "args": [
+                                        {
+                                          "var": "stem"
+                                        },
+                                        {
+                                          "literal": {
+                                            "kind": "uint",
+                                            "uint": "0"
+                                          }
+                                        },
+                                        {
+                                          "var": "dot"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "transaction_number",
+                                    "expr": {
+                                      "call": "decimal_parse",
+                                      "args": [
+                                        {
+                                          "var": "transaction_bytes"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "op": "if",
+                                    "expr": {
+                                      "call": "present",
+                                      "args": [
+                                        {
+                                          "var": "transaction_number"
+                                        }
+                                      ]
+                                    },
+                                    "body": [
+                                      {
+                                        "op": "let",
+                                        "name": "has_transaction",
+                                        "expr": {
+                                          "literal": {
+                                            "kind": "bool",
+                                            "bool": true
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "op": "let",
+                                        "name": "transaction",
+                                        "expr": {
+                                          "var": "transaction_number"
+                                        }
+                                      },
+                                      {
+                                        "op": "if",
+                                        "expr": {
+                                          "call": "less_equal",
+                                          "args": [
+                                            {
+                                              "var": "district"
+                                            },
+                                            {
+                                              "field": "height"
+                                            }
+                                          ]
+                                        },
+                                        "body": [
+                                          {
+                                            "op": "let",
+                                            "name": "syntax_valid",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "bool",
+                                                "bool": true
+                                              }
+                                            }
+                                          }
+                                        ],
+                                        "else": [
+                                          {
+                                            "op": "let",
+                                            "name": "reason",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "text",
+                                                "text": "future_block"
+                                              }
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    ],
+                                    "else": [
+                                      {
+                                        "op": "let",
+                                        "name": "reason",
+                                        "expr": {
+                                          "literal": {
+                                            "kind": "text",
+                                            "text": "noncanonical_transaction"
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ],
+                                "else": [
+                                  {
+                                    "op": "let",
+                                    "name": "reason",
+                                    "expr": {
+                                      "literal": {
+                                        "kind": "text",
+                                        "text": "noncanonical_district"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            ],
+                            "else": [
+                              {
+                                "op": "let",
+                                "name": "reason",
+                                "expr": {
+                                  "literal": {
+                                    "kind": "text",
+                                    "text": "noncanonical_claim"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "let",
+                        "name": "content",
+                        "expr": {
+                          "literal": {
+                            "kind": "bytes",
+                            "bytes": ""
+                          }
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "call": "less_equal",
+                          "args": [
+                            {
+                              "call": "bytes_length",
+                              "args": [
+                                {
+                                  "field": "body"
+                                }
+                              ]
+                            },
+                            {
+                              "literal": {
+                                "kind": "uint",
+                                "uint": "128"
+                              }
+                            }
+                          ]
+                        },
+                        "body": [
+                          {
+                            "op": "let",
+                            "name": "content",
+                            "expr": {
+                              "field": "body"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "op": "let",
+                        "name": "selected_parent_declared",
+                        "expr": {
+                          "literal": {
+                            "kind": "bool",
+                            "bool": false
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "parent_ref",
+                        "expr": {
+                          "literal": {
+                            "kind": "text",
+                            "text": ""
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "provenance",
+                        "expr": {
+                          "literal": {
+                            "kind": "bytes",
+                            "bytes": ""
+                          }
+                        }
+                      },
+                      {
+                        "op": "let",
+                        "name": "unresolved_dependencies",
+                        "expr": {
+                          "literal": {
+                            "kind": "list",
+                            "list": []
+                          }
+                        }
+                      },
+                      {
+                        "op": "if",
+                        "expr": {
+                          "var": "syntax_valid"
+                        },
+                        "body": [
+                          {
+                            "op": "put",
+                            "table": "evaluation",
+                            "key": {
+                              "field": "ref"
+                            },
+                            "expr": {
+                              "object": {
+                                "note": {
+                                  "literal": {
+                                    "kind": "text",
+                                    "text": "Matching completed selected District evaluation is unavailable; no dependency index was started."
+                                  }
+                                },
+                                "append_error": {
+                                  "literal": {
+                                    "kind": "bool",
+                                    "bool": false
+                                  }
+                                },
+                                "error_dependency": {
+                                  "literal": {
+                                    "kind": "bool",
+                                    "bool": false
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "op": "read",
+                            "name": "parent",
+                            "table": "districts",
+                            "key": {
+                              "call": "decimal_format",
+                              "args": [
+                                {
+                                  "var": "district"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "op": "delete",
+                            "table": "evaluation",
+                            "key": {
+                              "field": "ref"
+                            }
+                          },
+                          {
+                            "op": "if",
+                            "expr": {
+                              "call": "present",
+                              "args": [
+                                {
+                                  "var": "parent"
+                                }
+                              ]
+                            },
+                            "body": [
+                              {
+                                "op": "let",
+                                "name": "parent_precedes_reveal",
+                                "expr": {
+                                  "literal": {
+                                    "kind": "bool",
+                                    "bool": true
+                                  }
+                                }
+                              },
+                              {
+                                "op": "if",
+                                "expr": {
+                                  "call": "eq",
+                                  "args": [
+                                    {
+                                      "call": "get",
+                                      "args": [
+                                        {
+                                          "var": "parent"
+                                        },
+                                        {
+                                          "literal": {
+                                            "kind": "text",
+                                            "text": "height"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "field": "height"
+                                    }
+                                  ]
+                                },
+                                "body": [
+                                  {
+                                    "op": "if",
+                                    "expr": {
+                                      "call": "not",
+                                      "args": [
+                                        {
+                                          "call": "less_equal",
+                                          "args": [
+                                            {
+                                              "call": "get",
+                                              "args": [
+                                                {
+                                                  "var": "parent"
+                                                },
+                                                {
+                                                  "literal": {
+                                                    "kind": "text",
+                                                    "text": "tx_index"
+                                                  }
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "field": "tx_index"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    "body": [
+                                      {
+                                        "op": "let",
+                                        "name": "parent_precedes_reveal",
+                                        "expr": {
+                                          "literal": {
+                                            "kind": "bool"
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "op": "let",
+                                        "name": "reason",
+                                        "expr": {
+                                          "literal": {
+                                            "kind": "text",
+                                            "text": "district_parent_not_yet_recognized"
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "op": "if",
+                                "expr": {
+                                  "var": "parent_precedes_reveal"
+                                },
+                                "body": [
+                                  {
+                                    "op": "let",
+                                    "name": "eligibility",
+                                    "expr": {
+                                      "literal": {
+                                        "kind": "text",
+                                        "text": "unresolved"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "reason",
+                                    "expr": {
+                                      "literal": {
+                                        "kind": "text",
+                                        "text": "transaction_count_evidence_required"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "unresolved_dependencies",
+                                    "expr": {
+                                      "literal": {
+                                        "kind": "list",
+                                        "list": [
+                                          {
+                                            "kind": "text",
+                                            "text": "authenticated target-block transaction count"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "put",
+                                    "table": "candidates",
+                                    "key": {
+                                      "field": "ref"
+                                    },
+                                    "expr": {
+                                      "object": {
+                                        "kind": {
+                                          "literal": {
+                                            "kind": "text",
+                                            "text": "parcel"
+                                          }
+                                        },
+                                        "ownership": {
+                                          "literal": {
+                                            "kind": "text",
+                                            "text": "unknown"
+                                          }
+                                        },
+                                        "ref": {
+                                          "field": "ref"
+                                        },
+                                        "block": {
+                                          "field": "block"
+                                        },
+                                        "height": {
+                                          "field": "height"
+                                        },
+                                        "tx_index": {
+                                          "field": "tx_index"
+                                        },
+                                        "reveal_index": {
+                                          "field": "reveal_index"
+                                        },
+                                        "content_hash": {
+                                          "field": "content_hash"
+                                        },
+                                        "parent_count": {
+                                          "field": "parent_count"
+                                        },
+                                        "content": {
+                                          "var": "content"
+                                        },
+                                        "decode_state": {
+                                          "var": "decode_state"
+                                        },
+                                        "eligibility": {
+                                          "var": "eligibility"
+                                        },
+                                        "selection": {
+                                          "var": "selection"
+                                        },
+                                        "reason": {
+                                          "var": "reason"
+                                        },
+                                        "has_district": {
+                                          "var": "has_district"
+                                        },
+                                        "district": {
+                                          "var": "district"
+                                        },
+                                        "has_transaction": {
+                                          "var": "has_transaction"
+                                        },
+                                        "transaction": {
+                                          "var": "transaction"
+                                        },
+                                        "syntax_valid": {
+                                          "var": "syntax_valid"
+                                        },
+                                        "selected_parent_declared": {
+                                          "var": "selected_parent_declared"
+                                        },
+                                        "parent_ref": {
+                                          "var": "parent_ref"
+                                        },
+                                        "provenance": {
+                                          "var": "provenance"
+                                        },
+                                        "unresolved_dependencies": {
+                                          "var": "unresolved_dependencies"
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "put",
+                                    "table": "evaluation",
+                                    "key": {
+                                      "field": "ref"
+                                    },
+                                    "expr": {
+                                      "object": {
+                                        "note": {
+                                          "literal": {
+                                            "kind": "text",
+                                            "text": "Referenced transaction-count evidence is unavailable: "
+                                          }
+                                        },
+                                        "append_error": {
+                                          "literal": {
+                                            "kind": "bool",
+                                            "bool": true
+                                          }
+                                        },
+                                        "error_dependency": {
+                                          "literal": {
+                                            "kind": "bool",
+                                            "bool": false
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "read",
+                                    "name": "target_block",
+                                    "table": "block_context",
+                                    "key": {
+                                      "call": "decimal_format",
+                                      "args": [
+                                        {
+                                          "var": "district"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "op": "delete",
+                                    "table": "evaluation",
+                                    "key": {
+                                      "field": "ref"
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "eligibility",
+                                    "expr": {
+                                      "literal": {
+                                        "kind": "text",
+                                        "text": "ineligible"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "unresolved_dependencies",
+                                    "expr": {
+                                      "literal": {
+                                        "kind": "list",
+                                        "list": []
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "let",
+                                    "name": "reason",
+                                    "expr": {
+                                      "literal": {
+                                        "kind": "text",
+                                        "text": ""
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "op": "if",
+                                    "expr": {
+                                      "call": "less_equal",
+                                      "args": [
+                                        {
+                                          "call": "get",
+                                          "args": [
+                                            {
+                                              "var": "target_block"
+                                            },
+                                            {
+                                              "literal": {
+                                                "kind": "text",
+                                                "text": "transaction_count"
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "var": "transaction"
+                                        }
+                                      ]
+                                    },
+                                    "body": [
+                                      {
+                                        "op": "let",
+                                        "name": "reason",
+                                        "expr": {
+                                          "literal": {
+                                            "kind": "text",
+                                            "text": "transaction_out_of_range"
+                                          }
+                                        }
+                                      }
+                                    ],
+                                    "else": [
+                                      {
+                                        "op": "if",
+                                        "expr": {
+                                          "call": "eq",
+                                          "args": [
+                                            {
+                                              "field": "parent_count"
+                                            },
+                                            {
+                                              "literal": {
+                                                "kind": "uint",
+                                                "uint": "0"
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        "body": [
+                                          {
+                                            "op": "let",
+                                            "name": "reason",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "text",
+                                                "text": "recognized_district_not_declared_parent"
+                                              }
+                                            }
+                                          }
+                                        ],
+                                        "else": [
+                                          {
+                                            "op": "let",
+                                            "name": "eligibility",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "text",
+                                                "text": "unresolved"
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "op": "let",
+                                            "name": "reason",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "text",
+                                                "text": "selected_parent_reveal_evidence_required"
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "op": "let",
+                                            "name": "unresolved_dependencies",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "list",
+                                                "list": []
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "op": "put",
+                                            "table": "candidates",
+                                            "key": {
+                                              "field": "ref"
+                                            },
+                                            "expr": {
+                                              "object": {
+                                                "kind": {
+                                                  "literal": {
+                                                    "kind": "text",
+                                                    "text": "parcel"
+                                                  }
+                                                },
+                                                "ownership": {
+                                                  "literal": {
+                                                    "kind": "text",
+                                                    "text": "unknown"
+                                                  }
+                                                },
+                                                "ref": {
+                                                  "field": "ref"
+                                                },
+                                                "block": {
+                                                  "field": "block"
+                                                },
+                                                "height": {
+                                                  "field": "height"
+                                                },
+                                                "tx_index": {
+                                                  "field": "tx_index"
+                                                },
+                                                "reveal_index": {
+                                                  "field": "reveal_index"
+                                                },
+                                                "content_hash": {
+                                                  "field": "content_hash"
+                                                },
+                                                "parent_count": {
+                                                  "field": "parent_count"
+                                                },
+                                                "content": {
+                                                  "var": "content"
+                                                },
+                                                "decode_state": {
+                                                  "var": "decode_state"
+                                                },
+                                                "eligibility": {
+                                                  "var": "eligibility"
+                                                },
+                                                "selection": {
+                                                  "var": "selection"
+                                                },
+                                                "reason": {
+                                                  "var": "reason"
+                                                },
+                                                "has_district": {
+                                                  "var": "has_district"
+                                                },
+                                                "district": {
+                                                  "var": "district"
+                                                },
+                                                "has_transaction": {
+                                                  "var": "has_transaction"
+                                                },
+                                                "transaction": {
+                                                  "var": "transaction"
+                                                },
+                                                "syntax_valid": {
+                                                  "var": "syntax_valid"
+                                                },
+                                                "selected_parent_declared": {
+                                                  "var": "selected_parent_declared"
+                                                },
+                                                "parent_ref": {
+                                                  "var": "parent_ref"
+                                                },
+                                                "provenance": {
+                                                  "var": "provenance"
+                                                },
+                                                "unresolved_dependencies": {
+                                                  "var": "unresolved_dependencies"
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "op": "put",
+                                            "table": "evaluation",
+                                            "key": {
+                                              "field": "ref"
+                                            },
+                                            "expr": {
+                                              "object": {
+                                                "note": {
+                                                  "literal": {
+                                                    "kind": "text",
+                                                    "text": "Selected District reveal evidence is unavailable; no unrelated index was started."
+                                                  }
+                                                },
+                                                "append_error": {
+                                                  "literal": {
+                                                    "kind": "bool",
+                                                    "bool": false
+                                                  }
+                                                },
+                                                "error_dependency": {
+                                                  "literal": {
+                                                    "kind": "bool",
+                                                    "bool": true
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "op": "read",
+                                            "name": "parent_identity",
+                                            "table": "inscription_identity",
+                                            "key": {
+                                              "call": "get",
+                                              "args": [
+                                                {
+                                                  "var": "parent"
+                                                },
+                                                {
+                                                  "literal": {
+                                                    "kind": "text",
+                                                    "text": "ref"
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          {
+                                            "op": "require",
+                                            "name": "selected District parent identity",
+                                            "expr": {
+                                              "call": "present",
+                                              "args": [
+                                                {
+                                                  "var": "parent_identity"
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          {
+                                            "op": "delete",
+                                            "table": "evaluation",
+                                            "key": {
+                                              "field": "ref"
+                                            }
+                                          },
+                                          {
+                                            "op": "let",
+                                            "name": "eligibility",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "text",
+                                                "text": "ineligible"
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "op": "let",
+                                            "name": "unresolved_dependencies",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "list",
+                                                "list": []
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "op": "let",
+                                            "name": "reason",
+                                            "expr": {
+                                              "literal": {
+                                                "kind": "text",
+                                                "text": ""
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "op": "if",
+                                            "expr": {
+                                              "call": "list_contains",
+                                              "args": [
+                                                {
+                                                  "field": "parents"
+                                                },
+                                                {
+                                                  "call": "get",
+                                                  "args": [
+                                                    {
+                                                      "var": "parent_identity"
+                                                    },
+                                                    {
+                                                      "literal": {
+                                                        "kind": "text",
+                                                        "text": "id"
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            },
+                                            "body": [
+                                              {
+                                                "op": "let",
+                                                "name": "selected_parent_declared",
+                                                "expr": {
+                                                  "literal": {
+                                                    "kind": "bool",
+                                                    "bool": true
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "op": "let",
+                                                "name": "parent_ref",
+                                                "expr": {
+                                                  "call": "get",
+                                                  "args": [
+                                                    {
+                                                      "var": "parent"
+                                                    },
+                                                    {
+                                                      "literal": {
+                                                        "kind": "text",
+                                                        "text": "ref"
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              {
+                                                "op": "let",
+                                                "name": "eligibility",
+                                                "expr": {
+                                                  "literal": {
+                                                    "kind": "text",
+                                                    "text": "unresolved"
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "op": "let",
+                                                "name": "reason",
+                                                "expr": {
+                                                  "literal": {
+                                                    "kind": "text",
+                                                    "text": "parent_proof_evidence_unavailable"
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "op": "let",
+                                                "name": "unresolved_dependencies",
+                                                "expr": {
+                                                  "literal": {
+                                                    "kind": "list",
+                                                    "list": []
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "op": "put",
+                                                "table": "candidates",
+                                                "key": {
+                                                  "field": "ref"
+                                                },
+                                                "expr": {
+                                                  "object": {
+                                                    "kind": {
+                                                      "literal": {
+                                                        "kind": "text",
+                                                        "text": "parcel"
+                                                      }
+                                                    },
+                                                    "ownership": {
+                                                      "literal": {
+                                                        "kind": "text",
+                                                        "text": "unknown"
+                                                      }
+                                                    },
+                                                    "ref": {
+                                                      "field": "ref"
+                                                    },
+                                                    "block": {
+                                                      "field": "block"
+                                                    },
+                                                    "height": {
+                                                      "field": "height"
+                                                    },
+                                                    "tx_index": {
+                                                      "field": "tx_index"
+                                                    },
+                                                    "reveal_index": {
+                                                      "field": "reveal_index"
+                                                    },
+                                                    "content_hash": {
+                                                      "field": "content_hash"
+                                                    },
+                                                    "parent_count": {
+                                                      "field": "parent_count"
+                                                    },
+                                                    "content": {
+                                                      "var": "content"
+                                                    },
+                                                    "decode_state": {
+                                                      "var": "decode_state"
+                                                    },
+                                                    "eligibility": {
+                                                      "var": "eligibility"
+                                                    },
+                                                    "selection": {
+                                                      "var": "selection"
+                                                    },
+                                                    "reason": {
+                                                      "var": "reason"
+                                                    },
+                                                    "has_district": {
+                                                      "var": "has_district"
+                                                    },
+                                                    "district": {
+                                                      "var": "district"
+                                                    },
+                                                    "has_transaction": {
+                                                      "var": "has_transaction"
+                                                    },
+                                                    "transaction": {
+                                                      "var": "transaction"
+                                                    },
+                                                    "syntax_valid": {
+                                                      "var": "syntax_valid"
+                                                    },
+                                                    "selected_parent_declared": {
+                                                      "var": "selected_parent_declared"
+                                                    },
+                                                    "parent_ref": {
+                                                      "var": "parent_ref"
+                                                    },
+                                                    "provenance": {
+                                                      "var": "provenance"
+                                                    },
+                                                    "unresolved_dependencies": {
+                                                      "var": "unresolved_dependencies"
+                                                    }
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "op": "put",
+                                                "table": "evaluation",
+                                                "key": {
+                                                  "field": "ref"
+                                                },
+                                                "expr": {
+                                                  "object": {
+                                                    "note": {
+                                                      "literal": {
+                                                        "kind": "text",
+                                                        "text": "Checked parent provenance is unavailable: "
+                                                      }
+                                                    },
+                                                    "append_error": {
+                                                      "literal": {
+                                                        "kind": "bool",
+                                                        "bool": true
+                                                      }
+                                                    },
+                                                    "error_dependency": {
+                                                      "literal": {
+                                                        "kind": "bool",
+                                                        "bool": true
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "op": "read",
+                                                "name": "relationship",
+                                                "table": "parent_replay",
+                                                "key": {
+                                                  "call": "text_concat",
+                                                  "args": [
+                                                    {
+                                                      "call": "text_concat",
+                                                      "args": [
+                                                        {
+                                                          "field": "ref"
+                                                        },
+                                                        {
+                                                          "literal": {
+                                                            "kind": "text",
+                                                            "text": ";"
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "var": "parent_ref"
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              {
+                                                "op": "require",
+                                                "name": "checked inscription parent relationship",
+                                                "expr": {
+                                                  "call": "present",
+                                                  "args": [
+                                                    {
+                                                      "var": "relationship"
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              {
+                                                "op": "delete",
+                                                "table": "evaluation",
+                                                "key": {
+                                                  "field": "ref"
+                                                }
+                                              },
+                                              {
+                                                "op": "let",
+                                                "name": "eligibility",
+                                                "expr": {
+                                                  "literal": {
+                                                    "kind": "text",
+                                                    "text": "ineligible"
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "op": "let",
+                                                "name": "unresolved_dependencies",
+                                                "expr": {
+                                                  "literal": {
+                                                    "kind": "list",
+                                                    "list": []
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "op": "let",
+                                                "name": "reason",
+                                                "expr": {
+                                                  "literal": {
+                                                    "kind": "text",
+                                                    "text": ""
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "op": "let",
+                                                "name": "provenance",
+                                                "expr": {
+                                                  "call": "get",
+                                                  "args": [
+                                                    {
+                                                      "var": "relationship"
+                                                    },
+                                                    {
+                                                      "literal": {
+                                                        "kind": "text",
+                                                        "text": "proof"
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              {
+                                                "op": "if",
+                                                "expr": {
+                                                  "call": "eq",
+                                                  "args": [
+                                                    {
+                                                      "call": "get",
+                                                      "args": [
+                                                        {
+                                                          "var": "relationship"
+                                                        },
+                                                        {
+                                                          "literal": {
+                                                            "kind": "text",
+                                                            "text": "state"
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "literal": {
+                                                        "kind": "text",
+                                                        "text": "rejected"
+                                                      }
+                                                    }
+                                                  ]
+                                                },
+                                                "body": [
+                                                  {
+                                                    "op": "let",
+                                                    "name": "reason",
+                                                    "expr": {
+                                                      "literal": {
+                                                        "kind": "text",
+                                                        "text": "parent_not_consumed_by_reveal"
+                                                      }
+                                                    }
+                                                  }
+                                                ],
+                                                "else": [
+                                                  {
+                                                    "op": "let",
+                                                    "name": "eligibility",
+                                                    "expr": {
+                                                      "literal": {
+                                                        "kind": "text",
+                                                        "text": "eligible"
+                                                      }
+                                                    }
+                                                  },
+                                                  {
+                                                    "op": "read",
+                                                    "name": "prior",
+                                                    "table": "winners",
+                                                    "key": {
+                                                      "call": "text_concat",
+                                                      "args": [
+                                                        {
+                                                          "call": "text_concat",
+                                                          "args": [
+                                                            {
+                                                              "call": "decimal_format",
+                                                              "args": [
+                                                                {
+                                                                  "var": "transaction"
+                                                                }
+                                                              ]
+                                                            },
+                                                            {
+                                                              "literal": {
+                                                                "kind": "text",
+                                                                "text": "."
+                                                              }
+                                                            }
+                                                          ]
+                                                        },
+                                                        {
+                                                          "call": "decimal_format",
+                                                          "args": [
+                                                            {
+                                                              "var": "district"
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  },
+                                                  {
+                                                    "op": "if",
+                                                    "expr": {
+                                                      "call": "present",
+                                                      "args": [
+                                                        {
+                                                          "var": "prior"
+                                                        }
+                                                      ]
+                                                    },
+                                                    "body": [
+                                                      {
+                                                        "op": "let",
+                                                        "name": "reason",
+                                                        "expr": {
+                                                          "literal": {
+                                                            "kind": "text",
+                                                            "text": "already_claimed"
+                                                          }
+                                                        }
+                                                      }
+                                                    ],
+                                                    "else": [
+                                                      {
+                                                        "op": "let",
+                                                        "name": "selection",
+                                                        "expr": {
+                                                          "literal": {
+                                                            "kind": "text",
+                                                            "text": "selected"
+                                                          }
+                                                        }
+                                                      },
+                                                      {
+                                                        "op": "let",
+                                                        "name": "reason",
+                                                        "expr": {
+                                                          "literal": {
+                                                            "kind": "text",
+                                                            "text": "first_qualifying_canonical_reveal"
+                                                          }
+                                                        }
+                                                      },
+                                                      {
+                                                        "op": "put",
+                                                        "table": "winners",
+                                                        "key": {
+                                                          "call": "text_concat",
+                                                          "args": [
+                                                            {
+                                                              "call": "text_concat",
+                                                              "args": [
+                                                                {
+                                                                  "call": "decimal_format",
+                                                                  "args": [
+                                                                    {
+                                                                      "var": "transaction"
+                                                                    }
+                                                                  ]
+                                                                },
+                                                                {
+                                                                  "literal": {
+                                                                    "kind": "text",
+                                                                    "text": "."
+                                                                  }
+                                                                }
+                                                              ]
+                                                            },
+                                                            {
+                                                              "call": "decimal_format",
+                                                              "args": [
+                                                                {
+                                                                  "var": "district"
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        },
+                                                        "expr": {
+                                                          "object": {
+                                                            "kind": {
+                                                              "literal": {
+                                                                "kind": "text",
+                                                                "text": "parcel"
+                                                              }
+                                                            },
+                                                            "ownership": {
+                                                              "literal": {
+                                                                "kind": "text",
+                                                                "text": "unknown"
+                                                              }
+                                                            },
+                                                            "ref": {
+                                                              "field": "ref"
+                                                            },
+                                                            "block": {
+                                                              "field": "block"
+                                                            },
+                                                            "height": {
+                                                              "field": "height"
+                                                            },
+                                                            "tx_index": {
+                                                              "field": "tx_index"
+                                                            },
+                                                            "reveal_index": {
+                                                              "field": "reveal_index"
+                                                            },
+                                                            "content_hash": {
+                                                              "field": "content_hash"
+                                                            },
+                                                            "parent_count": {
+                                                              "field": "parent_count"
+                                                            },
+                                                            "content": {
+                                                              "var": "content"
+                                                            },
+                                                            "decode_state": {
+                                                              "var": "decode_state"
+                                                            },
+                                                            "eligibility": {
+                                                              "var": "eligibility"
+                                                            },
+                                                            "selection": {
+                                                              "var": "selection"
+                                                            },
+                                                            "reason": {
+                                                              "var": "reason"
+                                                            },
+                                                            "has_district": {
+                                                              "var": "has_district"
+                                                            },
+                                                            "district": {
+                                                              "var": "district"
+                                                            },
+                                                            "has_transaction": {
+                                                              "var": "has_transaction"
+                                                            },
+                                                            "transaction": {
+                                                              "var": "transaction"
+                                                            },
+                                                            "syntax_valid": {
+                                                              "var": "syntax_valid"
+                                                            },
+                                                            "selected_parent_declared": {
+                                                              "var": "selected_parent_declared"
+                                                            },
+                                                            "parent_ref": {
+                                                              "var": "parent_ref"
+                                                            },
+                                                            "provenance": {
+                                                              "var": "provenance"
+                                                            },
+                                                            "unresolved_dependencies": {
+                                                              "var": "unresolved_dependencies"
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    ]
+                                                  }
+                                                ]
+                                              }
+                                            ],
+                                            "else": [
+                                              {
+                                                "op": "let",
+                                                "name": "reason",
+                                                "expr": {
+                                                  "literal": {
+                                                    "kind": "text",
+                                                    "text": "recognized_district_not_declared_parent"
+                                                  }
+                                                }
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ],
+                            "else": [
+                              {
+                                "op": "let",
+                                "name": "reason",
+                                "expr": {
+                                  "literal": {
+                                    "kind": "text",
+                                    "text": "no_recognized_district_at_reveal"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "op": "let",
+                        "name": "candidate",
+                        "expr": {
+                          "object": {
+                            "kind": {
+                              "literal": {
+                                "kind": "text",
+                                "text": "parcel"
+                              }
+                            },
+                            "ownership": {
+                              "literal": {
+                                "kind": "text",
+                                "text": "unknown"
+                              }
+                            },
+                            "ref": {
+                              "field": "ref"
+                            },
+                            "block": {
+                              "field": "block"
+                            },
+                            "height": {
+                              "field": "height"
+                            },
+                            "tx_index": {
+                              "field": "tx_index"
+                            },
+                            "reveal_index": {
+                              "field": "reveal_index"
+                            },
+                            "content_hash": {
+                              "field": "content_hash"
+                            },
+                            "parent_count": {
+                              "field": "parent_count"
+                            },
+                            "content": {
+                              "var": "content"
+                            },
+                            "decode_state": {
+                              "var": "decode_state"
+                            },
+                            "eligibility": {
+                              "var": "eligibility"
+                            },
+                            "selection": {
+                              "var": "selection"
+                            },
+                            "reason": {
+                              "var": "reason"
+                            },
+                            "has_district": {
+                              "var": "has_district"
+                            },
+                            "district": {
+                              "var": "district"
+                            },
+                            "has_transaction": {
+                              "var": "has_transaction"
+                            },
+                            "transaction": {
+                              "var": "transaction"
+                            },
+                            "syntax_valid": {
+                              "var": "syntax_valid"
+                            },
+                            "selected_parent_declared": {
+                              "var": "selected_parent_declared"
+                            },
+                            "parent_ref": {
+                              "var": "parent_ref"
+                            },
+                            "provenance": {
+                              "var": "provenance"
+                            },
+                            "unresolved_dependencies": {
+                              "var": "unresolved_dependencies"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "op": "put",
+                        "table": "candidates",
+                        "key": {
+                          "field": "ref"
+                        },
+                        "expr": {
+                          "var": "candidate"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "lookups": [
+    {
+      "name": "block_context",
+      "source": "bitcoin.block_context",
+      "provider": "selected",
+      "revision": "73baf4a41a53a397df3bc6a74ea6c58ef43ef99ce181bd368619ac0e9cc86829",
+      "semantic_hash": "2d356328e3b16717ba73a3e4c172464bf4657038912ede4aa9fb35886ec25ec3",
+      "key": "height",
+      "type": "block_context"
+    },
+    {
+      "name": "inscription_identity",
+      "source": "bitcoin.inscription_identity",
+      "provider": "selected",
+      "revision": "8bb11a452d6891b4356b3ec13d54d838790155afa60a5388de12ce61efe2c7b8",
+      "semantic_hash": "915ce8a3fb5e5e2e1db99edb769b0bf93cf871a4b7867511aa7c746201af2f8c",
+      "key": "inscription_ref",
+      "type": "inscription_identity"
+    },
+    {
+      "name": "parent_replay",
+      "source": "bitcoin.inscription_parent",
+      "provider": "txio-links",
+      "revision": "4ecfb077f19abd239bffbab98ea0b37d89facb2b3ddecc7bdd770a8294002a5b",
+      "semantic_hash": "ea25a98987a4f1b6fa9ec2dcb9342e38263cbe42c21f103c6797d2a2fe3c6573",
+      "key": "inscription_pair",
+      "type": "inscription_parent"
+    }
+  ]
+}

@@ -63,16 +63,18 @@ func recipeTablePointUnit(lookup recipeSourceLookup, block blockView) string {
 }
 
 type recipeTablePointLookups struct {
-	a             *app
-	block         blockView
-	declarations  map[string]recipeSourceLookup
-	cache         map[int64]recipeOrderedValue
-	anchors       map[int64]string
-	identities    map[string]recipeOrderedValue
-	lastInventory *inscriptionBlockResult
-	lastPositions map[recipeIdentityPosition]int
-	parentSources map[string]inscriptionParentReplaySource
-	parentFacts   map[string]recipeParentPointResult
+	a              *app
+	block          blockView
+	declarations   map[string]recipeSourceLookup
+	cache          map[int64]recipeOrderedValue
+	anchors        map[int64]string
+	identities     map[string]recipeOrderedValue
+	lastInventory  *inscriptionBlockResult
+	lastPositions  map[recipeIdentityPosition]int
+	parentSources  map[string]inscriptionParentReplaySource
+	parentFacts    map[string]recipeParentPointResult
+	parentCurrent  *recipeParentInventoryPoint
+	parentPrevious *recipeParentInventoryPoint
 }
 
 func newRecipeTablePointLookups(a *app, d recipeDefinition, source *recipeOrderedOwnedSource) (*recipeTablePointLookups, error) {

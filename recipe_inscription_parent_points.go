@@ -96,7 +96,28 @@ func (r *recipeTablePointLookups) parentSource(ctx context.Context, provider str
 	return source, nil
 }
 
-func recipeParentOccurrence(ctx context.Context, block blockView, position bodCoordinate) (inscriptionOccurrence, bool, error) {
+type recipeParentInventoryPoint struct {
+	Height    int64
+	Hash      string
+	Inventory *inscriptionBlockResult
+	Positions map[recipeIdentityPosition]int
+}
+
+func (r *recipeTablePointLookups) parentOccurrence(ctx context.Context, block blockView, position bodCoordinate) (inscriptionOccurrence, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return inscriptionOccurrence{}, false, err
+	}
+	cached := r.parentPrevious
+	if block.Height == r.block.Height {
+		cached = r.parentCurrent
+	}
+	if cached != nil && cached.Height == block.Height && cached.Hash == block.Hash {
+		index, have := cached.Positions[recipeIdentityPosition{position.TxIndex, uint32(position.InscriptionIndex)}]
+		if !have {
+			return inscriptionOccurrence{}, false, nil
+		}
+		return cached.Inventory.Occurrences[index], true, nil
+	}
 	parsed, err := extractInscriptionOccurrences(block)
 	if err != nil {
 		return inscriptionOccurrence{}, false, err
@@ -105,15 +126,23 @@ func recipeParentOccurrence(ctx context.Context, block blockView, position bodCo
 	if err != nil {
 		return inscriptionOccurrence{}, false, err
 	}
-	for _, o := range admitted.inventory.Occurrences {
+	point := &recipeParentInventoryPoint{Height: block.Height, Hash: block.Hash, Inventory: admitted.inventory, Positions: map[recipeIdentityPosition]int{}}
+	for index, o := range admitted.inventory.Occurrences {
 		if err = ctx.Err(); err != nil {
 			return o, false, err
 		}
-		if o.TxIndex == position.TxIndex && o.Index == uint32(position.InscriptionIndex) {
-			return o, true, nil
-		}
+		point.Positions[recipeIdentityPosition{o.TxIndex, o.Index}] = index
 	}
-	return inscriptionOccurrence{}, false, nil
+	if block.Height == r.block.Height {
+		r.parentCurrent = point
+	} else {
+		r.parentPrevious = point
+	}
+	index, have := point.Positions[recipeIdentityPosition{position.TxIndex, uint32(position.InscriptionIndex)}]
+	if !have {
+		return inscriptionOccurrence{}, false, nil
+	}
+	return point.Inventory.Occurrences[index], true, nil
 }
 
 func (r *recipeTablePointLookups) readParent(ctx context.Context, lookup recipeSourceLookup, key string) (recipeOrderedValue, error) {
@@ -169,11 +198,11 @@ func (r *recipeTablePointLookups) readParent(ctx context.Context, lookup recipeS
 			return recipeOrderedValue{}, fmt.Errorf("relationship parent source changed")
 		}
 	}
-	child, haveChild, err := recipeParentOccurrence(ctx, r.block, childPosition)
+	child, haveChild, err := r.parentOccurrence(ctx, r.block, childPosition)
 	if err != nil {
 		return recipeOrderedValue{}, err
 	}
-	parent, haveParent, err := recipeParentOccurrence(ctx, parentBlock, parentPosition)
+	parent, haveParent, err := r.parentOccurrence(ctx, parentBlock, parentPosition)
 	if err != nil {
 		return recipeOrderedValue{}, err
 	}

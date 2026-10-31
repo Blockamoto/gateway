@@ -147,6 +147,7 @@ type bitmapRunConsumer struct {
 	blockAt              func(context.Context, int64) (blockView, error)
 	parcelRawSpender     func(context.Context, satlinePoint, int64, parcelScanObserver079) (spenderLookupView, error)
 	parcelRawTransaction func(context.Context, string, int64) (satlineTxEvidence, error)
+	parcelRecipeProvider string
 	instance             bitmapProfileInstance
 	retention            string
 }
@@ -707,19 +708,8 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 	if s.id == bitmapStandardDistrictID {
 		return s.applyDistrictRecipe(ctx, block, &extraction, h, row, winners, candidates, targets, blocks)
 	}
-	var claimFacts map[string]recipeParcelClaim
 	if s.id == bitmapReplayParcelID {
-		native, _ := bitmapCanonicalInstance(bitmapReplayParcelID)
-		if s.instance.ProfileHash != native.ProfileHash {
-			return fmt.Errorf("native Parcel grammar requires its exact Standard profile")
-		}
-		claimFacts, err = deriveParcelClaimsRecipe(ctx, block, &extraction)
-		if err != nil {
-			return err
-		}
-		if err = recipeParcelClaimsCheckEquivalence(); err != nil {
-			return err
-		}
+		return s.applyParcelRecipe(ctx, block, &extraction, h, row, winners, candidates, targets, blocks)
 	}
 	ordered := append([]inscriptionOccurrence(nil), extraction.Occurrences...)
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -740,108 +730,96 @@ func (s *bitmapRunConsumer) Apply(ctx context.Context, block blockView, prepared
 		parcel := bitmapConsumerKind(s.id) == "parcel"
 		var c bitmapDevelopmentCandidate
 		var district uint64
-		if claimFacts != nil {
-			fact, have := claimFacts[inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height)]
-			if !have {
-				continue
-			}
-			c = fact.candidate
-			if !fact.syntaxValid {
-				staged = append(staged, c)
-				continue
-			}
-			district = *c.District
-		} else {
-			text, reason := bitmapDecodeProfileBody(s.instance.Profile, o.Body, o.Envelope.ContentType)
-			if reason != "" && reason != "unresolved_charset" {
-				text = string(o.Body)
-			}
-			marker := bitmapClaimMarker(text)
-			if reason != "unresolved_charset" && marker < 0 {
-				continue
-			}
-			stem := text
-			if marker >= 0 {
-				stem = text[:marker]
-			}
-			parts := strings.Split(stem, ".")
-			if reason != "unresolved_charset" && len(parts) != 1 && len(parts) != 2 {
-				continue
-			}
-			if reason != "unresolved_charset" && (parcel && len(parts) != 2 || !parcel && len(parts) != 1) {
-				continue
-			}
-			c = bitmapDevelopmentCandidate{ID: o.ID, Kind: bitmapConsumerKind(s.id), RevealCoordinate: inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height), RevealHeight: block.Height, RevealHash: block.Hash, TxIndex: o.TxIndex, InscriptionIndex: o.Index, ContentHash: o.ContentSHA256, Eligibility: "ineligible", Selection: "not-selected", Reason: reason, Parents: append([]string(nil), o.Envelope.Parents...), Ownership: "unknown"}
-			if bitmapBlocatorProfileSchema(s.instance.Profile.FingerprintSchema) {
-				c.Blocator = c.RevealCoordinate
-				c.DeclaredParentCount = len(c.Parents)
-			}
-			if len(text) <= 128 {
-				c.Content = text
-			}
-			if bitmapNamedSchema(s.instance.Profile.FingerprintSchema) || bitmapBlocatorProfileSchema(s.instance.Profile.FingerprintSchema) || s.instance.Profile.FingerprintSchema == bitmapCanonicalV1ProfileSchema {
-				c.DecodeState = "pass"
-				if reason == "unresolved_charset" {
-					c.DecodeState = "unknown"
-				} else if reason != "" {
-					c.DecodeState = "fail"
-				}
-			}
-			if s.instance.Profile.FingerprintSchema == bitmapExtendedProfileSchema {
-				c.DelegateFieldState, c.DelegateFieldEvidence, err = bitmapDelegateDeclaration(o)
-				if err != nil {
-					return err
-				}
-				if c.DelegateFieldState == "" && s.instance.Profile.Answers["delegate_exclusion"] == 1 {
-					c.Eligibility, c.Reason = "unresolved", "delegate_field_evidence_required"
-					c.UnresolvedDependencies = []string{"authenticated own-envelope field declarations; reviewed occurrence replay required"}
-					unresolved = true
-					staged = append(staged, c)
-					continue
-				}
-				if s.instance.Profile.Answers["delegate_exclusion"] == 1 && (c.DelegateFieldState == "present" || c.DelegateFieldState == "dangling") {
-					c.Reason = "delegate_declaration_excluded"
-					staged = append(staged, c)
-					continue
-				}
-			}
+		text, reason := bitmapDecodeProfileBody(s.instance.Profile, o.Body, o.Envelope.ContentType)
+		if reason != "" && reason != "unresolved_charset" {
+			text = string(o.Body)
+		}
+		marker := bitmapClaimMarker(text)
+		if reason != "unresolved_charset" && marker < 0 {
+			continue
+		}
+		stem := text
+		if marker >= 0 {
+			stem = text[:marker]
+		}
+		parts := strings.Split(stem, ".")
+		if reason != "unresolved_charset" && len(parts) != 1 && len(parts) != 2 {
+			continue
+		}
+		if reason != "unresolved_charset" && (parcel && len(parts) != 2 || !parcel && len(parts) != 1) {
+			continue
+		}
+		c = bitmapDevelopmentCandidate{ID: o.ID, Kind: bitmapConsumerKind(s.id), RevealCoordinate: inscriptionCoordinate(uint32(o.TxIndex), o.Index, block.Height), RevealHeight: block.Height, RevealHash: block.Hash, TxIndex: o.TxIndex, InscriptionIndex: o.Index, ContentHash: o.ContentSHA256, Eligibility: "ineligible", Selection: "not-selected", Reason: reason, Parents: append([]string(nil), o.Envelope.Parents...), Ownership: "unknown"}
+		if bitmapBlocatorProfileSchema(s.instance.Profile.FingerprintSchema) {
+			c.Blocator = c.RevealCoordinate
+			c.DeclaredParentCount = len(c.Parents)
+		}
+		if len(text) <= 128 {
+			c.Content = text
+		}
+		if bitmapNamedSchema(s.instance.Profile.FingerprintSchema) || bitmapBlocatorProfileSchema(s.instance.Profile.FingerprintSchema) || s.instance.Profile.FingerprintSchema == bitmapCanonicalV1ProfileSchema {
+			c.DecodeState = "pass"
 			if reason == "unresolved_charset" {
-				c.Eligibility = "unresolved"
-				c.UnresolvedDependencies = []string{"declared charset interpretation"}
+				c.DecodeState = "unknown"
+			} else if reason != "" {
+				c.DecodeState = "fail"
+			}
+		}
+		if s.instance.Profile.FingerprintSchema == bitmapExtendedProfileSchema {
+			c.DelegateFieldState, c.DelegateFieldEvidence, err = bitmapDelegateDeclaration(o)
+			if err != nil {
+				return err
+			}
+			if c.DelegateFieldState == "" && s.instance.Profile.Answers["delegate_exclusion"] == 1 {
+				c.Eligibility, c.Reason = "unresolved", "delegate_field_evidence_required"
+				c.UnresolvedDependencies = []string{"authenticated own-envelope field declarations; reviewed occurrence replay required"}
 				unresolved = true
 				staged = append(staged, c)
 				continue
 			}
-			if reason != "" || strings.Join(parts, ".")+".bitmap" != text {
-				if c.Reason == "" {
-					c.Reason = "noncanonical_claim"
-				}
-				staged = append(staged, c)
-				continue
-			}
-			var ok bool
-			district, ok = bitmapCanonicalDecimal(parts[len(parts)-1])
-			if !ok {
-				c.Reason = "noncanonical_district"
-				staged = append(staged, c)
-				continue
-			}
-			c.District = &district
-			if parcel {
-				tx, ok := bitmapCanonicalDecimal(parts[0])
-				if !ok {
-					c.Reason = "noncanonical_transaction"
-					staged = append(staged, c)
-					continue
-				}
-				c.Transaction = &tx
-			}
-			if district > uint64(block.Height) {
-				c.Reason = "future_block"
+			if s.instance.Profile.Answers["delegate_exclusion"] == 1 && (c.DelegateFieldState == "present" || c.DelegateFieldState == "dangling") {
+				c.Reason = "delegate_declaration_excluded"
 				staged = append(staged, c)
 				continue
 			}
 		}
+		if reason == "unresolved_charset" {
+			c.Eligibility = "unresolved"
+			c.UnresolvedDependencies = []string{"declared charset interpretation"}
+			unresolved = true
+			staged = append(staged, c)
+			continue
+		}
+		if reason != "" || strings.Join(parts, ".")+".bitmap" != text {
+			if c.Reason == "" {
+				c.Reason = "noncanonical_claim"
+			}
+			staged = append(staged, c)
+			continue
+		}
+		var ok bool
+		district, ok = bitmapCanonicalDecimal(parts[len(parts)-1])
+		if !ok {
+			c.Reason = "noncanonical_district"
+			staged = append(staged, c)
+			continue
+		}
+		c.District = &district
+		if parcel {
+			tx, ok := bitmapCanonicalDecimal(parts[0])
+			if !ok {
+				c.Reason = "noncanonical_transaction"
+				staged = append(staged, c)
+				continue
+			}
+			c.Transaction = &tx
+		}
+		if district > uint64(block.Height) {
+			c.Reason = "future_block"
+			staged = append(staged, c)
+			continue
+		}
+
 		if parcel {
 			var parent bitmapDevelopmentCandidate
 			d, e := bitmapHeadAt(ctx, s.root, s.instance.DistrictInstance, block.Height)

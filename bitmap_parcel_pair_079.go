@@ -217,6 +217,9 @@ func (a *app) configureParcelEvidence079(ctx context.Context, c *indexRunConsume
 	if c == nil {
 		return fmt.Errorf("Parcel evidence consumer is unavailable")
 	}
+	if consumer, ok := c.external.(*bitmapRunConsumer); ok {
+		consumer.parcelRecipeProvider = c.selection.ParcelEvidenceRoute
+	}
 	if a.parcelEvidenceHooks079 != nil && a.parcelEvidenceHooks079.Configure != nil {
 		return a.parcelEvidenceHooks079.Configure(ctx, c, through)
 	}

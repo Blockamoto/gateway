@@ -180,6 +180,27 @@ func indexDefinitions() []indexDefinition {
 			Definition        indexDefinition
 			Parser, Reference string
 		}{semanticDefinition, inscriptionParserProfile, inscriptionReferenceCommit})
+		if d.ID == "headers" || d.ID == "blocks" {
+			sources := []string{recipeHeaderSource}
+			if d.ID == "blocks" {
+				sources = []string{recipeBlockSource, recipeBlockBodySource}
+			}
+			for _, source := range sources {
+				if p, _, err := builtinSourceRetentionRecipe(source); err == nil {
+					raw := append(json.RawMessage(nil), builtinSourceRetentionBytes(source)...)
+					if d.ExecutableRecipe == nil {
+						d.ExecutableRecipe, d.ExecutableRecipeHash = raw, p.semanticHash()
+					}
+					name := "Selected header retention"
+					if source == recipeBlockSource {
+						name = "Located verified Raw blocks"
+					} else if source == recipeBlockBodySource {
+						name = "Verified Raw bodies by hash"
+					}
+					d.ExecutableRecipeVariants = append(d.ExecutableRecipeVariants, indexExecutableRecipe{Name: name, Definition: raw, SemanticHash: p.semanticHash()})
+				}
+			}
+		}
 		if d.ID == "inscriptions" {
 			d.Theory = "Verified positional inscription coordinates. Lean retains positions and block counts; Full additionally retains reveal content. Numbering and ownership require separate explicit historical work."
 			d.ExecutableRecipe = append(json.RawMessage(nil), builtinInscriptionLeanJSON...)

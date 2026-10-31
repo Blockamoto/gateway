@@ -147,7 +147,7 @@ func TestRecipeOutputFactCataloguePreservesFrozenNativeRules(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		offset := 0
+		offset := 2
 		if id == "txo-spender" {
 			offset = 2
 		}

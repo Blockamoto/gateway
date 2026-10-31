@@ -1079,3 +1079,37 @@ equivalence audit. Remaining retained-layer mapping, final portable preview and
 visible browser acceptance remain open; this source increment does not close
 those requirements.
 The whole-source production build passed (25,814,528 bytes).
+
+### 2026-10-31: native header and located/hash-only Raw JSON retention
+
+Native header initialization and both append paths now execute `headers.json`
+before their existing 80-byte writer. Raw retention executes `raw-blocks.json`
+for located inputs and `raw-block-bodies.json` for verified hash-only bodies.
+The latter uses the new eighth source, `bitcoin.block_body`, whose event omits
+height. A body can later acquire height membership without duplicate body bytes;
+unknown height is never converted to genesis or prefix coverage.
+
+Thin checked codecs preserve existing header consensus-context verification,
+selection/retention consent, append journal/rollback, segment/catalogue layout,
+native identities and publication fences. The inspector and guided builder
+expose all actual documents independently of retained output value/script layers.
+Program/physical/source equivalence pins are listed in
+`080-NATIVE-SOURCE-RETENTION.md`; unreviewed changes fail closed.
+
+Frozen pre-migration writers match the full genesis/block-1 header file and real
+block-792435 Raw frame, reference and catalogue identity. The focused physical
+checks passed in 2.263 seconds; semantic/hash-only/catalogue checks passed in
+1.025 seconds. A single fresh-root already-parsed-block comparison measured
+455.75 ms/21,895,976 cumulative allocated bytes for the recipe path and
+517.66 ms/1,889,984 bytes for the frozen writer. These noisy timings do not prove
+a speed improvement; owned source parsing adds allocation overhead and neither
+peak memory nor full-chain throughput was measured.
+
+The wider header/Raw/rollback/restart/coverage/registry/source/publication suite
+passed 126 tests with one optional skip and no failures in 126.137 seconds. Its audit is
+`gateway-080-native-source-regression.jsonl`. Guided unit, narrow headless DOM and
+workspace checks pass. Remaining retained-layer mapping, final portable preview
+and visible browser acceptance remain open.
+
+The final focused source/native comparison subset and production build passed
+(25,851,904 bytes).

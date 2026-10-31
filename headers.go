@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -26,6 +27,10 @@ func ensureHeaderFile(path string) (int64, error) {
 		return 0, err
 	}
 	genesis, _ := hex.DecodeString(genesisHeaderHex)
+	genesis, err := recipeNativeHeaderBytes(context.Background(), 0, genesis)
+	if err != nil {
+		return 0, err
+	}
 	st, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		if err := os.WriteFile(path, genesis, 0644); err != nil {
@@ -113,7 +118,12 @@ func syncHeaders(path string, preferred []string, progress func(int64, string, i
 						f.Close()
 						return err
 					}
-					if _, err := f.Write(h); err != nil {
+					record, err := recipeNativeHeaderBytes(context.Background(), count, h)
+					if err != nil {
+						f.Close()
+						return err
+					}
+					if _, err := f.Write(record); err != nil {
 						f.Close()
 						return err
 					}

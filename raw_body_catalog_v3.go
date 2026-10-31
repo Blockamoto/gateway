@@ -248,6 +248,14 @@ func retainVerifiedRawBlock(ctx context.Context, root string, v blockView, guard
 	if e != nil {
 		return nil, e
 	}
+	proposal, e := recipeNativeRawBytes(ctx, v)
+	if e != nil {
+		return nil, e
+	}
+	if proposal.Transactions != proof.Transactions || !bytes.Equal(raw, proposal.Raw) {
+		return nil, fmt.Errorf("native Raw proposal differs from checked body")
+	}
+	raw = proposal.Raw
 	rawSegmentMu.Lock()
 	defer rawSegmentMu.Unlock()
 	if e = ctx.Err(); e != nil {

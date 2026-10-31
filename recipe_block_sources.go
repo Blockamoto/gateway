@@ -9,11 +9,13 @@ import (
 
 const recipeHeaderSource = "bitcoin.header"
 const recipeBlockSource = "bitcoin.block"
+const recipeBlockBodySource = "bitcoin.block_body"
 const recipeHeaderSourceProfile = "gateway-owned-selected-header-events-v1"
 const recipeBlockSourceProfile = "gateway-owned-verified-block-events-v1"
+const recipeBlockBodySourceProfile = "gateway-owned-verified-block-body-events-v1"
 
 func recipeWholeBlockSource(source string) bool {
-	return source == recipeHeaderSource || source == recipeBlockSource
+	return source == recipeHeaderSource || source == recipeBlockSource || source == recipeBlockBodySource
 }
 func recipeHeaderSourceFromBlock(ctx context.Context, block blockView) (map[string]recipeOrderedValue, error) {
 	header := block.verifiedHeader
@@ -46,6 +48,8 @@ func (p *recipeProgram) evaluateBlockSourceInto(ctx context.Context, block block
 	var err error
 	if p.definition.Source == recipeHeaderSource {
 		event, err = recipeHeaderSourceFromBlock(ctx, block)
+	} else if p.definition.Source == recipeBlockBodySource {
+		event, err = recipeBlockBodySourceEvent(ctx, block)
 	} else {
 		event, err = recipeBlockSourceEvent(ctx, block)
 	}
@@ -67,12 +71,54 @@ func recipeBlockSourceFields(source string) []recipeFieldCapability {
 	add("text", "kind", "block", "previous_block", "merkle_root")
 	add("uint", "height", "version", "time", "bits", "nonce")
 	add("bytes", "raw_header")
-	if source == recipeBlockSource {
+	if source == recipeBlockBodySource {
+		fields = []recipeFieldCapability{}
+		add("text", "kind", "block")
+		add("bytes", "raw_header")
+	}
+	if source == recipeBlockSource || source == recipeBlockBodySource {
 		add("text", "body_sha256")
 		add("uint", "transaction_count", "serialized_bytes", "stripped_bytes", "weight")
 		add("bytes", "raw_block")
 	}
 	return fields
+}
+
+// Hash-only retained bodies have no height claim. Their event deliberately
+// omits height rather than substituting genesis or granting prefix coverage.
+func recipeBlockBodySourceEvent(ctx context.Context, block blockView) (map[string]recipeOrderedValue, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("body source context required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var owned *recipeOrderedOwnedSource
+	if prepared := runPrepared(ctx); prepared != nil && prepared.block.Height == block.Height && prepared.block.Hash == block.Hash {
+		if prepared.orderedErr != nil {
+			return nil, prepared.orderedErr
+		}
+		owned = prepared.orderedSource
+	}
+	if owned == nil {
+		raw, _, err := exactVerifiedBlockPayload(block)
+		if err != nil {
+			return nil, err
+		}
+		checked, err := parseBlockDetailed(block.Height, block.Hash, nil, raw, "owned block body source", false)
+		if err != nil || !integrityVerified(checked) {
+			return nil, fmt.Errorf("invalid body source: %v", err)
+		}
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
+		owned = &recipeOrderedOwnedSource{block: checked}
+	}
+	b := owned.block
+	if b.verifiedRawProof == nil || len(b.verifiedRaw) < 81 || b.TransactionCount == 0 || b.TransactionCount != uint64(len(b.Transactions)) || b.StrippedBytes < 0 || b.Weight < 0 {
+		return nil, fmt.Errorf("incomplete owned body source")
+	}
+	return map[string]recipeOrderedValue{"kind": rovText("block_body"), "block": rovText(b.Hash), "raw_header": rovBytes(b.verifiedRaw[:80]), "raw_block": {Kind: "bytes", Bytes: b.verifiedRaw}, "body_sha256": rovText(hex.EncodeToString(b.verifiedRawProof.SHA[:])), "transaction_count": rovUint(b.TransactionCount), "serialized_bytes": rovUint(uint64(len(b.verifiedRaw))), "stripped_bytes": rovUint(uint64(b.StrippedBytes)), "weight": rovUint(uint64(b.Weight))}, nil
 }
 
 // These adapters establish byte identity, not selected-chain authority. Header
@@ -95,6 +141,9 @@ func recipeHeaderSourceEvent(ctx context.Context, height int64, hash string, hea
 }
 
 func recipeBlockSourceEvent(ctx context.Context, block blockView) (map[string]recipeOrderedValue, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("complete block source context required")
+	}
 	if prepared := runPrepared(ctx); prepared != nil && prepared.block.Height == block.Height && prepared.block.Hash == block.Hash {
 		if prepared.orderedErr != nil {
 			return nil, prepared.orderedErr

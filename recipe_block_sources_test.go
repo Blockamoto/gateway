@@ -19,6 +19,9 @@ func TestRecipeHeaderAndBlockSourcesOwnExactEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = recipeBlockSourceEvent(nil, block); err == nil {
+		t.Fatal("nil source context accepted")
+	}
 	event, err := recipeBlockSourceEvent(ctx, block)
 	if err != nil {
 		t.Fatal(err)
@@ -121,9 +124,14 @@ func TestRecipeHeaderPublicRunUsesOnlySelectedHeaders(t *testing.T) {
 }
 
 func TestRecipeRawPublicSavedOwnsCompleteBytes(t *testing.T) {
+	for _, file := range []string{"raw-blocks.json", "raw-block-bodies.json"} {
+		t.Run(file, func(t *testing.T) { recipeTestRawPublicSavedBytes(t, file) })
+	}
+}
+func recipeTestRawPublicSavedBytes(t *testing.T, file string) {
 	ctx := context.Background()
 	a, blocks := transactionRunFixture(t)
-	data, err := os.ReadFile(filepath.Join("recipes", "builtins", "raw-blocks.json"))
+	data, err := os.ReadFile(filepath.Join("recipes", "builtins", file))
 	if err != nil {
 		t.Fatal(err)
 	}

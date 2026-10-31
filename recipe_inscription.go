@@ -158,6 +158,9 @@ func (p *recipeProgram) semanticHash() string {
 		if d.Source == recipeBlockSource {
 			profile = recipeBlockSourceProfile
 		}
+		if d.Source == recipeBlockBodySource {
+			profile = recipeBlockBodySourceProfile
+		}
 		return indexDigest(struct {
 			Document, Interpreter, Stream, Source, Physical string
 			Verifier                                        int

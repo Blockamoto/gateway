@@ -535,9 +535,14 @@ func appendCheckedHeaderBatch051(ctx context.Context, path string, count int64, 
 			e = verifyConnectedHeaderWithReader(read, count, h)
 		}
 		if e == nil {
+			var record []byte
+			record, e = recipeNativeHeaderBytes(ctx, count, h)
+			if e != nil {
+				return rollback(e)
+			}
 			var written int
-			written, e = f.Write(h)
-			if e == nil && written != len(h) {
+			written, e = f.Write(record)
+			if e == nil && written != len(record) {
 				e = io.ErrShortWrite
 			}
 		}

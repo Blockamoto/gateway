@@ -100,7 +100,7 @@ func TestRecipeTablesGenerationOwnedPublicationCASAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	replayed := recipeTablesTestCount(t, g, 2)
-	if replayed != before {
+	if indexDigest(replayed) != indexDigest(before) {
 		t.Fatal("replay changed deterministic table point", replayed, before)
 	}
 	if err = os.Remove(g.path("table-head.json")); err != nil {

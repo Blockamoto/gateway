@@ -154,10 +154,15 @@ func (p *recipeProgram) semanticHash() string {
 	d := p.definition
 	d.ID, d.Name = "", ""
 	if d.Storage == recipeTablesStorage {
+		imports := ""
+		if len(d.Dependencies) > 0 {
+			imports = "gateway-typed-checkpoint-owned-point-facts-v1"
+		}
 		return indexDigest(struct {
 			Document, Interpreter, Stream, Source, Physical string
 			Definition                                      recipeDefinition
-		}{recipeOrderedDocumentProfile, recipeOrderedProfile, recipeOrderedStreamProfile, recipeTablesSourceProfileFor(d.Source), recipeTablesStorage + "/" + recipeTablesGenerationProfile, d})
+			Imports                                         string `json:",omitempty"`
+		}{recipeOrderedDocumentProfile, recipeOrderedProfile, recipeOrderedStreamProfile, recipeTablesSourceProfileFor(d.Source), recipeTablesStorage + "/" + recipeTablesGenerationProfile, d, imports})
 	}
 	if d.Source == recipeSatSource {
 		return indexDigest(struct {

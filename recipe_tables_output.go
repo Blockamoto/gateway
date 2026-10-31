@@ -89,6 +89,10 @@ func (a *app) withRecipeTablesSnapshot(ctx context.Context, prepared resolvedSav
 		return nil, 409, fmt.Errorf("table output snapshot changed")
 	}
 	result["state"], result["unit"], result["checkpoint"] = "covered", unit, point.Commitment
+	if len(point.Lineage) > 0 {
+		result["dependencies"] = point.Lineage
+		result["imported_fact_root"] = point.Imports
+	}
 	result["state_entry_count"] = strconv.FormatUint(point.Entries, 10)
 	result["row_count"], result["changed_key_count"] = strconv.FormatUint(point.Entries, 10), strconv.FormatUint(point.Changes, 10)
 	result["ordering"] = "physical_table_key"

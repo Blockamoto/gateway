@@ -401,6 +401,8 @@ func (s *bitmapRunConsumer) publish(ctx context.Context, h bitmapDevelopmentHead
 	if err := checkIndexRunPublication(ctx); err != nil {
 		return err
 	}
+	recipeTableCheckpointMu.Lock()
+	defer recipeTableCheckpointMu.Unlock()
 	if err := writeBitmapChainJSON(ctx, filepath.Join(s.dir, "head.json"), struct {
 		Commitment string `json:"commitment"`
 	}{h.Commitment}); err != nil {
@@ -490,6 +492,8 @@ func (s *bitmapRunConsumer) Reconcile(ctx context.Context, hashAt func(int64) (s
 	if err := checkIndexRunPublication(ctx); err != nil {
 		return err
 	}
+	recipeTableCheckpointMu.Lock()
+	defer recipeTableCheckpointMu.Unlock()
 	if h == nil {
 		if err := os.Remove(filepath.Join(s.dir, "head.json")); err != nil && !os.IsNotExist(err) {
 			return err

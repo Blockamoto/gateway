@@ -49,6 +49,20 @@ func (a *app) recipePlanDependencies(ctx context.Context, root resolvedSavedReci
 	}
 	dependencies := make([]indexRunDependency, 0, len(graph.Edges))
 	for _, edge := range graph.Edges {
+		if edge.Coverage == recipeTableSnapshotCoverage {
+			state, source := "saved_checkpoint_unknown", "saved"
+			selected := edge.ParentSelected || edge.SelectedSameGeneration
+			if edge.Scope == "builtin" {
+				source = "built-in"
+				choice, ok := runSelection(req, edge.Parent.Instance)
+				selected = ok && choice.Armed && !choice.Recipe
+			}
+			if selected {
+				state = "selected_checkpoint_unknown"
+			}
+			dependencies = append(dependencies, indexRunDependency{Index: edge.Parent.Instance, Kind: recipeTableSnapshotCoverage, State: state, Reason: fmt.Sprintf("%s reads typed table %s at the same-block complete checkpoint of %s %s revision %s. Missing or expired coverage waits; this child starts no parent writer.", edge.Child.Instance, edge.Export, source, edge.Parent.Instance, edge.Parent.Revision)})
+			continue
+		}
 		if edge.Coverage == "snapshot_delta" {
 			state, source := "saved_checkpoint_unknown", "saved"
 			selected := edge.ParentSelected || edge.SelectedSameGeneration

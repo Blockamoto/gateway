@@ -26,7 +26,7 @@ func (g *recipeTablesGeneration) maintain(ctx context.Context) error {
 	if err != nil || !initialized {
 		return err
 	}
-	roots, pinRoots := []string{}, []string{}
+	roots, pinRoots, importRoots := []string{}, []string{}, []string{}
 	retained := map[string]bool{}
 	for _, ref := range h.History {
 		p, err := g.readPoint(ctx, ref)
@@ -34,8 +34,9 @@ func (g *recipeTablesGeneration) maintain(ctx context.Context) error {
 			return err
 		}
 		retained[ref.Commitment] = true
-		roots = append(roots, p.Root, p.Journal, p.BlobPins, p.PreviousBlobPins)
+		roots = append(roots, p.Root, p.Journal, p.BlobPins, p.PreviousBlobPins, p.Imports)
 		pinRoots = append(pinRoots, p.BlobPins, p.PreviousBlobPins)
+		importRoots = append(importRoots, p.Imports)
 	}
 	pins := map[string]bool{}
 	err = recipeVisitOrdinalRoots(recipeTablesTree(ctx, g.path("pages"), ""), pinRoots, func(kv ordinalKV) error {
@@ -50,6 +51,34 @@ func (g *recipeTablesGeneration) maintain(ctx context.Context) error {
 			}
 		}
 		pins[kv.Key] = true
+		return ctx.Err()
+	})
+	if err != nil {
+		return err
+	}
+	imports := map[string]bool{}
+	err = recipeVisitOrdinalRoots(recipeTablesTree(ctx, g.path("pages"), ""), importRoots, func(kv ordinalKV) error {
+		var ref recipeImportedFactRef
+		if json.Unmarshal(kv.Value, &ref) != nil {
+			return fmt.Errorf("%w: imported fact reference", ErrRecipeTablesCorrupt)
+		}
+		fact, err := recipeReadImportedFact(ctx, g.profileRoot, kv.Key, ref)
+		if err != nil {
+			return fmt.Errorf("%w: required imported fact (%v)", ErrRecipeTablesCorrupt, err)
+		}
+		matched := false
+		for _, dep := range g.program.definition.Dependencies {
+			if fact.Binding == dep {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return fmt.Errorf("%w: imported fact declaration", ErrRecipeTablesCorrupt)
+		}
+		if ref.Blob != "" {
+			imports[ref.Blob] = true
+		}
 		return ctx.Err()
 	})
 	if err != nil {
@@ -70,7 +99,10 @@ func (g *recipeTablesGeneration) maintain(ctx context.Context) error {
 	if err = g.prunePoints(ctx, retained); err != nil {
 		return err
 	}
-	return g.pruneValues(ctx, pins)
+	if err = g.pruneValues(ctx, pins); err != nil {
+		return err
+	}
+	return g.pruneBlobs(ctx, "imports", recipeImportedFactMaxBytes, imports)
 }
 
 func (g *recipeTablesGeneration) prunePoints(ctx context.Context, retained map[string]bool) error {
@@ -135,7 +167,10 @@ func (g *recipeTablesGeneration) prunePoints(ctx context.Context, retained map[s
 }
 
 func (g *recipeTablesGeneration) pruneValues(ctx context.Context, pins map[string]bool) error {
-	dir := g.path("values")
+	return g.pruneBlobs(ctx, "values", recipeTablesEncodedBytes, pins)
+}
+func (g *recipeTablesGeneration) pruneBlobs(ctx context.Context, directory string, limit int64, pins map[string]bool) error {
+	dir := g.path(directory)
 	if err := updateapply.CheckPath(dir); err != nil {
 		return err
 	}
@@ -184,8 +219,8 @@ func (g *recipeTablesGeneration) pruneValues(ctx context.Context, pins map[strin
 					if info.ModTime().After(cutoff) {
 						continue
 					}
-					file := recipeTablesBlobPath(g.profileRoot, hash)
-					raw, err := recipeStoreReadBounded(file, recipeTablesEncodedBytes)
+					file := filepath.Join(path, hash+".json")
+					raw, err := recipeStoreReadBounded(file, limit)
 					if err != nil {
 						return err
 					}

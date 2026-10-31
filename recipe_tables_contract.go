@@ -23,7 +23,7 @@ func recipeTablesFields() []recipeFieldCapability {
 }
 
 func compileRecipeTablesContract(d recipeDefinition) (*recipeProgram, error) {
-	if d.Source != "bitcoin.ordered" && d.Source != "bitcoin.reveal" || d.History != "ordered" || d.Storage != recipeTablesStorage || d.Origin < 0 || len(d.Steps) != 0 || len(d.Dependencies) != 0 || len(d.Exports) != 0 {
+	if d.Source != "bitcoin.ordered" && d.Source != "bitcoin.reveal" || d.History != "ordered" || d.Storage != recipeTablesStorage || d.Origin < 0 || len(d.Steps) != 0 || len(d.Exports) != 0 {
 		return nil, recipeDiagnosticAt("RECIPE_TABLE_STATE_CONTRACT", "/storage", "typed COW tables require a continuous ordered event prefix and declared tables")
 	}
 	if len(d.Tables) == 0 || len(d.Tables) > recipeMaxTables {
@@ -35,6 +35,10 @@ func compileRecipeTablesContract(d recipeDefinition) (*recipeProgram, error) {
 			return nil, recipeDiagnosticAt("RECIPE_TABLE_STATE_TABLES", "/tables", "state tables need unique names, key labels and explicit keyed mutations")
 		}
 		tables[t.Name] = true
+	}
+	dependencies, err := recipeValidateTableDependencies(d, tables)
+	if err != nil {
+		return nil, err
 	}
 	program, err := parseOrderedRecipeProgram(d.Ordered, false)
 	if err != nil {
@@ -65,7 +69,9 @@ func compileRecipeTablesContract(d recipeDefinition) (*recipeProgram, error) {
 	scan = func(steps []recipeOrderedInstruction) error {
 		for _, s := range steps {
 			if (s.Op == "read" || s.Op == "put" || s.Op == "delete") && !tables[s.Table] {
-				return fmt.Errorf("undeclared state table %q", s.Table)
+				if s.Op != "read" || dependencies[s.Table].Name == "" {
+					return fmt.Errorf("undeclared or non-writable state table %q", s.Table)
+				}
 			}
 			if s.Op == "emit" {
 				return fmt.Errorf("state table rows are written with put; independent emits require a declared output contract")
@@ -92,7 +98,9 @@ func compileRecipeTablesContract(d recipeDefinition) (*recipeProgram, error) {
 	if err != nil {
 		return nil, err
 	}
-	d.Dependencies = []recipeDependency{}
+	if len(d.Dependencies) == 0 {
+		d.Dependencies = []recipeDependency{}
+	}
 	d.Exports = nil
 	d.Steps = nil
 	return &recipeProgram{definition: d, ordered: &program}, nil

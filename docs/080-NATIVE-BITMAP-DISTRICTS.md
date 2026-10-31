@@ -45,8 +45,10 @@ source acquisition and peak resident memory, and does not establish full-chain
 throughput. Actual District JSON also round-trips through the guided editor and
 the real-DOM table controls.
 
-Validated replay Parcel composition, broader typed incoming checkpoints and
-complete isolated-preview acceptance remain open.
+Native District winners and candidates are now available as exact read-only
+typed checkpoints to declared saved children; see `080-TABLE-CHECKPOINT-INPUTS.md`.
+Validated replay Parcel composition and complete isolated-preview acceptance
+remain open.
 
 The wider Bitmap/Parcel/reveal-table suite passed in 425.889 seconds: 210
 passes, four skips, no failures. It includes retained/pruned chain storage,

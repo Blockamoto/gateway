@@ -54,6 +54,11 @@ func recipeCatalogue() recipeCapabilityCatalogue {
 	if revision, semantic, err := recipeNativeUTXORevision(); err == nil {
 		catalogue.BuiltinCheckpoints = []recipeDependency{{Name: "utxo", Scope: "builtin", Instance: "utxo-state", Revision: revision, SemanticHash: semantic, Export: "coins", Coverage: "snapshot_delta", Type: "coin"}}
 	}
+	if revision, semantic, err := recipeNativeBitmapDistrictRevision(); err == nil {
+		for _, table := range []string{"winners", "candidates"} {
+			catalogue.BuiltinCheckpoints = append(catalogue.BuiltinCheckpoints, recipeDependency{Name: "districts", Scope: "builtin", Instance: bitmapStandardDistrictID, Revision: revision, SemanticHash: semantic, Export: table, Coverage: recipeTableSnapshotCoverage, Type: recipeTableSnapshotType})
+		}
+	}
 	catalogue.Sources = append(catalogue.Sources, recipeSourceCapability{ID: recipeSatSource, Histories: []string{"ordered"}, Fields: recipeSatSourceFields(), Steps: recipeOrderedSteps(), Functions: recipeOrderedFunctions(), StateContracts: []string{recipeSatStorage}, Events: []string{"block_begin", "tx_begin", "input", "inscription", "output", "tx_end"}})
 	return catalogue
 }

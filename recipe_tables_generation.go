@@ -20,6 +20,8 @@ type recipeTablesPoint struct {
 	Root, Journal                                    string
 	BlobPins, PreviousBlobPins                       string
 	Entries, Changes                                 uint64
+	Imports                                          string                    `json:",omitempty"`
+	Lineage                                          []recipeDependencyReceipt `json:",omitempty"`
 	Commitment                                       string
 }
 type recipeTablesPointRef struct {
@@ -159,6 +161,9 @@ func (g *recipeTablesGeneration) readPointMetadata(ctx context.Context, ref reci
 	if p.Height == 0 && p.BlockHash != genesisHashDisplay {
 		return p, fmt.Errorf("invalid table genesis")
 	}
+	if err := recipeTablesCheckLineage(g.program.definition, p); err != nil {
+		return p, fmt.Errorf("%w: imported checkpoint lineage (%v)", ErrRecipeTablesCorrupt, err)
+	}
 	return p, ctx.Err()
 }
 func (g *recipeTablesGeneration) readPoint(ctx context.Context, ref recipeTablesPointRef) (recipeTablesPoint, error) {
@@ -167,7 +172,7 @@ func (g *recipeTablesGeneration) readPoint(ctx context.Context, ref recipeTables
 		return p, err
 	}
 	tree := recipeTablesTree(ctx, g.path("pages"), "")
-	for _, root := range []string{p.Root, p.Journal, p.BlobPins, p.PreviousBlobPins} {
+	for _, root := range []string{p.Root, p.Journal, p.BlobPins, p.PreviousBlobPins, p.Imports} {
 		if _, err := tree.read(root); err != nil {
 			return p, fmt.Errorf("%w: root (%v)", ErrRecipeTablesCorrupt, err)
 		}
@@ -271,8 +276,24 @@ func (g *recipeTablesGeneration) publish(ctx context.Context, prior, next recipe
 		return fmt.Errorf("table head revision overflow")
 	}
 	return recipeStoreGuarded(authority, func() error {
+		imports, _ := ctx.Value(recipeTableDependenciesKey{}).(*recipeTableDependencySet)
+		if imports != nil && imports.hasNative() {
+			// Match native replay's snapshot-before-head order. Never wait for
+			// a collector while holding the publication authority locks.
+			if !bitmapSnapshotMu.TryRLock() {
+				return fmt.Errorf("%w: native table snapshot is busy", errRecipeDependencyUnavailable)
+			}
+			defer bitmapSnapshotMu.RUnlock()
+		}
+		recipeTableCheckpointMu.RLock()
+		defer recipeTableCheckpointMu.RUnlock()
 		recipeOrderedGenerationMu.Lock()
 		defer recipeOrderedGenerationMu.Unlock()
+		if imports != nil {
+			if err := imports.checkCheckpoints(ctx); err != nil {
+				return err
+			}
+		}
 		current, _, err := g.snapshot(ctx)
 		if err != nil {
 			return err
@@ -330,7 +351,18 @@ func (g *recipeTablesGeneration) applyFromToken(ctx context.Context, b blockView
 	}
 	edit := newRecipeTablesEdit(ctx, g.profileRoot, base.Root, g.program.definition.Tables, base.BlobPins)
 	defer edit.AbortOrdered()
-	if err = recipeOrderedExecuteStateStream(ctx, *g.program.ordered, edit, func(sink func(map[string]recipeOrderedValue) error) error {
+	var state recipeOrderedState = edit
+	var imports *recipeTablesImportState
+	if len(g.program.definition.Dependencies) > 0 {
+		sources, _ := ctx.Value(recipeTableDependenciesKey{}).(*recipeTableDependencySet)
+		if err = recipeTablesCheckDependencySet(g.program.definition, sources, b.Height, b.Hash); err != nil {
+			return err
+		}
+		imports = newRecipeTablesImportState(ctx, g.profileRoot, base.Imports, edit, sources)
+		defer imports.AbortOrdered()
+		state = imports
+	}
+	if err = recipeOrderedExecuteStateStream(ctx, *g.program.ordered, state, func(sink func(map[string]recipeOrderedValue) error) error {
 		if g.program.definition.Source == "bitcoin.reveal" {
 			return recipeRevealTablesWalk(ctx, b, sink)
 		}
@@ -347,6 +379,12 @@ func (g *recipeTablesGeneration) applyFromToken(ctx context.Context, b blockView
 		previous = g.originCommitment()
 	}
 	p := recipeTablesPoint{Height: b.Height, BlockHash: b.Hash, PreviousBlockHash: b.PreviousBlockHash, PreviousCommitment: previous, Root: root, Journal: journal, Entries: entries, Changes: changes, BlobPins: edit.pinRoot, PreviousBlobPins: base.BlobPins}
+	if imports != nil {
+		if p.Imports, err = imports.facts.flush(); err != nil {
+			return err
+		}
+		p.Lineage = imports.sources.receipts()
+	}
 	p.Commitment = g.pointDigest(p)
 	raw, err := json.Marshal(p)
 	if err != nil {

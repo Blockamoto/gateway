@@ -40,7 +40,7 @@
       if(!Object.hasOwn(operations,step?.op)||scope?.output&&(['put','delete'].includes(step.op)||step.op==='read'&&!scope.lookups)||scope?.generic&&step.op==='emit')return false;
       const allowed=operations[step.op];if(step.op==='for_events'&&depth!==0||!keys(step,['op',...allowed]))return false;
       if(Object.hasOwn(step,'name')&&(typeof step.name!=='string'||!step.name))return false;
-      if(Object.hasOwn(step,'table')&&!(step.op==='emit'?(scope?.output?scope.tables:scope?.emitTables||['prevouts']):scope?.stateTables||['coins','counts']).includes(step.table))return false;
+      if(Object.hasOwn(step,'table')&&!(step.op==='emit'?(scope?.output?scope.tables:scope?.emitTables||['prevouts']):step.op==='read'?scope?.readTables||scope?.stateTables||['coins','counts']:scope?.stateTables||['coins','counts']).includes(step.table))return false;
       if(scope?.fifo&&step.table==='history'&&step.op!=='put')return false;
       if(['let','read','for_range'].includes(step.op)&&!step.name)return false;
       if(['read','put','delete','emit'].includes(step.op)&&!expressionSupported(step.key,0,scope?.fields))return false;
@@ -63,6 +63,9 @@
       if(!Array.isArray(d.dependencies)||d.dependencies.length!==1)return null;
       const dep=d.dependencies[0],hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value),id=value=>typeof value==='string'&&/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value);
       if(!keys(dep,['name','scope','instance','revision','semantic_hash','export','coverage','type'])||!id(dep.name)||!id(dep.instance)||dep.instance===d.id||!['','saved','builtin'].includes(dep.scope||'')||dep.scope==='builtin'&&dep.instance!=='utxo-state'||!hash(dep.revision)||!hash(dep.semantic_hash)||dep.export!=='coins'||dep.coverage!=='snapshot_delta'||dep.type!=='coin')return null;
+    }else if(generic){
+      const deps=d.dependencies||[],hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value),id=value=>typeof value==='string'&&/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value);
+      if(!Array.isArray(deps)||deps.length>16||new Set(deps.map(dep=>dep.name)).size!==deps.length||!deps.every(dep=>keys(dep,['name','scope','instance','revision','semantic_hash','export','coverage','type'])&&id(dep.name)&&id(dep.instance)&&dep.instance!==d.id&&!d.tables?.some(table=>table.name===dep.name)&&['','saved','builtin'].includes(dep.scope||'')&&(dep.scope!=='builtin'||dep.instance==='bitmap-districts-standard-v1')&&hash(dep.revision)&&hash(dep.semantic_hash)&&typeof dep.export==='string'&&new TextEncoder().encode(dep.export).length>0&&new TextEncoder().encode(dep.export).length<=256&&!dep.export.startsWith('__gateway_')&&dep.coverage==='snapshot'&&dep.type==='typed'))return null;
     }else if(Object.hasOwn(d,'dependencies')&&(!Array.isArray(d.dependencies)||d.dependencies.length))return null;
     if(!Array.isArray(d.tables)||!d.tables.length||new Set(d.tables.map(t=>t.name)).size!==d.tables.length)return null;
     if(Object.hasOwn(d,'lookups')&&(!Array.isArray(d.lookups)||d.lookups.length>16||d.lookups.length&&!sparse))return null;
@@ -85,7 +88,7 @@
       if(Object.hasOwn(d,'exports')&&(!Array.isArray(d.exports)||d.exports.length))return null;
       if(d.tables.length!==2||!d.tables.every(t=>keys(t,['name','key'])&&((t.name==='coins'&&t.key==='outpoint')||(t.name==='counts'&&t.key==='txid'))))return null;
     }
-    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{output:sparse||projection,lookups:lookups.length>0,fifo,generic,fields:projection?projectionFields:fifo?fifoFields:generic?(d.source==='bitcoin.reveal'?revealFields:tableFields):fields,tables:d.tables.map(t=>t.name),stateTables:sparse?lookups.map(value=>value.name):fifo||generic?d.tables.map(t=>t.name):undefined,emitTables:fifo?['identities','lost','incarnations']:undefined})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
+    if(!keys(d.ordered,['steps'])||!stepsSupported(d.ordered.steps,0,{output:sparse||projection,lookups:lookups.length>0,fifo,generic,fields:projection?projectionFields:fifo?fifoFields:generic?(d.source==='bitcoin.reveal'?revealFields:tableFields):fields,tables:d.tables.map(t=>t.name),stateTables:sparse?lookups.map(value=>value.name):fifo||generic?d.tables.map(t=>t.name):undefined,readTables:generic?[...d.tables.map(t=>t.name),...(d.dependencies||[]).map(dep=>dep.name)]:undefined,emitTables:fifo?['identities','lost','incarnations']:undefined})||d.ordered.steps.length!==1||d.ordered.steps[0].op!=='for_events')return null;
     return copy(d);
   }
   function fromGuided(definition){
@@ -127,7 +130,7 @@
     const stateSource=()=>sourceCapability()?.state_sources?.find(source=>source.history===model.history&&source.storage===model.storage);
     const availableOperations=()=>Object.keys(operations).filter(op=>op!=='for_events'&&!(outputOnly()&&(['put','delete'].includes(op)||op==='read'&&!(model.lookups||[]).length))&&!(generic()&&op==='emit'));
     const fifo=()=>model?.source==='bitcoin.fifo';
-    const tableChoices=op=>op==='read'&&model.history==='sparse'?(model.lookups||[]).map(value=>value.name):op==='emit'?(outputOnly()?model.tables.map(t=>t.name):fifo()?['identities','lost','incarnations']:['prevouts']):generic()?model.tables.map(t=>t.name):fifo()?model.tables.map(t=>t.name).filter(name=>op==='put'||name!=='history'):['coins','counts'];
+    const tableChoices=op=>op==='read'&&model.history==='sparse'?(model.lookups||[]).map(value=>value.name):op==='emit'?(outputOnly()?model.tables.map(t=>t.name):fifo()?['identities','lost','incarnations']:['prevouts']):generic()?[...model.tables.map(t=>t.name),...(op==='read'?(model.dependencies||[]).map(dep=>dep.name):[])]:fifo()?model.tables.map(t=>t.name).filter(name=>op==='put'||name!=='history'):['coins','counts'];
     const newInstruction=op=>{const value=instruction(op);if((fifo()||generic())&&value.table){value.table=tableChoices(op)[0];value.key={field:op==='emit'?'id':'txid'};}if(op==='read'&&model.history==='sparse'){value.table=tableChoices(op)[0];value.key={call:'input_ref',args:[{field:'height'},{field:'tx_index'},{literal:{kind:'uint',uint:'0'}}]};}if(op==='emit'&&outputOnly())value.table=model.tables[0].name;if(model?.history==='projection'&&value.key)value.key={call:'output_ref',args:[{field:'height'},{field:'tx_index'},{field:'vout'}]};return value;};
     function textInput(title,value,set){const input=el('input');input.type='text';input.value=value||'';input.addEventListener('input',()=>{set(input.value);changed();});return label(title,input);}
     function select(title,choices,value,set){const input=el('select');for(const choice of choices){const [key,name]=Array.isArray(choice)?choice:[choice,choice],option=el('option',name);option.value=key;input.append(option);}input.value=value;input.addEventListener('change',()=>{set(input.value);changed();});return label(title,input);}
@@ -227,11 +230,11 @@
       const rename=(steps,oldName,newName)=>{for(const step of steps){if(step.table===oldName)step.table=newName;rename(step.body||[],oldName,newName);rename(step.else||[],oldName,newName);}};
       for(const [index,table] of model.tables.entries()){
         const row=el('div'),name=el('input');row.className='recipe-fields ordered-editor-table';name.type='text';name.value=table.name;
-        name.addEventListener('change',()=>{const next=name.value;if(!next||next.startsWith('__gateway_')||new TextEncoder().encode(next).length>256||model.tables.some(other=>other!==table&&other.name===next)){name.value=table.name;return;}rename(model.ordered.steps,table.name,next);table.name=next;render();changed();});
+        name.addEventListener('change',()=>{const next=name.value;if(!next||next.startsWith('__gateway_')||new TextEncoder().encode(next).length>256||model.tables.some(other=>other!==table&&other.name===next)||(model.dependencies||[]).some(dep=>dep.name===next)){name.value=table.name;return;}rename(model.ordered.steps,table.name,next);table.name=next;render();changed();});
         const remove=button('Remove state table',()=>{model.tables.splice(index,1);render();changed();});remove.disabled=model.tables.length===1||references(model.ordered.steps,table.name);remove.title='Remove its instructions before removing a referenced table.';
         row.append(label('State table name',name),textInput('State key label',table.key,value=>{table.key=value;}),remove);box.append(row);
       }
-      const add=button('Add state table',()=>{let name='state';while(model.tables.some(table=>table.name===name))name='state_'+(++sequence);model.tables.push({name,key:'key'});render();changed();});add.disabled=model.tables.length>=64;box.append(add);
+      const add=button('Add state table',()=>{let name='state';while(model.tables.some(table=>table.name===name)||(model.dependencies||[]).some(dep=>dep.name===name))name='state_'+(++sequence);model.tables.push({name,key:'key'});render();changed();});add.disabled=model.tables.length>=64;box.append(add);
     }
     function checkpointParentEditor(host){
       const dep=model.dependencies[0],box=el('fieldset'),row=el('div');box.append(el('legend','Checkpoint source'));host.append(box);
@@ -250,6 +253,32 @@
         finally{saved.disabled=false;}
       }),note=el('p',parentNote||'Uses an exact coins checkpoint and checked deltas. The child never starts a parent writer.');
       saved.disabled=dep.scope==='builtin';actions.append(native,saved);box.append(actions,note);
+    }
+    function tableDependenciesEditor(host){
+      const box=el('fieldset');box.append(el('legend','Parent table checkpoints'),el('p','Read a parent table at the same block as each child transition. The parent must have complete retained coverage. Used values and known absences are retained with the child. Declaring or reading a definition starts no work.'));host.append(box);
+      const references=(steps,name)=>steps.some(step=>step.op==='read'&&step.table===name||references(step.body||[],name)||references(step.else||[],name));
+      const rename=(steps,oldName,newName)=>{for(const step of steps){if(step.op==='read'&&step.table===oldName)step.table=newName;rename(step.body||[],oldName,newName);rename(step.else||[],oldName,newName);}};
+      const bindings=()=>getCatalogue()?.builtin_checkpoints?.filter(value=>value.coverage==='snapshot'&&value.type==='typed')||[];
+      for(const [index,dep] of (model.dependencies||[]).entries()){
+        const row=el('div'),name=el('input');row.className='recipe-fields ordered-editor-table';name.type='text';name.value=dep.name;
+        name.addEventListener('change',()=>{const next=name.value;if(!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(next)||model.dependencies.some(other=>other!==dep&&other.name===next)||model.tables.some(table=>table.name===next)){name.value=dep.name;return;}rename(model.ordered.steps,dep.name,next);dep.name=next;render();changed();});
+        row.append(label('Parent table alias',name),select('Parent table scope',[['saved','Saved table recipe'],['builtin','Built-in Districts']],dep.scope==='builtin'?'builtin':'saved',value=>{dep.scope=value;if(value==='builtin'){const installed=bindings().find(value=>value.export===dep.export)||bindings()[0];if(installed)Object.assign(dep,copy(installed),{name:dep.name});}render();}),textInput('Parent table recipe ID',dep.instance,value=>{dep.instance=value;}),textInput('Parent table name',dep.export,value=>{dep.export=value;}));
+        const note=el('p',parentNote),saved=button('Pin saved table revision',async()=>{
+          const captured=model,epoch=editEpoch,id=dep.instance,table=dep.export,ticket=++parentEpoch;saved.disabled=true;note.textContent='Reading the saved table definition…';
+          try{const value=await readParent(id);if(ticket!==parentEpoch||captured!==model||epoch!==editEpoch||dep.instance!==id||dep.export!==table){if(ticket===parentEpoch&&captured===model)note.textContent='Draft changed; read the parent again.';return;}
+            if(!value?.validated||value.recipe?.id!==id||value.recipe.history!=='ordered'||value.recipe.storage!=='tables.cow.v1'||!value.recipe.tables?.some(value=>value.name===table)||!/^[a-f0-9]{64}$/.test(value.revision)||!/^[a-f0-9]{64}$/.test(value.semantic_hash))throw Error('Choose a validated table recipe and one of its declared tables.');
+            Object.assign(dep,{scope:'saved',revision:value.revision,semantic_hash:value.semantic_hash,coverage:'snapshot',type:'typed'});parentNote='Pinned the returned immutable parent revision. Its same-block checkpoint must be built or explicitly selected.';render();changed();
+          }catch(error){if(ticket===parentEpoch&&captured===model&&epoch===editEpoch){parentNote='Parent: '+error.message;render();}}finally{saved.disabled=false;}
+        });saved.disabled=dep.scope==='builtin';
+        const native=button('Pin built-in table revision',()=>{const value=bindings().find(value=>value.instance===dep.instance&&value.export===dep.export);if(!value){parentNote='Choose an installed built-in table from the catalogue.';render();return;}Object.assign(dep,copy(value),{name:dep.name});parentNote='Pinned the installed built-in checkpoint contract.';render();changed();});native.disabled=dep.scope!=='builtin';
+        const remove=button('Remove parent table',()=>{model.dependencies.splice(index,1);render();changed();});remove.disabled=references(model.ordered.steps,dep.name);
+        row.append(textInput('Parent table revision',dep.revision,value=>{dep.revision=value;}),textInput('Parent table semantic fingerprint',dep.semantic_hash,value=>{dep.semantic_hash=value;}),saved,native,remove,note);box.append(row);
+      }
+      let builtin=bindings()[0]?.export||'';
+      if(bindings().length)box.append(select('Built-in table to add',bindings().map(value=>[value.export,value.instance+' / '+value.export]),builtin,value=>{builtin=value;}));
+      const add=(binding)=>{if(!model.dependencies)model.dependencies=[];let name=binding.name;while(model.dependencies.some(dep=>dep.name===name)||model.tables.some(table=>table.name===name))name=binding.name+'_'+(++sequence);model.dependencies.push({...copy(binding),name});render();changed();};
+      const saved=button('Add saved parent table',()=>add({name:'parent',scope:'saved',instance:'saved-parent',revision:'0'.repeat(64),semantic_hash:'0'.repeat(64),export:'counts',coverage:'snapshot',type:'typed'}));saved.disabled=(model.dependencies||[]).length>=16;box.append(saved);
+      const native=button('Add built-in parent table',()=>{const value=bindings().find(value=>value.export===builtin);if(value)add(value);});native.disabled=(model.dependencies||[]).length>=16||!bindings().length;box.append(native);
     }
     function sourceLookupsEditor(host){
       const box=el('fieldset');box.append(el('legend','Input creation evidence'),el('p','Declare per-input reads, then use a read instruction with an input coordinate. Results have state available or unavailable. Available results provide position and block_hash. A declaration starts no work.'));host.append(box);
@@ -270,7 +299,7 @@
       header.append(textInput('Ordered recipe ID',model.id,value=>{model.id=value;}),textInput('Ordered recipe name',model.name,value=>{model.name=value;}));
       root.append(legend,el('p',model.history==='projection'?'Derive current destination members and exclusion counts from the declared complete Coin snapshot, then apply checked deltas. Every source Coin must be accounted for. Source selection does not start its writer.':fifo()?'Process ordinary transactions in Bitcoin order, then allocate subsidy and their fees to coinbase outputs. Compose FIFO intervals, lost sats and inscription identities. The outputs table stores current state; the optional history table retains original output ranges.':generic()?'Process source events continuously from the declared origin. Inscription reveals expose their own body and declared content type as exact bytes. Read, write or delete exact typed values in your named tables. Expand instructions to compose counters, branches and keyed state.':model.history==='sparse'?'Project complete transaction events into per-block rows from the chosen origin. Empty evaluated blocks are retained; no UTXO prefix is required.':'Process transaction events in order from genesis. Coins are keyed by outpoint; counts by transaction ID. Expand an instruction to edit its expressions, branches or nested instructions.'),header);
       if(model.history==='sparse'){header.append(textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));declarationsEditor(root);sourceLookupsEditor(root);}
-      if(generic()){header.append(select('State source',[['bitcoin.ordered','Bitcoin transaction events'],['bitcoin.reveal','Inscription reveals']],model.source,value=>{model.source=value;render();changed();}),textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));stateTablesEditor(root);}
+      if(generic()){header.append(select('State source',[['bitcoin.ordered','Bitcoin transaction events'],['bitcoin.reveal','Inscription reveals']],model.source,value=>{model.source=value;render();changed();}),textInput('Origin height',String(model.origin),value=>{model.origin=/^\d+$/.test(value)?Number(value):value;}));stateTablesEditor(root);tableDependenciesEditor(root);}
       if(model.history==='projection')checkpointParentEditor(root);
       if(fifo())fifoTablesEditor(root);
       stepsEditor(root,model.ordered.steps[0].body);root.append(button('Apply ordered changes',onApply));

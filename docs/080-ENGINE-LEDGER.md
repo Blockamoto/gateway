@@ -1,6 +1,6 @@
 # Gateway 0.8.0 engine ledger
 
-Last updated: 2026-10-30. Baseline: 0.7.9 `76cc8d5efa3c3d75a1531774fc2af1dff44dba51`; the 0.8.0 branch starts there. This is a working ledger, not a claim that 0.8.0 is implemented or that baseline behavior has already been reproduced.
+Last updated: 2026-10-31. Baseline: 0.7.9 `76cc8d5efa3c3d75a1531774fc2af1dff44dba51`; the 0.8.0 branch starts there. This is a working ledger, not a claim that 0.8.0 is implemented or that baseline behavior has already been reproduced.
 
 ## Current implementation boundary
 
@@ -815,3 +815,36 @@ Its temporary audit is `gateway-080-district-recipe-regression.jsonl`.
 incoming snapshots, actual validated Parcel JSON, source retention layers and
 complete preview acceptance remain open.
 The production build passed after the final source changes.
+
+### 2026-10-31: typed incoming checkpoints and owned imported facts
+
+General ordered table recipes now read explicitly declared saved parent tables
+or native Standard District winners/candidates at complete same-block checkpoints.
+Bindings pin exact revisions and semantic identities. Complete missing keys are
+typed missing; unavailable, expired and forked coverage waits. Read-only aliases
+cannot become write targets. Selected parents dispatch topologically and saved-only
+parents remain untouched.
+
+Children retain every used point fact and known absence with its binding, receipt,
+typed value and checksum under a cumulative COW root. Their query and collection
+remain valid after producer deletion. Exact lineage, native head leases and
+generation CAS protect publication; recovery and archives retain state/facts
+together. Maintenance authenticates required imported blobs before any cleanup.
+Definitions without incoming tables retain their old fingerprints and point bytes.
+The native District semantic-equivalence guard remains unchanged.
+
+The wider table/DAG/catalogue/District suite passed 62 checks in 81.246 seconds.
+It includes real block 792435, public finite/Live execution, unavailable-parent
+waiting without source acquisition, topological dispatch, saved-only rebuild,
+pause/restart, deterministic recovery, producer deletion and fact-corruption GC
+fences. The temporary audit is `gateway-080-table-imports-regression.jsonl`.
+Guided unit and headless real-DOM checks passed for saved/built-in pins, alias
+renaming, stale responses, read/write choices and narrow layout. See
+`080-TABLE-CHECKPOINT-INPUTS.md` for bounds and local-evidence limits.
+Actual Parcel proof compositions, remaining source/retention layers and complete
+visible preview acceptance remain open.
+
+The final snapshot-lease compatibility/lifecycle set passed in 25.368 seconds;
+the dedicated busy-native-snapshot publication check passed in 1.251 seconds.
+Recipe controls and the wider index workspace passed unit/headless browser
+checks. The production build passed (25,218,048 bytes).

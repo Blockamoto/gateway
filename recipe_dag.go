@@ -102,7 +102,7 @@ func recipeBuildDependencyGraph(ctx context.Context, root resolvedSavedRecipe, s
 			parent, ok := resolved[wanted]
 			if dep.Scope == "builtin" {
 				var err error
-				parent, err = recipeResolveBuiltinCoinDefinition(dep)
+				parent, err = recipeResolveBuiltinDefinition(dep)
 				if err != nil {
 					return err
 				}
@@ -121,6 +121,8 @@ func recipeBuildDependencyGraph(ctx context.Context, root resolvedSavedRecipe, s
 			found := false
 			if projection {
 				found = parent.Source == "bitcoin.ordered" && parent.History == "ordered" && parent.Definition.Storage == recipeOrderedUTXOStorage && dep.Export == "coins" && dep.Coverage == "snapshot_delta" && dep.Type == "coin"
+			} else if ordered && node.Definition.Storage == recipeTablesStorage {
+				found = recipeTableParentDeclares(parent, dep)
 			} else if parent.History == "sparse" {
 				for _, e := range parent.Definition.Exports {
 					if e.Name == dep.Export && e.Kind == dep.Coverage && e.Type == dep.Type {

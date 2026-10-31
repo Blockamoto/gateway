@@ -327,6 +327,15 @@ func (c *recipeOrderedRunConsumer) Next(ctx context.Context) (recipeConsumerProg
 		return out, fmt.Errorf("ordered state needs explicitly admitted lead-in at height %d before this range", next)
 	}
 	work := recipeConsumerWork{PlanID: c.plan.PlanID, Height: next, CoverageRevision: out.CoverageRevision, ChainSnapshot: out.ChainSnapshot, StateCommitment: token}
+	if tables, ok := c.generation.(*recipeTablesGeneration); ok && len(tables.program.definition.Dependencies) > 0 {
+		hash, err := c.selectedAt(ctx, next, tip, tipHash)
+		if err != nil {
+			return out, err
+		}
+		if _, err = c.a.openRecipeTableDependencies(ctx, tables.program.definition, next, hash); err != nil {
+			return out, err
+		}
+	}
 	c.pending = &work
 	out.State, out.Work = "ready", &work
 	return out, nil
@@ -380,8 +389,23 @@ func (c *recipeOrderedRunConsumer) Apply(ctx context.Context, work recipeConsume
 		return fmt.Errorf("ordered source is not the selected local block")
 	}
 	checked.Verification.HeaderChainMatch = true
+	var dependencies *recipeTableDependencySet
+	if tables, ok := c.generation.(*recipeTablesGeneration); ok && len(tables.program.definition.Dependencies) > 0 {
+		dependencies, err = c.a.openRecipeTableDependencies(ctx, tables.program.definition, checked.Height, checked.Hash)
+		if err != nil {
+			return err
+		}
+		ctx = context.WithValue(ctx, recipeTableDependenciesKey{}, dependencies)
+	}
 	guard := func(publish func() error) error {
-		return c.a.recipeLocalConsumerGuard(ctx, c.binding)(c.plan, work, checked, publish)
+		return c.a.recipeLocalConsumerGuard(ctx, c.binding)(c.plan, work, checked, func() error {
+			if dependencies != nil {
+				if err := dependencies.checkRegistryLocked(ctx); err != nil {
+					return err
+				}
+			}
+			return publish()
+		})
 	}
 	if err = guard(func() error { return nil }); err != nil {
 		return err

@@ -1,0 +1,158 @@
+{
+  "schema": 1,
+  "result": "PASS",
+  "verified_at": "2026-11-01T11:14:20.222085+00:00",
+  "scope": "Render activation, genuine Windows automatic upgrade, fresh-client feed checks and post-promotion renewal.",
+  "repository": "Blockamoto/gateway",
+  "release_title": "0.7.9 Parcels",
+  "version": "0.7.9",
+  "source_revision": "a9b1722aee6d150af96822da2329ae54bf178de0",
+  "activation_deploy": "dep-dbjhte8ae00c73e9etfg",
+  "preflight": {
+    "result": "PASS",
+    "predecessor_matches_live": true,
+    "predecessor_bundle_sha256": "0570ecbb7d618ec192748c97ca118b9a3e52a935fd29727035d0777b44024a15",
+    "candidate_bundle_sha256": "35a1db9ca3e478e8dca8aabc8d60190ad1f5b3e6c88507ce193bd37516180a1b",
+    "old_sequences": [
+      17,
+      16
+    ],
+    "new_sequences": [
+      18,
+      17
+    ],
+    "signatures_and_artifacts_validated_by_publisher": true
+  },
+  "hosted_delivery": {
+    "result": "PASS",
+    "signed_manifests_equal_authenticated_bundle": true,
+    "application_sequence": 18,
+    "headers_sequence": 17,
+    "application_packages": 2,
+    "header_chunks": 97,
+    "application_artifacts": [
+      {
+        "route": "/artifacts/gateway-client-v0.7.9-linux-amd64.zip",
+        "bytes": 9301613,
+        "sha256": "88c2ff74b2faa6eca76983dae4d6d84a31e8b22bffb2f01f66d35e60cc3fe243"
+      },
+      {
+        "route": "/artifacts/gateway-client-v0.7.9-windows-amd64.zip",
+        "bytes": 15052154,
+        "sha256": "ff135e9ce24ce7fa76d2cb3293cb30563e8341c061a44cbeae445443436fc55a"
+      }
+    ],
+    "complete_delivery_receipt_sha256": "341a5dd5c152d20ab55e31753d8a0420c905e96d49350181eed2c6e0362dc915"
+  },
+  "hosted_windows_upgrade": {
+    "result": "PASS",
+    "update_mode": "automatic",
+    "download_button_pressed": false,
+    "restart_button_pressed": false,
+    "scope": "Public-release hosted acceptance: genuine published 0.7.8 client automatically installs exact public 0.7.9 and restarts with settings and full headers preserved. Separate fresh 0.7.9 automatically checks both app and header feeds without Settings setup; its validated snapshot prefix remains unchanged while ordinary peers may extend the chain.",
+    "publisher": "https://gateway-updates.onrender.com",
+    "source_version": "0.7.8",
+    "source_is_synthetic_fixture": false,
+    "fixture": {
+      "runtime_version": "0.7.8",
+      "synthetic": false,
+      "published": true,
+      "source_revision": "e439525617ed5ec742cbcda97aecfaa3a36ee7be",
+      "archive_sha256": "ae8b14083a9acd4d7d8adb31079f71ce96726e124b87929d5ad6a69146debb19",
+      "client_sha256": "58c16c23c2073447a413f07956e7c6278b7ee0e150546c1d20530c34897dc479",
+      "private_signing_key_used": false
+    },
+    "installed_version": "0.7.9",
+    "source_revision": "a9b1722aee6d150af96822da2329ae54bf178de0",
+    "manifest_sequence": 18,
+    "manifest_sha256": "a481f480afe0265e9001528e044d473044d86102b14cd2d671151844dfd16800",
+    "archive_sha256": "ff135e9ce24ce7fa76d2cb3293cb30563e8341c061a44cbeae445443436fc55a",
+    "archive_bytes": 15052154,
+    "installed_binary_sha256": {
+      "GatewayClient.exe": "193008282e2f819c922bf7af033a3e924f6c0e34287005cf1a18593aa9f4a2b6",
+      "GatewayUpdateHelper.exe": "f5c53803a9fb8fa9f6156246ee6c4c2c88eda764ed45b68ef9d05421bcefda7b",
+      "GatewayOnDemand.exe": "c5ae2ec888b943f26c4a0a2adaa9d5adc4bd2b0efc35ba1eadc2c07b4b21735d",
+      "GatewayNativeHost.exe": "ad9360e2151f628984ebf69c0bfb8751a5727047e1bec84c3277c390a43bf655"
+    },
+    "preserved_profile_files": {
+      "settings.json": "037e26ed24be7a4d61183b62bac0dda26ad64589fa4e650aeb08e9a557952e42",
+      "appearance.json": "99529e33f9fdb8c0e22634c7ad88478979f2c6cb778a1a118c4c1aee5680ae49",
+      "keep-user-data.txt": "bf702fd77e4e32611ea28bf263e383eac7e20b85d9851e4abb28d245e9067ab8",
+      "indexes/live.json": "fe86d5b26b0ef18cb98f18f63e98e558ede0fcc1431b560da6b2588a315eb4ae",
+      "headers/headers.bin": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467"
+    },
+    "preserved_bootstrap_files": {
+      "headers-mainnet.bin": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+      "headers-mainnet.json": "7e61b63a39064be8633338cd3ee6794e8ee2cc845561905cfc4ae40793912679"
+    },
+    "management_origin_preserved": true,
+    "helper_state": "installed",
+    "trust": {
+      "publisher": "https://gateway-updates.onrender.com",
+      "public_key_id": "c5f20c46d5daf2aa7f21c1602efd3a0b",
+      "access_token_configured": false
+    },
+    "bundled_channel": {
+      "id": "stable",
+      "label": "Gateway updates",
+      "visible": true,
+      "configured_before_ui": true,
+      "automatic_check": true,
+      "automatic_install": false,
+      "manual_configuration_actions": 0,
+      "live_check": true,
+      "up_to_date": true,
+      "last_checked": "2026-11-01T11:15:21Z"
+    },
+    "fresh_header_feed": {
+      "sequence": 17,
+      "digest": "ec1ba7552120771071da6fedf11a18dee10d41552c869b332837854c356383f3",
+      "signed_count": 969480,
+      "validated_snapshot_prefix_sha256": "64889ec9d2d520cb7e8ffef7c4cd30e07bbeb5f53ead05404fac70e66498d467",
+      "complete_file_sha256": "e8501c90c63f5b86f3eae903cdc86a217a1b249c0cc8ea6162a20ad45e775a86",
+      "complete_file_count": 974120,
+      "ordinary_peer_extension_headers": 4640,
+      "synchronization": {
+        "ready": true,
+        "state": "current",
+        "count": 974120,
+        "height": 974119
+      },
+      "existing_snapshot_prefix_preserved": true
+    },
+    "github_credentials_in_client": false,
+    "private_signing_key_read": false,
+    "fixture_release_created": false,
+    "system_install_performed": false,
+    "production_profile_touched": false,
+    "preflight_warmed_publisher": true,
+    "cold_start_measured": false,
+    "full_profile_header_bytes": 77558400,
+    "page_errors": [],
+    "external_browser_requests": [],
+    "browser": "156.0.4314.58",
+    "disposable_profiles_removed": true
+  },
+  "limits": [
+    "Full-mainnet Parcel replay, Live throughput and storage requirements remain unverified.",
+    "Positive replay-v3 Bitmap target coverage remains unverified.",
+    "Full Windows system installation and Linux process replacement were not exercised in this hosted acceptance.",
+    "The hosted client acceptance warmed the free Render service first; it does not measure cold-start latency."
+  ],
+  "post_promotion_renewal": {
+    "result": "PASS",
+    "renewal_run": 41301105795,
+    "bundle_sha256": "0b85ab132c7def2f24845048b97e93c83b1e6c9cf667bb3b91225bf97c7942eb",
+    "application_sequence": 19,
+    "headers_sequence": 18,
+    "application_expires_at": "2026-12-01T11:16:32Z",
+    "headers_expires_at": "2026-12-01T11:16:32Z",
+    "signed_manifests_equal_hosted": true,
+    "all_application_and_header_payloads_unchanged": true,
+    "signatures_and_payloads_revalidated_by_publisher": true
+  },
+  "current_feed_receipt": "docs/UPDATE-FEED-STATUS.json",
+  "renewal_workflow": "https://github.com/Blockamoto/gateway/actions/runs/41301105795",
+  "billing_settings_changed": false,
+  "release_tag_or_executable_bytes_changed": false
+}

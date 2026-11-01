@@ -4,7 +4,8 @@
 
 Gateway 0.7.9 adds validated Bitmap Parcels and revised dependency and indexing
 controls. The prerelease is published; [release and updater status](RELEASE-STATUS-0.7.9.md)
-records the verified artifacts and the Render deployment blocker. Parcel coverage advances only with checked evidence; missing or
+records the verified artifacts, live Render delivery and genuine previous-client
+automatic upgrade. Parcel coverage advances only with checked evidence; missing or
 unsupported proof remains pending. Existing experimental data is preserved.
 Full-chain Parcel and Live performance have not been established by bounded
 fixtures. The packaged acceptance record describes the earlier candidate stage;
